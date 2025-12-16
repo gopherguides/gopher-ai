@@ -1,0 +1,13 @@
+{
+  "name": "productivity",
+  "description": "Standup reports, changelogs, and git productivity helpers",
+  "version": "1.0.0",
+  "author": {
+    "name": "Gopher Guides",
+    "email": "support@gopherguides.com"
+  },
+  "homepage": "https://gopherguides.com",
+  "repository": "https://github.com/gopherguides/gopher-ai",
+  "license": "MIT",
+  "keywords": ["standup", "changelog", "productivity", "reports", "weekly"]
+}

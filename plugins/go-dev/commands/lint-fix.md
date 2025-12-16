@@ -1,0 +1,195 @@
+---
+argument-hint: "[path] [--check]"
+description: "Auto-fix Go linting issues with golangci-lint"
+model: claude-opus-4-5-20251101
+allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
+---
+
+**If `$ARGUMENTS` is empty or not provided:**
+
+Fix all auto-fixable linting issues in the Go project.
+
+**Usage:** `/lint-fix [path] [options]`
+
+**Examples:**
+
+- `/lint-fix` - Fix all linting issues in project
+- `/lint-fix ./pkg/...` - Fix issues in specific package
+- `/lint-fix --check` - Check without fixing
+- `/lint-fix --staged` - Fix only staged files
+
+**Workflow:**
+
+1. Detect golangci-lint configuration
+2. Run linters with auto-fix enabled
+3. Run gofmt and goimports
+4. Report fixed and remaining issues
+5. Optionally stage fixed files
+
+Proceed with fixing all linting issues.
+
+---
+
+**If `$ARGUMENTS` is provided:**
+
+Fix linting issues for specified path or options.
+
+## Configuration
+
+Parse arguments:
+
+- **Path**: Package or file to lint (default: `./...`)
+- **--check**: Report issues without fixing
+- **--staged**: Only lint staged files
+- **--fix-unsafe**: Include unsafe fixes
+
+## Steps
+
+### 1. Detect Linting Tools
+
+```bash
+# Check for golangci-lint config
+ls .golangci.yml .golangci.yaml golangci.yml 2>/dev/null
+
+# Check golangci-lint version
+golangci-lint --version 2>/dev/null
+```
+
+### 2. Check Current State
+
+```bash
+# Count current issues (without fixing)
+golangci-lint run --max-issues-per-linter 0 --max-same-issues 0 2>&1 | tail -20
+```
+
+### 3. Run Auto-Fix
+
+**Go formatting:**
+
+```bash
+# Format all Go files
+gofmt -w -s .
+
+# Organize imports
+goimports -w .
+
+# Or use gofumpt for stricter formatting
+gofumpt -w .
+```
+
+**golangci-lint fixes:**
+
+```bash
+# Run with auto-fix
+golangci-lint run --fix ./...
+```
+
+### 4. Staged Files Only
+
+When using `--staged`:
+
+```bash
+# Get staged Go files
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.go$')
+
+# Format only staged files
+echo "$STAGED" | xargs gofmt -w -s
+echo "$STAGED" | xargs goimports -w
+```
+
+### 5. Common Linter Fixes
+
+| Linter | Auto-fixable | Manual |
+|--------|--------------|--------|
+| gofmt | All formatting | - |
+| goimports | Import ordering | - |
+| govet | - | All issues |
+| errcheck | - | Missing error checks |
+| staticcheck | Some | Most issues |
+| gosimple | Some | Code simplifications |
+| gocritic | Some | Style issues |
+
+### 6. Handle Unfixable Issues
+
+After auto-fix, report remaining issues:
+
+```text
+Remaining Issues (require manual fix)
+
+| File | Line | Linter | Message |
+|------|------|--------|---------|
+| pkg/api/handler.go | 45 | errcheck | Error return value not checked |
+| pkg/db/query.go | 23 | govet | Printf format %d has arg of wrong type |
+
+Suggested fixes:
+
+1. pkg/api/handler.go:45 - Add error handling: if err != nil { return err }
+2. pkg/db/query.go:23 - Change %d to %s for string argument
+```
+
+### 7. Generate Report
+
+```text
+Lint Fix Complete
+
+Fixed Issues:
+
+| Tool | Fixed |
+|------|-------|
+| gofmt | 12 files |
+| goimports | 8 files |
+| golangci-lint | 5 issues |
+
+Total: 25 fixes applied
+
+Remaining Issues: 3 (require manual fixes)
+
+Files Modified:
+- pkg/api/handler.go
+- pkg/db/query.go
+- internal/service/auth.go
+- ... (more)
+
+Next Steps:
+
+1. Review changes: git diff
+2. Fix remaining issues manually
+3. Run tests: go test ./...
+4. Stage changes: git add -A
+```
+
+### 8. Recommended golangci-lint Config
+
+If no config exists, suggest creating `.golangci.yml`:
+
+```yaml
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - gosimple
+    - gocritic
+    - gofmt
+    - goimports
+    - misspell
+    - unconvert
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/yourorg/yourproject
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+```
+
+## Notes
+
+- Always review auto-fixed changes
+- Run tests after fixing: `go test ./...`
+- Some fixes may change behavior (rare)
+- Use `--check` in CI, `--fix` locally

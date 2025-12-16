@@ -1,0 +1,22 @@
+{
+  "name": "gopher-guides",
+  "description": "Gopher Guides training materials integrated into Claude via MCP",
+  "version": "1.0.0",
+  "author": {
+    "name": "Gopher Guides",
+    "email": "support@gopherguides.com"
+  },
+  "homepage": "https://gopherguides.com",
+  "repository": "https://github.com/gopherguides/gopher-ai",
+  "license": "MIT",
+  "keywords": ["go", "training", "best-practices", "gopher-guides", "mcp"],
+  "mcpServers": {
+    "gopher-guides": {
+      "command": "gopher-guides-mcp",
+      "args": ["serve"],
+      "env": {
+        "GOPHER_GUIDES_API_KEY": "${GOPHER_GUIDES_API_KEY}"
+      }
+    }
+  }
+}
