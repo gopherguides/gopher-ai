@@ -199,7 +199,7 @@ codex exec -m <model> -s <mode> --skip-git-repo-check "<prompt>"```
 Construct a combined prompt and execute using heredoc:
 
 ```bash
-codex exec -m <model> -s <mode> --skip-git-repo-check - 2>/dev/null <<'EOF'
+codex exec -m <model> -s <mode> --skip-git-repo-check - <<'EOF'
 [CONTEXT BLOCK FROM STEP 2]
 
 ---

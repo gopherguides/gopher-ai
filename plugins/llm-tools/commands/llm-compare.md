@@ -87,17 +87,17 @@ Execute each LLM. Where possible, run in parallel for speed.
 
 **OpenAI:**
 ```bash
-codex exec -m <model> -s read-only --skip-git-repo-check "<prompt>" 2>/dev/null
+codex exec -m <model> -s read-only --skip-git-repo-check "<prompt>"
 ```
 
 **Gemini:**
 ```bash
-gemini -m <model> "<prompt>" 2>/dev/null
+gemini -m <model> "<prompt>"
 ```
 
 **Ollama:**
 ```bash
-ollama run <model> "<prompt>" 2>/dev/null
+ollama run <model> "<prompt>"
 ```
 
 Capture output from each.
