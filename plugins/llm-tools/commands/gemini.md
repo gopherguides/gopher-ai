@@ -51,9 +51,9 @@ If not found, inform the user:
 
 > Gemini CLI is not installed. Install it with:
 > ```bash
-> brew install gemini-cli
+> npm install -g @google/gemini-cli
 > ```
-> Or visit: https://github.com/google/gemini-cli
+> Then authenticate: `gemini` (will prompt for Google login) or set `GEMINI_API_KEY`
 
 Then ask if they want to proceed after installation or use a different LLM (`/codex` or `/ollama`).
 
@@ -99,25 +99,25 @@ Default: `No`
 **Without context:**
 
 ```bash
-gemini -m <model> "<prompt>"
+gemini "<prompt>" -m <model>
 ```
 
 **With file context:**
 
 ```bash
-cat <file> | gemini -m <model> "Given this code:\n\n<prompt>"
+cat <file> | gemini "Given this code, <prompt>" -m <model>
 ```
 
 **With diff context:**
 
 ```bash
-git diff <scope> | gemini -m <model> "Review these changes:\n\n<prompt>"
+git diff <scope> | gemini "Review these changes: <prompt>" -m <model>
 ```
 
 **With session context:**
 
 ```bash
-gemini -m <model> "$(cat <<'EOF'
+gemini "$(cat <<'EOF'
 ## Context
 
 [Session context summary]
@@ -128,7 +128,7 @@ gemini -m <model> "$(cat <<'EOF'
 
 <prompt>
 EOF
-)"
+)" -m <model>
 ```
 
 ## 5. Report Results
@@ -147,5 +147,6 @@ After execution completes:
 
 ## Notes
 
-- Gemini CLI requires Google AI Studio API key (`GOOGLE_API_KEY`) or OAuth login
+- Gemini CLI requires `GEMINI_API_KEY` environment variable or OAuth login (run `gemini` to authenticate)
+- Install with: `npm install -g @google/gemini-cli`
 - For private/sensitive code, consider `/ollama` which keeps data local

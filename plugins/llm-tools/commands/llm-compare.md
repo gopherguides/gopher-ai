@@ -92,7 +92,7 @@ codex exec -m <model> -s read-only --skip-git-repo-check "<prompt>"
 
 **Gemini:**
 ```bash
-gemini -m <model> "<prompt>"
+gemini "<prompt>" -m <model>
 ```
 
 **Ollama:**
