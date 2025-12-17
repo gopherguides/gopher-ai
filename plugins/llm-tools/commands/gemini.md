@@ -27,9 +27,9 @@ This command delegates tasks to Google Gemini CLI for analysis and code review.
 
 | Model | Best For |
 |-------|----------|
-| `gemini-2.0-flash` | Fast responses, general tasks (default) |
-| `gemini-2.0-flash-thinking` | Complex reasoning, step-by-step analysis |
-| `gemini-pro` | Production-quality, detailed responses |
+| `gemini-2.5-flash` | Fast responses, general tasks (default) |
+| `gemini-2.5-pro` | Complex reasoning, detailed analysis |
+| `gemini-2.0-flash-lite` | Quick, simple tasks |
 
 Ask the user: "What would you like Gemini to analyze?"
 
@@ -63,11 +63,11 @@ Ask the user which model to use:
 
 | Model | Best For |
 |-------|----------|
-| gemini-2.0-flash | Fast responses, general tasks |
-| gemini-2.0-flash-thinking | Complex reasoning, step-by-step analysis |
-| gemini-pro | Production-quality, detailed responses |
+| gemini-2.5-flash | Fast responses, general tasks |
+| gemini-2.5-pro | Complex reasoning, detailed analysis |
+| gemini-2.0-flash-lite | Quick, simple tasks |
 
-Default: `gemini-2.0-flash`
+Default: `gemini-2.5-flash`
 
 ## 3. Include Context (Optional)
 

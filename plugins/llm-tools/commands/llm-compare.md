@@ -64,7 +64,7 @@ Skip unavailable LLMs with a note.
 For each selected LLM, ask if user wants to specify a model or use default:
 
 **OpenAI defaults:** `gpt-5.2`
-**Gemini defaults:** `gemini-2.0-flash`
+**Gemini defaults:** `gemini-2.5-flash`
 **Ollama defaults:** First available code model (codellama, deepseek-coder, etc.)
 
 ## 3. Include Context (Optional)
@@ -115,7 +115,7 @@ Present results in a structured format:
 
 ---
 
-### Google Gemini (gemini-2.0-flash)
+### Google Gemini (gemini-2.5-flash)
 
 [Response from Gemini]
 
@@ -180,7 +180,7 @@ state. Use `sync/atomic` for even better performance with counters.
 
 ---
 
-### Google Gemini (gemini-2.0-flash)
+### Google Gemini (gemini-2.5-flash)
 
 Both can work, but:
 - Mutex: simpler for protecting shared state
