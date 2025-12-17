@@ -36,6 +36,13 @@
       "description": "Gopher Guides training materials integrated into Claude via MCP",
       "version": "1.0.0",
       "keywords": ["go", "training", "best-practices", "gopher-guides", "mcp"]
+    },
+    {
+      "name": "llm-tools",
+      "source": "./plugins/llm-tools",
+      "description": "Multi-LLM integration for second opinions and task delegation",
+      "version": "1.0.0",
+      "keywords": ["llm", "openai", "codex", "gemini", "ollama", "multi-model", "second-opinion"]
     }
   ]
 }
