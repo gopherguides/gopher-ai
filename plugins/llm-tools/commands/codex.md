@@ -89,22 +89,23 @@ Assemble and execute the command based on what to review:
 **For uncommitted changes:**
 
 ```bash
-codex review --uncommitted -c model=<model>```
+codex review --uncommitted -c model=<model>
+```
 
 **For changes vs branch:**
 
 ```bash
-codex review --base <branch> -c model=<model>```
+codex review --base <branch> -c model=<model>
+```
 
 **For specific commit:**
 
 ```bash
-codex review --commit <sha> -c model=<model>```
+codex review --commit <sha> -c model=<model>
+```
 
-If the user provided custom review instructions beyond just "review", append them as the prompt:
-
-```bash
-codex review --base <branch> -c model=<model> "<custom-instructions>"```
+**Note:** The `--base`, `--uncommitted`, and `--commit` flags cannot be combined with a custom prompt.
+For custom review instructions, use `codex` interactively or pipe instructions via stdin.
 
 ### R4. Report Results
 
@@ -192,7 +193,8 @@ Default: `read-only`
 Assemble and execute the command:
 
 ```bash
-codex exec -m <model> -s <mode> --skip-git-repo-check "<prompt>"```
+codex exec -m <model> -s <mode> --skip-git-repo-check "<prompt>"
+```
 
 **If context WAS requested:**
 
