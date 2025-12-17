@@ -13,7 +13,23 @@ Claude Code plugins for Go developers - by [Gopher Guides](https://gopherguides.
 /plugin install go-dev@gopher-ai
 /plugin install productivity@gopher-ai
 /plugin install gopher-guides@gopher-ai
+/plugin install llm-tools@gopher-ai
+/plugin install go-web@gopher-ai
 ```
+
+## Updating Plugins
+
+When new plugins are added or existing ones are updated, refresh your installation:
+
+```bash
+/plugin marketplace update gopher-ai
+```
+
+To enable automatic updates (checks at startup):
+
+1. Run `/plugin` to open the plugin manager
+2. Select **Marketplaces** > **gopher-ai**
+3. Enable **auto-update**
 
 ## Available Plugins
 
@@ -73,6 +89,54 @@ Gopher Guides training materials integrated into Claude via MCP.
 - `get_example` - Find code examples for specific patterns
 - `review_pr` - Review PRs against training materials
 
+### llm-tools
+
+Multi-LLM integration for second opinions and task delegation.
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/codex <prompt>` | Delegate tasks to OpenAI Codex CLI |
+| `/gemini <prompt>` | Query Google Gemini for analysis |
+| `/ollama <prompt>` | Use local models (data stays on your machine) |
+| `/llm-compare <prompt>` | Compare responses from multiple LLMs |
+| `/convert <from> <to>` | Convert between formats (JSON→TS, SQL→Prisma, etc.) |
+
+**Skills (auto-invoked):**
+
+- **Second Opinion** - Suggests getting another LLM's perspective for complex decisions
+
+**Requirements:**
+
+- `codex` CLI: `npm install -g @openai/codex`
+- `gemini` CLI: `brew install gemini-cli`
+- `ollama`: `brew install ollama`
+
+### go-web
+
+Opinionated Go web app scaffolding with our recommended stack.
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/create-go-project <name>` | Scaffold a new Go web app from scratch |
+| `/convert-to-go-project` | Migrate Express/Django/Laravel/Next.js to Go |
+
+**The Stack:**
+
+- Go + Echo v4 (web framework)
+- Templ (type-safe HTML templates)
+- HTMX (server-driven interactivity)
+- Alpine.js (client-side interactivity)
+- Tailwind CSS v4 (styling with dark mode)
+- sqlc (type-safe SQL, no ORM)
+- goose (database migrations)
+- Air (hot reload)
+
+**Default Deployment:** Vercel + Neon PostgreSQL (free tier)
+
 ## Installation Options
 
 ### Install All Plugins
@@ -83,6 +147,8 @@ Gopher Guides training materials integrated into Claude via MCP.
 /plugin install go-dev@gopher-ai
 /plugin install productivity@gopher-ai
 /plugin install gopher-guides@gopher-ai
+/plugin install llm-tools@gopher-ai
+/plugin install go-web@gopher-ai
 ```
 
 ### Install Specific Plugins
