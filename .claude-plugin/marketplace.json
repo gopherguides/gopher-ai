@@ -43,6 +43,13 @@
       "description": "Multi-LLM integration for second opinions and task delegation",
       "version": "1.0.0",
       "keywords": ["llm", "openai", "codex", "gemini", "ollama", "multi-model", "second-opinion"]
+    },
+    {
+      "name": "go-web",
+      "source": "./plugins/go-web",
+      "description": "Opinionated Go web app scaffolding with Templ + HTMX + Alpine.js + Tailwind",
+      "version": "1.0.0",
+      "keywords": ["go", "web", "templ", "htmx", "alpine", "tailwind", "scaffold", "convert"]
     }
   ]
 }

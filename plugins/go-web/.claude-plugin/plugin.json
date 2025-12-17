@@ -1,0 +1,13 @@
+{
+  "name": "go-web",
+  "description": "Opinionated Go web app scaffolding with Templ + HTMX + Alpine.js + Tailwind",
+  "version": "1.0.0",
+  "author": {
+    "name": "Gopher Guides",
+    "email": "support@gopherguides.com"
+  },
+  "homepage": "https://gopherguides.com",
+  "repository": "https://github.com/gopherguides/gopher-ai",
+  "license": "MIT",
+  "keywords": ["go", "web", "templ", "htmx", "alpine", "tailwind", "scaffold", "echo"]
+}
