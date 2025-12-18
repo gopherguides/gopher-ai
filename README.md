@@ -19,17 +19,24 @@ Claude Code plugins for Go developers - by [Gopher Guides](https://gopherguides.
 
 ## Updating Plugins
 
-When new plugins are added or existing ones are updated, refresh your installation:
+When plugin updates are pushed to this repository:
+
+**Option 1: Clear Cache (Fastest)**
 
 ```bash
-/plugin marketplace update gopher-ai
+rm -rf ~/.claude/plugins/cache/
 ```
 
-To enable automatic updates (checks at startup):
+Then restart Claude Code (exit and reopen).
 
-1. Run `/plugin` to open the plugin manager
-2. Select **Marketplaces** > **gopher-ai**
-3. Enable **auto-update**
+**Option 2: Reinstall Plugin**
+
+```bash
+/plugin uninstall <plugin-name>@gopher-ai
+/plugin install <plugin-name>@gopher-ai
+```
+
+**Note:** `/plugin marketplace update gopher-ai` refreshes the marketplace manifest but does NOT update cached plugin files due to a [known bug](https://github.com/anthropics/claude-code/issues/14061). Use one of the methods above instead.
 
 ## Available Plugins
 
