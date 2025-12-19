@@ -39,44 +39,47 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 
 ## Steps
 
-1. **Fetch issue details from GitHub**
+1. **Capture source directory** (must be done first, before any cd operations)
+   !SOURCE_DIR="$(pwd)"
+   !echo "Source directory: $SOURCE_DIR"
+
+2. **Fetch issue details from GitHub**
    !gh issue view $ARGUMENTS --json title,state,number
 
-2. **Validate issue exists and is open**
+3. **Validate issue exists and is open**
    !if ! gh issue view $ARGUMENTS >/dev/null 2>&1; then echo "Error: Issue #$ARGUMENTS not found"; exit 1; fi
    !if [ "$(gh issue view $ARGUMENTS --json state --jq '.state')" = "CLOSED" ]; then echo "Warning: Issue #$ARGUMENTS is already closed"; fi
 
-3. **Detect the default branch**
+4. **Detect the default branch**
    !DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | sed 's/.*: //')
    !echo "Default branch: $DEFAULT_BRANCH"
 
-4. **Create worktree directory name**
-   !REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+5. **Create worktree directory name**
+   !REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
    !ISSUE_TITLE=$(gh issue view $ARGUMENTS --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
    !WORKTREE_NAME="${REPO_NAME}-issue-$ARGUMENTS-$ISSUE_TITLE"
    !WORKTREE_PATH="../$WORKTREE_NAME"
    !BRANCH_NAME="issue-$ARGUMENTS-$ISSUE_TITLE"
 
-5. **Check if worktree already exists**
+6. **Check if worktree already exists**
    !if [ -d "$WORKTREE_PATH" ]; then echo "Error: Worktree already exists at $WORKTREE_PATH"; exit 1; fi
 
-6. **Fetch latest default branch**
+7. **Fetch latest default branch**
    !git fetch origin "$DEFAULT_BRANCH"
 
-7. **Create worktree from default branch**
+8. **Create worktree from default branch**
    !git worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"
 
-8. **Switch to new worktree and create feature branch**
+9. **Switch to new worktree and create feature branch**
    !cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
 
-9. **Copy LLM config directories to new worktree**
-   !SOURCE_DIR="$(pwd)"
-   !for dir in .claude .codex .gemini .cursor; do if [ -d "$SOURCE_DIR/$dir" ]; then cp -r "$SOURCE_DIR/$dir" "$WORKTREE_PATH/" && echo "Copied $dir"; fi; done
+10. **Copy LLM config directories to new worktree**
+    !for dir in .claude .codex .gemini .cursor; do if [ -d "$SOURCE_DIR/$dir" ]; then cp -r "$SOURCE_DIR/$dir" "$WORKTREE_PATH/" && echo "Copied $dir"; fi; done
 
-10. **Check for environment files**
+11. **Check for environment files**
     !ENV_FILES=""
-    !if [ -f "$(pwd)/.env" ]; then ENV_FILES="$ENV_FILES .env"; fi
-    !if [ -f "$(pwd)/.envrc" ]; then ENV_FILES="$ENV_FILES .envrc"; fi
+    !if [ -f "$SOURCE_DIR/.env" ]; then ENV_FILES="$ENV_FILES .env"; fi
+    !if [ -f "$SOURCE_DIR/.envrc" ]; then ENV_FILES="$ENV_FILES .envrc"; fi
     !echo "ENV_FILES=$ENV_FILES"
 
     **If environment files were found**, use AskUserQuestion to ask:
@@ -84,9 +87,9 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
     - Options: "Yes, copy them" / "No, skip"
 
     If user confirms, copy the files:
-    !for file in $ENV_FILES; do cp "$(pwd)/$file" "$WORKTREE_PATH/" && echo "Copied $file"; done
+    !for file in $ENV_FILES; do cp "$SOURCE_DIR/$file" "$WORKTREE_PATH/" && echo "Copied $file"; done
 
-11. **Display success message**
+12. **Display success message**
     !echo "Created worktree for issue #$ARGUMENTS"
     !echo "Path: $WORKTREE_PATH"
     !echo "Branch: $BRANCH_NAME"
