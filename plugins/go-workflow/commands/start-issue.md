@@ -21,7 +21,8 @@ This command creates an isolated git worktree for working on a GitHub issue.
 1. Creates a new worktree directory (e.g., `../reponame-issue-789-feature-name/`)
 2. Checks out from the default branch (main/dev/master)
 3. Creates a feature branch for the issue
-4. Copies your `.claude` configuration to the new worktree
+4. Copies LLM config directories (`.claude`, `.codex`, `.gemini`, `.cursor`)
+5. Optionally copies environment files (`.env`, `.envrc`) if you confirm
 
 **Prerequisites:**
 
@@ -68,15 +69,28 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 8. **Switch to new worktree and create feature branch**
    !cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
 
-9. **Copy .claude directory to new worktree**
-   !SOURCE_CLAUDE_DIR="$(pwd)/.claude"
-   !if [ -d "$SOURCE_CLAUDE_DIR" ]; then cp -r "$SOURCE_CLAUDE_DIR" "$WORKTREE_PATH/"; else echo "Note: No .claude directory found to copy"; fi
+9. **Copy LLM config directories to new worktree**
+   !SOURCE_DIR="$(pwd)"
+   !for dir in .claude .codex .gemini .cursor; do if [ -d "$SOURCE_DIR/$dir" ]; then cp -r "$SOURCE_DIR/$dir" "$WORKTREE_PATH/" && echo "Copied $dir"; fi; done
 
-10. **Display success message**
-   !echo "Created worktree for issue #$ARGUMENTS"
-   !echo "Path: $WORKTREE_PATH"
-   !echo "Branch: $BRANCH_NAME"
-   !echo "To switch: cd $WORKTREE_PATH"
+10. **Check for environment files**
+    !ENV_FILES=""
+    !if [ -f "$(pwd)/.env" ]; then ENV_FILES="$ENV_FILES .env"; fi
+    !if [ -f "$(pwd)/.envrc" ]; then ENV_FILES="$ENV_FILES .envrc"; fi
+    !echo "ENV_FILES=$ENV_FILES"
+
+    **If environment files were found**, use AskUserQuestion to ask:
+    "Found environment files ($ENV_FILES). Copy them to the new worktree? (These may contain secrets)"
+    - Options: "Yes, copy them" / "No, skip"
+
+    If user confirms, copy the files:
+    !for file in $ENV_FILES; do cp "$(pwd)/$file" "$WORKTREE_PATH/" && echo "Copied $file"; done
+
+11. **Display success message**
+    !echo "Created worktree for issue #$ARGUMENTS"
+    !echo "Path: $WORKTREE_PATH"
+    !echo "Branch: $BRANCH_NAME"
+    !echo "To switch: cd $WORKTREE_PATH"
 
 ## Next Steps
 
