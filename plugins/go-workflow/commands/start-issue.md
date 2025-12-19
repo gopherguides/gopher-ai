@@ -19,7 +19,7 @@ This command creates an isolated git worktree for working on a GitHub issue.
 **What it does:**
 
 1. Creates a new worktree directory (e.g., `../myproject-issue-789-feature-name/`)
-2. Checks out from the `dev` branch
+2. Checks out from the default branch (main/dev/master)
 3. Creates a feature branch for the issue
 4. Copies your `.claude` configuration to the new worktree
 
@@ -84,30 +84,34 @@ First, check if WORKTREE_PREFIX is configured:
    !if ! gh issue view $ARGUMENTS >/dev/null 2>&1; then echo "Error: Issue #$ARGUMENTS not found"; exit 1; fi
    !if [ "$(gh issue view $ARGUMENTS --json state --jq '.state')" = "CLOSED" ]; then echo "Warning: Issue #$ARGUMENTS is already closed"; fi
 
-3. **Create worktree directory name**
+3. **Detect the default branch**
+   !DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | sed 's/.*: //')
+   !echo "Default branch: $DEFAULT_BRANCH"
+
+4. **Create worktree directory name**
    !WORKTREE_PREFIX="${WORKTREE_PREFIX:-project}"
-   !ISSUE_TITLE=$(gh issue view $ARGUMENTS --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-\|-$//g')
+   !ISSUE_TITLE=$(gh issue view $ARGUMENTS --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
    !WORKTREE_NAME="${WORKTREE_PREFIX}-issue-$ARGUMENTS-$ISSUE_TITLE"
    !WORKTREE_PATH="../$WORKTREE_NAME"
    !BRANCH_NAME="issue-$ARGUMENTS-$ISSUE_TITLE"
 
-4. **Check if worktree already exists**
+5. **Check if worktree already exists**
    !if [ -d "$WORKTREE_PATH" ]; then echo "Error: Worktree already exists at $WORKTREE_PATH"; exit 1; fi
 
-5. **Fetch latest dev branch**
-   !git fetch origin dev
+6. **Fetch latest default branch**
+   !git fetch origin "$DEFAULT_BRANCH"
 
-6. **Create worktree from dev branch**
-   !git worktree add "$WORKTREE_PATH" origin/dev
+7. **Create worktree from default branch**
+   !git worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"
 
-7. **Switch to new worktree and create feature branch**
+8. **Switch to new worktree and create feature branch**
    !cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
 
-8. **Copy .claude directory to new worktree**
+9. **Copy .claude directory to new worktree**
    !SOURCE_CLAUDE_DIR="$(pwd)/.claude"
    !if [ -d "$SOURCE_CLAUDE_DIR" ]; then cp -r "$SOURCE_CLAUDE_DIR" "$WORKTREE_PATH/"; else echo "Note: No .claude directory found to copy"; fi
 
-9. **Display success message**
+10. **Display success message**
    !echo "Created worktree for issue #$ARGUMENTS"
    !echo "Path: $WORKTREE_PATH"
    !echo "Branch: $BRANCH_NAME"
