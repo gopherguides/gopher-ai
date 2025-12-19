@@ -67,16 +67,19 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 7. **Fetch latest default branch**
    !git fetch origin "$DEFAULT_BRANCH"
 
-8. **Create worktree from default branch**
+8. **Delete existing branch if it exists** (from previous failed attempts)
+   !git branch -D "$BRANCH_NAME" 2>/dev/null || true
+
+9. **Create worktree from default branch**
    !git worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"
 
-9. **Switch to new worktree and create feature branch**
-   !cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
+10. **Switch to new worktree and create feature branch**
+    !cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
 
-10. **Copy LLM config directories to new worktree**
+11. **Copy LLM config directories to new worktree**
     !for dir in .claude .codex .gemini .cursor; do if [ -d "$SOURCE_DIR/$dir" ]; then cp -r "$SOURCE_DIR/$dir" "$WORKTREE_PATH/" && echo "Copied $dir"; fi; done
 
-11. **Check for environment files**
+12. **Check for environment files**
     !ENV_FILES=""
     !if [ -f "$SOURCE_DIR/.env" ]; then ENV_FILES="$ENV_FILES .env"; fi
     !if [ -f "$SOURCE_DIR/.envrc" ]; then ENV_FILES="$ENV_FILES .envrc"; fi
@@ -89,7 +92,7 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
     If user confirms, copy the files:
     !for file in $ENV_FILES; do cp "$SOURCE_DIR/$file" "$WORKTREE_PATH/" && echo "Copied $file"; done
 
-12. **Display success message**
+13. **Display success message**
     !echo "Created worktree for issue #$ARGUMENTS"
     !echo "Path: $WORKTREE_PATH"
     !echo "Branch: $BRANCH_NAME"
