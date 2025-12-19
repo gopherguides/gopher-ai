@@ -9,9 +9,9 @@ This command safely removes worktrees for completed GitHub issues.
 
 **What it does:**
 
-1. Scans for worktrees matching your `WORKTREE_PREFIX` pattern
+1. Scans for worktrees matching the `{reponame}-issue-*` pattern
 2. Checks each associated GitHub issue status
-3. Verifies branches are merged into `dev`
+3. Verifies branches are merged into the default branch
 4. Removes worktrees for closed/merged issues
 5. Cleans up local branches
 
@@ -25,52 +25,18 @@ This command safely removes worktrees for completed GitHub issues.
 
 ---
 
-## Pre-flight: Check Configuration
-
-First, check if WORKTREE_PREFIX is configured:
-
-!echo "WORKTREE_PREFIX=${WORKTREE_PREFIX:-NOT_SET}"
-
-**If WORKTREE_PREFIX is "NOT_SET"**, stop and help the user configure it:
-
-1. Ask them what prefix they use for worktrees (e.g., their project name like "my-api", "frontend-app")
-2. Detect their platform and provide the appropriate command:
-
-   **macOS/Linux (zsh):**
-
-   ```bash
-   echo 'export WORKTREE_PREFIX="<their-prefix>"' >> ~/.zshrc && source ~/.zshrc
-   ```
-
-   **macOS/Linux (bash):**
-
-   ```bash
-   echo 'export WORKTREE_PREFIX="<their-prefix>"' >> ~/.bashrc && source ~/.bashrc
-   ```
-
-   **Windows (PowerShell):**
-
-   ```powershell
-   [Environment]::SetEnvironmentVariable("WORKTREE_PREFIX", "<their-prefix>", "User")
-   ```
-
-   **Windows (CMD):**
-
-   ```cmd
-   setx WORKTREE_PREFIX "<their-prefix>"
-   ```
-
-3. After they run the command, ask them to restart Claude Code or run the command again.
-
-**If WORKTREE_PREFIX is set**, proceed to scan worktrees.
-
 ## Scan and Cleanup
+
+First, get the repository name:
+
+!REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+!echo "Repository: $REPO_NAME"
 
 List all worktrees:
 
 !git worktree list
 
-For each worktree matching the WORKTREE_PREFIX pattern:
+For each worktree matching the `{REPO_NAME}-issue-*` pattern:
 
 1. Extract issue number from directory name
 2. Check GitHub issue status: `gh issue view <number> --json state`

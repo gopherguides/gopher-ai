@@ -18,15 +18,15 @@ This command creates an isolated git worktree for working on a GitHub issue.
 
 **What it does:**
 
-1. Creates a new worktree directory (e.g., `../myproject-issue-789-feature-name/`)
+1. Creates a new worktree directory (e.g., `../reponame-issue-789-feature-name/`)
 2. Checks out from the default branch (main/dev/master)
 3. Creates a feature branch for the issue
 4. Copies your `.claude` configuration to the new worktree
 
 **Prerequisites:**
 
-- `WORKTREE_PREFIX` environment variable (will prompt if not set)
 - GitHub CLI (`gh`) authenticated
+- Must be run from within a git repository
 
 Ask the user: "What issue number would you like to start working on?"
 
@@ -35,45 +35,6 @@ Ask the user: "What issue number would you like to start working on?"
 **If `$ARGUMENTS` is provided:**
 
 Create a new git worktree for GitHub issue #$ARGUMENTS
-
-## Pre-flight: Check Configuration
-
-First, check if WORKTREE_PREFIX is configured:
-
-!echo "WORKTREE_PREFIX=${WORKTREE_PREFIX:-NOT_SET}"
-
-**If WORKTREE_PREFIX is "NOT_SET"**, stop and help the user configure it:
-
-1. Ask them what prefix they want (e.g., their project name like "my-api", "frontend-app")
-2. Detect their platform and provide the appropriate command:
-
-   **macOS/Linux (bash/zsh):**
-
-   ```bash
-   echo 'export WORKTREE_PREFIX="<their-prefix>"' >> ~/.zshrc && source ~/.zshrc
-   ```
-
-   **macOS/Linux (bash):**
-
-   ```bash
-   echo 'export WORKTREE_PREFIX="<their-prefix>"' >> ~/.bashrc && source ~/.bashrc
-   ```
-
-   **Windows (PowerShell):**
-
-   ```powershell
-   [Environment]::SetEnvironmentVariable("WORKTREE_PREFIX", "<their-prefix>", "User")
-   ```
-
-   **Windows (CMD):**
-
-   ```cmd
-   setx WORKTREE_PREFIX "<their-prefix>"
-   ```
-
-3. After they run the command, ask them to restart Claude Code or run the command again.
-
-**If WORKTREE_PREFIX is set**, proceed with the steps below.
 
 ## Steps
 
@@ -89,9 +50,9 @@ First, check if WORKTREE_PREFIX is configured:
    !echo "Default branch: $DEFAULT_BRANCH"
 
 4. **Create worktree directory name**
-   !WORKTREE_PREFIX="${WORKTREE_PREFIX:-project}"
+   !REPO_NAME=$(basename $(git rev-parse --show-toplevel))
    !ISSUE_TITLE=$(gh issue view $ARGUMENTS --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
-   !WORKTREE_NAME="${WORKTREE_PREFIX}-issue-$ARGUMENTS-$ISSUE_TITLE"
+   !WORKTREE_NAME="${REPO_NAME}-issue-$ARGUMENTS-$ISSUE_TITLE"
    !WORKTREE_PATH="../$WORKTREE_NAME"
    !BRANCH_NAME="issue-$ARGUMENTS-$ISSUE_TITLE"
 

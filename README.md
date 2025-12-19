@@ -198,15 +198,6 @@ Add to your project's `.claude/settings.json`:
 
 ## Configuration
 
-### WORKTREE_PREFIX
-
-The `/start-issue` and `/prune-worktree` commands require a `WORKTREE_PREFIX` environment variable:
-
-```bash
-# Add to ~/.zshrc or ~/.bashrc
-export WORKTREE_PREFIX="myproject"
-```
-
 ### Gopher Guides MCP
 
 The `gopher-guides` plugin includes an MCP server for training materials. Configure your API key:
