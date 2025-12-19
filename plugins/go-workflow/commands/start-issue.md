@@ -40,7 +40,7 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 ## Steps
 
 1. **Capture source directory** (must be done first, before any cd operations)
-   !SOURCE_DIR="$(pwd)"
+   !SOURCE_DIR=`pwd`
    !echo "Source directory: $SOURCE_DIR"
 
 2. **Fetch issue details from GitHub**
@@ -48,15 +48,15 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 
 3. **Validate issue exists and is open**
    !if ! gh issue view $ARGUMENTS >/dev/null 2>&1; then echo "Error: Issue #$ARGUMENTS not found"; exit 1; fi
-   !if [ "$(gh issue view $ARGUMENTS --json state --jq '.state')" = "CLOSED" ]; then echo "Warning: Issue #$ARGUMENTS is already closed"; fi
+   !if [ "`gh issue view $ARGUMENTS --json state --jq '.state'`" = "CLOSED" ]; then echo "Warning: Issue #$ARGUMENTS is already closed"; fi
 
 4. **Detect the default branch**
-   !DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | sed 's/.*: //')
+   !DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
    !echo "Default branch: $DEFAULT_BRANCH"
 
 5. **Create worktree directory name**
-   !REPO_NAME="$(basename "$(git rev-parse --show-toplevel)")"
-   !ISSUE_TITLE=$(gh issue view $ARGUMENTS --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
+   !REPO_NAME=`basename \`git rev-parse --show-toplevel\``
+   !ISSUE_TITLE=`gh issue view $ARGUMENTS --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
    !WORKTREE_NAME="${REPO_NAME}-issue-$ARGUMENTS-$ISSUE_TITLE"
    !WORKTREE_PATH="../$WORKTREE_NAME"
    !BRANCH_NAME="issue-$ARGUMENTS-$ISSUE_TITLE"
