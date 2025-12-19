@@ -19,24 +19,28 @@ Claude Code plugins for Go developers - by [Gopher Guides](https://gopherguides.
 
 ## Updating Plugins
 
-When plugin updates are pushed to this repository:
-
-**Option 1: Clear Cache (Fastest)**
+Due to a [known bug](https://github.com/anthropics/claude-code/issues/14061), `/plugin marketplace update` doesn't properly refresh cached plugin files. Use this script to fully refresh:
 
 ```bash
-rm -rf ~/.claude/plugins/cache/
+# Run from anywhere
+curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/refresh-plugins.sh | bash
 ```
 
-Then restart Claude Code (exit and reopen).
-
-**Option 2: Reinstall Plugin**
+Or clone and run locally:
 
 ```bash
-/plugin uninstall <plugin-name>@gopher-ai
-/plugin install <plugin-name>@gopher-ai
+./scripts/refresh-plugins.sh
 ```
 
-**Note:** `/plugin marketplace update gopher-ai` refreshes the marketplace manifest but does NOT update cached plugin files due to a [known bug](https://github.com/anthropics/claude-code/issues/14061). Use one of the methods above instead.
+After running, restart Claude Code and reinstall:
+
+```bash
+/plugin marketplace add gopherguides/gopher-ai
+/plugin install go-workflow@gopher-ai
+# ... install other plugins as needed
+```
+
+**Requires:** `jq` for JSON manipulation (`brew install jq`)
 
 ## Available Plugins
 
