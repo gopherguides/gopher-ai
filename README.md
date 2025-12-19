@@ -32,12 +32,10 @@ Or clone and run locally:
 ./scripts/refresh-plugins.sh
 ```
 
-After running, restart Claude Code and reinstall:
+After running, restart Claude Code and re-add the marketplace (auto-installs all plugins):
 
 ```bash
 /plugin marketplace add gopherguides/gopher-ai
-/plugin install go-workflow@gopher-ai
-# ... install other plugins as needed
 ```
 
 **Requires:** `jq` for JSON manipulation (`brew install jq`)
