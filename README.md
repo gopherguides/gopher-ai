@@ -5,17 +5,10 @@ Claude Code plugins for Go developers - by [Gopher Guides](https://gopherguides.
 ## Quick Start
 
 ```bash
-# Add the marketplace
 /plugin marketplace add gopherguides/gopher-ai
-
-# Install plugins
-/plugin install go-workflow@gopher-ai
-/plugin install go-dev@gopher-ai
-/plugin install productivity@gopher-ai
-/plugin install gopher-guides@gopher-ai
-/plugin install llm-tools@gopher-ai
-/plugin install go-web@gopher-ai
 ```
+
+That's it! This command adds the marketplace and auto-installs all plugins.
 
 ## Updating Plugins
 
@@ -119,7 +112,7 @@ Multi-LLM integration for second opinions and task delegation.
 **Requirements:**
 
 - `codex` CLI: `npm install -g @openai/codex`
-- `gemini` CLI: `brew install gemini-cli`
+- `gemini` CLI: `npm install -g @google/gemini-cli`
 - `ollama`: `brew install ollama`
 
 ### go-web
@@ -148,26 +141,21 @@ Opinionated Go web app scaffolding with our recommended stack.
 
 ## Installation Options
 
-### Install All Plugins
+### Install All Plugins (Default)
 
 ```bash
 /plugin marketplace add gopherguides/gopher-ai
-/plugin install go-workflow@gopher-ai
-/plugin install go-dev@gopher-ai
-/plugin install productivity@gopher-ai
-/plugin install gopher-guides@gopher-ai
-/plugin install llm-tools@gopher-ai
-/plugin install go-web@gopher-ai
 ```
 
-### Install Specific Plugins
+Adding the marketplace automatically installs all plugins.
+
+### Install Specific Plugins Only
+
+If you only want certain plugins, first add the marketplace, then uninstall the ones you don't need:
 
 ```bash
-# Just workflow automation
-/plugin install go-workflow@gopher-ai
-
-# Just Go development tools
-/plugin install go-dev@gopher-ai
+/plugin marketplace add gopherguides/gopher-ai
+/plugin uninstall go-web@gopher-ai  # example: remove go-web if not needed
 ```
 
 ### Team Installation
