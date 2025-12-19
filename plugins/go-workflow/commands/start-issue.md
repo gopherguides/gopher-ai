@@ -39,6 +39,8 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 
 ## Steps
 
+**CRITICAL: When executing bash commands below, use backticks (\`) for command substitution, NOT $(). Claude Code has a bug that mangles $() syntax into broken commands. Copy the commands exactly as written.**
+
 1. **Capture source directory** (must be done first, before any cd operations)
    !SOURCE_DIR=`pwd`
    !echo "Source directory: $SOURCE_DIR"
