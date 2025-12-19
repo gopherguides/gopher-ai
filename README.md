@@ -204,6 +204,24 @@ The `gopher-guides` plugin includes an MCP server for training materials. Config
 export GOPHER_GUIDES_API_KEY="your-key-here"
 ```
 
+## Troubleshooting
+
+### Parse Error with Oh My Zsh
+
+If you see errors like `(eval):1: parse error near '('` when running commands, this is a [known Claude Code bug](https://github.com/anthropics/claude-code/issues/1872) with Oh My Zsh.
+
+**Fix:** Run Claude Code with bash instead of zsh:
+
+```bash
+SHELL=/bin/bash claude
+```
+
+Or add this alias to your `~/.zshrc`:
+
+```bash
+alias claude='SHELL=/bin/bash claude'
+```
+
 ## Contributing
 
 Contributions welcome! Please open an issue or PR.
