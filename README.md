@@ -49,6 +49,17 @@ Issue-to-PR workflow automation with git worktree management.
 | `/remove-worktree` | Interactively select and remove a git worktree |
 | `/prune-worktree` | Batch cleanup of all completed issue worktrees |
 
+**`/start-issue` Workflow:**
+
+The `/start-issue` command intelligently routes to the appropriate workflow:
+
+1. **Fetches issue details** including all comments for full context
+2. **Auto-detects issue type** by analyzing labels first (`bug`, `enhancement`, etc.), then title/body patterns
+3. **Routes to the right workflow:**
+   - **Bug fix**: Checks for duplicates → TDD approach (failing test first) → `fix/` branch
+   - **Feature**: Plans approach → Implementation → Tests → `feat/` branch
+4. **Asks for clarification** if the type can't be determined automatically
+
 ### go-dev
 
 Go-specific development tools with idiomatic best practices.
