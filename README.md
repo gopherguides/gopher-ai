@@ -43,9 +43,8 @@ Issue-to-PR workflow automation with git worktree management.
 
 | Command | Description |
 |---------|-------------|
+| `/start-issue <number>` | Start working on an issue (auto-detects bug vs feature) |
 | `/create-worktree <number>` | Create a new git worktree for a GitHub issue |
-| `/fix-issue <number>` | Diagnose, test, fix, and create PR for a bug |
-| `/add-feature <number>` | Implement feature from issue with tests |
 | `/commit` | Create a git commit with auto-generated message |
 | `/remove-worktree` | Interactively select and remove a git worktree |
 | `/prune-worktree` | Batch cleanup of all completed issue worktrees |
