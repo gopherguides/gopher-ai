@@ -20,10 +20,11 @@ This command starts work on a GitHub issue, automatically detecting whether it's
 **Workflow:**
 
 1. Fetch issue details, labels, and comments
-2. Auto-detect issue type (bug vs feature)
-3. For bugs: Check duplicates → TDD workflow → `fix/` branch
-4. For features: Plan approach → Implement → `feat/` branch
-5. Write tests, verify, and create PR
+2. Optionally create a git worktree for isolated work
+3. Auto-detect issue type (bug vs feature)
+4. For bugs: Check duplicates → TDD workflow → `fix/` branch
+5. For features: Plan approach → Implement → `feat/` branch
+6. Write tests, verify, and create PR
 
 Ask the user: "What issue number would you like to work on?"
 
@@ -36,6 +37,67 @@ Ask the user: "What issue number would you like to work on?"
 - Issue details: !`gh issue view $ARGUMENTS --json title,state,body,labels,comments 2>/dev/null || echo "Issue not found"`
 - Current branch: !`git branch --show-current`
 - Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+- Repository name: !`basename $(git rev-parse --show-toplevel)`
+- Existing worktrees: !`git worktree list`
+
+---
+
+## Step 0: Worktree Setup (Optional)
+
+Ask the user if they want to work in an isolated worktree:
+
+"Would you like to create a worktree for isolated work on this issue?"
+
+| Option | Description |
+|--------|-------------|
+| Yes, create worktree | Create isolated worktree and switch to it |
+| No, work in current directory | Stay here and create a branch |
+
+**If user chooses worktree:**
+
+**CRITICAL: When executing bash commands below, use backticks (\`) for command substitution, NOT $(). Claude Code has a bug that mangles $() syntax.**
+
+1. **Capture source directory first**
+   ```bash
+   SOURCE_DIR=`pwd`
+   ```
+
+2. **Create worktree directory name**
+   ```bash
+   REPO_NAME=`basename \`git rev-parse --show-toplevel\``
+   ISSUE_TITLE=`gh issue view $ARGUMENTS --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
+   WORKTREE_NAME="${REPO_NAME}-issue-$ARGUMENTS-$ISSUE_TITLE"
+   WORKTREE_PATH="../$WORKTREE_NAME"
+   BRANCH_NAME="issue-$ARGUMENTS-$ISSUE_TITLE"
+   ```
+
+3. **Fetch and create worktree**
+   ```bash
+   DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+   git fetch origin "$DEFAULT_BRANCH"
+   git branch -D "$BRANCH_NAME" 2>/dev/null || true
+   git worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"
+   cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
+   ```
+
+4. **Copy LLM config directories**
+   ```bash
+   for dir in .claude .codex .gemini .cursor; do
+     if [ -d "$SOURCE_DIR/$dir" ]; then
+       cp -r "$SOURCE_DIR/$dir" "$WORKTREE_PATH/"
+     fi
+   done
+   ```
+
+5. **Check for environment files** and ask user before copying:
+   - If `.env` or `.envrc` exist, ask: "Found environment files. Copy them? (They may contain secrets)"
+   - If user confirms, copy them
+
+6. **Inform user**: "Created worktree at $WORKTREE_PATH. Continuing with issue workflow..."
+
+**Note:** When using a worktree, the branch is already created as `issue-<num>-<title>`. Skip the "Create Branch" step in the workflows below.
+
+---
 
 ## Step 1: Detect Issue Type
 
@@ -99,7 +161,7 @@ When searching for root cause:
 - **Limit file reads**: Read max 3 files before forming hypothesis
 - **Use targeted searches**: Grep for function names, not broad patterns
 
-### 3. Create Branch
+### 3. Create Branch (skip if worktree was created)
 
 ```bash
 git checkout -b fix/$ARGUMENTS-<short-desc>
@@ -151,7 +213,7 @@ Before coding, outline:
 - API changes (if any)
 - Test coverage plan
 
-### 4. Create Branch
+### 4. Create Branch (skip if worktree was created)
 
 ```bash
 git checkout -b feat/$ARGUMENTS-<short-desc>

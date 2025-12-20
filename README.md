@@ -51,14 +51,15 @@ Issue-to-PR workflow automation with git worktree management.
 
 **`/start-issue` Workflow:**
 
-The `/start-issue` command intelligently routes to the appropriate workflow:
+The `/start-issue` command intelligently handles the full issue-to-PR workflow:
 
 1. **Fetches issue details** including all comments for full context
-2. **Auto-detects issue type** by analyzing labels first (`bug`, `enhancement`, etc.), then title/body patterns
-3. **Routes to the right workflow:**
+2. **Offers worktree creation** for isolated work (optional - creates `../repo-issue-123-title/`)
+3. **Auto-detects issue type** by analyzing labels first (`bug`, `enhancement`, etc.), then title/body patterns
+4. **Routes to the right workflow:**
    - **Bug fix**: Checks for duplicates → TDD approach (failing test first) → `fix/` branch
    - **Feature**: Plans approach → Implementation → Tests → `feat/` branch
-4. **Asks for clarification** if the type can't be determined automatically
+5. **Asks for clarification** if the type can't be determined automatically
 
 ### go-dev
 
