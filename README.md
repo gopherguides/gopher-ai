@@ -12,24 +12,13 @@ That's it! This command adds the marketplace and auto-installs all plugins.
 
 ## Updating Plugins
 
-Due to a [known bug](https://github.com/anthropics/claude-code/issues/14061), `/plugin marketplace update` doesn't properly refresh cached plugin files. Use this script to fully refresh:
+Due to a [known bug](https://github.com/anthropics/claude-code/issues/14061), `/plugin marketplace update` doesn't properly refresh cached plugin files. Use this one-liner to fully refresh:
 
 ```bash
-# Run from anywhere
 curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/refresh-plugins.sh | bash
 ```
 
-Or clone and run locally:
-
-```bash
-./scripts/refresh-plugins.sh
-```
-
-After running, restart Claude Code and re-add the marketplace (auto-installs all plugins):
-
-```bash
-/plugin marketplace add gopherguides/gopher-ai
-```
+Then restart Claude Code. That's it - plugins are automatically reinstalled from the updated marketplace.
 
 **Requires:** `jq` for JSON manipulation (`brew install jq`)
 

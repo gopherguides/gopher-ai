@@ -1,44 +1,42 @@
 #!/bin/bash
-# Refresh gopher-ai plugins by clearing all caches
-#
-# This is a workaround for a Claude Code bug where `/plugin marketplace update`
-# doesn't properly refresh cached plugin files.
-# See: https://github.com/anthropics/claude-code/issues/14061
-
+# Refresh gopher-ai plugins - one and done
+# Workaround for: https://github.com/anthropics/claude-code/issues/14061
 set -e
+
+MARKETPLACE_DIR="$HOME/.claude/plugins/marketplaces/gopher-ai"
+CACHE_DIR="$HOME/.claude/plugins/cache/gopher-ai"
+INSTALLED_FILE="$HOME/.claude/plugins/installed_plugins.json"
 
 echo "Refreshing gopher-ai plugins..."
 
-# Clear plugin cache
-if [ -d ~/.claude/plugins/cache/gopher-ai ]; then
-    rm -rf ~/.claude/plugins/cache/gopher-ai/
+# Step 1: Update marketplace repo (get latest plugin definitions)
+if [ -d "$MARKETPLACE_DIR" ]; then
+    echo "- Pulling latest from marketplace repo..."
+    git -C "$MARKETPLACE_DIR" fetch origin
+    git -C "$MARKETPLACE_DIR" reset --hard origin/main
+else
+    echo "Marketplace not installed."
+    echo "   Run: /plugin marketplace add gopherguides/gopher-ai"
+    exit 1
+fi
+
+# Step 2: Clear plugin cache (forces fresh install)
+if [ -d "$CACHE_DIR" ]; then
+    rm -rf "$CACHE_DIR"
     echo "- Cleared plugin cache"
 fi
 
-# Clear marketplace cache
-if [ -d ~/.claude/plugins/marketplaces/gopher-ai ]; then
-    rm -rf ~/.claude/plugins/marketplaces/gopher-ai/
-    echo "- Cleared marketplace cache"
-fi
-
-# Clean installed_plugins.json
-if command -v jq &> /dev/null && [ -f ~/.claude/plugins/installed_plugins.json ]; then
-    jq 'del(.plugins["go-workflow@gopher-ai"], .plugins["go-dev@gopher-ai"], .plugins["productivity@gopher-ai"], .plugins["gopher-guides@gopher-ai"], .plugins["go-web@gopher-ai"], .plugins["llm-tools@gopher-ai"])' \
-        ~/.claude/plugins/installed_plugins.json > /tmp/installed_plugins.json.tmp \
-        && mv /tmp/installed_plugins.json.tmp ~/.claude/plugins/installed_plugins.json
-    echo "- Cleaned installed_plugins.json"
-fi
-
-# Clean known_marketplaces.json
-if command -v jq &> /dev/null && [ -f ~/.claude/plugins/known_marketplaces.json ]; then
-    jq 'del(.["gopher-ai"])' \
-        ~/.claude/plugins/known_marketplaces.json > /tmp/known_marketplaces.json.tmp \
-        && mv /tmp/known_marketplaces.json.tmp ~/.claude/plugins/known_marketplaces.json
-    echo "- Cleaned known_marketplaces.json"
+# Step 3: Remove ALL @gopher-ai plugins from installed_plugins.json
+# This handles renamed/removed/added plugins automatically
+if command -v jq &> /dev/null && [ -f "$INSTALLED_FILE" ]; then
+    jq '.plugins |= with_entries(select(.key | endswith("@gopher-ai") | not))' \
+        "$INSTALLED_FILE" > /tmp/installed_plugins.json.tmp \
+        && mv /tmp/installed_plugins.json.tmp "$INSTALLED_FILE"
+    echo "- Cleared all gopher-ai plugin registrations"
+else
+    echo "Warning: jq not found - cannot clean installed_plugins.json"
+    echo "   Install jq: brew install jq"
 fi
 
 echo ""
-echo "Cache cleared! Now:"
-echo "1. Restart Claude Code (exit and reopen)"
-echo "2. Run this command (auto-installs all plugins):"
-echo "   /plugin marketplace add gopherguides/gopher-ai"
+echo "Done! Restart Claude Code to load updated plugins."
