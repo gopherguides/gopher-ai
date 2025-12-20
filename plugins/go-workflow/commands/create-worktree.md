@@ -4,7 +4,7 @@ description: "Create a new git worktree for a GitHub issue"
 allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 ---
 
-# Start Issue Worktree
+# Create Worktree for Issue
 
 **If `$ARGUMENTS` is empty or not provided:**
 
@@ -12,9 +12,9 @@ Display usage information and ask for input:
 
 This command creates an isolated git worktree for working on a GitHub issue.
 
-**Usage:** `/start-issue <issue-number>`
+**Usage:** `/create-worktree <issue-number>`
 
-**Example:** `/start-issue 789`
+**Example:** `/create-worktree 789`
 
 **What it does:**
 
@@ -104,4 +104,4 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 
 - Change to the new worktree directory: `cd $WORKTREE_PATH`
 - Start working on issue #$ARGUMENTS
-- When done, use `/prune-worktree` to clean up
+- When done, use `/prune-worktree` to clean up or `/remove-worktree` to remove a specific worktree

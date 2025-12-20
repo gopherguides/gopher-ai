@@ -43,10 +43,11 @@ Issue-to-PR workflow automation with git worktree management.
 
 | Command | Description |
 |---------|-------------|
-| `/start-issue <number>` | Create a new git worktree for a GitHub issue |
+| `/create-worktree <number>` | Create a new git worktree for a GitHub issue |
 | `/fix-issue <number>` | Diagnose, test, fix, and create PR for a bug |
 | `/add-feature <number>` | Implement feature from issue with tests |
-| `/prune-worktree` | Clean up completed issue worktrees |
+| `/remove-worktree` | Interactively select and remove a git worktree |
+| `/prune-worktree` | Batch cleanup of all completed issue worktrees |
 
 ### go-dev
 
