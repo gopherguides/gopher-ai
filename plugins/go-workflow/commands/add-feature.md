@@ -34,6 +34,12 @@ Ask the user: "What issue number would you like to implement?"
 
 **If `$ARGUMENTS` is provided:**
 
+## Context
+
+- Issue details: !`gh issue view $ARGUMENTS --json title,state,body,labels 2>/dev/null || echo "Issue not found"`
+- Current branch: !`git branch --show-current`
+- Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+
 Implement feature from GitHub issue #$ARGUMENTS. Follow these steps:
 
 1. **Understand**: Use `gh issue view $ARGUMENTS` to get issue details, acceptance criteria, and comments

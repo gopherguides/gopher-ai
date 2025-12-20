@@ -34,6 +34,13 @@ Ask the user: "What issue number would you like to fix?"
 
 **If `$ARGUMENTS` is provided:**
 
+## Context
+
+- Issue details: !`gh issue view $ARGUMENTS --json title,state,body,labels 2>/dev/null || echo "Issue not found"`
+- Current branch: !`git branch --show-current`
+- Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+- Recent related issues: !`gh issue list --state all --limit 10 --search "$(gh issue view $ARGUMENTS --json title --jq '.title' 2>/dev/null | head -c 50)" 2>/dev/null || echo ""`
+
 Analyze and fix GitHub issue #$ARGUMENTS. Follow these steps:
 
 1. **Check for Duplicates**: Search for related issues before starting work

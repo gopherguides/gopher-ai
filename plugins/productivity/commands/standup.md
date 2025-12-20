@@ -1,9 +1,16 @@
 ---
 argument-hint: "[hours|days]"
 description: "Generate standup notes from recent git activity"
-model: claude-opus-4-5-20251101
-allowed-tools: ["Bash", "Read", "Glob", "Grep"]
+model: haiku
+allowed-tools: ["Bash(git:*)", "Bash(date:*)", "Read", "Glob", "Grep"]
 ---
+
+## Context
+
+- Current git user: !`git config user.name`
+- Current branch: !`git branch --show-current`
+- Today: !`date +%A`
+- Recent commits (24h): !`git log --author="$(git config user.name)" --since="24 hours ago" --format="%h %s" --all 2>/dev/null | head -10`
 
 **If `$ARGUMENTS` is empty or not provided:**
 

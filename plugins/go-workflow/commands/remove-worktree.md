@@ -1,6 +1,7 @@
 ---
 description: "Interactively select and remove a git worktree"
-allowed-tools: ["Bash", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(cd:*)", "Bash(grep:*)", "Bash(cat:*)", "Read", "AskUserQuestion"]
+model: haiku
 ---
 
 # Remove Worktree
@@ -8,6 +9,13 @@ allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 This command interactively removes a single git worktree. Unlike `/prune-worktree` which auto-removes all safe worktrees, this command lets you select a specific worktree and handles cases where the issue isn't closed or branch isn't merged.
 
 **Usage:** `/remove-worktree` (no arguments - interactive selection)
+
+## Context
+
+- Repository name: !`basename $(git rev-parse --show-toplevel)`
+- Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+- All worktrees: !`git worktree list`
+- Issue worktrees: !`git worktree list | grep -E "issue-[0-9]+" || echo "No issue worktrees found"`
 
 ---
 

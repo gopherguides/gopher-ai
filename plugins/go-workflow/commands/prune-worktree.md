@@ -1,6 +1,7 @@
 ---
-description: "Clean up completed issue worktrees that are merged into dev"
-allowed-tools: ["Bash", "Read", "AskUserQuestion"]
+description: "Batch cleanup of all completed issue worktrees"
+allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(basename:*)", "Bash(grep:*)", "Read", "AskUserQuestion"]
+model: haiku
 ---
 
 # Prune Issue Worktrees
@@ -23,13 +24,22 @@ This command safely removes worktrees for completed GitHub issues.
 
 **Usage:** `/prune-worktree` (no arguments needed)
 
+## Context
+
+- Repository name: !`basename $(git rev-parse --show-toplevel)`
+- Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+- All worktrees: !`git worktree list`
+- Issue worktrees: !`git worktree list | grep -E "issue-[0-9]+" || echo "No issue worktrees found"`
+
 ---
 
 ## Scan and Cleanup
 
+**CRITICAL: When executing bash commands below, use backticks (\`) for command substitution, NOT $(). Claude Code has a bug that mangles $() syntax into broken commands.**
+
 First, get the repository name:
 
-!REPO_NAME=$(basename $(git rev-parse --show-toplevel))
+!REPO_NAME=`basename \`git rev-parse --show-toplevel\``
 !echo "Repository: $REPO_NAME"
 
 List all worktrees:

@@ -1,9 +1,15 @@
 ---
 argument-hint: "[tag|version]"
 description: "Generate changelog from commits since last release"
-model: claude-opus-4-5-20251101
-allowed-tools: ["Bash", "Read", "Glob", "Grep"]
+model: haiku
+allowed-tools: ["Bash(git:*)", "Read", "Glob", "Grep"]
 ---
+
+## Context
+
+- Latest tag: !`git describe --tags --abbrev=0 2>/dev/null || echo "No tags found"`
+- Commits since last tag: !`git log $(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD~20")..HEAD --format="%h %s" 2>/dev/null | head -15`
+- Repository: !`basename $(git rev-parse --show-toplevel)`
 
 **If `$ARGUMENTS` is empty or not provided:**
 

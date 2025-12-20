@@ -1,7 +1,8 @@
 ---
 argument-hint: "<issue-number>"
 description: "Create a new git worktree for a GitHub issue"
-allowed-tools: ["Bash", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(pwd:*)", "Bash(echo:*)", "Bash(cp:*)", "Bash(basename:*)", "Bash(for:*)", "Bash(if:*)", "Read", "AskUserQuestion"]
+model: haiku
 ---
 
 # Create Worktree for Issue
@@ -36,6 +37,14 @@ Ask the user: "What issue number would you like to start working on?"
 **If `$ARGUMENTS` is provided:**
 
 Create a new git worktree for GitHub issue #$ARGUMENTS
+
+## Context
+
+- Current directory: !`pwd`
+- Repository name: !`basename $(git rev-parse --show-toplevel)`
+- Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+- Issue details: !`gh issue view $ARGUMENTS --json title,state,number 2>/dev/null || echo "Issue not found"`
+- Existing worktrees: !`git worktree list`
 
 ## Steps
 

@@ -1,9 +1,15 @@
 ---
 argument-hint: "[weeks-back]"
 description: "Generate weekly work summary from git activity"
-model: claude-opus-4-5-20251101
-allowed-tools: ["Bash", "Read", "Glob", "Grep"]
+model: haiku
+allowed-tools: ["Bash(git:*)", "Bash(date:*)", "Bash(find:*)", "Read", "Glob", "Grep"]
 ---
+
+## Context
+
+- Current git user: !`git config user.name`
+- This week's commits: !`git log --author="$(git config user.name)" --since="last monday" --format="%h %s" --all 2>/dev/null | head -15`
+- Week start: !`date -v-monday +%Y-%m-%d 2>/dev/null || date -d "last monday" +%Y-%m-%d 2>/dev/null || echo "Monday"`
 
 **If `$ARGUMENTS` is empty or not provided:**
 
