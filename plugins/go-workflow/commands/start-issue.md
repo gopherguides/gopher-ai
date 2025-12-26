@@ -32,9 +32,14 @@ Ask the user: "What issue number would you like to work on?"
 
 **If `$ARGUMENTS` is provided:**
 
+## Security Validation
+
+First, validate input is numeric (prevent command injection):
+!if ! echo "$ARGUMENTS" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric"; exit 1; fi
+
 ## Context
 
-- Issue details: !`gh issue view $ARGUMENTS --json title,state,body,labels,comments 2>/dev/null || echo "Issue not found"`
+- Issue details: !`gh issue view "$ARGUMENTS" --json title,state,body,labels,comments 2>/dev/null || echo "Issue not found"`
 - Current branch: !`git branch --show-current`
 - Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
 - Repository name: !`basename $(git rev-parse --show-toplevel)`
@@ -65,7 +70,7 @@ Ask the user if they want to work in an isolated worktree:
 2. **Create worktree directory name**
    ```bash
    REPO_NAME=`basename \`git rev-parse --show-toplevel\``
-   ISSUE_TITLE=`gh issue view $ARGUMENTS --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
+   ISSUE_TITLE=`gh issue view "$ARGUMENTS" --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
    WORKTREE_NAME="${REPO_NAME}-issue-$ARGUMENTS-$ISSUE_TITLE"
    WORKTREE_PATH="../$WORKTREE_NAME"
    BRANCH_NAME="issue-$ARGUMENTS-$ISSUE_TITLE"
@@ -73,18 +78,18 @@ Ask the user if they want to work in an isolated worktree:
 
 3. **Fetch and create worktree**
    ```bash
-   DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+   DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //' | tr -cd '[:alnum:]-._/'`
    git fetch origin "$DEFAULT_BRANCH"
    git branch -D "$BRANCH_NAME" 2>/dev/null || true
    git worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"
    cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
    ```
 
-4. **Copy LLM config directories**
+4. **Copy LLM config directories** (using -rP to prevent symlink attacks)
    ```bash
    for dir in .claude .codex .gemini .cursor; do
-     if [ -d "$SOURCE_DIR/$dir" ]; then
-       cp -r "$SOURCE_DIR/$dir" "$WORKTREE_PATH/"
+     if [ -d "$SOURCE_DIR/$dir" ] && [ ! -L "$SOURCE_DIR/$dir" ]; then
+       cp -rP "$SOURCE_DIR/$dir" "$WORKTREE_PATH/"
      fi
    done
    ```
@@ -151,7 +156,7 @@ Ask user: "Potential related issues found. How would you like to proceed?"
 **If "Link" selected:**
 
 ```bash
-gh issue comment $ARGUMENTS --body "Potentially related to #NNN - investigating"
+gh issue comment "$ARGUMENTS" --body "Potentially related to #NNN - investigating"
 ```
 
 ### 2. Explore Root Cause
@@ -164,7 +169,7 @@ When searching for root cause:
 ### 3. Create Branch (skip if worktree was created)
 
 ```bash
-git checkout -b fix/$ARGUMENTS-<short-desc>
+git checkout -b "fix/$ARGUMENTS-<short-desc>"
 ```
 
 ### 4. TDD: Write Failing Test (Red)
@@ -216,7 +221,7 @@ Before coding, outline:
 ### 4. Create Branch (skip if worktree was created)
 
 ```bash
-git checkout -b feat/$ARGUMENTS-<short-desc>
+git checkout -b "feat/$ARGUMENTS-<short-desc>"
 ```
 
 ### 5. Implement Feature

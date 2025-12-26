@@ -48,10 +48,13 @@ List all worktrees:
 
 For each worktree matching the `{REPO_NAME}-issue-*` pattern:
 
-1. Extract issue number from directory name
-2. Check GitHub issue status: `gh issue view <number> --json state`
-3. Check if branch is merged: `git branch --merged dev | grep <branch>`
-4. If issue is closed AND branch is merged, offer to remove
+1. Extract issue number from directory name using: `grep -oE '[0-9]+'`
+2. **Validate issue number is numeric** (security: prevent command injection)
+3. Check GitHub issue status: `gh issue view "$ISSUE_NUM" --json state`
+4. Check if branch is merged: `git branch --merged "$DEFAULT_BRANCH" | grep -F "$BRANCH_NAME"`
+5. If issue is closed AND branch is merged, offer to remove
+
+**Security note:** Always validate extracted issue numbers are numeric before using in gh commands, and quote all variables in shell commands.
 
 ## Safety Features
 

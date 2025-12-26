@@ -40,6 +40,15 @@ Proceed with default 24h timeframe (or 72h if today is Monday).
 
 Generate a standup summary from recent git activity using the specified timeframe.
 
+## Security Validation
+
+Before using `$ARGUMENTS` in git commands, validate the timeframe format:
+- Valid patterns: `[0-9]+[hdwm]` (e.g., "48h", "3d", "1w", "2m")
+- Valid patterns: `"since (monday|tuesday|wednesday|thursday|friday|saturday|sunday|yesterday)"`
+- Reject any input containing shell metacharacters: `;`, `|`, `&`, `$`, backticks, `(`, `)`, `>`, `<`
+
+If validation fails, display: "Invalid timeframe format. Use examples like '48h', '3d', or 'since monday'"
+
 ## Configuration
 
 - **Timeframe**: `$ARGUMENTS` (examples: "48h", "3d", "since monday")

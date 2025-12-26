@@ -177,6 +177,16 @@ Railway or Fly.io are better choices since they support persistent volumes.
 
 ---
 
+## Security Validation
+
+Before creating any files, validate the project name:
+
+1. **Check for path traversal**: If `$ARGUMENTS` contains `/`, `..`, or starts with `.`, display error: "Project name cannot contain path separators or relative paths"
+2. **Check for valid characters**: If `$ARGUMENTS` contains characters other than `a-z`, `A-Z`, `0-9`, `-`, or `_`, display error: "Project name must contain only alphanumeric characters, hyphens, and underscores"
+3. **Check for reserved names**: If `$ARGUMENTS` is empty or matches system directories, display error
+
+Only proceed if validation passes.
+
 ## Step 2: Create Project Structure
 
 After gathering requirements, create the project at `./$ARGUMENTS/`.
@@ -1397,7 +1407,7 @@ After creating all files:
 1. **Initialize git:**
 
    ```bash
-   cd $ARGUMENTS
+   cd "./$ARGUMENTS"
    git init
    ```
 

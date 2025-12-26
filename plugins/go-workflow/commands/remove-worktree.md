@@ -64,11 +64,15 @@ To get branch name:
 
 If there are uncommitted changes, warn the user immediately.
 
+#### Validate issue number is numeric (security check)
+!if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then echo "Error: Could not extract valid issue number"; exit 1; fi
+
 #### Check GitHub issue status
-!gh issue view $ISSUE_NUM --json state,title --jq '"\(.state): \(.title)"'
+!gh issue view "$ISSUE_NUM" --json state,title --jq '"\(.state): \(.title)"'
 
 #### Detect default branch and check if merged
-!DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+!DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //' | tr -cd '[:alnum:]-._/'`
+!if [ -z "$DEFAULT_BRANCH" ]; then echo "Error: Could not determine default branch"; exit 1; fi
 !echo "Default branch: $DEFAULT_BRANCH"
 !git fetch origin "$DEFAULT_BRANCH" --quiet
 !MERGED=`git branch --merged "origin/$DEFAULT_BRANCH" | grep -F "$BRANCH_NAME" || echo ""`

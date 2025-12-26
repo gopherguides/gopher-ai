@@ -43,37 +43,38 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 - Current directory: !`pwd`
 - Repository name: !`basename $(git rev-parse --show-toplevel)`
 - Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
-- Issue details: !`gh issue view $ARGUMENTS --json title,state,number 2>/dev/null || echo "Issue not found"`
+- Issue details: !`gh issue view "$ARGUMENTS" --json title,state,number 2>/dev/null || echo "Issue not found"`
 - Existing worktrees: !`git worktree list`
 
 ## Steps
 
 **CRITICAL: When executing bash commands below, use backticks (\`) for command substitution, NOT $(). Claude Code has a bug that mangles $() syntax into broken commands. Copy the commands exactly as written.**
 
-1. **Capture source directory** (must be done first, before any cd operations)
+1. **Validate input is numeric** (security: prevent command injection)
+   !if ! echo "$ARGUMENTS" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric"; exit 1; fi
+
+2. **Capture source directory** (must be done first, before any cd operations)
    !SOURCE_DIR=`pwd`
    !echo "Source directory: $SOURCE_DIR"
 
-2. **Fetch issue details from GitHub**
-   !gh issue view $ARGUMENTS --json title,state,number
+3. **Fetch issue details from GitHub**
+   !gh issue view "$ARGUMENTS" --json title,state,number
 
-3. **Validate issue exists and is open**
-   !if ! gh issue view $ARGUMENTS >/dev/null 2>&1; then echo "Error: Issue #$ARGUMENTS not found"; exit 1; fi
-   !if [ "`gh issue view $ARGUMENTS --json state --jq '.state'`" = "CLOSED" ]; then echo "Warning: Issue #$ARGUMENTS is already closed"; fi
+4. **Validate issue exists and is open**
+   !if ! gh issue view "$ARGUMENTS" >/dev/null 2>&1; then echo "Error: Issue #$ARGUMENTS not found"; exit 1; fi
+   !if [ "`gh issue view "$ARGUMENTS" --json state --jq '.state'`" = "CLOSED" ]; then echo "Warning: Issue #$ARGUMENTS is already closed"; fi
 
-4. **Detect the default branch**
-   !DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
+5. **Detect the default branch**
+   !DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //' | tr -cd '[:alnum:]-._/'`
+   !if [ -z "$DEFAULT_BRANCH" ]; then echo "Error: Could not determine default branch"; exit 1; fi
    !echo "Default branch: $DEFAULT_BRANCH"
 
-5. **Create worktree directory name**
+6. **Create worktree directory name**
    !REPO_NAME=`basename \`git rev-parse --show-toplevel\``
-   !ISSUE_TITLE=`gh issue view $ARGUMENTS --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
+   !ISSUE_TITLE=`gh issue view "$ARGUMENTS" --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
    !WORKTREE_NAME="${REPO_NAME}-issue-$ARGUMENTS-$ISSUE_TITLE"
    !WORKTREE_PATH="../$WORKTREE_NAME"
    !BRANCH_NAME="issue-$ARGUMENTS-$ISSUE_TITLE"
-
-6. **Check if worktree already exists**
-   !if [ -d "$WORKTREE_PATH" ]; then echo "Error: Worktree already exists at $WORKTREE_PATH"; exit 1; fi
 
 7. **Fetch latest default branch**
    !git fetch origin "$DEFAULT_BRANCH"
@@ -81,14 +82,14 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 8. **Delete existing branch if it exists** (from previous failed attempts)
    !git branch -D "$BRANCH_NAME" 2>/dev/null || true
 
-9. **Create worktree from default branch**
-   !git worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"
+9. **Create worktree from default branch** (also checks if path exists)
+   !if ! git worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"; then echo "Error: Failed to create worktree (may already exist)"; exit 1; fi
 
 10. **Switch to new worktree and create feature branch**
     !cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
 
-11. **Copy LLM config directories to new worktree**
-    !for dir in .claude .codex .gemini .cursor; do if [ -d "$SOURCE_DIR/$dir" ]; then cp -r "$SOURCE_DIR/$dir" "$WORKTREE_PATH/" && echo "Copied $dir"; fi; done
+11. **Copy LLM config directories to new worktree** (using -P to prevent symlink attacks)
+    !for dir in .claude .codex .gemini .cursor; do if [ -d "$SOURCE_DIR/$dir" ] && [ ! -L "$SOURCE_DIR/$dir" ]; then cp -rP "$SOURCE_DIR/$dir" "$WORKTREE_PATH/" && echo "Copied $dir"; fi; done
 
 12. **Check for environment files**
     !ENV_FILES=""
@@ -100,8 +101,8 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
     "Found environment files ($ENV_FILES). Copy them to the new worktree? (These may contain secrets)"
     - Options: "Yes, copy them" / "No, skip"
 
-    If user confirms, copy the files:
-    !for file in $ENV_FILES; do cp "$SOURCE_DIR/$file" "$WORKTREE_PATH/" && echo "Copied $file"; done
+    If user confirms, copy the files (using -P to prevent symlink attacks):
+    !for file in $ENV_FILES; do if [ -f "$SOURCE_DIR/$file" ] && [ ! -L "$SOURCE_DIR/$file" ]; then cp -P "$SOURCE_DIR/$file" "$WORKTREE_PATH/" && echo "Copied $file"; fi; done
 
 13. **Display success message**
     !echo "Created worktree for issue #$ARGUMENTS"
