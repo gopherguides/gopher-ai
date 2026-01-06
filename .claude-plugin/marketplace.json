@@ -50,6 +50,13 @@
       "description": "Opinionated Go web app scaffolding with Templ + HTMX + Alpine.js + Tailwind",
       "version": "1.0.0",
       "keywords": ["go", "web", "templ", "htmx", "alpine", "tailwind", "scaffold", "convert"]
+    },
+    {
+      "name": "tailwind",
+      "source": "./plugins/tailwind",
+      "description": "Tailwind CSS v4 tools for initialization, auditing, migration, and optimization",
+      "version": "1.0.0",
+      "keywords": ["tailwind", "css", "styling", "frontend", "v4", "migration", "audit"]
     }
   ]
 }
