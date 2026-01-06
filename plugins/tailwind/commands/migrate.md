@@ -237,17 +237,19 @@ Replace v3 directives:
 
 ## Step 5: Update package.json
 
-Update dependencies:
+Update dependencies based on your integration method:
+
+**For CLI method (recommended for most projects):**
 
 ```bash
 # Remove old packages
 npm uninstall tailwindcss postcss autoprefixer
 
-# Install v4
+# Install v4 CLI
 npm install -D tailwindcss@latest @tailwindcss/cli@latest
 ```
 
-Update scripts if using CLI:
+Update scripts:
 
 ```json
 {
@@ -256,6 +258,16 @@ Update scripts if using CLI:
     "css:watch": "npx @tailwindcss/cli -i ./src/input.css -o ./src/output.css --watch"
   }
 }
+```
+
+**For PostCSS method (if using existing PostCSS pipeline):**
+
+```bash
+# Remove old packages but keep postcss
+npm uninstall tailwindcss autoprefixer
+
+# Install v4 with PostCSS plugin
+npm install -D tailwindcss@latest @tailwindcss/postcss@latest postcss
 ```
 
 ## Step 6: Handle PostCSS (if applicable)
