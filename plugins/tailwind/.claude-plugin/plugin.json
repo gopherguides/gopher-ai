@@ -1,0 +1,19 @@
+{
+  "name": "tailwind",
+  "description": "Tailwind CSS v4 tools for initialization, auditing, migration, and optimization",
+  "version": "1.0.0",
+  "author": {
+    "name": "Gopher Guides",
+    "email": "support@gopherguides.com"
+  },
+  "homepage": "https://gopherguides.com",
+  "repository": "https://github.com/gopherguides/gopher-ai",
+  "license": "MIT",
+  "keywords": ["tailwind", "css", "styling", "frontend", "v4", "migration", "audit"],
+  "mcpServers": {
+    "tailwindcss": {
+      "command": "npx",
+      "args": ["-y", "tailwindcss-mcp-server"]
+    }
+  }
+}
