@@ -40,3 +40,8 @@ fi
 
 echo ""
 echo "Done! Restart Claude Code to load updated plugins."
+echo ""
+echo "To install new plugins, run in Claude Code:"
+echo "   /plugin install <plugin-name>@gopher-ai"
+echo ""
+echo "Available plugins: go-workflow, go-dev, productivity, gopher-guides, llm-tools, go-web, tailwind"

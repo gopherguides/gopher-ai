@@ -8,7 +8,23 @@ Claude Code plugins for Go developers - by [Gopher Guides](https://gopherguides.
 /plugin marketplace add gopherguides/gopher-ai
 ```
 
-That's it! This command adds the marketplace and auto-installs all plugins.
+Then install the plugins you want:
+
+```bash
+/plugin install go-workflow@gopher-ai
+/plugin install go-dev@gopher-ai
+/plugin install productivity@gopher-ai
+/plugin install gopher-guides@gopher-ai
+/plugin install llm-tools@gopher-ai
+/plugin install go-web@gopher-ai
+/plugin install tailwind@gopher-ai
+```
+
+Or install all at once (copy/paste as one command):
+
+```bash
+/plugin install go-workflow@gopher-ai && /plugin install go-dev@gopher-ai && /plugin install productivity@gopher-ai && /plugin install gopher-guides@gopher-ai && /plugin install llm-tools@gopher-ai && /plugin install go-web@gopher-ai && /plugin install tailwind@gopher-ai
+```
 
 ## Updating Plugins
 
@@ -141,23 +157,58 @@ Opinionated Go web app scaffolding with our recommended stack.
 
 **Default Deployment:** Vercel + Neon PostgreSQL (free tier)
 
+### tailwind
+
+Tailwind CSS v4 tools for initialization, auditing, migration, and optimization.
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/tailwind-init` | Initialize Tailwind CSS v4 in a project |
+| `/tailwind-migrate` | Migrate from Tailwind v3 to v4 |
+| `/tailwind-audit` | Audit Tailwind usage for best practices |
+| `/tailwind-optimize` | Optimize Tailwind configuration and usage |
+
+**Skills (auto-invoked):**
+
+- **Tailwind Best Practices** - Provides v4-specific guidance when working with Tailwind CSS
+
+**MCP Tools:**
+
+- `search_tailwind_docs` - Search Tailwind CSS documentation
+- `get_tailwind_utilities` - Get utility classes for CSS properties
+- `get_tailwind_colors` - Get color palette information
+- `convert_css_to_tailwind` - Convert CSS to Tailwind utilities
+- `generate_component_template` - Generate component templates
+
+**Requirements:**
+
+- Node.js 16+ (for MCP server)
+
 ## Installation Options
 
-### Install All Plugins (Default)
+### Install All Plugins
 
 ```bash
 /plugin marketplace add gopherguides/gopher-ai
+/plugin install go-workflow@gopher-ai
+/plugin install go-dev@gopher-ai
+/plugin install productivity@gopher-ai
+/plugin install gopher-guides@gopher-ai
+/plugin install llm-tools@gopher-ai
+/plugin install go-web@gopher-ai
+/plugin install tailwind@gopher-ai
 ```
-
-Adding the marketplace automatically installs all plugins.
 
 ### Install Specific Plugins Only
 
-If you only want certain plugins, first add the marketplace, then uninstall the ones you don't need:
+Only install the plugins you need:
 
 ```bash
 /plugin marketplace add gopherguides/gopher-ai
-/plugin uninstall go-web@gopher-ai  # example: remove go-web if not needed
+/plugin install go-dev@gopher-ai      # just Go development tools
+/plugin install go-workflow@gopher-ai  # just workflow automation
 ```
 
 ### Team Installation
