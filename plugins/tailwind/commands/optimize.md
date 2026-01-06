@@ -2,7 +2,7 @@
 argument-hint: "[--report|--fix]"
 description: "Analyze and optimize Tailwind CSS output"
 model: claude-sonnet-4-20250514
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities"]
+allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities"]
 ---
 
 # Optimize Tailwind CSS
