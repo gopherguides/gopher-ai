@@ -621,6 +621,9 @@ tmp/
 .envrc
 .env
 
+# SQLite database files
+data/*.db
+
 # Generated files (can be regenerated)
 *_templ.go
 internal/database/sqlc/
@@ -666,6 +669,76 @@ export DEFAULT_OG_IMAGE="/static/images/og-default.png"
 # CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY if Clerk selected
 # BREVO_API_KEY if Brevo selected
 # STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET if Stripe selected
+```
+
+#### .envrc (working environment file)
+
+**IMPORTANT:** Also create the actual `.envrc` file with working defaults based on the selected database:
+
+**For SQLite:**
+```bash
+# Environment configuration for [project-name]
+# Automatically generated - modify as needed
+
+# Database (SQLite)
+export DATABASE_URL="./data/[project-name].db"
+
+# Server
+export PORT="3000"
+export ENV="development"
+export LOG_LEVEL="DEBUG"
+
+# Site / SEO
+export SITE_NAME="[project-name]"
+export SITE_URL="http://localhost:3000"
+export DEFAULT_OG_IMAGE="/static/images/og-default.png"
+```
+
+**For PostgreSQL:**
+```bash
+# Environment configuration for [project-name]
+# Automatically generated - modify DATABASE_URL with your credentials
+
+# Database (PostgreSQL) - UPDATE WITH YOUR CREDENTIALS
+export DATABASE_URL="postgres://localhost:5432/[project-name]?sslmode=disable"
+
+# Server
+export PORT="3000"
+export ENV="development"
+export LOG_LEVEL="DEBUG"
+
+# Site / SEO
+export SITE_NAME="[project-name]"
+export SITE_URL="http://localhost:3000"
+export DEFAULT_OG_IMAGE="/static/images/og-default.png"
+```
+
+**For MySQL:**
+```bash
+# Environment configuration for [project-name]
+# Automatically generated - modify DATABASE_URL with your credentials
+
+# Database (MySQL) - UPDATE WITH YOUR CREDENTIALS
+export DATABASE_URL="root@tcp(localhost:3306)/[project-name]"
+
+# Server
+export PORT="3000"
+export ENV="development"
+export LOG_LEVEL="DEBUG"
+
+# Site / SEO
+export SITE_NAME="[project-name]"
+export SITE_URL="http://localhost:3000"
+export DEFAULT_OG_IMAGE="/static/images/og-default.png"
+```
+
+#### data/.gitkeep (for SQLite projects only)
+
+For SQLite projects, create the data directory:
+
+```bash
+mkdir -p data
+touch data/.gitkeep
 ```
 
 #### package.json
@@ -2319,8 +2392,27 @@ After planning, execute the conversion:
 2. **Generate migrations** from existing database schema
 3. **Convert templates** one at a time
 4. **Migrate routes** starting with simplest endpoints
-5. **Generate tests** for converted handlers
-6. **Verify build and tests** before moving to next
+5. **Load environment variables:**
+
+   The `.envrc` file was created with sensible defaults. Load it before any build/verification steps:
+
+   ```bash
+   # Check if direnv is installed and use it, otherwise source directly
+   if command -v direnv &> /dev/null; then
+       direnv allow
+       eval "$(direnv export bash)"
+   else
+       # Source .envrc directly if direnv not installed
+       set -a  # auto-export all variables
+       source .envrc
+       set +a
+   fi
+   ```
+
+   **IMPORTANT:** This step is required before `make generate` or `make dev` will work, because the server requires DATABASE_URL to be set.
+
+6. **Generate tests** for converted handlers
+7. **Verify build and tests** before moving to next
 
 ### Generate Tests for Converted Handlers
 

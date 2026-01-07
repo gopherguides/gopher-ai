@@ -233,6 +233,9 @@ tmp/
 .envrc
 .env
 
+# SQLite database files
+data/*.db
+
 # Generated files (can be regenerated)
 *_templ.go
 internal/database/sqlc/
@@ -280,7 +283,79 @@ export DEFAULT_OG_IMAGE="/static/images/og-default.png"
 # STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET if Stripe selected
 ```
 
-#### 4. package.json
+#### 4. .envrc (working environment file)
+
+**IMPORTANT:** Also create the actual `.envrc` file with working defaults based on the selected database:
+
+**For SQLite:**
+```bash
+# Environment configuration for $ARGUMENTS
+# Automatically generated - modify as needed
+
+# Database (SQLite)
+export DATABASE_URL="./data/$ARGUMENTS.db"
+
+# Server
+export PORT="3000"
+export ENV="development"
+export LOG_LEVEL="DEBUG"
+
+# Site / SEO
+export SITE_NAME="$ARGUMENTS"
+export SITE_URL="http://localhost:3000"
+export DEFAULT_OG_IMAGE="/static/images/og-default.png"
+```
+
+**For PostgreSQL:**
+```bash
+# Environment configuration for $ARGUMENTS
+# Automatically generated - modify DATABASE_URL with your credentials
+
+# Database (PostgreSQL) - UPDATE WITH YOUR CREDENTIALS
+export DATABASE_URL="postgres://localhost:5432/$ARGUMENTS?sslmode=disable"
+
+# Server
+export PORT="3000"
+export ENV="development"
+export LOG_LEVEL="DEBUG"
+
+# Site / SEO
+export SITE_NAME="$ARGUMENTS"
+export SITE_URL="http://localhost:3000"
+export DEFAULT_OG_IMAGE="/static/images/og-default.png"
+```
+
+**For MySQL:**
+```bash
+# Environment configuration for $ARGUMENTS
+# Automatically generated - modify DATABASE_URL with your credentials
+
+# Database (MySQL) - UPDATE WITH YOUR CREDENTIALS
+export DATABASE_URL="root@tcp(localhost:3306)/$ARGUMENTS"
+
+# Server
+export PORT="3000"
+export ENV="development"
+export LOG_LEVEL="DEBUG"
+
+# Site / SEO
+export SITE_NAME="$ARGUMENTS"
+export SITE_URL="http://localhost:3000"
+export DEFAULT_OG_IMAGE="/static/images/og-default.png"
+```
+
+#### 5. data/.gitkeep (for SQLite projects only)
+
+For SQLite projects, create the data directory:
+
+```bash
+mkdir -p data
+touch data/.gitkeep
+```
+
+This ensures the database directory exists and is tracked by git (but not the database file itself, which is in .gitignore).
+
+#### 6. package.json
 
 ```json
 {
@@ -1691,13 +1766,57 @@ After creating all files:
    npm install
    ```
 
-3. **Generate code:**
+3. **Load environment variables:**
+
+   The `.envrc` file was created with sensible defaults. Load it before any build/verification steps:
+
+   ```bash
+   # Check if direnv is installed and use it, otherwise source directly
+   if command -v direnv &> /dev/null; then
+       direnv allow
+       eval "$(direnv export bash)"
+   else
+       # Source .envrc directly if direnv not installed
+       set -a  # auto-export all variables
+       source .envrc
+       set +a
+   fi
+   ```
+
+   **IMPORTANT:** This step is required before `make generate` or `make dev` will work, because the server requires DATABASE_URL to be set.
+
+4. **Generate code:**
 
    ```bash
    make generate
    ```
 
-4. **Create initial commit:**
+5. **Verify the project builds and runs:**
+
+   Before committing, verify everything works:
+
+   ```bash
+   # Build to check for compilation errors
+   go build -o ./tmp/$ARGUMENTS ./cmd/server
+   echo "✓ Build succeeded"
+
+   # Quick start/stop test to verify DATABASE_URL is set correctly
+   ./tmp/$ARGUMENTS &
+   SERVER_PID=$!
+   sleep 2
+
+   # Check if server started (health endpoint)
+   if curl -s http://localhost:${PORT:-3000}/health > /dev/null; then
+       echo "✓ Server started successfully"
+   else
+       echo "✗ Server failed to start - check configuration"
+   fi
+
+   # Stop the test server
+   kill $SERVER_PID 2>/dev/null || true
+   ```
+
+6. **Create initial commit:**
 
    ```bash
    git add .
