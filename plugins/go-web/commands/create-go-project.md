@@ -206,6 +206,7 @@ require (
     github.com/labstack/echo/v4 v4.14.0
     github.com/a-h/templ v0.3.960
     github.com/lmittmann/tint v1.1.2
+    github.com/pressly/goose/v3 v3.26.0
     // Database driver added based on selection
     // Service SDKs added based on selection
 )
@@ -306,7 +307,7 @@ SHELL := /bin/bash
 .PHONY: dev build test lint generate css css-watch migrate migrate-down migrate-status migrate-create setup clean run help
 
 BINARY_NAME=$ARGUMENTS
-MIGRATIONS_DIR=migrations
+MIGRATIONS_DIR=internal/database/migrations
 
 dev:
     @if [ -f tmp/air-combined.log ]; then \
@@ -326,8 +327,7 @@ lint:
     templ fmt templates/
 
 generate:
-    templ generate
-    sqlc generate -f sqlc/sqlc.yaml
+    go generate ./...
 
 css:
     npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify
@@ -417,8 +417,7 @@ tmp_dir = "tmp"
   post_cmd = []
   pre_cmd = [
     "lsof -ti:${PORT:-3000} | xargs kill -9 2>/dev/null || true; sleep 0.5",
-    "templ generate",
-    "sqlc generate -f sqlc/sqlc.yaml",
+    "go generate ./...",
     "go mod tidy"
   ]
   rerun = false
@@ -459,7 +458,7 @@ version: "2"
 sql:
   - engine: "postgresql"
     queries: "queries/"
-    schema: "../migrations/"
+    schema: "../internal/database/migrations/"
     gen:
       go:
         package: "sqlc"
@@ -484,7 +483,7 @@ version: "2"
 sql:
   - engine: "sqlite"
     queries: "queries/"
-    schema: "../migrations/"
+    schema: "../internal/database/migrations/"
     gen:
       go:
         package: "sqlc"
@@ -500,7 +499,7 @@ version: "2"
 sql:
   - engine: "mysql"
     queries: "queries/"
-    schema: "../migrations/"
+    schema: "../internal/database/migrations/"
     gen:
       go:
         package: "sqlc"
@@ -530,7 +529,7 @@ DELETE FROM examples WHERE id = $1;
 
 Adjust SQL syntax for SQLite (`?` params) or MySQL as needed.
 
-#### 9. migrations/001_initial.sql
+#### 9. internal/database/migrations/001_initial.sql
 
 **For PostgreSQL:**
 
@@ -633,7 +632,27 @@ func getLogLevel() slog.Level {
 }
 ```
 
-#### 11. cmd/server/main.go
+#### 11. cmd/server/generate.go
+
+This file centralizes all code generation via `//go:generate` directives:
+
+```go
+package main
+
+//go:generate echo "Generating SQLC files..."
+//go:generate sqlc generate -f ../../sqlc/sqlc.yaml
+//go:generate echo "SQLC files generated"
+
+//go:generate echo "Generating templ files..."
+//go:generate templ generate -path ../../templates
+//go:generate echo "templ files generated"
+
+//go:generate echo "Generating Tailwind CSS..."
+//go:generate npx @tailwindcss/cli -i ../../static/css/input.css -o ../../static/css/output.css
+//go:generate echo "Tailwind CSS generated"
+```
+
+#### 12. cmd/server/main.go
 
 ```go
 package main
@@ -850,7 +869,7 @@ func SiteURLFromCtx(ctx context.Context) string {
 }
 ```
 
-#### 16. internal/database/database.go
+#### 17. internal/database/database.go
 
 **For PostgreSQL:**
 
@@ -859,11 +878,17 @@ package database
 
 import (
     "context"
+    "embed"
     "fmt"
 
     "github.com/jackc/pgx/v5/pgxpool"
+    "github.com/jackc/pgx/v5/stdlib"
+    "github.com/pressly/goose/v3"
     "$ARGUMENTS/internal/database/sqlc"
 )
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 type DB struct {
     Pool    *pgxpool.Pool
@@ -880,14 +905,38 @@ func New(ctx context.Context, databaseURL string) (*DB, error) {
         return nil, fmt.Errorf("unable to ping database: %w", err)
     }
 
-    return &DB{
+    db := &DB{
         Pool:    pool,
         Queries: sqlc.New(pool),
-    }, nil
+    }
+
+    if err := db.migrate(); err != nil {
+        return nil, fmt.Errorf("unable to run migrations: %w", err)
+    }
+
+    return db, nil
 }
 
 func (db *DB) Close() {
     db.Pool.Close()
+}
+
+func (db *DB) migrate() error {
+    goose.SetBaseFS(migrationsFS)
+
+    if err := goose.SetDialect("postgres"); err != nil {
+        return fmt.Errorf("failed to set goose dialect: %w", err)
+    }
+
+    // Get stdlib connection for goose
+    conn := stdlib.OpenDBFromPool(db.Pool)
+    defer conn.Close()
+
+    if err := goose.Up(conn, "migrations"); err != nil {
+        return fmt.Errorf("failed to run migrations: %w", err)
+    }
+
+    return nil
 }
 ```
 
@@ -899,11 +948,18 @@ package database
 import (
     "context"
     "database/sql"
+    "embed"
     "fmt"
+    "os"
+    "path/filepath"
 
+    "github.com/pressly/goose/v3"
     _ "modernc.org/sqlite"
     "$ARGUMENTS/internal/database/sqlc"
 )
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 type DB struct {
     Conn    *sql.DB
@@ -911,7 +967,12 @@ type DB struct {
 }
 
 func New(ctx context.Context, databasePath string) (*DB, error) {
-    conn, err := sql.Open("sqlite", databasePath+"?_foreign_keys=on")
+    dir := filepath.Dir(databasePath)
+    if err := os.MkdirAll(dir, 0755); err != nil {
+        return nil, fmt.Errorf("unable to create database directory: %w", err)
+    }
+
+    conn, err := sql.Open("sqlite", databasePath+"?_foreign_keys=on&_journal_mode=WAL")
     if err != nil {
         return nil, fmt.Errorf("unable to open database: %w", err)
     }
@@ -920,14 +981,34 @@ func New(ctx context.Context, databasePath string) (*DB, error) {
         return nil, fmt.Errorf("unable to ping database: %w", err)
     }
 
-    return &DB{
+    db := &DB{
         Conn:    conn,
         Queries: sqlc.New(conn),
-    }, nil
+    }
+
+    if err := db.migrate(); err != nil {
+        return nil, fmt.Errorf("unable to run migrations: %w", err)
+    }
+
+    return db, nil
 }
 
 func (db *DB) Close() {
     db.Conn.Close()
+}
+
+func (db *DB) migrate() error {
+    goose.SetBaseFS(migrationsFS)
+
+    if err := goose.SetDialect("sqlite3"); err != nil {
+        return fmt.Errorf("failed to set goose dialect: %w", err)
+    }
+
+    if err := goose.Up(db.Conn, "migrations"); err != nil {
+        return fmt.Errorf("failed to run migrations: %w", err)
+    }
+
+    return nil
 }
 ```
 
@@ -939,11 +1020,16 @@ package database
 import (
     "context"
     "database/sql"
+    "embed"
     "fmt"
 
+    "github.com/pressly/goose/v3"
     _ "github.com/go-sql-driver/mysql"
     "$ARGUMENTS/internal/database/sqlc"
 )
+
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 type DB struct {
     Conn    *sql.DB
@@ -960,18 +1046,38 @@ func New(ctx context.Context, dsn string) (*DB, error) {
         return nil, fmt.Errorf("unable to ping database: %w", err)
     }
 
-    return &DB{
+    db := &DB{
         Conn:    conn,
         Queries: sqlc.New(conn),
-    }, nil
+    }
+
+    if err := db.migrate(); err != nil {
+        return nil, fmt.Errorf("unable to run migrations: %w", err)
+    }
+
+    return db, nil
 }
 
 func (db *DB) Close() {
     db.Conn.Close()
 }
+
+func (db *DB) migrate() error {
+    goose.SetBaseFS(migrationsFS)
+
+    if err := goose.SetDialect("mysql"); err != nil {
+        return fmt.Errorf("failed to set goose dialect: %w", err)
+    }
+
+    if err := goose.Up(db.Conn, "migrations"); err != nil {
+        return fmt.Errorf("failed to run migrations: %w", err)
+    }
+
+    return nil
+}
 ```
 
-#### 17. internal/middleware/middleware.go
+#### 18. internal/middleware/middleware.go
 
 ```go
 package middleware
