@@ -1697,6 +1697,179 @@ templ Home() {
 
 Create empty file to preserve directory.
 
+### CI/CD and Quality Files
+
+Check if CI/CD files already exist before creating:
+
+```bash
+# Check for existing CI configuration
+ls -la .github/workflows/ .gitlab-ci.yml Jenkinsfile .circleci/ 2>/dev/null
+```
+
+**If CI exists:** Ask the user if they want to keep existing CI or replace with Go-specific workflow.
+
+**If no CI exists:** Create the following files:
+
+#### .github/workflows/ci.yml
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.1.6
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Go tools
+        run: |
+          go install github.com/a-h/templ/cmd/templ@latest
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Generate code
+        run: go generate ./...
+      - name: Run tests
+        run: go test -v -race ./...
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Go tools
+        run: |
+          go install github.com/a-h/templ/cmd/templ@latest
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Generate code
+        run: go generate ./...
+      - name: Build
+        run: go build -o bin/[project-name] ./cmd/server
+```
+
+#### .github/dependabot.yml (if no dependabot exists)
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+```
+
+#### .golangci.yml
+
+```yaml
+version: "2"
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+issues:
+  exclude-dirs:
+    - internal/database/sqlc
+```
+
+### Test Infrastructure
+
+#### internal/testutil/testutil.go
+
+```go
+package testutil
+
+import (
+    "context"
+    "testing"
+
+    "[project-name]/internal/config"
+    "[project-name]/internal/database"
+)
+
+// NewTestDB creates an in-memory SQLite database for testing.
+// For PostgreSQL projects, modify to use a test database URL.
+func NewTestDB(t *testing.T) *database.DB {
+    t.Helper()
+
+    ctx := context.Background()
+    // For SQLite: use in-memory database
+    // For PostgreSQL: use TEST_DATABASE_URL or create temp database
+    db, err := database.New(ctx, ":memory:")
+    if err != nil {
+        t.Fatalf("failed to create test database: %v", err)
+    }
+
+    t.Cleanup(func() {
+        db.Close()
+    })
+
+    return db
+}
+
+// NewTestConfig creates a test configuration.
+func NewTestConfig(t *testing.T) *config.Config {
+    t.Helper()
+
+    return &config.Config{
+        DatabaseURL: ":memory:",
+        Port:        "0", // Use random available port
+        Env:         "test",
+        Site: config.SiteConfig{
+            Name: "[project-name]",
+            URL:  "http://localhost:3000",
+        },
+    }
+}
+```
+
+**Note for PostgreSQL projects:** Modify `NewTestDB` to use a test database URL from environment variable `TEST_DATABASE_URL` or create a temporary test database.
+
 ### Deployment Files
 
 Based on the deployment platform selected:
@@ -2146,7 +2319,74 @@ After planning, execute the conversion:
 2. **Generate migrations** from existing database schema
 3. **Convert templates** one at a time
 4. **Migrate routes** starting with simplest endpoints
-5. **Test each conversion** before moving to next
+5. **Generate tests** for converted handlers
+6. **Verify build and tests** before moving to next
+
+### Generate Tests for Converted Handlers
+
+For each converted handler, create tests following this pattern:
+
+**`internal/handler/<entity>_test.go`:**
+
+```go
+package handler
+
+import (
+    "net/http"
+    "net/http/httptest"
+    "testing"
+
+    "[project-name]/internal/testutil"
+
+    "github.com/labstack/echo/v4"
+)
+
+func TestList<Entity>(t *testing.T) {
+    t.Parallel()
+
+    db := testutil.NewTestDB(t)
+    cfg := testutil.NewTestConfig(t)
+    h := New(cfg, db)
+
+    e := echo.New()
+    req := httptest.NewRequest(http.MethodGet, "/<entities>", nil)
+    rec := httptest.NewRecorder()
+    c := e.NewContext(req, rec)
+
+    if err := h.List<Entity>(c); err != nil {
+        t.Errorf("List<Entity>() error = %v", err)
+    }
+
+    if rec.Code != http.StatusOK {
+        t.Errorf("List<Entity>() status = %d, want %d", rec.Code, http.StatusOK)
+    }
+}
+
+func TestCreate<Entity>(t *testing.T) {
+    t.Parallel()
+
+    db := testutil.NewTestDB(t)
+    cfg := testutil.NewTestConfig(t)
+    h := New(cfg, db)
+
+    e := echo.New()
+    // Add form data or JSON body
+    req := httptest.NewRequest(http.MethodPost, "/<entities>", nil)
+    req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+    rec := httptest.NewRecorder()
+    c := e.NewContext(req, rec)
+
+    // Test creation logic
+    // ...
+}
+```
+
+**Test at least:**
+- List/index handlers return 200
+- Show handlers return 200 for existing records, 404 for missing
+- Create handlers validate input and return redirect on success
+- Update handlers validate and return redirect
+- Delete handlers return 200 or redirect
 
 ### Verification Checklist
 
@@ -2158,6 +2398,9 @@ After conversion, verify:
 - [ ] Templates render properly
 - [ ] Static assets load
 - [ ] Forms submit successfully
+- [ ] `go test -v ./...` passes
+- [ ] `golangci-lint run` passes
+- [ ] CI workflow runs successfully
 
 ---
 
