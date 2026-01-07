@@ -1157,7 +1157,7 @@ func main() {
 
     go func() {
         addr := ":" + cfg.Port
-        slog.Info("starting server", "port", cfg.Port, "env", cfg.Env)
+        slog.Info("starting server", "url", "http://localhost:"+cfg.Port, "env", cfg.Env)
         if err := e.Start(addr); err != nil {
             slog.Info("shutting down server")
         }
