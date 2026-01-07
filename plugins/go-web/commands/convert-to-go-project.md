@@ -1559,7 +1559,7 @@ func New(cfg *config.Config, db *database.DB) *Handler {
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
     // Static files
     e.Static("/static", "static")
-    e.Static("/assets", "assets")  // REQUIRED: templUI JS files are served from here
+    // e.Static("/assets", "assets")  // Uncomment if using templUI components
 
     // Health check
     e.GET("/health", h.Health)
@@ -1661,13 +1661,6 @@ templ Base(m meta.PageMeta) {
             @MetaTags(m)
             <link rel="stylesheet" href="/static/css/output.css"/>
             <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-            // NOTE: Do NOT include Alpine.js - templUI uses vanilla JS via Script() templates
-            // If using templUI components, add their Script() templates here:
-            // @sidebar.Script()   // Required for: sidebar
-            // @dialog.Script()    // Required for: dialog, sheet, alertdialog
-            // @popover.Script()   // Required for: popover, dropdown, tooltip, combobox
-            // @accordion.Script() // Required for: accordion, collapsible
-            // @tabs.Script()      // Required for: tabs
         </head>
         <body class="bg-background text-foreground min-h-screen">
             <header class="border-b border-border">
@@ -1687,6 +1680,36 @@ templ Base(m meta.PageMeta) {
                 </div>
             </footer>
         </body>
+    </html>
+}
+```
+
+**If using templUI components:**
+
+When using templUI components, you MUST include their Script() templates in the `<head>`. Update base.templ to add the imports and Script() calls:
+
+```templ
+package layouts
+
+import (
+    "[project-name]/internal/meta"
+    "[project-name]/components/sidebar"
+    "[project-name]/components/dialog"
+)
+
+templ Base(m meta.PageMeta) {
+    <!DOCTYPE html>
+    <html lang="en">
+        <head>
+            <meta charset="UTF-8"/>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+            @MetaTags(m)
+            <link rel="stylesheet" href="/static/css/output.css"/>
+            <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+            @sidebar.Script()
+            @dialog.Script()
+        </head>
+        // ... rest of body
     </html>
 }
 ```
@@ -1730,7 +1753,7 @@ templ Home() {
             </div>
             <div class="p-6 border border-border rounded-lg">
                 <h3 class="font-semibold mb-2">Client Interactivity</h3>
-                <p class="text-muted-foreground text-sm">templUI components for dropdowns, modals, and tabs.</p>
+                <p class="text-muted-foreground text-sm">HTMX for server-driven interactivity.</p>
             </div>
         </div>
     }
@@ -1741,7 +1764,80 @@ templ Home() {
 
 #### static/css/input.css
 
-**IMPORTANT:** This CSS must include BOTH source paths for templates AND components (templUI components go in `components/`).
+Use the appropriate version based on whether you plan to use templUI components:
+
+**Basic version (no templUI):**
+
+```css
+@import "tailwindcss";
+
+@source "../../templates/**/*.templ";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Light mode (default) */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+}
+
+/* Dark mode */
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply scroll-smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+```
+
+**templUI version (if using templUI components):**
+
+If you want to use templUI components, install the CLI first: `go install github.com/templui/templui@latest && templui add sidebar button card icon`
 
 ```css
 @import "tailwindcss";
