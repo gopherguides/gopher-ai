@@ -1702,7 +1702,12 @@ Based on the deployment platform selected:
 
 **For Fly.io:** Create `fly.toml` and `Dockerfile`.
 
-**For Self-hosted:** Ask the user if they want a Dockerfile (default to No). Only create `Dockerfile` if they say Yes.
+**For Self-hosted:** Ask the user if they want a Dockerfile (default to No). If Yes, create `Dockerfile`. If No, the Makefile already includes everything needed:
+- `make dev` - Development with Air hot reload (logs to `tmp/air-combined.log`)
+- `make build` - Build production binary
+- `make run` - Build and run the server
+
+For production without Docker, users can run `make build` to create the binary, then deploy and run it directly.
 
 ### Project Documentation
 
