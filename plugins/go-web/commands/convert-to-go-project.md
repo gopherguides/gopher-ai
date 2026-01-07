@@ -1702,7 +1702,7 @@ Based on the deployment platform selected:
 
 **For Fly.io:** Create `fly.toml` and `Dockerfile`.
 
-**For Self-hosted:** Create `Dockerfile` only.
+**For Self-hosted:** Ask the user if they want a Dockerfile (default to No). Only create `Dockerfile` if they say Yes.
 
 ### Project Documentation
 
