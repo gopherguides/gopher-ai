@@ -1,6 +1,6 @@
 ---
 argument-hint: "[target-directory]"
-description: "Convert an existing project to the Go + Templ + HTMX + Alpine.js + Tailwind stack"
+description: "Convert an existing project to the Go + Templ + HTMX + Tailwind stack"
 model: claude-opus-4-5-20251101
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
@@ -9,7 +9,7 @@ allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestio
 
 **If `$ARGUMENTS` is empty or not provided:**
 
-This command converts an existing project to the Go + Templ + HTMX + Alpine.js + Tailwind stack.
+This command converts an existing project to the Go + Templ + HTMX + Tailwind stack.
 
 It will analyze your current project, identify what can be preserved, and incrementally
 add Go stack files while migrating your existing logic.
@@ -477,12 +477,25 @@ templ UserList(users []User) {
 }
 ```
 
-### Client-Side JavaScript to Alpine.js
+### Client-Side Interactivity with templUI
 
-Alpine.js handles client-side interactivity (dropdowns, modals, tabs) while HTMX handles
-server communication. Together they replace heavy JavaScript frameworks.
+templUI components handle client-side interactivity (dropdowns, modals, sidebars) via vanilla JavaScript
+`Script()` templates. HTMX handles server communication. Together they replace heavy JavaScript frameworks.
 
-**jQuery to Alpine.js:**
+**Important:** templUI does NOT use Alpine.js. Each interactive component has a `Script()` template that
+must be included in your layout's `<head>`:
+
+```templ
+<head>
+    @sidebar.Script()   // Required for: sidebar
+    @dialog.Script()    // Required for: dialog, sheet, alertdialog
+    @popover.Script()   // Required for: popover, dropdown, tooltip, combobox
+    @accordion.Script() // Required for: accordion, collapsible
+    @tabs.Script()      // Required for: tabs
+</head>
+```
+
+**jQuery to templUI:**
 
 ```javascript
 // jQuery (before)
@@ -491,62 +504,52 @@ $('.dropdown-toggle').click(function() {
 });
 ```
 
-```html
-<!-- Alpine.js (after) -->
-<div x-data="{ open: false }">
-  <button @click="open = !open">Toggle</button>
-  <div x-show="open" x-transition>Dropdown content</div>
-</div>
+```templ
+// templUI (after) - use dropdown component
+@dropdown.Root() {
+    @dropdown.Trigger() {
+        <button>Toggle</button>
+    }
+    @dropdown.Content() {
+        @dropdown.Item() { Option 1 }
+        @dropdown.Item() { Option 2 }
+    }
+}
 ```
 
-**React useState to Alpine.js:**
+**React useState to templUI:**
 
 ```jsx
 // React (before)
 const [isOpen, setIsOpen] = useState(false);
 return (
-  <div>
-    <button onClick={() => setIsOpen(!isOpen)}>Toggle</button>
-    {isOpen && <div>Content</div>}
-  </div>
+  <dialog open={isOpen}>...</dialog>
 );
 ```
 
-```html
-<!-- Alpine.js (after) -->
-<div x-data="{ open: false }">
-  <button @click="open = !open">Toggle</button>
-  <div x-show="open" x-transition>Content</div>
-</div>
+```templ
+// templUI (after) - use dialog component
+@dialog.Root() {
+    @dialog.Trigger() {
+        <button>Open Dialog</button>
+    }
+    @dialog.Content() {
+        // Dialog content
+    }
+}
 ```
 
-**Vue v-model to Alpine.js:**
+**Common templUI component patterns:**
 
-```html
-<!-- Vue (before) -->
-<input v-model="search" />
-<p>Searching for: {{ search }}</p>
-```
-
-```html
-<!-- Alpine.js (after) -->
-<div x-data="{ search: '' }">
-  <input x-model="search" />
-  <p>Searching for: <span x-text="search"></span></p>
-</div>
-```
-
-**Common Alpine.js patterns:**
-
-| Pattern | Alpine.js |
-|---------|-----------|
-| Toggle visibility | `x-show="open"` with `@click="open = !open"` |
-| Conditional render | `x-if="condition"` (removes from DOM) |
-| Loop | `x-for="item in items"` |
-| Bind attribute | `:class="{ active: isActive }"` |
-| Two-way binding | `x-model="value"` |
-| Event listener | `@click`, `@submit.prevent`, `@keydown.escape` |
-| Transitions | `x-transition` or `x-transition.duration.300ms` |
+| Pattern | templUI Component |
+|---------|-------------------|
+| Toggle visibility | `@dialog.Root()` with trigger/content |
+| Dropdown menu | `@dropdown.Root()` |
+| Sidebar navigation | `@sidebar.Root()` |
+| Accordion/Collapsible | `@accordion.Root()` |
+| Tabs | `@tabs.Root()` |
+| Tooltip | `@tooltip.Root()` |
+| Modal/Sheet | `@dialog.Root()` or `@sheet.Root()` |
 
 ---
 
@@ -1556,6 +1559,7 @@ func New(cfg *config.Config, db *database.DB) *Handler {
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
     // Static files
     e.Static("/static", "static")
+    e.Static("/assets", "assets")  // REQUIRED: templUI JS files are served from here
 
     // Health check
     e.GET("/health", h.Health)
@@ -1657,7 +1661,13 @@ templ Base(m meta.PageMeta) {
             @MetaTags(m)
             <link rel="stylesheet" href="/static/css/output.css"/>
             <script src="https://unpkg.com/htmx.org@2.0.4"></script>
-            <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+            // NOTE: Do NOT include Alpine.js - templUI uses vanilla JS via Script() templates
+            // If using templUI components, add their Script() templates here:
+            // @sidebar.Script()   // Required for: sidebar
+            // @dialog.Script()    // Required for: dialog, sheet, alertdialog
+            // @popover.Script()   // Required for: popover, dropdown, tooltip, combobox
+            // @accordion.Script() // Required for: accordion, collapsible
+            // @tabs.Script()      // Required for: tabs
         </head>
         <body class="bg-background text-foreground min-h-screen">
             <header class="border-b border-border">
@@ -1720,7 +1730,7 @@ templ Home() {
             </div>
             <div class="p-6 border border-border rounded-lg">
                 <h3 class="font-semibold mb-2">Client Interactivity</h3>
-                <p class="text-muted-foreground text-sm">Alpine.js for dropdowns, modals, and tabs.</p>
+                <p class="text-muted-foreground text-sm">templUI components for dropdowns, modals, and tabs.</p>
             </div>
         </div>
     }
@@ -1731,40 +1741,130 @@ templ Home() {
 
 #### static/css/input.css
 
+**IMPORTANT:** This CSS must include BOTH source paths for templates AND components (templUI components go in `components/`).
+
 ```css
 @import "tailwindcss";
 
 @source "../../templates/**/*.templ";
+@source "../../components/**/*.templ";
 
-@theme {
-  /* Light mode (default) */
-  --color-background: oklch(1 0 0);
-  --color-foreground: oklch(0.145 0 0);
-  --color-card: oklch(1 0 0);
-  --color-border: oklch(0.9 0 0);
-  --color-primary: oklch(0.6 0.2 250);
-  --color-primary-foreground: oklch(1 0 0);
-  --color-muted: oklch(0.95 0 0);
-  --color-muted-foreground: oklch(0.4 0 0);
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
-@variant dark {
-  --color-background: oklch(0.145 0 0);
-  --color-foreground: oklch(0.985 0 0);
-  --color-card: oklch(0.205 0 0);
-  --color-border: oklch(0.3 0 0);
-  --color-primary: oklch(0.6 0.2 250);
-  --color-primary-foreground: oklch(1 0 0);
-  --color-muted: oklch(0.25 0 0);
-  --color-muted-foreground: oklch(0.6 0 0);
+/* Light mode (default) */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+/* Dark mode */
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
 }
 
 @layer base {
+  * {
+    @apply border-border;
+  }
   html {
-    font-family: ui-sans-serif, system-ui, sans-serif;
+    @apply scroll-smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
   }
 }
 ```
+
+**Key points:**
+- `@source "../../components/**/*.templ"` - Required for templUI components
+- `@custom-variant dark` - Tailwind CSS v4 dark mode syntax (NOT `@variant dark`)
+- Complete CSS variable definitions for templUI compatibility
+- Sidebar-specific variables for templUI sidebar component
 
 #### static/js/.gitkeep
 
