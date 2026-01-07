@@ -56,6 +56,7 @@ Run these checks to identify the current stack:
 | `*.sql` or `schema.prisma` | Database schema | Existing database structure |
 | `Dockerfile` | Docker | Container configuration |
 | `.env` or `.envrc` | Environment | Existing configuration |
+| `CLAUDE.md`, `LLM.md`, `AGENTS.md` | AI Context | Existing AI assistant instructions |
 
 ### Present Analysis Results
 
@@ -70,9 +71,13 @@ After scanning, present findings to the user:
 **Database:**
 - [Detected database type or "None detected"]
 
+**AI Context Files:**
+- [Found: CLAUDE.md / LLM.md / AGENTS.md] or "None found - will create CLAUDE.md"
+
 **Existing Files to Preserve:**
 - README.md
 - .git/
+- [AI context file if found]
 - [Other important files]
 
 **Files to Migrate:**
@@ -1711,9 +1716,20 @@ For production without Docker, users can run `make build` to create the binary, 
 
 ### Project Documentation
 
-#### CLAUDE.md
+#### CLAUDE.md (only if no AI context file exists)
 
-Create a CLAUDE.md file with the following content (adjust project name):
+**Important:** Only create CLAUDE.md if no existing AI assistant context file was found during project analysis.
+
+Check for these files first:
+- `CLAUDE.md`
+- `CLAUDE.local.md`
+- `LLM.md`
+- `AGENTS.md`
+- `.claude/CLAUDE.md`
+
+**If any exist:** Preserve the existing file. Inform the user: "Found existing AI context file: [filename]. Preserving it."
+
+**If none exist:** Create a CLAUDE.md file with the following content (adjust project name):
 
 The CLAUDE.md should contain:
 
