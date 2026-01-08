@@ -551,6 +551,14 @@ return (
 | Tooltip | `@tooltip.Root()` |
 | Modal/Sheet | `@dialog.Root()` or `@sheet.Root()` |
 
+> **CRITICAL: Templ Interpolation in JavaScript**
+> Go expressions `{ value }` do NOT work inside `<script>` tags or inline event handler strings.
+> - **Data attributes**: `data-id={ value }` + `this.dataset.id` in JS
+> - **templ.JSFuncCall**: `onclick={ templ.JSFuncCall("fn", value) }` for onclick handlers
+> - **Double braces**: `{{ value }}` (double braces) inside `<script>` tag strings
+>
+> If you see `%7B` or `%7D` in URLs, that's a literal `{` or `}` that wasn't interpolated.
+
 ---
 
 ## Step 4: Create Go Project Structure
@@ -2686,6 +2694,7 @@ After conversion, verify:
 - [ ] Templates render properly
 - [ ] Static assets load
 - [ ] Forms submit successfully
+- [ ] No Go expressions in `<script>` tags (use data attributes instead)
 - [ ] `go test -v ./...` passes
 - [ ] `golangci-lint run` passes
 - [ ] CI workflow runs successfully

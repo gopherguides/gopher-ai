@@ -1442,6 +1442,14 @@ templ Base(m meta.PageMeta) {
 
 **Note:** templUI does NOT use Alpine.js. It uses vanilla JavaScript delivered via Script() templates.
 
+> **CRITICAL: Templ Interpolation in JavaScript**
+> Go expressions `{ value }` do NOT work inside `<script>` tags or inline event handler strings.
+> - **Data attributes**: `data-id={ value }` + `this.dataset.id` in JS
+> - **templ.JSFuncCall**: `onclick={ templ.JSFuncCall("fn", value) }` for onclick handlers
+> - **Double braces**: `{{ value }}` (double braces) inside `<script>` tag strings
+>
+> If you see `%7B` or `%7D` in URLs, that's a literal `{` or `}` that wasn't interpolated.
+
 #### 22. templates/pages/home.templ
 
 Template constructs its own meta - handler doesn't pass it:
