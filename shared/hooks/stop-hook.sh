@@ -16,7 +16,7 @@ LIB_PATH="$SCRIPT_DIR/../lib/loop-state.sh"
 
 if [ ! -f "$LIB_PATH" ]; then
   # Library not found - allow exit to prevent broken state
-  echo '{"decision": "allow"}'
+  echo '{}'
   exit 0
 fi
 
@@ -27,7 +27,7 @@ STATE_FILES=$(find_active_loops)
 
 if [ -z "$STATE_FILES" ]; then
   # No active loop - allow normal exit
-  echo '{"decision": "allow"}'
+  echo '{}'
   exit 0
 fi
 
@@ -36,7 +36,7 @@ STATE_FILE=$(echo "$STATE_FILES" | head -1)
 
 # Verify state file exists and is readable
 if [ ! -f "$STATE_FILE" ] || [ ! -r "$STATE_FILE" ]; then
-  echo '{"decision": "allow"}'
+  echo '{}'
   exit 0
 fi
 
@@ -47,7 +47,7 @@ read_loop_state "$STATE_FILE"
 if ! [[ "$ITERATION" =~ ^[0-9]+$ ]]; then
   # Invalid state - cleanup and allow exit
   cleanup_loop "$STATE_FILE"
-  echo '{"decision": "allow"}'
+  echo '{}'
   exit 0
 fi
 
@@ -55,7 +55,7 @@ fi
 if [ -n "$MAX_ITERATIONS" ] && [[ "$MAX_ITERATIONS" =~ ^[0-9]+$ ]]; then
   if [ "$ITERATION" -ge "$MAX_ITERATIONS" ]; then
     cleanup_loop "$STATE_FILE"
-    echo '{"decision": "allow"}'
+    echo '{}'
     exit 0
   fi
 fi
@@ -64,7 +64,7 @@ fi
 if [ -n "$COMPLETION_PROMISE" ]; then
   if check_completion_promise "$COMPLETION_PROMISE"; then
     cleanup_loop "$STATE_FILE"
-    echo '{"decision": "allow"}'
+    echo '{}'
     exit 0
   fi
 fi
