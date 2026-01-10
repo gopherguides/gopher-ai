@@ -20,12 +20,19 @@ Or install via marketplace:
 | `/create-go-project <name>` | Scaffold a new Go web app from scratch |
 | `/convert-to-go-project` | Migrate Express/Django/Laravel/Next.js to Go |
 
+## Skills (Auto-Invoked)
+
+| Skill | Description |
+|-------|-------------|
+| `templui` | templUI best practices, templ interpolation patterns, Script() requirements |
+
 ## The Stack
 
 - **Go + Echo v4** - Web framework
 - **Templ** - Type-safe HTML templates
-- **HTMX** - Server-driven interactivity
-- **Alpine.js** - Client-side interactivity
+- **HTMX** - Server-driven interactivity (AJAX, partial updates)
+- **Alpine.js** - Client-side state and reactivity
+- **templUI** - UI components (uses vanilla JS via Script() templates)
 - **Tailwind CSS v4** - Styling with dark mode
 - **sqlc** - Type-safe SQL (no ORM)
 - **goose** - Database migrations
