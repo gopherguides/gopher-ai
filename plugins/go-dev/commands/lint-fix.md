@@ -34,6 +34,11 @@ Proceed with fixing all linting issues.
 
 Fix linting issues for specified path or options.
 
+## Loop Initialization
+
+Initialize persistent loop to ensure all fixable issues are resolved:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "lint-fix" "COMPLETE"`
+
 ## Configuration
 
 Parse arguments:
@@ -193,3 +198,26 @@ issues:
 - Run tests after fixing: `go test ./...`
 - Some fixes may change behavior (rare)
 - Use `--check` in CI, `--fix` locally
+
+---
+
+## Completion Criteria
+
+**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+
+1. All auto-fixable issues have been resolved
+2. `golangci-lint run` returns 0 errors (or only unfixable issues)
+3. Code still compiles (`go build ./...`)
+4. Tests still pass (`go test ./...`)
+
+**When ALL criteria are met, output exactly:**
+
+```
+<done>COMPLETE</done>
+```
+
+This signals the loop to exit. If you output this prematurely, linting issues may remain.
+
+---
+
+**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.

@@ -191,6 +191,11 @@ Railway or Fly.io are better choices since they support persistent volumes.
 
 ---
 
+## Loop Initialization
+
+Initialize persistent loop to ensure project creation completes fully:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "create-go-project-$ARGUMENTS" "COMPLETE"`
+
 ## Security Validation
 
 Before creating any files, validate the project name:
@@ -2606,3 +2611,28 @@ After project creation, display a summary to the user showing:
 **Deployment Section:**
 
 Display deployment instructions based on the platform the user selected earlier.
+
+---
+
+## Completion Criteria
+
+**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+
+1. All project files are created (go.mod, main.go, handlers, templates, etc.)
+2. Git repository is initialized with initial commit
+3. `go mod tidy` succeeds
+4. `npm install` succeeds
+5. `go build ./cmd/server` succeeds without errors
+6. Server starts successfully (health endpoint responds)
+
+**When ALL criteria are met, output exactly:**
+
+```
+<done>COMPLETE</done>
+```
+
+This signals the loop to exit. If you output this prematurely, the project will not be properly created.
+
+---
+
+**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.

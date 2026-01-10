@@ -34,6 +34,11 @@ Ask the user: "What file or function would you like me to generate tests for?"
 Generate comprehensive Go tests for the specified code. Follows idiomatic Go patterns including
 table-driven tests and includes edge cases, boundary conditions, and error scenarios.
 
+## Loop Initialization
+
+Initialize persistent loop to ensure tests are complete and passing:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "test-gen" "COMPLETE"`
+
 ## Configuration
 
 - **Target**: `$ARGUMENTS` (file path or function name)
@@ -200,3 +205,26 @@ table-driven tests and includes edge cases, boundary conditions, and error scena
 - Use testify/require for fatal assertions, assert for non-fatal
 - Name test cases descriptively: "empty_input_returns_error"
 - Keep test functions focused on one behavior
+
+---
+
+## Completion Criteria
+
+**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+
+1. Test file is generated with comprehensive test cases
+2. Test file compiles without errors
+3. `go test` runs and ALL tests PASS
+4. Coverage includes happy path, edge cases, and error scenarios
+
+**When ALL criteria are met, output exactly:**
+
+```
+<done>COMPLETE</done>
+```
+
+This signals the loop to exit. If you output this prematurely, the tests may be incomplete or failing.
+
+---
+
+**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.

@@ -39,6 +39,11 @@ Parse arguments:
 - **--fix**: Apply safe optimizations automatically
 - **--verbose**: Show all findings, not just issues
 
+## Loop Initialization
+
+Initialize persistent loop to ensure optimization analysis completes fully:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-optimize" "COMPLETE"`
+
 ## Step 1: Find CSS Files
 
 Locate Tailwind CSS files:
@@ -301,3 +306,26 @@ When `--fix` flag is present:
 - Gzipped size matters most for production
 - Use browser DevTools "Coverage" tab for runtime analysis
 - Consider code-splitting CSS for large applications
+
+---
+
+## Completion Criteria
+
+**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+
+1. Bundle size has been measured (dev and prod)
+2. Source coverage has been analyzed
+3. Optimization report has been generated
+4. If `--fix` flag provided: safe optimizations have been applied
+
+**When ALL criteria are met, output exactly:**
+
+```
+<done>COMPLETE</done>
+```
+
+This signals the loop to exit. If you output this prematurely, the optimization analysis may be incomplete.
+
+---
+
+**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.

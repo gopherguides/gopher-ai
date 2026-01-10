@@ -48,6 +48,11 @@ Parse arguments:
 - **--keep-config**: Keep old config file after migration (for reference)
 - **--backup**: Create backup files before modifying
 
+## Loop Initialization
+
+Initialize persistent loop to ensure migration completes fully:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-migrate" "COMPLETE"`
+
 ## Step 1: Find v3 Configuration
 
 Look for Tailwind v3 configuration files:
@@ -375,3 +380,27 @@ Check for errors. Common issues:
 - oklch colors may look slightly different than hex - verify visually
 - Some v3 plugins may not have v4 equivalents yet
 - Test thoroughly after migration, especially dark mode and responsive designs
+
+---
+
+## Completion Criteria
+
+**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+
+1. v3 config has been parsed and analyzed
+2. CSS file updated with `@import "tailwindcss"` and `@theme`
+3. package.json dependencies updated to v4
+4. `npm run css` or equivalent build succeeds without errors
+5. No `@tailwind` directives remain in CSS files
+
+**When ALL criteria are met, output exactly:**
+
+```
+<done>COMPLETE</done>
+```
+
+This signals the loop to exit. If you output this prematurely, the migration may be incomplete.
+
+---
+
+**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.

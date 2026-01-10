@@ -37,6 +37,11 @@ Ask the user: "What issue number would you like to work on?"
 First, validate input is numeric (prevent command injection):
 !if ! echo "$ARGUMENTS" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric"; exit 1; fi
 
+## Loop Initialization
+
+Initialize persistent loop to ensure work continues until complete:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ARGUMENTS" "COMPLETE"`
+
 ## Context
 
 - Issue details: !`gh issue view "$ARGUMENTS" --json title,state,body,labels,comments 2>/dev/null || echo "Issue not found"`
@@ -244,5 +249,28 @@ Run the full test suite, linting, and type checking.
 Commit, push, and create a PR referencing the issue.
 
 ---
+
+## Completion Criteria
+
+**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+
+1. Code changes are implemented and address the issue
+2. Tests are written and ALL PASS (`go test ./...` or equivalent)
+3. Linting passes (`golangci-lint run` or equivalent)
+4. Changes are committed with a proper commit message
+5. Changes are pushed to the remote branch
+6. PR is created and the PR URL is displayed
+
+**When ALL criteria are met, output exactly:**
+
+```
+<done>COMPLETE</done>
+```
+
+This signals the loop to exit. If you output this prematurely, the issue will not be properly resolved.
+
+---
+
+**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.
 
 Use extended thinking for complex analysis.

@@ -41,6 +41,11 @@ Proceed with initialization in the current directory.
 
 Initialize Tailwind CSS v4 in the specified path: `$ARGUMENTS`
 
+## Loop Initialization
+
+Initialize persistent loop to ensure Tailwind setup completes fully:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-init" "COMPLETE"`
+
 ## Step 1: Validate Environment
 
 Check that Node.js is installed:
@@ -290,3 +295,27 @@ Documentation: https://tailwindcss.com/docs
 - Use `@source` directive only if classes aren't being detected
 - The `@theme` directive replaces `tailwind.config.js`
 - oklch color format provides better color manipulation than hex/rgb
+
+---
+
+## Completion Criteria
+
+**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+
+1. Dependencies are installed (tailwindcss, @tailwindcss/cli or equivalent)
+2. CSS entry file is created with `@import "tailwindcss"`
+3. Build scripts are added to package.json
+4. `npm run css` succeeds without errors
+5. Output CSS is generated
+
+**When ALL criteria are met, output exactly:**
+
+```
+<done>COMPLETE</done>
+```
+
+This signals the loop to exit. If you output this prematurely, Tailwind may not be properly configured.
+
+---
+
+**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.

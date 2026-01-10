@@ -39,6 +39,11 @@ Parse arguments:
 - **--report**: Generate detailed markdown report
 - **--focus=<area>**: Focus on specific area (consistency, performance, practices, v4)
 
+## Loop Initialization
+
+Initialize persistent loop to ensure audit completes fully:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-audit" "COMPLETE"`
+
 ## Step 1: Discover Template Files
 
 Find all files that may contain Tailwind classes:
@@ -281,3 +286,26 @@ Files modified:
 - Use `mcp__tailwindcss__get_tailwind_utilities` to find equivalent utilities
 - Always review auto-fixes before committing
 - Run audit after major changes to catch regressions
+
+---
+
+## Completion Criteria
+
+**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+
+1. All template files have been scanned
+2. Audit report has been generated
+3. If `--fix` flag provided: auto-fixes have been applied
+4. Summary of findings has been displayed
+
+**When ALL criteria are met, output exactly:**
+
+```
+<done>COMPLETE</done>
+```
+
+This signals the loop to exit. If you output this prematurely, the audit may be incomplete.
+
+---
+
+**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.

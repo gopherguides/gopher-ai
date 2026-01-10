@@ -38,6 +38,11 @@ Proceed to analyze the current directory.
 
 Convert the project at `$ARGUMENTS` (or current directory if `.`) to the Go stack.
 
+## Loop Initialization
+
+Initialize persistent loop to ensure conversion completes fully:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "convert-to-go-project" "COMPLETE"`
+
 ## Step 1: Project Analysis
 
 Scan the target directory to detect existing technologies.
@@ -2799,3 +2804,29 @@ For projects with complex frontend logic, consider:
 
 Which approach fits your needs?
 ```
+
+---
+
+## Completion Criteria
+
+**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+
+1. Go project structure is created alongside existing files
+2. All migrations are created from existing schema
+3. Core handlers and templates are converted
+4. `go mod tidy` succeeds
+5. `go build ./cmd/server` succeeds without errors
+6. `go test ./...` passes
+7. Server starts and responds to requests
+
+**When ALL criteria are met, output exactly:**
+
+```
+<done>COMPLETE</done>
+```
+
+This signals the loop to exit. If you output this prematurely, the conversion will not be complete.
+
+---
+
+**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.
