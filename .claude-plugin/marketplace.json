@@ -6,56 +6,56 @@
   },
   "metadata": {
     "description": "Claude Code plugins for Go developers - by Gopher Guides",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "plugins": [
     {
       "name": "go-workflow",
       "source": "./plugins/go-workflow",
       "description": "Issue-to-PR workflow automation with worktree management",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "keywords": ["workflow", "github", "issues", "pr", "worktree"]
     },
     {
       "name": "go-dev",
       "source": "./plugins/go-dev",
       "description": "Go-specific development tools with best practices",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "keywords": ["go", "testing", "lint", "explain", "best-practices"]
     },
     {
       "name": "productivity",
       "source": "./plugins/productivity",
       "description": "Standup reports and git productivity helpers",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "keywords": ["standup", "changelog", "productivity", "reports", "weekly"]
     },
     {
       "name": "gopher-guides",
       "source": "./plugins/gopher-guides",
       "description": "Gopher Guides training materials integrated into Claude via MCP",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "keywords": ["go", "training", "best-practices", "gopher-guides", "mcp"]
     },
     {
       "name": "llm-tools",
       "source": "./plugins/llm-tools",
       "description": "Multi-LLM integration for second opinions and task delegation",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "keywords": ["llm", "openai", "codex", "gemini", "ollama", "multi-model", "second-opinion"]
     },
     {
       "name": "go-web",
       "source": "./plugins/go-web",
       "description": "Opinionated Go web app scaffolding with Templ + HTMX + Alpine.js + Tailwind",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "keywords": ["go", "web", "templ", "htmx", "alpine", "tailwind", "scaffold", "convert"]
     },
     {
       "name": "tailwind",
       "source": "./plugins/tailwind",
       "description": "Tailwind CSS v4 tools for initialization, auditing, migration, and optimization",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "keywords": ["tailwind", "css", "styling", "frontend", "v4", "migration", "audit"]
     }
   ]
