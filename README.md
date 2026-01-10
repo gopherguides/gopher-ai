@@ -267,6 +267,30 @@ alias claude='SHELL=/bin/bash claude'
 
 Contributions welcome! Please open an issue or PR.
 
+### Development Setup
+
+After cloning the repository:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+This installs a pre-commit hook that keeps shared files in sync across plugins.
+
+### Shared Infrastructure
+
+The `shared/` directory contains code used by multiple plugins (loop hooks, scripts, etc.). When you edit files in `shared/`:
+
+1. The pre-commit hook automatically syncs changes to all plugins
+2. CI will fail if files are out of sync
+
+Manual sync commands:
+
+```bash
+./scripts/sync-shared.sh       # Sync shared/ to plugins
+./scripts/check-shared-sync.sh # Verify sync is correct
+```
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
