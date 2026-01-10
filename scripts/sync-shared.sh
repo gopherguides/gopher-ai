@@ -1,6 +1,9 @@
 #!/bin/bash
 # Sync shared files to all plugins that use loop functionality
 # Run this after modifying anything in shared/
+#
+# Note: Only go-workflow has hooks (it owns persistent loop management).
+# Other plugins get scripts, lib, and commands for loop support.
 
 set -euo pipefail
 
@@ -12,6 +15,9 @@ PLUGINS_DIR="$ROOT_DIR/plugins"
 
 # Plugins that use the shared loop infrastructure
 LOOP_PLUGINS=("go-workflow" "go-web" "go-dev" "tailwind")
+
+# Only go-workflow has the stop hook (owns persistent loop management)
+HOOK_PLUGIN="go-workflow"
 
 echo "Syncing shared files to plugins..."
 
@@ -36,12 +42,8 @@ for plugin in "${LOOP_PLUGINS[@]}"; do
   fi
 
   # Create directories if they don't exist
-  mkdir -p "$PLUGIN_DIR/hooks"
   mkdir -p "$PLUGIN_DIR/scripts"
   mkdir -p "$PLUGIN_DIR/lib"
-
-  # Copy hooks
-  cp "$SHARED_DIR/hooks/"* "$PLUGIN_DIR/hooks/"
 
   # Copy scripts
   cp "$SHARED_DIR/scripts/"* "$PLUGIN_DIR/scripts/"
@@ -53,16 +55,24 @@ for plugin in "${LOOP_PLUGINS[@]}"; do
   cp "$SHARED_DIR/commands/cancel-loop.md" "$PLUGIN_DIR/commands/cancel-loop.md"
 
   # Ensure scripts are executable
-  chmod +x "$PLUGIN_DIR/hooks/"*.sh 2>/dev/null || true
   chmod +x "$PLUGIN_DIR/scripts/"*.sh 2>/dev/null || true
   chmod +x "$PLUGIN_DIR/lib/"*.sh 2>/dev/null || true
+
+  # Only sync hooks to go-workflow
+  if [ "$plugin" = "$HOOK_PLUGIN" ]; then
+    mkdir -p "$PLUGIN_DIR/hooks"
+    cp "$SHARED_DIR/hooks/"* "$PLUGIN_DIR/hooks/"
+    chmod +x "$PLUGIN_DIR/hooks/"*.sh 2>/dev/null || true
+  fi
 done
 
 echo "Sync complete!"
 echo ""
-echo "Files synced from shared/ to plugins:"
-echo "  - hooks/stop-hook.sh"
+echo "Files synced from shared/ to all loop plugins:"
 echo "  - scripts/setup-loop.sh"
 echo "  - scripts/cleanup-loop.sh"
 echo "  - lib/loop-state.sh"
 echo "  - commands/cancel-loop.md"
+echo ""
+echo "Files synced only to go-workflow:"
+echo "  - hooks/stop-hook.sh (owns persistent loop management)"

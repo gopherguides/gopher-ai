@@ -1,6 +1,9 @@
 #!/bin/bash
 # Check that shared files are in sync with all plugins
 # Used by CI to verify sync was run before commit
+#
+# Note: Only go-workflow has hooks (it owns persistent loop management).
+# Other plugins get scripts, lib, and commands for loop support.
 
 set -euo pipefail
 
@@ -13,13 +16,20 @@ PLUGINS_DIR="$ROOT_DIR/plugins"
 # Plugins that use the shared loop infrastructure
 LOOP_PLUGINS=("go-workflow" "go-web" "go-dev" "tailwind")
 
-# Files to check
-SHARED_FILES=(
-  "hooks/stop-hook.sh"
+# Only go-workflow has the stop hook
+HOOK_PLUGIN="go-workflow"
+
+# Files synced to all plugins
+COMMON_FILES=(
   "scripts/setup-loop.sh"
   "scripts/cleanup-loop.sh"
   "lib/loop-state.sh"
   "commands/cancel-loop.md"
+)
+
+# Files only synced to go-workflow
+HOOK_FILES=(
+  "hooks/stop-hook.sh"
 )
 
 OUT_OF_SYNC=0
@@ -34,19 +44,13 @@ for plugin in "${LOOP_PLUGINS[@]}"; do
     continue
   fi
 
-  for file in "${SHARED_FILES[@]}"; do
+  # Check common files for all plugins
+  for file in "${COMMON_FILES[@]}"; do
     SHARED_FILE="$SHARED_DIR/$file"
-
-    # Handle commands/cancel-loop.md which goes directly to commands/
-    if [[ "$file" == "commands/"* ]]; then
-      PLUGIN_FILE="$PLUGIN_DIR/$file"
-    else
-      PLUGIN_FILE="$PLUGIN_DIR/$file"
-    fi
+    PLUGIN_FILE="$PLUGIN_DIR/$file"
 
     # Check if plugin file exists
     if [ ! -f "$PLUGIN_FILE" ]; then
-      # Check if it's a symlink (legacy)
       if [ -L "$PLUGIN_FILE" ] || [ -L "$(dirname "$PLUGIN_FILE")" ]; then
         echo "ERROR: $plugin/$file is a symlink, should be a copy"
         OUT_OF_SYNC=1
@@ -70,6 +74,31 @@ for plugin in "${LOOP_PLUGINS[@]}"; do
       OUT_OF_SYNC=1
     fi
   done
+
+  # Check hook files only for go-workflow
+  if [ "$plugin" = "$HOOK_PLUGIN" ]; then
+    for file in "${HOOK_FILES[@]}"; do
+      SHARED_FILE="$SHARED_DIR/$file"
+      PLUGIN_FILE="$PLUGIN_DIR/$file"
+
+      if [ ! -f "$PLUGIN_FILE" ]; then
+        echo "ERROR: $plugin/$file is missing"
+        OUT_OF_SYNC=1
+        continue
+      fi
+
+      if [ -L "$PLUGIN_FILE" ]; then
+        echo "ERROR: $plugin/$file is a symlink, should be a copy"
+        OUT_OF_SYNC=1
+        continue
+      fi
+
+      if ! diff -q "$SHARED_FILE" "$PLUGIN_FILE" > /dev/null 2>&1; then
+        echo "ERROR: $plugin/$file differs from shared/$file"
+        OUT_OF_SYNC=1
+      fi
+    done
+  fi
 done
 
 if [ $OUT_OF_SYNC -eq 1 ]; then

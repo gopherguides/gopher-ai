@@ -67,12 +67,14 @@ This enables automatic syncing of shared files on commit.
 ### Shared Infrastructure
 
 The `shared/` directory contains code used by multiple plugins:
-- `hooks/stop-hook.sh` - Persistent loop hook
+- `hooks/stop-hook.sh` - Persistent loop hook (**only syncs to go-workflow**)
 - `scripts/setup-loop.sh`, `cleanup-loop.sh` - Loop management
 - `lib/loop-state.sh` - Loop state functions
 - `commands/cancel-loop.md` - Cancel loop command
 
-**When editing `shared/`**: The pre-commit hook automatically syncs changes to all plugins. If you need to sync manually:
+**Hook ownership**: Only `go-workflow` has the stop hook registered. It owns persistent loop management for all `/start-issue` style commands.
+
+**When editing `shared/`**: The pre-commit hook automatically syncs changes to plugins. If you need to sync manually:
 
 ```bash
 ./scripts/sync-shared.sh      # Sync shared/ to plugins
