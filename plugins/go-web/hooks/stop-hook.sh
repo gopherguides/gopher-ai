@@ -3,12 +3,21 @@
 # This hook intercepts session exit and re-feeds the prompt until completion criteria are met.
 #
 # How it works:
-# 1. Check for any active loop state files (.claude/*.loop.local.md)
-# 2. If no active loop, allow normal exit
-# 3. If loop active, check for completion (max iterations or completion promise)
-# 4. If not complete, block exit and re-feed the prompt
+# 1. Read hook input from stdin to get transcript path
+# 2. Check for any active loop state files (.claude/*.loop.local.md)
+# 3. If no active loop, allow normal exit
+# 4. If loop active, check for completion (max iterations or completion promise in transcript)
+# 5. If not complete, block exit and re-feed the prompt
+#
+# Requires: jq
 
 set -euo pipefail
+
+# Read hook input from stdin
+HOOK_INPUT=$(cat)
+
+# Extract transcript path from hook input
+TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 
 # Source shared library for state management
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -60,12 +69,25 @@ if [ -n "$MAX_ITERATIONS" ] && [[ "$MAX_ITERATIONS" =~ ^[0-9]+$ ]]; then
   fi
 fi
 
-# Check for completion promise in transcript
-if [ -n "$COMPLETION_PROMISE" ]; then
-  if check_completion_promise "$COMPLETION_PROMISE"; then
-    cleanup_loop "$STATE_FILE"
-    echo '{}'
-    exit 0
+# Check for completion promise in transcript using proper JSON parsing
+if [ -n "$COMPLETION_PROMISE" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  # Get the last assistant message from the transcript
+  LAST_ASSISTANT=$(grep '"role":"assistant"' "$TRANSCRIPT_PATH" 2>/dev/null | tail -1 || true)
+
+  if [ -n "$LAST_ASSISTANT" ]; then
+    # Extract text content from the message using jq
+    MESSAGE_TEXT=$(echo "$LAST_ASSISTANT" | jq -r '
+      .message.content[]? |
+      select(.type == "text") |
+      .text // empty
+    ' 2>/dev/null | tr '\n' ' ' || true)
+
+    # Check if the completion promise (wrapped in <done>...</done>) appears in the text
+    if echo "$MESSAGE_TEXT" | grep -q "<done>$COMPLETION_PROMISE</done>"; then
+      cleanup_loop "$STATE_FILE"
+      echo '{}'
+      exit 0
+    fi
   fi
 fi
 
