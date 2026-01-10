@@ -9,7 +9,13 @@
   "homepage": "https://gopherguides.com",
   "repository": "https://github.com/gopherguides/gopher-ai",
   "license": "MIT",
-  "keywords": ["go", "testing", "lint", "explain", "best-practices"],
+  "keywords": [
+    "go",
+    "testing",
+    "lint",
+    "explain",
+    "best-practices"
+  ],
   "hooks": {
     "Stop": [
       {

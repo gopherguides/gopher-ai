@@ -9,7 +9,13 @@
   "homepage": "https://gopherguides.com",
   "repository": "https://github.com/gopherguides/gopher-ai",
   "license": "MIT",
-  "keywords": ["workflow", "github", "issues", "pr", "worktree"],
+  "keywords": [
+    "workflow",
+    "github",
+    "issues",
+    "pr",
+    "worktree"
+  ],
   "hooks": {
     "Stop": [
       {
