@@ -1,0 +1,16 @@
+name: Check Shared Sync
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check shared files are in sync
+        run: ./scripts/check-shared-sync.sh
