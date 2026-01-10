@@ -38,13 +38,19 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    - Apply bump type to get new version (e.g., 1.1.0 → 1.2.0 for minor)
 
 3. **Update Versions**
-   - Update ALL version fields in `.claude-plugin/marketplace.json` using jq:
+   - Update ALL version fields in `.claude-plugin/marketplace.json`:
    ```bash
    jq --arg v "NEW_VERSION" '
      .metadata.version = $v |
      .plugins[].version = $v
    ' .claude-plugin/marketplace.json > /tmp/marketplace.json.tmp && \
    mv /tmp/marketplace.json.tmp .claude-plugin/marketplace.json
+   ```
+   - **IMPORTANT**: Also update each individual `plugin.json` (Claude Code uses these for cache paths):
+   ```bash
+   for pjson in plugins/*/.claude-plugin/plugin.json; do
+     jq --arg v "NEW_VERSION" '.version = $v' "$pjson" > /tmp/pj.tmp && mv /tmp/pj.tmp "$pjson"
+   done
    ```
 
 4. **Generate Changelog Summary**
@@ -54,7 +60,7 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
 
 5. **Commit and Tag**
    ```bash
-   git add .claude-plugin/marketplace.json
+   git add .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json
    git commit -m "chore: release vX.Y.Z"
    git tag -a vX.Y.Z -m "Release vX.Y.Z"
    ```
