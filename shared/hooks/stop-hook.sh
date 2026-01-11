@@ -25,7 +25,6 @@ LIB_PATH="$SCRIPT_DIR/../lib/loop-state.sh"
 
 if [ ! -f "$LIB_PATH" ]; then
   # Library not found - allow exit to prevent broken state
-  echo '{}'
   exit 0
 fi
 
@@ -36,7 +35,6 @@ STATE_FILES=$(find_active_loops)
 
 if [ -z "$STATE_FILES" ]; then
   # No active loop - allow normal exit
-  echo '{}'
   exit 0
 fi
 
@@ -45,7 +43,6 @@ STATE_FILE=$(echo "$STATE_FILES" | head -1)
 
 # Verify state file exists and is readable
 if [ ! -f "$STATE_FILE" ] || [ ! -r "$STATE_FILE" ]; then
-  echo '{}'
   exit 0
 fi
 
@@ -56,7 +53,6 @@ read_loop_state "$STATE_FILE"
 if ! [[ "$ITERATION" =~ ^[0-9]+$ ]]; then
   # Invalid state - cleanup and allow exit
   cleanup_loop "$STATE_FILE"
-  echo '{}'
   exit 0
 fi
 
@@ -64,7 +60,6 @@ fi
 if [ -n "$MAX_ITERATIONS" ] && [[ "$MAX_ITERATIONS" =~ ^[0-9]+$ ]]; then
   if [ "$ITERATION" -ge "$MAX_ITERATIONS" ]; then
     cleanup_loop "$STATE_FILE"
-    echo '{}'
     exit 0
   fi
 fi
@@ -85,7 +80,6 @@ if [ -n "$COMPLETION_PROMISE" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIP
     # Check if the completion promise (wrapped in <done>...</done>) appears in the text
     if echo "$MESSAGE_TEXT" | grep -q "<done>$COMPLETION_PROMISE</done>"; then
       cleanup_loop "$STATE_FILE"
-      echo '{}'
       exit 0
     fi
   fi
