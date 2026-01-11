@@ -99,11 +99,23 @@ Ask the user if they want to work in an isolated worktree:
    done
    ```
 
-5. **Check for environment files** and ask user before copying:
+5. **CRITICAL: Copy loop state files to worktree**
+   This ensures the persistent loop continues working in the worktree:
+   ```bash
+   # Copy loop state files - REQUIRED for persistent loop to work
+   for loopfile in "$SOURCE_DIR"/.claude/*.loop.local.md; do
+     if [ -f "$loopfile" ]; then
+       cp "$loopfile" "$WORKTREE_PATH/.claude/"
+       echo "Copied loop state: $(basename "$loopfile")"
+     fi
+   done
+   ```
+
+6. **Check for environment files** and ask user before copying:
    - If `.env` or `.envrc` exist, ask: "Found environment files. Copy them? (They may contain secrets)"
    - If user confirms, copy them
 
-6. **Inform user**: "Created worktree at $WORKTREE_PATH. Continuing with issue workflow..."
+7. **Inform user**: "Created worktree at $WORKTREE_PATH. Continuing with issue workflow..."
 
 **Note:** When using a worktree, the branch is already created as `issue-<num>-<title>`. Skip the "Create Branch" step in the workflows below.
 
