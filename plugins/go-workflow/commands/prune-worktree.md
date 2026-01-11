@@ -37,6 +37,10 @@ This command safely removes worktrees for completed GitHub issues.
 
 **CRITICAL: When executing bash commands below, use backticks (\`) for command substitution, NOT $(). Claude Code has a bug that mangles $() syntax into broken commands.**
 
+**CRITICAL: Before removing any worktree, first cd to the main repository directory.** This prevents CWD invalidation errors if running from a worktree that will be removed:
+
+!cd `git worktree list | head -1 | awk '{print $1}'`
+
 First, get the repository name:
 
 !REPO_NAME=`basename \`git rev-parse --show-toplevel\``
@@ -58,6 +62,7 @@ For each worktree matching the `{REPO_NAME}-issue-*` pattern:
 
 ## Safety Features
 
+- **Changes to main repo before removing worktrees** (prevents CWD errors if running from a worktree being removed)
 - Only processes worktrees following issue naming convention
 - Verifies GitHub issue exists and is closed
 - Confirms branch is merged into dev branch
