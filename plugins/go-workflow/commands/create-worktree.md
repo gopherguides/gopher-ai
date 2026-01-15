@@ -88,30 +88,38 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 10. **Switch to new worktree and create feature branch**
     !cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
 
-11. **Copy LLM config directories to new worktree** (using -P to prevent symlink attacks)
-    !for dir in .claude .codex .gemini .cursor; do if [ -d "$SOURCE_DIR/$dir" ] && [ ! -L "$SOURCE_DIR/$dir" ]; then cp -rP "$SOURCE_DIR/$dir" "$WORKTREE_PATH/" && echo "Copied $dir"; fi; done
+11. **Symlink LLM config directories to new worktree** (shared for plans/memory/settings)
+    !for dir in .claude .codex .gemini .cursor; do if [ -d "$SOURCE_DIR/$dir" ]; then ln -s "$SOURCE_DIR/$dir" "$WORKTREE_PATH/$dir" && echo "Symlinked $dir -> $SOURCE_DIR/$dir"; fi; done
 
-12. **Check for environment files**
-    !ENV_FILES=""
-    !if [ -f "$SOURCE_DIR/.env" ]; then ENV_FILES="$ENV_FILES .env"; fi
-    !if [ -f "$SOURCE_DIR/.envrc" ]; then ENV_FILES="$ENV_FILES .envrc"; fi
-    !echo "ENV_FILES=$ENV_FILES"
+12. **Search for environment files** (recursive, excludes node_modules/.git/vendor)
+    !ENV_FILES=`find "$SOURCE_DIR" \( -name "node_modules" -o -name ".git" -o -name "vendor" \) -prune -o \( -name ".env" -o -name ".env.local" -o -name ".envrc" \) -type f -print 2>/dev/null | sed "s|^$SOURCE_DIR/||" | grep -v "^-" | sort`
+    !if [ -n "$ENV_FILES" ]; then echo "Found env files:"; echo "$ENV_FILES"; fi
 
     **If environment files were found**, use AskUserQuestion to ask:
-    "Found environment files ($ENV_FILES). Copy them to the new worktree? (These may contain secrets)"
+    "Found environment files (may contain secrets). Copy them to the new worktree?"
     - Options: "Yes, copy them" / "No, skip"
 
-    If user confirms, copy the files (using -P to prevent symlink attacks):
-    !for file in $ENV_FILES; do if [ -f "$SOURCE_DIR/$file" ] && [ ! -L "$SOURCE_DIR/$file" ]; then cp -P "$SOURCE_DIR/$file" "$WORKTREE_PATH/" && echo "Copied $file"; fi; done
+    If user confirms, copy the files preserving directory structure:
+    !echo "$ENV_FILES" | while read file; do if [ -n "$file" ]; then dir=`dirname "$file"`; if [ "$dir" != "." ]; then mkdir -p "$WORKTREE_PATH/$dir"; fi; cp -P "$SOURCE_DIR/$file" "$WORKTREE_PATH/$file" && echo "Copied $file"; fi; done
 
 13. **Display success message**
     !echo "Created worktree for issue #$ARGUMENTS"
     !echo "Path: $WORKTREE_PATH"
     !echo "Branch: $BRANCH_NAME"
-    !echo "To switch: cd $WORKTREE_PATH"
+
+14. **CRITICAL: Change working directory to worktree**
+
+    Your session started in `$SOURCE_DIR`. **ALL subsequent work MUST happen in `$WORKTREE_PATH`.**
+
+    Run this now to change and verify directory:
+    !cd "$WORKTREE_PATH" && pwd
+
+    **For every Bash command after this**, prefix with `cd "$WORKTREE_PATH" &&` to ensure you're working in the worktree.
+
+    **WARNING:** If you edit files or run commands without changing to the worktree first, you will modify the wrong codebase.
 
 ## Next Steps
 
-- Change to the new worktree directory: `cd $WORKTREE_PATH`
+- You are now in the worktree directory: `$WORKTREE_PATH`
 - Start working on issue #$ARGUMENTS
 - When done, use `/prune-worktree` to clean up or `/remove-worktree` to remove a specific worktree

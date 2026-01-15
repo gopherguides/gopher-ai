@@ -90,32 +90,57 @@ Ask the user if they want to work in an isolated worktree:
    cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
    ```
 
-4. **Copy LLM config directories** (using -rP to prevent symlink attacks)
+4. **Symlink LLM config directories** (shared across worktrees for plans/memory/settings)
    ```bash
    for dir in .claude .codex .gemini .cursor; do
-     if [ -d "$SOURCE_DIR/$dir" ] && [ ! -L "$SOURCE_DIR/$dir" ]; then
-       cp -rP "$SOURCE_DIR/$dir" "$WORKTREE_PATH/"
+     if [ -d "$SOURCE_DIR/$dir" ]; then
+       ln -s "$SOURCE_DIR/$dir" "$WORKTREE_PATH/$dir"
+       echo "Symlinked $dir -> $SOURCE_DIR/$dir"
      fi
    done
    ```
 
-5. **CRITICAL: Copy loop state files to worktree**
-   This ensures the persistent loop continues working in the worktree:
+5. **Search for environment files** (recursive, excludes node_modules/.git/vendor)
    ```bash
-   # Copy loop state files - REQUIRED for persistent loop to work
-   for loopfile in "$SOURCE_DIR"/.claude/*.loop.local.md; do
-     if [ -f "$loopfile" ]; then
-       cp "$loopfile" "$WORKTREE_PATH/.claude/"
-       echo "Copied loop state: $(basename "$loopfile")"
+   ENV_FILES=`find "$SOURCE_DIR" \( -name "node_modules" -o -name ".git" -o -name "vendor" \) -prune -o \
+     \( -name ".env" -o -name ".env.local" -o -name ".envrc" \) -type f -print 2>/dev/null | \
+     sed "s|^$SOURCE_DIR/||" | grep -v "^-" | sort`
+   if [ -n "$ENV_FILES" ]; then
+     echo "Found env files:"
+     echo "$ENV_FILES"
+   fi
+   ```
+
+   **If environment files found**, list them and ask user: "Found environment files (may contain secrets). Copy them to worktree?"
+
+   If confirmed, copy preserving directory structure:
+   ```bash
+   echo "$ENV_FILES" | while read file; do
+     if [ -n "$file" ]; then
+       dir=`dirname "$file"`
+       if [ "$dir" != "." ]; then
+         mkdir -p "$WORKTREE_PATH/$dir"
+       fi
+       cp -P "$SOURCE_DIR/$file" "$WORKTREE_PATH/$file"
+       echo "Copied $file"
      fi
    done
    ```
 
-6. **Check for environment files** and ask user before copying:
-   - If `.env` or `.envrc` exist, ask: "Found environment files. Copy them? (They may contain secrets)"
-   - If user confirms, copy them
+6. **Inform user**: "Created worktree at $WORKTREE_PATH. Continuing with issue workflow..."
 
-7. **Inform user**: "Created worktree at $WORKTREE_PATH. Continuing with issue workflow..."
+7. **CRITICAL: Change working directory to worktree**
+
+   Your session started in `$SOURCE_DIR`. **ALL subsequent work MUST happen in `$WORKTREE_PATH`.**
+
+   Run this now to change and verify directory:
+   ```bash
+   cd "$WORKTREE_PATH" && pwd
+   ```
+
+   **For every Bash command in this session**, prefix with `cd "$WORKTREE_PATH" &&` to ensure you're working in the worktree.
+
+   **WARNING:** If you edit files or run commands without changing to the worktree first, you will modify the wrong codebase.
 
 **Note:** When using a worktree, the branch is already created as `issue-<num>-<title>`. Skip the "Create Branch" step in the workflows below.
 
