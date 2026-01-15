@@ -69,6 +69,103 @@ Default: `Changes vs branch`
 
 **If "Specific commit":** Ask for the commit SHA.
 
+### R1.5. PR/Issue Context Detection
+
+Before selecting a model, detect if PR/issue context is available for the current branch.
+
+#### Step 1: Auto-detect PR
+
+Run silently to check for a PR on the current branch:
+
+```bash
+PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+```
+
+#### Step 2: Handle PR Detection Result
+
+**If PR found (`$PR_JSON` is not empty):**
+
+Extract and display PR summary:
+
+```
+Found PR for current branch:
+
+**PR #<number>**: "<title>"
+- State: <state>
+- Comments: <count>
+- Reviews: <count>
+```
+
+Check for linked issues using `closingIssuesReferences`. For each linked issue, fetch details:
+
+```bash
+REPO=`gh repo view --json nameWithOwner --jq '.nameWithOwner'`
+PR_NUM=`echo "$PR_JSON" | jq -r '.number'`
+
+# Get linked issue numbers
+ISSUE_NUMS=`echo "$PR_JSON" | jq -r '.closingIssuesReferences[].number' 2>/dev/null`
+
+# Fetch each linked issue
+for NUM in $ISSUE_NUMS; do
+  gh issue view "$NUM" --json number,title,body,labels,comments
+done
+
+# Fetch inline review comments
+gh api "repos/$REPO/pulls/$PR_NUM/comments" --jq '.[] | {path, line, body, user: .user.login}' 2>/dev/null
+```
+
+Display linked issues if found:
+
+```
+**Linked Issues:**
+- Issue #<num>: "<title>" (<labels>)
+```
+
+**If PR NOT found:**
+
+Ask the user:
+
+| Option | Description |
+|--------|-------------|
+| Skip context | Review code changes only (default) |
+| Provide PR number | Manually enter a PR number to use as context |
+| Provide issue number | Manually enter an issue number to use as context |
+
+Default: `Skip context`
+
+**If "Provide PR number":**
+- Ask: "Enter the PR number:"
+- Validate input is numeric: `echo "$NUM" | grep -qE '^[0-9]+$'`
+- If invalid, show error and ask again
+- Fetch PR: `gh pr view "$NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews`
+- Continue to fetch linked issues as above
+
+**If "Provide issue number":**
+- Ask: "Enter the issue number:"
+- Validate input is numeric
+- Fetch issue: `gh issue view "$NUM" --json number,title,body,labels,comments`
+- Skip PR-specific data (no reviews to fetch)
+
+#### Step 3: Context Inclusion Prompt
+
+**If PR or issue was found/provided:**
+
+Ask the user:
+
+| Option | Description |
+|--------|-------------|
+| Full context | Include PR/issue descriptions, all comments, and review feedback (recommended) |
+| Summary only | Include titles and key requirements only (~200 words) |
+| No context | Proceed with code changes only |
+
+Default: `Full context`
+
+Store the selection for use in R3.
+
+**If neither PR nor issue found and user chose "Skip context":**
+
+Proceed directly to R2 with no context.
+
 ### R2. Select Model
 
 Ask the user which model to use:
@@ -84,7 +181,11 @@ Default: `gpt-5.2-codex`
 
 ### R3. Run Codex Review
 
-Assemble and execute the command based on what to review:
+Assemble and execute the command based on what to review and context settings.
+
+#### If NO PR/Issue Context Selected
+
+Use standard codex review commands (existing behavior):
 
 **For uncommitted changes:**
 
@@ -104,16 +205,137 @@ codex review --base <branch> -c model=<model>
 codex review --commit <sha> -c model=<model>
 ```
 
-**Note:** The `--base`, `--uncommitted`, and `--commit` flags cannot be combined with a custom prompt.
-For custom review instructions, use `codex` interactively or pipe instructions via stdin.
+#### If PR/Issue Context IS Included
+
+Since `--base`, `--uncommitted`, and `--commit` flags cannot be combined with custom prompts, pipe the context and diff together via stdin using `codex exec`.
+
+**Step 1: Generate the diff**
+
+Based on review type from R1:
+
+- **Uncommitted:** `git diff HEAD && git diff --cached && git ls-files --others --exclude-standard`
+- **Changes vs branch:** `git diff <branch>...HEAD`
+- **Specific commit:** `git show <sha>`
+
+**Step 2: Build context block**
+
+**Full context format:**
+
+```text
+## PR/Issue Context
+
+### PR #<number>: <title>
+**State:** <state>
+**Description:**
+<PR body>
+
+### Linked Issues
+
+#### Issue #<number>: <title>
+**Labels:** <labels>
+**Description:**
+<issue body>
+
+**Issue Comments:**
+- @<user>: <comment body>
+
+### PR Comments
+- @<user>: <comment body>
+
+### PR Inline Review Comments
+- **<file>:<line>** (@<user>): <comment body>
+
+---
+
+## Code Changes
+
+\`\`\`diff
+<diff output>
+\`\`\`
+
+---
+
+## Review Instructions
+
+Review the code changes above against the original requirements from the PR description and linked issues.
+
+Specifically:
+1. Verify the implementation addresses the stated requirements
+2. Check that PR review comments have been addressed
+3. Identify any requirements from the issue that may be missing
+4. Flag any code that contradicts the original intent
+5. Suggest improvements aligned with the stated goals
+```
+
+**Summary only format:**
+
+```text
+## PR/Issue Context (Summary)
+
+**PR #<number>:** <title>
+**Key Requirements:** <first 300 chars of PR body>
+
+**Linked Issues:**
+- #<num>: <title> - <first 150 chars of body>
+
+**Review Feedback to Address:**
+- <summarized key points from review comments>
+
+---
+
+## Code Changes
+
+\`\`\`diff
+<diff output>
+\`\`\`
+
+---
+
+Review these changes against the requirements above. Ensure the implementation fulfills the original intent.
+```
+
+**Step 3: Execute via stdin**
+
+```bash
+codex exec -m <model> -s read-only --skip-git-repo-check - <<'EOF'
+<constructed context block with diff>
+EOF
+```
+
+**Note:** Review mode defaults to `read-only` sandbox since code review should not modify files.
 
 ### R4. Report Results
 
 After execution completes:
 
 - Show the review output to the user
-- Ask if they want to run a follow-up review or switch to exec mode
-- For follow-ups, use: `codex resume --last`
+
+**If PR/issue context was included:**
+
+Ask what to do next:
+
+| Option | Description |
+|--------|-------------|
+| Follow-up | Run `codex resume --last` for additional questions |
+| Address feedback | Switch to exec mode to implement suggested changes |
+| Post to PR | Add review findings as a PR comment via `gh pr comment` |
+| Done | Exit the review |
+
+Default: `Done`
+
+**If "Post to PR":**
+
+Format the key findings as a markdown comment and post:
+
+```bash
+gh pr comment <pr_number> --body "<formatted review findings>"
+```
+
+**If no context was included:**
+
+Ask if they want to run a follow-up review or switch to exec mode.
+
+For follow-ups, use: `codex resume --last`
 
 ---
 
