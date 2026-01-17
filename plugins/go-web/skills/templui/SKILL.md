@@ -1,4 +1,5 @@
 ---
+name: templui
 description: |
   WHEN: User is building Go/Templ web apps, using templUI components, converting sites to Templ,
   or asking about templ syntax, Script() templates, HTMX/Alpine integration, or JavaScript in templ

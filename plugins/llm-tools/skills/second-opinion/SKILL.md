@@ -1,4 +1,5 @@
 ---
+name: second-opinion
 description: |
   WHEN: User faces complex architectural decisions, asks for "another perspective" or "second opinion",
   multiple valid approaches exist, reviewing critical/security-sensitive code, design trade-offs,

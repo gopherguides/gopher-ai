@@ -188,7 +188,7 @@ Tailwind CSS v4 tools for initialization, auditing, migration, and optimization.
 
 ## Installation Options
 
-### Install All Plugins
+### Claude Code (Recommended)
 
 ```bash
 /plugin marketplace add gopherguides/gopher-ai
@@ -199,6 +199,34 @@ Tailwind CSS v4 tools for initialization, auditing, migration, and optimization.
 /plugin install llm-tools@gopher-ai
 /plugin install go-web@gopher-ai
 /plugin install tailwind@gopher-ai
+```
+
+### OpenAI Codex CLI
+
+Skills from gopher-ai are compatible with OpenAI Codex CLI.
+
+**Via Skills Installer:**
+```bash
+codex> $skill-installer gopherguides/gopher-ai
+```
+
+**Manual Installation:**
+```bash
+git clone https://github.com/gopherguides/gopher-ai
+cd gopher-ai
+./scripts/build-universal.sh
+cp -r dist/codex/skills/* ~/.codex/skills/
+```
+
+### Google Gemini CLI
+
+Extensions are available for Google Gemini CLI.
+
+```bash
+git clone https://github.com/gopherguides/gopher-ai
+cd gopher-ai
+./scripts/build-universal.sh
+gemini extensions install ./dist/gemini/gopher-ai-go-dev
 ```
 
 ### Install Specific Plugins Only

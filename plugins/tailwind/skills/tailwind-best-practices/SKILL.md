@@ -1,4 +1,5 @@
 ---
+name: tailwind-best-practices
 description: |
   WHEN: User is writing HTML/templates with Tailwind CSS classes, styling components,
   configuring Tailwind themes, asking about Tailwind utilities or patterns, or working

@@ -1,4 +1,5 @@
 ---
+name: gopher-guides
 description: |
   WHEN: User asks about Go best practices, idiomatic patterns, or how to properly implement
   something in Go. Also when reviewing Go code or asking "what's the right way to..."

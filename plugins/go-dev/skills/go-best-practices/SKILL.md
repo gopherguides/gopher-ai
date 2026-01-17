@@ -1,4 +1,5 @@
 ---
+name: go-best-practices
 description: |
   WHEN: User is writing Go code, asking about Go patterns, reviewing Go code, or asking
   questions like "what's the best way to..." in Go projects

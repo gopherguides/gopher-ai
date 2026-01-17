@@ -1,2 +1,5 @@
 # Override global gitignore for this repo
 !CLAUDE.md
+
+# Build artifacts
+dist/

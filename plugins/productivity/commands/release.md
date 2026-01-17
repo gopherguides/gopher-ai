@@ -139,9 +139,21 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    - Skip the release commit itself (`chore: release`)
    - Omit empty sections
 
-8. **Report Success**
+8. **Build Universal Distribution**
+   ```bash
+   ./scripts/build-universal.sh
+   ```
+
+   Upload platform-specific archives as release assets:
+   ```bash
+   gh release upload vX.Y.Z dist/gopher-ai-codex-skills-vX.Y.Z.tar.gz
+   gh release upload vX.Y.Z dist/gopher-ai-gemini-extensions-vX.Y.Z.tar.gz
+   ```
+
+9. **Report Success**
    - Display the release URL
    - Show which changelog strategy was used
+   - List uploaded assets (Codex skills, Gemini extensions)
    - Remind user to run `./scripts/refresh-plugins.sh` to update local cache
 
 ### Safety Checks
