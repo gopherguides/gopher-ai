@@ -33,11 +33,39 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    - Ensure we're on the main branch
    - Ensure no uncommitted changes
 
-2. **Calculate New Version**
+2. **Detect Changelog Strategy**
+
+   Automatically detect whether the project uses PR-based or direct-commit workflow:
+
+   ```bash
+   # Get last tag (or first commit if no tags)
+   LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+
+   # Count total commits since last tag
+   TOTAL_COMMITS=$(git log ${LAST_TAG}..HEAD --oneline | wc -l | tr -d ' ')
+
+   # Count commits with PR references like (#123)
+   PR_COMMITS=$(git log ${LAST_TAG}..HEAD --oneline | grep -E '\(#[0-9]+\)' | wc -l | tr -d ' ')
+
+   # Calculate percentage (avoid division by zero)
+   if [ "$TOTAL_COMMITS" -gt 0 ]; then
+     PR_PERCENTAGE=$((PR_COMMITS * 100 / TOTAL_COMMITS))
+   else
+     PR_PERCENTAGE=0
+   fi
+   ```
+
+   **Decision logic:**
+   - If **≥50% of commits** reference PRs → Use **PR-based** (`--generate-notes`)
+   - Otherwise → Use **conventional commits** (parse commit messages)
+
+   Report which strategy was detected to the user.
+
+3. **Calculate New Version**
    - Parse current version from `.claude-plugin/marketplace.json`
    - Apply bump type to get new version (e.g., 1.1.0 → 1.2.0 for minor)
 
-3. **Update Versions**
+4. **Update Versions**
    - Update ALL version fields in `.claude-plugin/marketplace.json`:
    ```bash
    jq --arg v "NEW_VERSION" '
@@ -53,33 +81,6 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    done
    ```
 
-4. **Generate Changelog**
-   - Get commits since last tag: `git log LAST_TAG..HEAD --format="%s" --reverse`
-   - Group commits by conventional commit type into these categories:
-     - **Features** (`feat:`) - New functionality
-     - **Bug Fixes** (`fix:`) - Bug fixes
-     - **Refactoring** (`refactor:`) - Code changes that neither fix bugs nor add features
-     - **Other Changes** (`chore:`, `docs:`, `style:`, `perf:`, `test:`, `ci:`) - Everything else
-   - Format as markdown with bullet points, stripping the type prefix for readability
-   - Example output:
-     ```markdown
-     ## What's Changed
-
-     ### Features
-     - **(go-workflow)** improve worktree setup with symlinks and recursive env search
-     - **(productivity)** add gopher-ai-refresh command
-
-     ### Bug Fixes
-     - **(hooks)** use silent exit instead of empty JSON for allow
-     - **(go-workflow)** copy loop state files to worktree
-
-     ### Refactoring
-     - **(gopher-guides)** make MCP server opt-in to prevent startup slowdown
-
-     **Full Changelog**: https://github.com/OWNER/REPO/compare/vOLD...vNEW
-     ```
-   - Store the changelog in a variable for use in step 7
-
 5. **Commit and Tag**
    ```bash
    git add .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json
@@ -94,8 +95,29 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    ```
 
 7. **Create GitHub Release**
-   - Use the changelog generated in step 4
-   - Pass it via `--notes` flag (use a heredoc or temp file for multiline content):
+
+   Use the strategy detected in step 2:
+
+   #### Strategy A: PR-Based Workflow (≥50% PR references)
+
+   Use GitHub's auto-generated notes which work well for PR-based repos:
+   ```bash
+   gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes
+   ```
+
+   #### Strategy B: Conventional Commits (<50% PR references)
+
+   Generate changelog from commit messages:
+
+   1. Get commits since last tag: `git log LAST_TAG..HEAD --format="%s" --reverse`
+   2. Group commits by conventional commit type:
+      - **Features** (`feat:`) - New functionality
+      - **Bug Fixes** (`fix:`) - Bug fixes
+      - **Refactoring** (`refactor:`) - Code changes that neither fix bugs nor add features
+      - **Other Changes** (`chore:`, `docs:`, `style:`, `perf:`, `test:`, `ci:`) - Everything else
+   3. Format as markdown, stripping type prefix, showing scope in bold
+   4. Pass via `--notes` flag:
+
    ```bash
    gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(cat <<'EOF'
    ## What's Changed
@@ -110,10 +132,16 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    EOF
    )"
    ```
-   - **IMPORTANT**: Do NOT use `--generate-notes` - it produces empty changelogs for direct commits
+
+   **Formatting rules for conventional commits:**
+   - Parse format: `type(scope): description` or `type: description`
+   - Output format: `- **(scope)** description` or `- description` (if no scope)
+   - Skip the release commit itself (`chore: release`)
+   - Omit empty sections
 
 8. **Report Success**
    - Display the release URL
+   - Show which changelog strategy was used
    - Remind user to run `./scripts/refresh-plugins.sh` to update local cache
 
 ### Safety Checks
