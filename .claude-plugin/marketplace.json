@@ -33,9 +33,9 @@
     {
       "name": "gopher-guides",
       "source": "./plugins/gopher-guides",
-      "description": "Gopher Guides training materials integrated into Claude via MCP",
-      "version": "1.1.0",
-      "keywords": ["go", "training", "best-practices", "gopher-guides", "mcp"]
+      "description": "Go best practices guidance powered by Gopher Guides training materials",
+      "version": "1.2.0",
+      "keywords": ["go", "training", "best-practices", "gopher-guides"]
     },
     {
       "name": "llm-tools",
