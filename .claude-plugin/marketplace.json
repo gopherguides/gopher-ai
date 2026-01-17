@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Claude Code plugins for Go developers - by Gopher Guides",
-    "version": "1.2.0"
+    "version": "1.2.1"
   },
   "plugins": [
     {
       "name": "go-workflow",
       "source": "./plugins/go-workflow",
       "description": "Issue-to-PR workflow automation with worktree management",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "keywords": [
         "workflow",
         "github",
@@ -26,7 +26,7 @@
       "name": "go-dev",
       "source": "./plugins/go-dev",
       "description": "Go-specific development tools with best practices",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "keywords": [
         "go",
         "testing",
@@ -39,7 +39,7 @@
       "name": "productivity",
       "source": "./plugins/productivity",
       "description": "Standup reports and git productivity helpers",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "keywords": [
         "standup",
         "changelog",
@@ -52,7 +52,7 @@
       "name": "gopher-guides",
       "source": "./plugins/gopher-guides",
       "description": "Go best practices guidance powered by Gopher Guides training materials",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "keywords": [
         "go",
         "training",
@@ -64,7 +64,7 @@
       "name": "llm-tools",
       "source": "./plugins/llm-tools",
       "description": "Multi-LLM integration for second opinions and task delegation",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "keywords": [
         "llm",
         "openai",
@@ -79,7 +79,7 @@
       "name": "go-web",
       "source": "./plugins/go-web",
       "description": "Opinionated Go web app scaffolding with Templ + HTMX + Alpine.js + Tailwind",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "keywords": [
         "go",
         "web",
@@ -95,7 +95,7 @@
       "name": "tailwind",
       "source": "./plugins/tailwind",
       "description": "Tailwind CSS v4 tools for initialization, auditing, migration, and optimization",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "keywords": [
         "tailwind",
         "css",
