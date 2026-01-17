@@ -53,10 +53,32 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    done
    ```
 
-4. **Generate Changelog Summary**
+4. **Generate Changelog**
    - Get commits since last tag: `git log LAST_TAG..HEAD --format="%s" --reverse`
-   - Group by conventional commit type
-   - Create a brief summary for the release notes
+   - Group commits by conventional commit type into these categories:
+     - **Features** (`feat:`) - New functionality
+     - **Bug Fixes** (`fix:`) - Bug fixes
+     - **Refactoring** (`refactor:`) - Code changes that neither fix bugs nor add features
+     - **Other Changes** (`chore:`, `docs:`, `style:`, `perf:`, `test:`, `ci:`) - Everything else
+   - Format as markdown with bullet points, stripping the type prefix for readability
+   - Example output:
+     ```markdown
+     ## What's Changed
+
+     ### Features
+     - **(go-workflow)** improve worktree setup with symlinks and recursive env search
+     - **(productivity)** add gopher-ai-refresh command
+
+     ### Bug Fixes
+     - **(hooks)** use silent exit instead of empty JSON for allow
+     - **(go-workflow)** copy loop state files to worktree
+
+     ### Refactoring
+     - **(gopher-guides)** make MCP server opt-in to prevent startup slowdown
+
+     **Full Changelog**: https://github.com/OWNER/REPO/compare/vOLD...vNEW
+     ```
+   - Store the changelog in a variable for use in step 7
 
 5. **Commit and Tag**
    ```bash
@@ -72,9 +94,23 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    ```
 
 7. **Create GitHub Release**
+   - Use the changelog generated in step 4
+   - Pass it via `--notes` flag (use a heredoc or temp file for multiline content):
    ```bash
-   gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(cat <<'EOF'
+   ## What's Changed
+
+   ### Features
+   - **(scope)** description
+
+   ### Bug Fixes
+   - **(scope)** description
+
+   **Full Changelog**: https://github.com/OWNER/REPO/compare/vOLD...vNEW
+   EOF
+   )"
    ```
+   - **IMPORTANT**: Do NOT use `--generate-notes` - it produces empty changelogs for direct commits
 
 8. **Report Success**
    - Display the release URL
