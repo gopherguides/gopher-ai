@@ -17,7 +17,10 @@ curl -s -X GET https://gopherguides.com/api/gopher-ai/me \
   -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY"
 ```
 
-If this returns an error or the key is missing:
+**On success**: Display a brief confirmation to the user, then proceed to Step 2:
+- "✓ Gopher Guides API: Authenticated as {email} ({tier_category} tier)"
+
+**On error or missing key**: Help the user configure:
 1. Get API key at [gopherguides.com](https://gopherguides.com)
 2. Set: `export GOPHER_GUIDES_API_KEY="your-key"`
 
