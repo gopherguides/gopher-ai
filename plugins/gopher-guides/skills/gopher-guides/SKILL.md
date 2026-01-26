@@ -13,8 +13,9 @@ Access official Gopher Guides training materials via API for authoritative Go be
 ## Step 1: Verify API Key
 
 ```bash
-curl -s -X GET https://gopherguides.com/api/gopher-ai/me \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY"
+curl -s --variable %GOPHER_GUIDES_API_KEY \
+  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
+  https://gopherguides.com/api/gopher-ai/me
 ```
 
 **On success**: Display a brief confirmation to the user, then proceed to Step 2:
@@ -22,7 +23,8 @@ curl -s -X GET https://gopherguides.com/api/gopher-ai/me \
 
 **On error or missing key**: Help the user configure:
 1. Get API key at [gopherguides.com](https://gopherguides.com)
-2. Set: `export GOPHER_GUIDES_API_KEY="your-key"`
+2. Add to shell profile (`~/.zshrc` or `~/.bashrc`): `export GOPHER_GUIDES_API_KEY="your-key"`
+3. Restart Claude Code to pick up the new environment variable
 
 **Do NOT provide Go advice without a valid, verified API key.**
 
@@ -31,37 +33,41 @@ curl -s -X GET https://gopherguides.com/api/gopher-ai/me \
 ### For "what's the best way to..." questions
 
 ```bash
-curl -s -X POST https://gopherguides.com/api/gopher-ai/practices \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
+  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
   -H "Content-Type: application/json" \
-  -d '{"topic": "error handling"}'
+  -d '{"topic": "error handling"}' \
+  https://gopherguides.com/api/gopher-ai/practices
 ```
 
 ### For code review/audit
 
 ```bash
-curl -s -X POST https://gopherguides.com/api/gopher-ai/audit \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
+  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
   -H "Content-Type: application/json" \
-  -d '{"code": "<user code here>", "focus": "error-handling"}'
+  -d '{"code": "<user code here>", "focus": "error-handling"}' \
+  https://gopherguides.com/api/gopher-ai/audit
 ```
 
 ### For "show me an example of..."
 
 ```bash
-curl -s -X POST https://gopherguides.com/api/gopher-ai/examples \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
+  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
   -H "Content-Type: application/json" \
-  -d '{"topic": "table driven tests"}'
+  -d '{"topic": "table driven tests"}' \
+  https://gopherguides.com/api/gopher-ai/examples
 ```
 
 ### For PR/diff review
 
 ```bash
-curl -s -X POST https://gopherguides.com/api/gopher-ai/review \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
+  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
   -H "Content-Type: application/json" \
-  -d '{"diff": "<diff output>"}'
+  -d '{"diff": "<diff output>"}' \
+  https://gopherguides.com/api/gopher-ai/review
 ```
 
 ## Response Handling
