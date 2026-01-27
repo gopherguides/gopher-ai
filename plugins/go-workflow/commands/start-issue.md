@@ -52,18 +52,28 @@ Initialize persistent loop to ensure work continues until complete:
 
 ---
 
-## Step 0: Worktree Setup (Optional)
+## **HARD STOP** - Worktree Decision Required
 
-Ask the user if they want to work in an isolated worktree:
+**You MUST use AskUserQuestion NOW before doing anything else.**
 
-"Would you like to create a worktree for isolated work on this issue?"
+Do not:
+- Analyze the issue beyond the context already gathered
+- Launch Task or Explore agents
+- Enter plan mode
+- Start any implementation work
 
-| Option | Description |
-|--------|-------------|
-| Yes, create worktree | Create isolated worktree and switch to it |
-| No, work in current directory | Stay here and create a branch |
+Use AskUserQuestion with this exact configuration:
 
-**If user chooses worktree:**
+- **Question:** "Would you like to create a worktree for isolated work on issue #$ARGUMENTS?"
+- **Options:**
+  1. "Yes, create worktree" - Create isolated worktree and switch to it
+  2. "No, work in current directory" - Stay here and create a branch
+
+**WAIT for the user's response. Do not proceed until they answer.**
+
+---
+
+## If user chose "Yes, create worktree":
 
 **CRITICAL: When executing bash commands below, use backticks (\`) for command substitution, NOT $(). Claude Code has a bug that mangles $() syntax.**
 
@@ -133,6 +143,14 @@ Ask the user if they want to work in an isolated worktree:
    **WARNING:** If you edit files or run commands without changing to the worktree first, you will modify the wrong codebase.
 
 **Note:** When using a worktree, the branch is already created as `issue-<num>-<title>`. Skip the "Create Branch" step in the workflows below.
+
+Continue to **Step 1: Detect Issue Type** below.
+
+---
+
+## If user chose "No, work in current directory":
+
+Continue to **Step 1: Detect Issue Type** below. You will create a branch in the appropriate workflow step.
 
 ---
 
