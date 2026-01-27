@@ -90,17 +90,7 @@ Ask the user if they want to work in an isolated worktree:
    cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
    ```
 
-4. **Symlink LLM config directories** (shared across worktrees for plans/memory/settings)
-   ```bash
-   for dir in .claude .codex .gemini .cursor; do
-     if [ -d "$SOURCE_DIR/$dir" ]; then
-       ln -s "$SOURCE_DIR/$dir" "$WORKTREE_PATH/$dir"
-       echo "Symlinked $dir -> $SOURCE_DIR/$dir"
-     fi
-   done
-   ```
-
-5. **Search for environment files** (recursive, excludes node_modules/.git/vendor)
+4. **Search for environment files** (recursive, excludes node_modules/.git/vendor)
    ```bash
    ENV_FILES=`find "$SOURCE_DIR" \( -name "node_modules" -o -name ".git" -o -name "vendor" \) -prune -o \
      \( -name ".env" -o -name ".env.local" -o -name ".envrc" \) -type f -print 2>/dev/null | \
@@ -127,9 +117,9 @@ Ask the user if they want to work in an isolated worktree:
    done
    ```
 
-6. **Inform user**: "Created worktree at $WORKTREE_PATH. Continuing with issue workflow..."
+5. **Inform user**: "Created worktree at $WORKTREE_PATH. Continuing with issue workflow..."
 
-7. **CRITICAL: Change working directory to worktree**
+6. **CRITICAL: Change working directory to worktree**
 
    Your session started in `$SOURCE_DIR`. **ALL subsequent work MUST happen in `$WORKTREE_PATH`.**
 
