@@ -70,6 +70,7 @@ Issue-to-PR workflow automation with git worktree management.
 | Command | Description |
 |---------|-------------|
 | `/start-issue <number>` | Start working on an issue (auto-detects bug vs feature) |
+| `/address-review [PR]` | Address PR review comments, make fixes, reply, and resolve |
 | `/create-worktree <number>` | Create a new git worktree for a GitHub issue |
 | `/commit` | Create a git commit with auto-generated message |
 | `/remove-worktree` | Interactively select and remove a git worktree |
@@ -80,6 +81,11 @@ The `/start-issue` command handles the full issue-to-PR workflow:
 2. Offers worktree creation for isolated work
 3. Auto-detects issue type (bug → `fix/` branch, feature → `feat/` branch)
 4. Routes to appropriate TDD or implementation workflow
+
+The `/address-review` command automates PR review handling:
+1. Addresses feedback from human and bot reviewers
+2. Auto-resolves review threads after fixes
+3. Requests re-review from bot reviewers (Codex, CodeRabbit, Greptile)
 
 ### go-dev
 

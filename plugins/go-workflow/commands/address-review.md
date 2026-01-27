@@ -316,6 +316,16 @@ From the reviewers collected in Step 3, categorize them:
 
 ### 9b. Request re-review from bot reviewers
 
+**Before requesting bot re-reviews, inform the user:**
+
+> 🤖 **Auto-requesting re-review from bot reviewers:** [list bots]
+>
+> This is automatic. To disable, add to your project's CLAUDE.md:
+> ```
+> ## Bot Review Settings
+> DISABLE_BOT_REREVIEW=true
+> ```
+
 For each bot reviewer that left feedback, post a single comment requesting re-review:
 
 ```bash
