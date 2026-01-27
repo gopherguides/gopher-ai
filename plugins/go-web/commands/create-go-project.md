@@ -398,7 +398,7 @@ Create a comprehensive Makefile:
 ```makefile
 SHELL := /bin/bash
 
-.PHONY: dev build test lint generate css css-watch migrate migrate-down migrate-status migrate-create setup clean run help
+.PHONY: dev build test lint generate sqlc-vet css css-watch migrate migrate-down migrate-status migrate-create setup clean run help
 
 BINARY_NAME=$ARGUMENTS
 MIGRATIONS_DIR=internal/database/migrations
@@ -422,6 +422,16 @@ lint:
 
 generate:
     go generate ./...
+
+sqlc-vet:
+	@if [ -z "$$DATABASE_URL" ]; then \
+		echo "Error: DATABASE_URL not set"; \
+		echo "For local development: source .envrc"; \
+		echo "For CI: set DATABASE_URL environment variable"; \
+		exit 1; \
+	fi
+	@echo "Validating SQL queries against database schema..."
+	sqlc vet -f sqlc/sqlc.yaml
 
 css:
     npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify
@@ -470,6 +480,7 @@ help:
     @echo "  test           - Run tests"
     @echo "  lint           - Run golangci-lint and templ fmt"
     @echo "  generate       - Generate templ and sqlc code"
+    @echo "  sqlc-vet       - Validate SQL queries against database (requires DATABASE_URL)"
     @echo "  css            - Build Tailwind CSS"
     @echo "  css-watch      - Watch and rebuild Tailwind CSS"
     @echo "  migrate        - Run database migrations"
@@ -553,6 +564,9 @@ sql:
   - engine: "postgresql"
     queries: "queries/"
     schema: "../internal/database/migrations/"
+    database:
+      uri: ${DATABASE_URL}
+      managed: false
     gen:
       go:
         package: "sqlc"
@@ -578,6 +592,9 @@ sql:
   - engine: "sqlite"
     queries: "queries/"
     schema: "../internal/database/migrations/"
+    database:
+      uri: ${DATABASE_URL}
+      managed: false
     gen:
       go:
         package: "sqlc"
@@ -594,6 +611,9 @@ sql:
   - engine: "mysql"
     queries: "queries/"
     schema: "../internal/database/migrations/"
+    database:
+      uri: ${DATABASE_URL}
+      managed: false
     gen:
       go:
         package: "sqlc"
@@ -1776,6 +1796,114 @@ jobs:
         run: go generate ./...
       - name: Build
         run: go build -o bin/$ARGUMENTS ./cmd/server
+
+  # === SQLC Query Validation Job ===
+  # GENERATOR: Include ONLY the job matching the selected database engine.
+
+  # --- For PostgreSQL projects: ---
+  sqlc-vet:
+    name: SQLC Query Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 3
+          --health-start-period 5s
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+      - name: Install tools
+        run: |
+          go install github.com/pressly/goose/v3/cmd/goose@latest
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+      - name: Run migrations
+        env:
+          DATABASE_URL: "postgresql://test:test@localhost:5432/testdb?sslmode=disable"
+        run: |
+          goose -dir internal/database/migrations postgres "$DATABASE_URL" up
+      - name: Validate SQL queries
+        env:
+          DATABASE_URL: "postgresql://test:test@localhost:5432/testdb?sslmode=disable"
+        run: |
+          sqlc vet -f sqlc/sqlc.yaml
+
+  # --- For SQLite projects: ---
+  # sqlc-vet:
+  #   name: SQLC Query Validation
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 5
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #     - uses: actions/setup-go@v6
+  #       with:
+  #         go-version: '1.25'
+  #     - name: Install tools
+  #       run: |
+  #         go install github.com/pressly/goose/v3/cmd/goose@latest
+  #         go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+  #     - name: Setup database and run migrations
+  #       env:
+  #         DATABASE_URL: "./data/test.db"
+  #       run: |
+  #         mkdir -p data
+  #         goose -dir internal/database/migrations sqlite3 "$DATABASE_URL" up
+  #     - name: Validate SQL queries
+  #       env:
+  #         DATABASE_URL: "./data/test.db"
+  #       run: |
+  #         sqlc vet -f sqlc/sqlc.yaml
+
+  # --- For MySQL projects: ---
+  # sqlc-vet:
+  #   name: SQLC Query Validation
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #   services:
+  #     mysql:
+  #       image: mysql:8
+  #       env:
+  #         MYSQL_ROOT_PASSWORD: test
+  #         MYSQL_DATABASE: testdb
+  #       options: >-
+  #         --health-cmd "mysqladmin ping -h localhost"
+  #         --health-interval 5s
+  #         --health-timeout 3s
+  #         --health-retries 3
+  #         --health-start-period 10s
+  #       ports:
+  #         - 3306:3306
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #     - uses: actions/setup-go@v6
+  #       with:
+  #         go-version: '1.25'
+  #     - name: Install tools
+  #       run: |
+  #         go install github.com/pressly/goose/v3/cmd/goose@latest
+  #         go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+  #     - name: Run migrations
+  #       env:
+  #         DATABASE_URL: "root:test@tcp(localhost:3306)/testdb"
+  #       run: |
+  #         goose -dir internal/database/migrations mysql "$DATABASE_URL" up
+  #     - name: Validate SQL queries
+  #       env:
+  #         DATABASE_URL: "root:test@tcp(localhost:3306)/testdb"
+  #       run: |
+  #         sqlc vet -f sqlc/sqlc.yaml
 ```
 
 #### 26. .github/dependabot.yml
