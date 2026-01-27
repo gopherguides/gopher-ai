@@ -24,40 +24,32 @@ Provides authoritative answers from official Gopher Guides training materials wh
 - Testing, concurrency, error handling
 - Web development, database patterns
 
-## Enhanced MCP Tools (Optional)
+## API Tools
 
-For users who want additional functionality, an MCP server is available that provides enhanced code auditing and training material lookups.
+The skill uses the Gopher Guides REST API to provide enhanced code auditing and training material lookups.
 
-### MCP Tools
+### Available Endpoints
 
-| Tool | Description |
-|------|-------------|
-| `audit_code` | Audit Go code against best practices |
-| `best_practices` | Get prescriptive guidance on Go topics |
-| `get_example` | Find code examples for specific patterns |
-| `review_pr` | Review PRs against training materials |
+| Endpoint | Description |
+|----------|-------------|
+| `/api/gopher-ai/practices` | Get prescriptive guidance on Go topics |
+| `/api/gopher-ai/audit` | Audit Go code against best practices |
+| `/api/gopher-ai/examples` | Find code examples for specific patterns |
+| `/api/gopher-ai/review` | Review PRs/diffs against training materials |
 
-### Manual MCP Setup
+### Setup
 
-To enable the MCP tools, add to `~/.claude/settings.json`:
+Set your API key as an environment variable:
 
-```json
-{
-  "mcpServers": {
-    "gopher-guides": {
-      "command": "gopher-guides-mcp",
-      "args": ["serve"],
-      "env": {
-        "GOPHER_GUIDES_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
+```bash
+export GOPHER_GUIDES_API_KEY="your-key-here"
 ```
 
-**Requirements:**
-- Install the `gopher-guides-mcp` binary
-- Obtain a `GOPHER_GUIDES_API_KEY` from [Gopher Guides](https://gopherguides.com)
+Obtain an API key from [Gopher Guides](https://gopherguides.com).
+
+### Works on All Platforms
+
+The REST API approach works with any AI coding assistant that can make HTTP requests - no MCP server required.
 
 ## About Gopher Guides
 

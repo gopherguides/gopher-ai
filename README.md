@@ -106,11 +106,13 @@ Standup reports and git productivity helpers.
 
 Go best practices guidance powered by Gopher Guides training materials.
 
-**MCP Tools** (Claude Code only):
-- `audit_code` - Audit Go code against best practices
-- `best_practices` - Get prescriptive guidance on Go topics
-- `get_example` - Find code examples for specific patterns
-- `review_pr` - Review PRs against training materials
+**API Endpoints** (all platforms via REST):
+- `/api/gopher-ai/practices` - Get prescriptive guidance on Go topics
+- `/api/gopher-ai/audit` - Audit Go code against best practices
+- `/api/gopher-ai/examples` - Find code examples for specific patterns
+- `/api/gopher-ai/review` - Review PRs/diffs against training materials
+
+Requires `GOPHER_GUIDES_API_KEY` environment variable.
 
 ### llm-tools
 
@@ -232,13 +234,15 @@ Extensions are installed per-module. Each extension includes:
 
 ## Configuration
 
-### Gopher Guides MCP (Claude Code)
+### Gopher Guides API
 
-The `gopher-guides` module includes an MCP server for training materials:
+The `gopher-guides` module uses a REST API for training materials. Set your API key:
 
 ```bash
 export GOPHER_GUIDES_API_KEY="your-key-here"
 ```
+
+Get your API key at [gopherguides.com](https://gopherguides.com).
 
 ## Contributing
 
