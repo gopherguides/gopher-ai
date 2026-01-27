@@ -154,6 +154,18 @@ Continue to **Step 1: Detect Issue Type** below. You will create a branch in the
 
 ---
 
+## Branch Protection Check
+
+**CRITICAL:** Before starting any work, verify you will NOT commit to main/master.
+
+This workflow creates feature branches (`fix/` or `feat/`). If you are currently on `main`, `master`, or the default branch:
+- **If worktree was created**: You should already be on the `issue-<num>-<title>` branch
+- **If working in current directory**: A branch will be created in Step 3 (Bug) or Step 4 (Feature)
+
+**NEVER commit directly to main/master.** Always ensure a feature branch exists before making any code changes.
+
+---
+
 ## Step 1: Detect Issue Type
 
 Analyze the issue to determine if it's a **bug fix** or **new feature**:
@@ -218,8 +230,15 @@ When searching for root cause:
 
 ### 3. Create Branch (skip if worktree was created)
 
+**REQUIRED unless using a worktree.** Never commit to main/master.
+
 ```bash
 git checkout -b "fix/$ARGUMENTS-<short-desc>"
+```
+
+Verify you are on the new branch before proceeding:
+```bash
+git branch --show-current
 ```
 
 ### 4. TDD: Write Failing Test (Red)
@@ -237,6 +256,18 @@ Run the full test suite, linting, and type checking.
 ### 7. Submit
 
 Commit, push, and create a PR referencing the issue.
+
+### 8. Watch CI
+
+After creating the PR, watch CI and fix any failures:
+
+1. Run: `gh pr checks --watch`
+2. If checks fail:
+   - Get failure details: `gh pr checks --json name,state,description`
+   - Analyze and fix the failing check (test, lint, build)
+   - Commit and push the fix
+   - Return to step 1
+3. Continue only when all checks pass
 
 ---
 
@@ -270,8 +301,15 @@ Before coding, outline:
 
 ### 4. Create Branch (skip if worktree was created)
 
+**REQUIRED unless using a worktree.** Never commit to main/master.
+
 ```bash
 git checkout -b "feat/$ARGUMENTS-<short-desc>"
+```
+
+Verify you are on the new branch before proceeding:
+```bash
+git branch --show-current
 ```
 
 ### 5. Implement Feature
@@ -293,6 +331,18 @@ Run the full test suite, linting, and type checking.
 
 Commit, push, and create a PR referencing the issue.
 
+### 9. Watch CI
+
+After creating the PR, watch CI and fix any failures:
+
+1. Run: `gh pr checks --watch`
+2. If checks fail:
+   - Get failure details: `gh pr checks --json name,state,description`
+   - Analyze and fix the failing check (test, lint, build)
+   - Commit and push the fix
+   - Return to step 1
+3. Continue only when all checks pass
+
 ---
 
 ## Completion Criteria
@@ -305,6 +355,7 @@ Commit, push, and create a PR referencing the issue.
 4. Changes are committed with a proper commit message
 5. Changes are pushed to the remote branch
 6. PR is created and the PR URL is displayed
+7. CI checks pass (`gh pr checks` shows all green)
 
 **When ALL criteria are met, output exactly:**
 
