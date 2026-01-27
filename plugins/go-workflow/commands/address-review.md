@@ -71,9 +71,13 @@ echo "Working on PR #$PR_NUM"
 
 ---
 
-## Step 2: Fetch Unresolved Review Threads
+## Step 2: Fetch All Review Feedback
 
-Query all unresolved review threads with full comment details using GraphQL:
+GitHub has two types of review feedback:
+1. **Review threads** (line-specific comments) - CAN be auto-resolved via GraphQL
+2. **Review comments** (general feedback from CHANGES_REQUESTED reviews) - CANNOT be auto-resolved, only the reviewer can approve
+
+### 2a. Fetch review threads (resolvable)
 
 ```bash
 OWNER=$(gh repo view --json owner --jq '.owner.login')
@@ -104,23 +108,42 @@ gh api graphql -f query='
 ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM"
 ```
 
+### 2b. Fetch pending reviews (not auto-resolvable)
+
+```bash
+gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES_REQUESTED")'
+```
+
 ---
 
-## Step 3: Display and Analyze Comments
+## Step 3: Display and Categorize Comments
 
-Parse the GraphQL response and display each unresolved thread:
+### Categorize feedback into two groups:
 
-**For each unresolved thread, note:**
+**Group A - Resolvable threads** (from GraphQL `reviewThreads`):
 - Thread ID (needed for resolution later)
 - File path and line number
-- Comment body (the requested change)
+- Comment body
 - Author
+- These CAN be auto-resolved after fixing
 
-If there are **no unresolved threads**, inform the user and exit:
+**Group B - Pending reviews** (from `reviews` with `state: CHANGES_REQUESTED`):
+- Review body/comments
+- Author
+- These CANNOT be auto-resolved - the reviewer must approve
+
+### If no feedback found:
+
+If there are no unresolved threads AND no pending reviews:
 
 ```
 <done>COMPLETE</done>
 ```
+
+### If only pending reviews (no threads):
+
+Address the feedback, but note to the user:
+> "This PR has pending review feedback that cannot be auto-resolved. After pushing fixes, you'll need to request re-review from the reviewer."
 
 ---
 
@@ -225,11 +248,13 @@ gh pr comment "$PR_NUM" --body "Fixed in latest commit: [brief explanation of wh
 
 ---
 
-## Step 8: Resolve All Review Threads
+## Step 8: Resolve Review Threads (Group A only)
 
 **CRITICAL:** Only resolve threads after CI passes and fixes are pushed.
 
-For each thread ID collected in Step 3, resolve it via GraphQL:
+**This only applies to line-specific review threads (Group A).** Pending reviews (Group B) cannot be auto-resolved.
+
+For each thread ID collected in Step 3 (Group A), resolve it via GraphQL:
 
 ```bash
 gh api graphql -f query='
@@ -245,9 +270,22 @@ gh api graphql -f query='
 
 ---
 
-## Step 9: Verify Completion
+## Step 9: Request Re-review (if pending reviews exist)
 
-Confirm all threads are resolved:
+If there were pending reviews (Group B - CHANGES_REQUESTED), request re-review from those reviewers:
+
+```bash
+gh pr edit "$PR_NUM" --add-reviewer "REVIEWER_USERNAME"
+```
+
+Inform the user:
+> "Requested re-review from [reviewer]. They will need to approve the PR to dismiss their CHANGES_REQUESTED status."
+
+---
+
+## Step 10: Verify Completion
+
+Confirm all resolvable threads are resolved:
 
 ```bash
 OWNER=$(gh repo view --json owner --jq '.owner.login')
@@ -282,11 +320,14 @@ gh pr checks "$PR_NUM"
 
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
 
-1. All review comments have been addressed with code changes
+1. All review feedback (threads AND pending reviews) has been addressed with code changes
 2. Changes are committed and pushed
 3. CI checks pass (`gh pr checks` shows all green)
 4. Replies have been posted to each comment
-5. All review threads are resolved (verified via GraphQL query)
+5. All resolvable review threads (Group A) are resolved via GraphQL
+6. Re-review requested from reviewers who left CHANGES_REQUESTED (Group B)
+
+**Note:** Pending reviews (CHANGES_REQUESTED) cannot be auto-resolved. After requesting re-review, the reviewer must approve. This is expected behavior.
 
 **When ALL criteria are met, output exactly:**
 
