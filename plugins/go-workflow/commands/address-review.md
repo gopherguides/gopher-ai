@@ -71,6 +71,27 @@ echo "Working on PR #$PR_NUM"
 
 ---
 
+## Known AI/Bot Reviewers
+
+Track these reviewers for automatic re-review requests at the end:
+
+| Bot Username | Re-review Trigger |
+|--------------|-------------------|
+| `codex` | `@codex review` (comment on PR) |
+| `copilot` | Add via GitHub Reviewers dropdown |
+| `coderabbitai` | `@coderabbitai review` (comment on PR) |
+| `greptileai` | `@greptileai review` (comment on PR) |
+| `github-actions[bot]` | N/A (CI bot, no re-review) |
+| `dependabot[bot]` | N/A (dependency bot, no re-review) |
+
+**To disable auto bot re-review:** Add to your project's CLAUDE.md:
+```
+## Bot Review Settings
+DISABLE_BOT_REREVIEW=true
+```
+
+---
+
 ## Step 2: Fetch All Review Feedback
 
 GitHub has two types of review feedback:
@@ -124,13 +145,17 @@ gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES
 - Thread ID (needed for resolution later)
 - File path and line number
 - Comment body
-- Author
+- Author username (track for re-review in Step 9)
 - These CAN be auto-resolved after fixing
 
 **Group B - Pending reviews** (from `reviews` with `state: CHANGES_REQUESTED`):
 - Review body/comments
-- Author
+- Author username (track for re-review in Step 9)
 - These CANNOT be auto-resolved - the reviewer must approve
+
+### Track unique reviewers
+
+Build a list of unique reviewer usernames from both groups. Note which are bots vs humans (see "Known AI/Bot Reviewers" table above).
 
 ### If no feedback found:
 
@@ -270,16 +295,54 @@ gh api graphql -f query='
 
 ---
 
-## Step 9: Request Re-review (if pending reviews exist)
+## Step 9: Request Re-review
 
-If there were pending reviews (Group B - CHANGES_REQUESTED), request re-review from those reviewers:
+After all fixes are committed and CI passes, request re-review from reviewers.
+
+### 9a. Identify reviewer types
+
+From the reviewers collected in Step 3, categorize them:
+
+**Bot reviewers** (trigger via PR comment):
+- `codex` → `@codex review`
+- `coderabbitai` → `@coderabbitai review`
+- `greptileai` → `@greptileai review`
+
+**Human reviewers** (trigger via GitHub API):
+- All other reviewers → `gh pr edit --add-reviewer`
+
+**Skip these bots** (no re-review needed):
+- `github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`
+
+### 9b. Request re-review from bot reviewers
+
+For each bot reviewer that left feedback, post a single comment requesting re-review:
+
+```bash
+# Example for Codex:
+gh pr comment "$PR_NUM" --body "@codex review"
+
+# Example for CodeRabbit:
+gh pr comment "$PR_NUM" --body "@coderabbitai review"
+
+# Example for Greptile:
+gh pr comment "$PR_NUM" --body "@greptileai review"
+```
+
+**Important:** Only post ONE comment per bot, even if the bot left multiple comments.
+
+### 9c. Request re-review from human reviewers
+
+For human reviewers who left CHANGES_REQUESTED:
 
 ```bash
 gh pr edit "$PR_NUM" --add-reviewer "REVIEWER_USERNAME"
 ```
 
-Inform the user:
-> "Requested re-review from [reviewer]. They will need to approve the PR to dismiss their CHANGES_REQUESTED status."
+### 9d. Inform the user
+
+After requesting re-reviews:
+> "Requested re-review from: [list of reviewers]. Bot reviewers will automatically review the updated code. Human reviewers will need to manually approve."
 
 ---
 
@@ -325,9 +388,11 @@ gh pr checks "$PR_NUM"
 3. CI checks pass (`gh pr checks` shows all green)
 4. Replies have been posted to each comment
 5. All resolvable review threads (Group A) are resolved via GraphQL
-6. Re-review requested from reviewers who left CHANGES_REQUESTED (Group B)
+6. Re-review requested from all reviewers:
+   - Bot reviewers: via `@bot review` comment (one per bot)
+   - Human reviewers: via `gh pr edit --add-reviewer`
 
-**Note:** Pending reviews (CHANGES_REQUESTED) cannot be auto-resolved. After requesting re-review, the reviewer must approve. This is expected behavior.
+**Note:** Pending reviews (CHANGES_REQUESTED) cannot be auto-resolved. Bot reviewers will automatically re-review. Human reviewers will need to manually approve.
 
 **When ALL criteria are met, output exactly:**
 
