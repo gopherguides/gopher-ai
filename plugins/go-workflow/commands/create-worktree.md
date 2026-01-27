@@ -22,8 +22,7 @@ This command creates an isolated git worktree for working on a GitHub issue.
 1. Creates a new worktree directory (e.g., `../reponame-issue-789-feature-name/`)
 2. Checks out from the default branch (main/dev/master)
 3. Creates a feature branch for the issue
-4. Copies LLM config directories (`.claude`, `.codex`, `.gemini`, `.cursor`)
-5. Optionally copies environment files (`.env`, `.envrc`) if you confirm
+4. Optionally copies environment files (`.env`, `.envrc`) if you confirm
 
 **Prerequisites:**
 
@@ -88,10 +87,7 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
 10. **Switch to new worktree and create feature branch**
     !cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
 
-11. **Symlink LLM config directories to new worktree** (shared for plans/memory/settings)
-    !for dir in .claude .codex .gemini .cursor; do if [ -d "$SOURCE_DIR/$dir" ]; then ln -s "$SOURCE_DIR/$dir" "$WORKTREE_PATH/$dir" && echo "Symlinked $dir -> $SOURCE_DIR/$dir"; fi; done
-
-12. **Search for environment files** (recursive, excludes node_modules/.git/vendor)
+11. **Search for environment files** (recursive, excludes node_modules/.git/vendor)
     !ENV_FILES=`find "$SOURCE_DIR" \( -name "node_modules" -o -name ".git" -o -name "vendor" \) -prune -o \( -name ".env" -o -name ".env.local" -o -name ".envrc" \) -type f -print 2>/dev/null | sed "s|^$SOURCE_DIR/||" | grep -v "^-" | sort`
     !if [ -n "$ENV_FILES" ]; then echo "Found env files:"; echo "$ENV_FILES"; fi
 
@@ -102,12 +98,12 @@ Create a new git worktree for GitHub issue #$ARGUMENTS
     If user confirms, copy the files preserving directory structure:
     !echo "$ENV_FILES" | while read file; do if [ -n "$file" ]; then dir=`dirname "$file"`; if [ "$dir" != "." ]; then mkdir -p "$WORKTREE_PATH/$dir"; fi; cp -P "$SOURCE_DIR/$file" "$WORKTREE_PATH/$file" && echo "Copied $file"; fi; done
 
-13. **Display success message**
+12. **Display success message**
     !echo "Created worktree for issue #$ARGUMENTS"
     !echo "Path: $WORKTREE_PATH"
     !echo "Branch: $BRANCH_NAME"
 
-14. **CRITICAL: Change working directory to worktree**
+13. **CRITICAL: Change working directory to worktree**
 
     Your session started in `$SOURCE_DIR`. **ALL subsequent work MUST happen in `$WORKTREE_PATH`.**
 
