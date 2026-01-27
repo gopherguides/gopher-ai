@@ -947,8 +947,7 @@ sql:
     schema: "../internal/database/migrations/"
     database:
       uri: ${DATABASE_URL}
-    rules:
-      - sqlc/db-prepare
+      managed: false
     gen:
       go:
         package: "sqlc"
@@ -976,8 +975,7 @@ sql:
     schema: "../internal/database/migrations/"
     database:
       uri: ${DATABASE_URL}
-    rules:
-      - sqlc/db-prepare
+      managed: false
     gen:
       go:
         package: "sqlc"
@@ -996,8 +994,7 @@ sql:
     schema: "../internal/database/migrations/"
     database:
       uri: ${DATABASE_URL}
-    rules:
-      - sqlc/db-prepare
+      managed: false
     gen:
       go:
         package: "sqlc"
@@ -2083,8 +2080,7 @@ jobs:
         run: go build -o bin/[project-name] ./cmd/server
 
   # === SQLC Query Validation Job ===
-  # Include ONE of the following sqlc-vet jobs based on the selected database.
-  # Delete the others.
+  # GENERATOR: Include ONLY the job matching the selected database engine.
 
   # --- For PostgreSQL projects: ---
   sqlc-vet:
@@ -2126,7 +2122,7 @@ jobs:
         run: |
           sqlc vet -f sqlc/sqlc.yaml
 
-  # --- For SQLite projects (replace the PostgreSQL job above with this): ---
+  # --- For SQLite projects: ---
   # sqlc-vet:
   #   name: SQLC Query Validation
   #   runs-on: ubuntu-latest
@@ -2152,7 +2148,7 @@ jobs:
   #       run: |
   #         sqlc vet -f sqlc/sqlc.yaml
 
-  # --- For MySQL projects (replace the PostgreSQL job above with this): ---
+  # --- For MySQL projects: ---
   # sqlc-vet:
   #   name: SQLC Query Validation
   #   runs-on: ubuntu-latest
