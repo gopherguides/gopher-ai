@@ -77,7 +77,7 @@ Track these reviewers for automatic re-review requests at the end:
 
 | Bot Username | Re-review Trigger |
 |--------------|-------------------|
-| `codex` | `@codex review` (comment on PR) |
+| `codex`, `chatgpt-codex-connector` | `@codex review` (comment on PR) |
 | `copilot` | Add via GitHub Reviewers dropdown |
 | `coderabbitai` | `@coderabbitai review` (comment on PR) |
 | `greptileai` | `@greptileai review` (comment on PR) |
@@ -299,12 +299,27 @@ gh api graphql -f query='
 
 After all fixes are committed and CI passes, request re-review from reviewers.
 
-### 9a. Identify reviewer types
+### 9a. Check for opt-out flag
+
+Before requesting bot re-reviews, check if the project has opted out:
+
+```bash
+# Check project CLAUDE.md for DISABLE_BOT_REREVIEW=true
+if [ -f "CLAUDE.md" ] && grep -q "DISABLE_BOT_REREVIEW=true" CLAUDE.md; then
+  echo "Bot re-review disabled by project settings"
+fi
+```
+
+**If `DISABLE_BOT_REREVIEW=true` is found:** Skip step 9c (bot re-reviews) entirely. Only request re-review from human reviewers.
+
+**If not found or file doesn't exist:** Proceed with bot re-reviews.
+
+### 9b. Identify reviewer types
 
 From the reviewers collected in Step 3, categorize them:
 
 **Bot reviewers** (trigger via PR comment):
-- `codex` → `@codex review`
+- `codex`, `chatgpt-codex-connector` → `@codex review`
 - `coderabbitai` → `@coderabbitai review`
 - `greptileai` → `@greptileai review`
 
@@ -314,7 +329,9 @@ From the reviewers collected in Step 3, categorize them:
 **Skip these bots** (no re-review needed):
 - `github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`
 
-### 9b. Request re-review from bot reviewers
+### 9c. Request re-review from bot reviewers
+
+**Skip this step if `DISABLE_BOT_REREVIEW=true` was found in step 9a.**
 
 **Before requesting bot re-reviews, inform the user:**
 
@@ -341,7 +358,7 @@ gh pr comment "$PR_NUM" --body "@greptileai review"
 
 **Important:** Only post ONE comment per bot, even if the bot left multiple comments.
 
-### 9c. Request re-review from human reviewers
+### 9d. Request re-review from human reviewers
 
 For human reviewers who left CHANGES_REQUESTED:
 
@@ -349,7 +366,7 @@ For human reviewers who left CHANGES_REQUESTED:
 gh pr edit "$PR_NUM" --add-reviewer "REVIEWER_USERNAME"
 ```
 
-### 9d. Inform the user
+### 9e. Inform the user
 
 After requesting re-reviews:
 > "Requested re-review from: [list of reviewers]. Bot reviewers will automatically review the updated code. Human reviewers will need to manually approve."
