@@ -301,11 +301,12 @@ After all fixes are committed and CI passes, request re-review from reviewers.
 
 ### 9a. Check for opt-out flag
 
-Before requesting bot re-reviews, check if the project has opted out:
+Before requesting bot re-reviews, check if the project has opted out. Use the repo root to find the project's CLAUDE.md (handles running from subdirectories):
 
 ```bash
-# Check project CLAUDE.md for DISABLE_BOT_REREVIEW=true
-if [ -f "CLAUDE.md" ] && grep -q "DISABLE_BOT_REREVIEW=true" CLAUDE.md; then
+# Find repo root and check for DISABLE_BOT_REREVIEW=true
+REPO_ROOT=$(git rev-parse --show-toplevel)
+if [ -f "$REPO_ROOT/CLAUDE.md" ] && grep -q "DISABLE_BOT_REREVIEW=true" "$REPO_ROOT/CLAUDE.md"; then
   echo "Bot re-review disabled by project settings"
 fi
 ```
