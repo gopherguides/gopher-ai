@@ -145,12 +145,12 @@ gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES
 - Thread ID (needed for resolution later)
 - File path and line number
 - Comment body
-- Author username (track for re-review in Step 9)
+- Author username (track for re-review in Step 10)
 - These CAN be auto-resolved after fixing
 
 **Group B - Pending reviews** (from `reviews` with `state: CHANGES_REQUESTED`):
 - Review body/comments
-- Author username (track for re-review in Step 9)
+- Author username (track for re-review in Step 10)
 - These CANNOT be auto-resolved - the reviewer must approve
 
 ### Track unique reviewers
@@ -200,7 +200,18 @@ Edit the code to address the feedback. Follow these principles:
 - Follow existing code patterns
 - Don't introduce unrelated changes
 
-### 4d. Track the Fix
+### 4d. Validate Fix Against Feedback
+
+After making each fix, verify it actually addresses what the reviewer asked for:
+
+1. **Re-read the reviewer's comment** — what specifically did they request?
+2. **Compare your change** — does it match the reviewer's intent, not just the literal words?
+3. **Check for completeness** — did you address the full comment, or only part of it?
+4. **Avoid mechanical edits** — a find-and-replace or surface-level change may not satisfy the underlying concern
+
+If the fix doesn't match the reviewer's intent, revise before moving to the next comment.
+
+### 4e. Track the Fix
 
 Keep a mental note of:
 - Thread ID
@@ -209,9 +220,22 @@ Keep a mental note of:
 
 ---
 
-## Step 5: Commit and Push All Fixes
+## Step 5: Verify Fixes Locally
 
-After addressing all comments, bundle changes into a single commit:
+Before committing, run the full verification checklist. **All must pass before proceeding:**
+
+- **Build**: `go build ./...` — confirm compilation succeeds
+- **All tests**: `go test ./...` — confirm ALL tests pass (not just changed code)
+- **Lint**: `golangci-lint run` (if available) — confirm no lint issues
+- **Build logs**: If a dev server is running (Air, Vite, Webpack, etc.), check its log output for errors
+
+If any step fails, fix the issue and re-run until all green. This catches problems locally before pushing, avoiding CI round-trip delays.
+
+---
+
+## Step 6: Commit and Push All Fixes
+
+After verification passes, bundle changes into a single commit:
 
 ```bash
 git add -A
@@ -223,7 +247,7 @@ git push
 
 ---
 
-## Step 6: Watch CI
+## Step 7: Watch CI
 
 After pushing, watch CI and fix any failures:
 
@@ -254,11 +278,11 @@ gh pr checks "$PR_NUM" --watch
    gh pr checks "$PR_NUM" --watch
    ```
 
-**Do not proceed to Step 7 until all CI checks pass.**
+**Do not proceed to Step 8 until all CI checks pass.**
 
 ---
 
-## Step 7: Reply to Each Comment
+## Step 8: Reply to Each Comment
 
 For each addressed comment, post a reply explaining the fix:
 
@@ -273,7 +297,7 @@ gh pr comment "$PR_NUM" --body "Fixed in latest commit: [brief explanation of wh
 
 ---
 
-## Step 8: Resolve Review Threads (Group A only)
+## Step 9: Resolve Review Threads (Group A only)
 
 **CRITICAL:** Only resolve threads after CI passes and fixes are pushed.
 
@@ -295,11 +319,11 @@ gh api graphql -f query='
 
 ---
 
-## Step 9: Request Re-review
+## Step 10: Request Re-review
 
 After all fixes are committed and CI passes, request re-review from reviewers.
 
-### 9a. Check for opt-out flag
+### 10a. Check for opt-out flag
 
 Before requesting bot re-reviews, check if the project has opted out. Use the repo root to find the project's CLAUDE.md (handles running from subdirectories):
 
@@ -311,11 +335,11 @@ if [ -f "$REPO_ROOT/CLAUDE.md" ] && grep -q "DISABLE_BOT_REREVIEW=true" "$REPO_R
 fi
 ```
 
-**If `DISABLE_BOT_REREVIEW=true` is found:** Skip step 9c (bot re-reviews) entirely. Only request re-review from human reviewers.
+**If `DISABLE_BOT_REREVIEW=true` is found:** Skip step 10c (bot re-reviews) entirely. Only request re-review from human reviewers.
 
 **If not found or file doesn't exist:** Proceed with bot re-reviews.
 
-### 9b. Identify reviewer types
+### 10b. Identify reviewer types
 
 From the reviewers collected in Step 3, categorize them:
 
@@ -330,9 +354,9 @@ From the reviewers collected in Step 3, categorize them:
 **Skip these bots** (no re-review needed):
 - `github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`
 
-### 9c. Request re-review from bot reviewers
+### 10c. Request re-review from bot reviewers
 
-**Skip this step if `DISABLE_BOT_REREVIEW=true` was found in step 9a.**
+**Skip this step if `DISABLE_BOT_REREVIEW=true` was found in step 10a.**
 
 **Before requesting bot re-reviews, inform the user:**
 
@@ -359,7 +383,7 @@ gh pr comment "$PR_NUM" --body "@greptileai review"
 
 **Important:** Only post ONE comment per bot, even if the bot left multiple comments.
 
-### 9d. Request re-review from human reviewers
+### 10d. Request re-review from human reviewers
 
 For human reviewers who left CHANGES_REQUESTED:
 
@@ -367,14 +391,14 @@ For human reviewers who left CHANGES_REQUESTED:
 gh pr edit "$PR_NUM" --add-reviewer "REVIEWER_USERNAME"
 ```
 
-### 9e. Inform the user
+### 10e. Inform the user
 
 After requesting re-reviews:
 > "Requested re-review from: [list of reviewers]. Bot reviewers will automatically review the updated code. Human reviewers will need to manually approve."
 
 ---
 
-## Step 10: Verify Completion
+## Step 11: Verify Completion
 
 Confirm all resolvable threads are resolved:
 
@@ -412,11 +436,13 @@ gh pr checks "$PR_NUM"
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
 
 1. All review feedback (threads AND pending reviews) has been addressed with code changes
-2. Changes are committed and pushed
-3. CI checks pass (`gh pr checks` shows all green)
-4. Replies have been posted to each comment
-5. All resolvable review threads (Group A) are resolved via GraphQL
-6. Re-review requested from all reviewers:
+2. Each fix has been validated against the reviewer's intent (not just mechanical edits)
+3. Local verification passes (`go build`, `go test`, `golangci-lint`)
+4. Changes are committed and pushed
+5. CI checks pass (`gh pr checks` shows all green)
+6. Replies have been posted to each comment
+7. All resolvable review threads (Group A) are resolved via GraphQL
+8. Re-review requested from all reviewers:
    - Bot reviewers: via `@bot review` comment (one per bot)
    - Human reviewers: via `gh pr edit --add-reviewer`
 
