@@ -286,10 +286,7 @@ Run the full verification checklist. **All must pass before proceeding:**
 - **Build**: `go build ./...` — confirm compilation succeeds
 - **All tests**: `go test ./...` — confirm ALL tests pass (not just the new one)
 - **Lint**: `golangci-lint run` (if available) — confirm no lint issues
-- **Build logs**: Check for auto-build/dev-server errors if running:
-  - Air (Go): check `./tmp/air-combined.log` or path in `.air.toml`
-  - Node/Vite/Webpack: check terminal/build output
-  - Other: scan for common log locations
+- **Build logs**: If a dev server is running (Air, Vite, Webpack, etc.), check its log output for errors
 
 If any step fails, fix the issue and re-run until all green.
 
@@ -409,10 +406,7 @@ Run the full verification checklist. **All must pass before proceeding:**
 - **Build**: `go build ./...` — confirm compilation succeeds
 - **All tests**: `go test ./...` — confirm ALL tests pass (not just the new ones)
 - **Lint**: `golangci-lint run` (if available) — confirm no lint issues
-- **Build logs**: Check for auto-build/dev-server errors if running:
-  - Air (Go): check `./tmp/air-combined.log` or path in `.air.toml`
-  - Node/Vite/Webpack: check terminal/build output
-  - Other: scan for common log locations
+- **Build logs**: If a dev server is running (Air, Vite, Webpack, etc.), check its log output for errors
 
 If any step fails, fix the issue and re-run until all green.
 
