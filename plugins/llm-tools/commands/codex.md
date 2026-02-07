@@ -29,9 +29,9 @@ This command delegates tasks to OpenAI Codex CLI for autonomous execution.
 
 | Model | Best For |
 |-------|----------|
-| `gpt-5.2-codex` | Newest frontier model, best overall (default) |
+| `gpt-5.3-codex` | Newest frontier model, best overall (default) |
+| `gpt-5.2-codex` | Previous generation frontier model |
 | `gpt-5.1-codex-max` | Complex, long-running tasks (can run 24+ hours) |
-| `gpt-5.1-codex` | Fast, balanced performance |
 | `gpt-5.1-codex-mini` | Simple tasks, cost-efficient |
 
 Ask the user: "What would you like Codex to do?"
@@ -172,12 +172,12 @@ Ask the user which model to use:
 
 | Model | Best For |
 |-------|----------|
-| gpt-5.2-codex | Newest frontier model, best overall |
+| gpt-5.3-codex | Newest frontier model, best overall |
+| gpt-5.2-codex | Previous generation frontier model |
 | gpt-5.1-codex-max | Complex, long-running tasks (can run 24+ hours) |
-| gpt-5.1-codex | Fast, balanced performance |
 | gpt-5.1-codex-mini | Simple tasks, cost-efficient |
 
-Default: `gpt-5.2-codex`
+Default: `gpt-5.3-codex`
 
 ### R3. Run Codex Review
 
@@ -349,12 +349,12 @@ Ask the user which model to use:
 
 | Model | Best For |
 |-------|----------|
-| gpt-5.2-codex | Newest frontier model, best overall |
+| gpt-5.3-codex | Newest frontier model, best overall |
+| gpt-5.2-codex | Previous generation frontier model |
 | gpt-5.1-codex-max | Complex, long-running tasks (can run 24+ hours) |
-| gpt-5.1-codex | Fast, balanced performance |
 | gpt-5.1-codex-mini | Simple tasks, cost-efficient |
 
-Default: `gpt-5.2-codex`
+Default: `gpt-5.3-codex`
 
 ### 2. Include Session Context (Optional)
 
