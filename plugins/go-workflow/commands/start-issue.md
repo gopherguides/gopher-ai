@@ -22,8 +22,10 @@ This command starts work on a GitHub issue, automatically detecting whether it's
 1. Fetch issue details, labels, and comments
 2. Optionally create a git worktree for isolated work
 3. Auto-detect issue type (bug vs feature)
-4. For bugs: Check duplicates → TDD red-green → verify → security review → PR → `fix/` branch
-5. For features: Plan approach → TDD red-green → verify → security review → PR → `feat/` branch
+4. Create `fix/` or `feat/` branch (or use worktree branch)
+5. For bugs: Check duplicates → TDD red-green → verify → security review
+6. For features: Plan approach → TDD red-green → verify → security review
+7. Commit, push, and create PR
 
 Ask the user: "What issue number would you like to work on?"
 
