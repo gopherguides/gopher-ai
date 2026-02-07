@@ -1,7 +1,7 @@
 ---
 argument-hint: "[PR-number]"
 description: "Address PR review comments, make fixes, reply, and resolve"
-model: claude-opus-4-5-20251101
+model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion"]
 ---
 

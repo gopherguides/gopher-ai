@@ -1,7 +1,7 @@
 ---
 argument-hint: "<project-name>"
 description: "Create a new Go web project with Templ, HTMX, Tailwind, and sqlc"
-model: claude-opus-4-5-20251101
+model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 

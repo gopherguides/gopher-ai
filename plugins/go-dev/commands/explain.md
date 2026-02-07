@@ -1,7 +1,7 @@
 ---
 argument-hint: "<file|function|package>"
 description: "Deep-dive explanation of Go code with diagrams"
-model: claude-opus-4-5-20251101
+model: claude-opus-4-6
 allowed-tools: ["Read", "Glob", "Grep", "AskUserQuestion"]
 ---
 

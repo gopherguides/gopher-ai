@@ -1,7 +1,7 @@
 ---
 argument-hint: "<prompt>"
 description: "Compare responses from multiple LLMs"
-model: claude-opus-4-5-20251101
+model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 ---
 

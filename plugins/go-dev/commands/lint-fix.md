@@ -1,7 +1,7 @@
 ---
 argument-hint: "[path] [--check]"
 description: "Auto-fix Go linting issues with golangci-lint"
-model: claude-opus-4-5-20251101
+model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 
