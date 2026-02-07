@@ -22,9 +22,10 @@ This command starts work on a GitHub issue, automatically detecting whether it's
 1. Fetch issue details, labels, and comments
 2. Optionally create a git worktree for isolated work
 3. Auto-detect issue type (bug vs feature)
-4. For bugs: Check duplicates → TDD workflow → `fix/` branch
-5. For features: Plan approach → Implement → `feat/` branch
-6. Write tests, verify, and create PR
+4. Create `fix/` or `feat/` branch (or use worktree branch)
+5. For bugs: Check duplicates → TDD red-green → verify → security review
+6. For features: Plan approach → TDD red-green → verify → security review
+7. Commit, push, and create PR
 
 Ask the user: "What issue number would you like to work on?"
 
@@ -184,8 +185,8 @@ Analyze the issue to determine if it's a **bug fix** or **new feature**:
 
 | Option | Description |
 |--------|-------------|
-| Bug Fix | TDD approach: write failing test first, then fix |
-| New Feature | Implementation approach: build feature, then add tests |
+| Bug Fix | TDD approach: write failing test (red), then fix (green) |
+| New Feature | TDD approach: write failing tests (red), then implement (green) |
 
 ---
 
@@ -245,19 +246,68 @@ git branch --show-current
 
 Write a test that reproduces the bug and **fails**. This proves the bug exists and will verify the fix.
 
+**Run the test and confirm it fails:**
+
+```bash
+go test ./path/to/package/... -run TestName -v
+```
+
+- **If the test FAILS** → The test correctly reproduces the bug. Proceed to step 5.
+- **If the test PASSES** → The test does NOT reproduce the bug. Rewrite the test until it fails, proving the bug exists.
+
+Do not proceed until the test fails.
+
 ### 5. TDD: Implement Fix (Green)
 
 Implement the **minimal fix** to make the test pass. Avoid scope creep.
 
+**Run the test and confirm it passes:**
+
+```bash
+go test ./path/to/package/... -run TestName -v
+```
+
+- **If the test PASSES** → The fix works. Proceed to step 6.
+- **If the test FAILS** → The fix is incomplete. Iterate until the test passes.
+
+Do not proceed until the test passes.
+
 ### 6. Verify
 
-Run the full test suite, linting, and type checking.
+Run the full verification checklist. **All must pass before proceeding:**
 
-### 7. Submit
+- **Build**: `go build ./...` — confirm compilation succeeds
+- **All tests**: `go test ./...` — confirm ALL tests pass (not just the new one)
+- **Lint**: `golangci-lint run` (if available) — confirm no lint issues
+- **Build logs**: Check for auto-build/dev-server errors if running:
+  - Air (Go): check `./tmp/air-combined.log` or path in `.air.toml`
+  - Node/Vite/Webpack: check terminal/build output
+  - Other: scan for common log locations
+
+If any step fails, fix the issue and re-run until all green.
+
+### 7. Security Review
+
+Before submitting, scan for security issues in changed files:
+
+- **Dependency vulnerabilities**: Run `govulncheck ./...` (if available)
+- **Scan changed files** for common Go security issues:
+  - Hardcoded secrets or credentials
+  - SQL injection (string concatenation in queries instead of parameterized)
+  - Path traversal (`filepath.Join` with user input without `filepath.Clean`)
+  - Unsafe `exec.Command` with unsanitized user input
+  - Missing error checks on security-critical operations (crypto, auth, file permissions)
+- **If changes touch auth, crypto, or data handling code**, suggest running `/codex review` with a security focus
+
+### 8. Pre-PR Code Review (Optional)
+
+Consider running `/codex review` for an independent code review before creating the PR. This is optional but recommended for non-trivial changes. If the review surfaces issues, address them before PR creation.
+
+### 9. Submit
 
 Commit, push, and create a PR referencing the issue.
 
-### 8. Watch CI
+### 10. Watch CI
 
 After creating the PR, watch CI and fix any failures:
 
@@ -312,26 +362,75 @@ Verify you are on the new branch before proceeding:
 git branch --show-current
 ```
 
-### 5. Implement Feature
-
-Build the feature following existing code patterns and conventions.
-
-### 6. Write Tests
+### 5. TDD: Write Tests First (Red)
 
 Write comprehensive tests covering:
 - Happy path
 - Edge cases
 - Error conditions
 
+**Run the tests and confirm they fail:**
+
+```bash
+go test ./path/to/package/... -run TestName -v
+```
+
+- **If the tests FAIL** → Tests correctly define the expected behavior. Proceed to step 6.
+- **If the tests PASS** → The tests are not testing new functionality. Rewrite until they fail against the current (unimplemented) code.
+
+Do not proceed until the tests fail.
+
+### 6. TDD: Implement Feature (Green)
+
+Build the feature following existing code patterns and conventions. Implement the **minimal code** to make the tests pass.
+
+**Run the tests and confirm they pass:**
+
+```bash
+go test ./path/to/package/... -run TestName -v
+```
+
+- **If the tests PASS** → The implementation satisfies the requirements. Proceed to step 7.
+- **If the tests FAIL** → The implementation is incomplete. Iterate until all tests pass.
+
+Do not proceed until the tests pass.
+
 ### 7. Verify
 
-Run the full test suite, linting, and type checking.
+Run the full verification checklist. **All must pass before proceeding:**
 
-### 8. Submit
+- **Build**: `go build ./...` — confirm compilation succeeds
+- **All tests**: `go test ./...` — confirm ALL tests pass (not just the new ones)
+- **Lint**: `golangci-lint run` (if available) — confirm no lint issues
+- **Build logs**: Check for auto-build/dev-server errors if running:
+  - Air (Go): check `./tmp/air-combined.log` or path in `.air.toml`
+  - Node/Vite/Webpack: check terminal/build output
+  - Other: scan for common log locations
+
+If any step fails, fix the issue and re-run until all green.
+
+### 8. Security Review
+
+Before submitting, scan for security issues in changed files:
+
+- **Dependency vulnerabilities**: Run `govulncheck ./...` (if available)
+- **Scan changed files** for common Go security issues:
+  - Hardcoded secrets or credentials
+  - SQL injection (string concatenation in queries instead of parameterized)
+  - Path traversal (`filepath.Join` with user input without `filepath.Clean`)
+  - Unsafe `exec.Command` with unsanitized user input
+  - Missing error checks on security-critical operations (crypto, auth, file permissions)
+- **If changes touch auth, crypto, or data handling code**, suggest running `/codex review` with a security focus
+
+### 9. Pre-PR Code Review (Optional)
+
+Consider running `/codex review` for an independent code review before creating the PR. This is optional but recommended for non-trivial changes. If the review surfaces issues, address them before PR creation.
+
+### 10. Submit
 
 Commit, push, and create a PR referencing the issue.
 
-### 9. Watch CI
+### 11. Watch CI
 
 After creating the PR, watch CI and fix any failures:
 
