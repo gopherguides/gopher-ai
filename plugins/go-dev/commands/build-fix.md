@@ -64,7 +64,7 @@ TMP_DIR=$(grep '^tmp_dir' "$AIR_CONFIG" 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/')
 TMP_DIR="${TMP_DIR:-tmp}"
 
 # Extract build log name from [build] section
-BUILD_LOG=$(awk '/^\[build\]/,/^\[/' "$AIR_CONFIG" 2>/dev/null | grep '^\s*log\s*=' | sed 's/.*= *"\(.*\)"/\1/')
+BUILD_LOG=$(awk '/^\[build\]/,/^\[/' "$AIR_CONFIG" 2>/dev/null | grep '^[[:space:]]*log[[:space:]]*=' | sed 's/.*= *"\(.*\)"/\1/')
 BUILD_LOG="${BUILD_LOG:-build-errors.log}"
 ```
 
