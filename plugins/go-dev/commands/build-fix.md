@@ -54,10 +54,12 @@ If found, parse `.air.toml` to determine log paths:
 
 ```bash
 # Extract tmp_dir (default: "tmp")
-TMP_DIR=$(grep '^tmp_dir' .air.toml 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/' || echo "tmp")
+TMP_DIR=$(grep '^tmp_dir' .air.toml 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/')
+TMP_DIR="${TMP_DIR:-tmp}"
 
 # Extract build log name from [build] section
-BUILD_LOG=$(awk '/^\[build\]/,/^\[/' .air.toml 2>/dev/null | grep '^\s*log\s*=' | sed 's/.*= *"\(.*\)"/\1/' || echo "build-errors.log")
+BUILD_LOG=$(awk '/^\[build\]/,/^\[/' .air.toml 2>/dev/null | grep '^\s*log\s*=' | sed 's/.*= *"\(.*\)"/\1/')
+BUILD_LOG="${BUILD_LOG:-build-errors.log}"
 ```
 
 **Log path priority** (check in order, use first that exists):
