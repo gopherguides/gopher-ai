@@ -245,19 +245,90 @@ git branch --show-current
 
 Write a test that reproduces the bug and **fails**. This proves the bug exists and will verify the fix.
 
+**Verify the test fails:**
+
+```bash
+go test ./path/to/package -run TestName -v
+```
+
+- The new test **MUST fail**. A passing test means it doesn't reproduce the bug.
+- If the test passes, rewrite it until it correctly captures the buggy behavior.
+- Do not proceed to the fix until you have a reliably failing test.
+
 ### 5. TDD: Implement Fix (Green)
 
 Implement the **minimal fix** to make the test pass. Avoid scope creep.
 
+**Verify the test passes:**
+
+```bash
+go test ./path/to/package -run TestName -v
+```
+
+- The previously failing test **MUST now pass**.
+- If it still fails, iterate on the fix until it passes.
+- Do not proceed until the test is green.
+
 ### 6. Verify
 
-Run the full test suite, linting, and type checking.
+Run these checks and fix any failures before proceeding:
 
-### 7. Submit
+1. **Build check:**
+   ```bash
+   go build ./...
+   ```
+
+2. **Full test suite:**
+   ```bash
+   go test ./...
+   ```
+
+3. **Linting (if available):**
+   ```bash
+   golangci-lint run 2>/dev/null || echo "golangci-lint not installed, skipping"
+   ```
+
+4. **Check build system logs (if dev server running):**
+   - Air (Go): Check `./tmp/air-combined.log` for build errors
+   - If `.air.toml` exists, check configured log path
+   - Node/Vite: Check terminal output or build logs
+
+**All checks must pass before continuing.** Fix and re-run until green.
+
+### 7. Security Review
+
+Before submitting, scan for security issues:
+
+1. **Dependency vulnerabilities (if govulncheck available):**
+   ```bash
+   govulncheck ./... 2>/dev/null || echo "govulncheck not installed, skipping"
+   ```
+
+2. **Scan changed files for common Go security issues:**
+   - Hardcoded secrets/credentials (API keys, passwords, tokens in code)
+   - SQL injection (string concatenation in queries vs parameterized)
+   - Path traversal (`filepath.Join` with user input without `filepath.Clean`)
+   - Unsafe `exec.Command` with unsanitized user input
+   - Missing error checks on security-critical operations
+
+3. **If changes touch auth, crypto, or data handling code:**
+   Consider running `/codex review` with security focus for deeper analysis.
+
+**Address any security findings before proceeding.**
+
+### 8. Pre-PR Code Review (Optional)
+
+Before creating the PR, consider getting an independent code review:
+
+**Suggestion:** Run `/codex review` to get AI-assisted code review feedback.
+
+This is optional — skip this step if the changes are straightforward. If the review surfaces issues, address them before PR creation.
+
+### 9. Submit
 
 Commit, push, and create a PR referencing the issue.
 
-### 8. Watch CI
+### 10. Watch CI
 
 After creating the PR, watch CI and fix any failures:
 
@@ -312,26 +383,97 @@ Verify you are on the new branch before proceeding:
 git branch --show-current
 ```
 
-### 5. Implement Feature
-
-Build the feature following existing code patterns and conventions.
-
-### 6. Write Tests
+### 5. TDD: Write Tests (Red)
 
 Write comprehensive tests covering:
 - Happy path
 - Edge cases
 - Error conditions
 
+**Verify the tests fail:**
+
+```bash
+go test ./path/to/package -run TestName -v
+```
+
+- New tests **MUST fail** since the feature doesn't exist yet.
+- If tests pass, they aren't testing the new functionality — rewrite them.
+- Do not proceed to implementation until you have reliably failing tests.
+
+### 6. TDD: Implement Feature (Green)
+
+Build the feature following existing code patterns and conventions. Implement until all tests pass.
+
+**Verify the tests pass:**
+
+```bash
+go test ./path/to/package -run TestName -v
+```
+
+- All previously failing tests **MUST now pass**.
+- If any still fail, iterate on the implementation until they pass.
+- Do not proceed until all tests are green.
+
 ### 7. Verify
 
-Run the full test suite, linting, and type checking.
+Run these checks and fix any failures before proceeding:
 
-### 8. Submit
+1. **Build check:**
+   ```bash
+   go build ./...
+   ```
+
+2. **Full test suite:**
+   ```bash
+   go test ./...
+   ```
+
+3. **Linting (if available):**
+   ```bash
+   golangci-lint run 2>/dev/null || echo "golangci-lint not installed, skipping"
+   ```
+
+4. **Check build system logs (if dev server running):**
+   - Air (Go): Check `./tmp/air-combined.log` for build errors
+   - If `.air.toml` exists, check configured log path
+   - Node/Vite: Check terminal output or build logs
+
+**All checks must pass before continuing.** Fix and re-run until green.
+
+### 8. Security Review
+
+Before submitting, scan for security issues:
+
+1. **Dependency vulnerabilities (if govulncheck available):**
+   ```bash
+   govulncheck ./... 2>/dev/null || echo "govulncheck not installed, skipping"
+   ```
+
+2. **Scan changed files for common Go security issues:**
+   - Hardcoded secrets/credentials (API keys, passwords, tokens in code)
+   - SQL injection (string concatenation in queries vs parameterized)
+   - Path traversal (`filepath.Join` with user input without `filepath.Clean`)
+   - Unsafe `exec.Command` with unsanitized user input
+   - Missing error checks on security-critical operations
+
+3. **If changes touch auth, crypto, or data handling code:**
+   Consider running `/codex review` with security focus for deeper analysis.
+
+**Address any security findings before proceeding.**
+
+### 9. Pre-PR Code Review (Optional)
+
+Before creating the PR, consider getting an independent code review:
+
+**Suggestion:** Run `/codex review` to get AI-assisted code review feedback.
+
+This is optional — skip this step if the changes are straightforward. If the review surfaces issues, address them before PR creation.
+
+### 10. Submit
 
 Commit, push, and create a PR referencing the issue.
 
-### 9. Watch CI
+### 11. Watch CI
 
 After creating the PR, watch CI and fix any failures:
 
