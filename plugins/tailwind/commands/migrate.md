@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--check]"
 description: "Migrate Tailwind CSS v3 configuration to v4 CSS-based config"
-model: claude-opus-4-5-20251101
+model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_config_guide"]
 ---
 

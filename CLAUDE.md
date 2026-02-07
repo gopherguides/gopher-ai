@@ -34,7 +34,7 @@ plugins/
 **Commands** (`commands/*.md`): Define slash commands with YAML frontmatter specifying:
 - `argument-hint`: Placeholder shown in command help
 - `description`: Short description for command list
-- `model`: Optional model override (e.g., `claude-opus-4-5-20251101`)
+- `model`: Optional model override (e.g., `claude-opus-4-6`)
 - `allowed-tools`: Tool restrictions for the command
 
 **Skills** (`skills/*/SKILL.md`): Auto-invoked behaviors with YAML frontmatter specifying:

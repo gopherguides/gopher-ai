@@ -1,7 +1,7 @@
 ---
 argument-hint: "<from> <to> [file]"
 description: "Convert between formats, languages, and data structures"
-model: claude-opus-4-5-20251101
+model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 
