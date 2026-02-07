@@ -47,18 +47,24 @@ Otherwise, detect the build system in this order:
 ### 1a. Air (Go hot-reload)
 
 ```bash
-ls .air.toml air.toml 2>/dev/null
+# Find the Air config file (prefer .air.toml, fall back to air.toml)
+AIR_CONFIG=""
+if [ -f .air.toml ]; then
+  AIR_CONFIG=".air.toml"
+elif [ -f air.toml ]; then
+  AIR_CONFIG="air.toml"
+fi
 ```
 
-If found, parse `.air.toml` to determine log paths:
+If found, parse the detected config file to determine log paths:
 
 ```bash
 # Extract tmp_dir (default: "tmp")
-TMP_DIR=$(grep '^tmp_dir' .air.toml 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/')
+TMP_DIR=$(grep '^tmp_dir' "$AIR_CONFIG" 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/')
 TMP_DIR="${TMP_DIR:-tmp}"
 
 # Extract build log name from [build] section
-BUILD_LOG=$(awk '/^\[build\]/,/^\[/' .air.toml 2>/dev/null | grep '^\s*log\s*=' | sed 's/.*= *"\(.*\)"/\1/')
+BUILD_LOG=$(awk '/^\[build\]/,/^\[/' "$AIR_CONFIG" 2>/dev/null | grep '^\s*log\s*=' | sed 's/.*= *"\(.*\)"/\1/')
 BUILD_LOG="${BUILD_LOG:-build-errors.log}"
 ```
 
