@@ -19,11 +19,11 @@ Auto-detect the project's build system and fix all build errors.
 
 **Workflow:**
 
-1. Detect project build system (Air, Go, Node/Vite/Webpack)
+1. Detect all project build systems (Air, Go, Node/Vite/Webpack)
 2. Locate and parse build error logs
 3. Read failing source files and understand errors
 4. Apply fixes (minimal, targeted changes)
-5. Re-check build until clean
+5. Re-check all builds until clean
 
 Proceed with auto-detection and fix all build errors.
 
@@ -38,17 +38,19 @@ Fix build errors using the specified log file path or build system.
 Initialize persistent loop to ensure all build errors are resolved:
 !`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "build-fix" "COMPLETE"`
 
-## Step 1: Detect Build System
+## Step 1: Detect Build Systems
+
+**Important:** A project may have multiple build systems (e.g., Go backend + Vite frontend). Check ALL of the following independently and collect every detected system. Do not stop after the first match.
 
 If `$ARGUMENTS` is a file path that exists, use it directly as the log source and skip detection.
 
-Otherwise, detect the build system in this order:
+Otherwise, check each build system:
 
 ### 1a. Air (Go hot-reload)
 
+Look for the Air config file:
+
 ```bash
-# Find the Air config file (prefer .air.toml, fall back to air.toml)
-AIR_CONFIG=""
 if [ -f .air.toml ]; then
   AIR_CONFIG=".air.toml"
 elif [ -f air.toml ]; then
@@ -56,94 +58,91 @@ elif [ -f air.toml ]; then
 fi
 ```
 
-If found, parse the detected config file to determine log paths:
+If found, extract `tmp_dir` and the build log name using `awk` (handles missing keys with defaults):
 
 ```bash
-# Extract tmp_dir (default: "tmp")
-TMP_DIR=$(grep '^tmp_dir' "$AIR_CONFIG" 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/')
-TMP_DIR="${TMP_DIR:-tmp}"
-
-# Extract build log name from [build] section
-BUILD_LOG=$(awk '/^\[build\]/,/^\[/' "$AIR_CONFIG" 2>/dev/null | grep '^[[:space:]]*log[[:space:]]*=' | sed 's/.*= *"\(.*\)"/\1/')
-BUILD_LOG="${BUILD_LOG:-build-errors.log}"
+eval "$(awk '
+  BEGIN { tmp="tmp"; log="build-errors.log" }
+  /^tmp_dir[[:space:]]*=/ { gsub(/.*=[[:space:]]*"|".*/, "", $0); tmp=$0 }
+  /^\[build\]/,/^\[/ { if ($0 ~ /^[[:space:]]*log[[:space:]]*=/) { gsub(/.*=[[:space:]]*"|".*/, "", $0); log=$0 } }
+  END { printf "TMP_DIR=%s\nBUILD_LOG=%s\n", tmp, log }
+' "$AIR_CONFIG")"
 ```
 
 **Log path priority** (check in order, use first that exists):
-1. `${TMP_DIR}/air-combined.log` -- primary log with compilation + template + SQL errors
+1. `${TMP_DIR}/air-combined.log` -- primary combined log (compilation + template + SQL errors)
 2. `${TMP_DIR}/${BUILD_LOG}` -- Air's configured build error log
-3. Run `go build ./...` directly if no logs exist
+3. Fall through to Go standard build if no logs exist
 
 ### 1b. Go (standard)
 
 ```bash
-ls go.mod 2>/dev/null
+[ -f go.mod ]
 ```
 
-If found (and no Air), run `go build ./...` directly. No persistent log file.
+If `go.mod` exists, Go is a detected build system. **Continue checking for Node systems below** -- do not stop here.
 
-### 1c. Node.js (Vite)
+### 1c. Node.js
+
+Check for Node build systems (in order of specificity):
 
 ```bash
+# Vite
 ls vite.config.ts vite.config.js vite.config.mjs 2>/dev/null
-```
 
-### 1d. Node.js (Webpack)
-
-```bash
+# Webpack
 ls webpack.config.js webpack.config.ts 2>/dev/null
+
+# Generic (package.json with build script)
+[ -f package.json ] && jq -e '.scripts.build' package.json >/dev/null 2>&1
 ```
 
-### 1e. Node.js (generic build script)
+### 1d. General fallback
 
-```bash
-jq -r '.scripts.build // empty' package.json 2>/dev/null
-```
-
-### 1f. General fallback
+If no build system was detected above, check for recent log files:
 
 ```bash
 ls -lt ./tmp/*.log ./log/*.log ./build/*.log 2>/dev/null | head -5
 ```
 
-### 1g. No build system detected
+### 1e. Nothing detected
 
-If nothing is found, ask the user:
+If no build system or log file was found, ask the user:
 - "No build system detected. What build command should I run, and where are the build logs?"
 
 ## Step 2: Get Build Errors
 
-### For Air projects (log file exists):
+Run builds for **each detected system** and collect all errors.
 
-Read the most recent build output from the log. Air appends to the log, so focus on the end:
+### Air projects (log file exists):
+
+Read the most recent build output. Air appends to the log, so focus on the end:
 
 ```bash
-tail -200 ${LOG_PATH}
+tail -200 "$LOG_PATH"
 ```
 
 Find the most recent build trigger and extract errors after it.
 
-**Check if the log is stale.** Compare the log's modification time to the most recently changed source file. If source files are newer than the log, run a fresh build instead of parsing stale logs.
+**Stale log check:** Compare the log's modification time to the most recently changed source file. If source files are newer than the log, skip the log and run a fresh build instead.
 
-### For Air projects (no log / stale log):
+### Air projects (no log / stale log):
 
 Run the Air build pipeline manually:
 
 ```bash
-# Run pre_cmd steps if present in .air.toml (templ generate, sqlc generate, go mod tidy)
 go generate ./...
 go mod tidy
-
-# Then build
 go build ./... 2>&1
 ```
 
-### For Go (standard):
+### Go (standard):
 
 ```bash
 go build ./... 2>&1
 ```
 
-### For Node.js:
+### Node.js:
 
 ```bash
 npm run build 2>&1
@@ -151,7 +150,7 @@ npm run build 2>&1
 
 ### Already clean?
 
-If the build produces no errors, report "Build is already clean" and proceed to completion.
+If **all** builds produce no errors, report "Build is already clean" and proceed to completion.
 
 ## Step 3: Parse and Group Errors
 
@@ -177,7 +176,7 @@ For each file with errors:
 
 **Generated file detection:** Do NOT edit these directly:
 - `*_templ.go` -- fix the source `.templ` file, then run `templ generate`
-- Files in `internal/database/sqlc/` or similar sqlc output dirs -- fix the `.sql` file, then run `sqlc generate`
+- Files in sqlc output directories -- fix the `.sql` file, then run `sqlc generate`
 - `*_mock.go` -- fix the interface, then regenerate mocks
 
 **Missing dependency detection:** If the error is `cannot find module providing package X`:
@@ -201,19 +200,18 @@ For each error group (ordered by root cause first):
 5. Syntax errors
 6. Logic errors flagged by the compiler
 
-## Step 6: Re-check Build
+## Step 6: Re-check All Builds
 
-After applying fixes, verify the build:
+After applying fixes, re-run **every detected build system**:
 
 ### Air projects (running):
 
 ```bash
-# Wait for Air to detect changes and rebuild
 sleep 3
-tail -100 ${LOG_PATH}
+tail -100 "$LOG_PATH"
 ```
 
-### Air projects (not running) / Go standard:
+### Go (Air not running or standard):
 
 ```bash
 go build ./... 2>&1
@@ -225,9 +223,7 @@ go build ./... 2>&1
 npm run build 2>&1
 ```
 
-### If new errors appear:
-
-Return to Step 3. Parse, group, read, fix, re-check.
+Run all applicable builds. If **any** build still has errors, return to Step 3.
 
 ### Cycle detection:
 
@@ -238,7 +234,6 @@ Track error signatures across iterations. If the same error reappears after bein
 - Always read the failing file before attempting a fix
 - Fix root-cause errors first to minimize iteration count
 - For Air projects, `air-combined.log` is the authoritative source (not `build-errors.log`)
-- Some projects have both Go and Node builds -- detect and fix both if present
 - After fixing generated-file sources, always re-run the generator before re-checking
 
 ---
@@ -247,13 +242,12 @@ Track error signatures across iterations. If the same error reappears after bein
 
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
 
-1. Build system detected (or explicit log path confirmed)
+1. All project build systems have been detected
 2. All build errors parsed and understood
 3. Fixes applied to all failing files
-4. Build completes successfully with zero errors:
-   - **Air projects:** `air-combined.log` shows clean build OR `go build ./...` exits 0
-   - **Go projects:** `go build ./...` exits 0
-   - **Node projects:** `npm run build` exits 0
+4. **Every** detected build completes successfully with zero errors:
+   - **Air/Go:** `air-combined.log` shows clean build OR `go build ./...` exits 0
+   - **Node:** `npm run build` exits 0
 5. No regression errors introduced by fixes
 
 **When ALL criteria are met, output exactly:**
