@@ -2,7 +2,7 @@
 argument-hint: "<issue-number>"
 description: "Start working on a GitHub issue (auto-detects bug vs feature)"
 model: claude-opus-4-6
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion"]
+allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "EnterPlanMode"]
 ---
 
 # Start Issue
@@ -33,6 +33,14 @@ Ask the user: "What issue number would you like to work on?"
 
 **If `$ARGUMENTS` is provided:**
 
+## Plan Mode Check
+
+**FIRST ACTION — before anything else:**
+
+If you are NOT currently in plan mode (no "Plan mode is active" in your system context), call the `EnterPlanMode` tool now. This ensures a proper plan is created and approved before implementation begins.
+
+If you ARE already in plan mode, continue with the workflow below.
+
 ## Security Validation
 
 First, validate input is numeric (prevent command injection):
@@ -60,7 +68,6 @@ Initialize persistent loop to ensure work continues until complete:
 Do not:
 - Analyze the issue beyond the context already gathered
 - Launch Task or Explore agents
-- Enter plan mode
 - Start any implementation work
 
 Use AskUserQuestion with this exact configuration:
