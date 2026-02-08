@@ -20,6 +20,12 @@ Or install via marketplace:
 | `/test-gen <target>` | Generate comprehensive Go tests with table-driven patterns |
 | `/lint-fix [path]` | Auto-fix Go linting issues with golangci-lint |
 | `/explain <target>` | Deep-dive explanation of Go code with diagrams |
+
+### Structured Output
+
+`/test-gen`, `/explain`, and `/lint-fix` support a `--json` flag. When passed, the command outputs structured JSON matching a defined schema instead of markdown. This is useful for programmatic consumption, CI pipelines, and tool integration.
+
+Example: `/test-gen --json pkg/auth/login.go`
 | `/build-fix [log-path]` | Auto-detect build system, parse errors, and fix until clean |
 | `/refactor-clean [path]` | Find and remove dead Go code, orphaned tests, and complexity issues |
 

@@ -133,6 +133,43 @@ Generate a changelog from git commits since the specified starting point.
 - Preserve original commit author attribution for team projects
 - If no conventional commit format, still categorize intelligently
 
+---
+
+## Structured Output (`--json`)
+
+When `$ARGUMENTS` contains `--json`, output **only** valid JSON matching this schema instead of markdown. Do not include any text outside the JSON object.
+
+```json
+{
+  "version": "string — suggested next version (e.g. 'v1.3.0') or 'unreleased'",
+  "changes": {
+    "features": ["string — description of each new feature"],
+    "fixes": ["string — description of each bug fix"],
+    "breaking": ["string — description of each breaking change"]
+  }
+}
+```
+
+**Example:**
+
+```json
+{
+  "version": "v1.3.0",
+  "changes": {
+    "features": [
+      "Add structured output support to commands (#32)",
+      "New /build-fix command for auto-fixing build errors"
+    ],
+    "fixes": [
+      "Fix environment variable expansion in plugin paths (#40)"
+    ],
+    "breaking": []
+  }
+}
+```
+
+Strip the `--json` flag from `$ARGUMENTS` before parsing the starting point.
+
 
 ## Structured Output (--json)
 

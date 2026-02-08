@@ -249,4 +249,41 @@ This signals the loop to exit. If you output this prematurely, the tests may be 
 
 ---
 
+## Structured Output (`--json`)
+
+When `$ARGUMENTS` contains `--json`, output **only** valid JSON matching this schema instead of markdown. Do not include any text outside the JSON object.
+
+```json
+{
+  "test_cases": [
+    {
+      "name": "string — test case name (e.g. 'valid_input_returns_expected_result')",
+      "input": "any — the input value or description",
+      "expected": "any — the expected output value or description",
+      "edge_case": "boolean — true if this is an edge case or error scenario"
+    }
+  ],
+  "coverage_estimate": "string — estimated coverage percentage or qualitative assessment",
+  "testing_framework": "string — detected framework (e.g. 'stdlib', 'testify', 'gomock')"
+}
+```
+
+**Example:**
+
+```json
+{
+  "test_cases": [
+    {"name": "valid_email_returns_true", "input": "user@example.com", "expected": true, "edge_case": false},
+    {"name": "empty_string_returns_error", "input": "", "expected": "error: empty email", "edge_case": true},
+    {"name": "missing_at_symbol_returns_false", "input": "userexample.com", "expected": false, "edge_case": true}
+  ],
+  "coverage_estimate": "85% — covers happy path, empty input, and format validation",
+  "testing_framework": "testify"
+}
+```
+
+Strip the `--json` flag from `$ARGUMENTS` before identifying the target file/function.
+
+---
+
 **Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.

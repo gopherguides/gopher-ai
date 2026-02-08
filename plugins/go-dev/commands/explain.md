@@ -188,6 +188,44 @@ Before loading file content:
 - Keep diagrams focused (5-10 nodes max)
 - Offer to explain any referenced code in more detail
 
+---
+
+## Structured Output (`--json`)
+
+When `$ARGUMENTS` contains `--json`, output **only** valid JSON matching this schema instead of markdown. Do not include any text outside the JSON object.
+
+```json
+{
+  "summary": "string — 2-3 sentence overview of what the code does and why",
+  "components": [
+    {
+      "name": "string — type, function, or interface name",
+      "purpose": "string — what this component does",
+      "complexity": "string — 'low', 'medium', or 'high'"
+    }
+  ],
+  "call_graph": "string — Mermaid diagram source showing component interactions",
+  "recommendations": ["string — improvement suggestions or things to watch out for"]
+}
+```
+
+**Example:**
+
+```json
+{
+  "summary": "Package auth provides JWT-based authentication middleware for HTTP handlers. It validates tokens, extracts claims, and injects user context.",
+  "components": [
+    {"name": "Middleware", "purpose": "HTTP middleware that validates JWT tokens and sets user context", "complexity": "medium"},
+    {"name": "Claims", "purpose": "Custom JWT claims struct with user ID and roles", "complexity": "low"},
+    {"name": "TokenService", "purpose": "Interface for token generation and validation", "complexity": "low"}
+  ],
+  "call_graph": "sequenceDiagram\n    participant H as Handler\n    participant M as Middleware\n    participant T as TokenService\n    M->>T: Validate(token)\n    T-->>M: claims, err\n    M->>H: next(ctx)",
+  "recommendations": ["Consider adding token refresh logic", "Add rate limiting to prevent brute-force attempts"]
+}
+```
+
+Strip the `--json` flag from `$ARGUMENTS` before identifying the target.
+
 
 ## Structured Output (--json)
 

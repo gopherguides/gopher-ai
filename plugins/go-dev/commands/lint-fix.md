@@ -240,4 +240,43 @@ This signals the loop to exit. If you output this prematurely, linting issues ma
 
 ---
 
+## Structured Output (`--json`)
+
+When `$ARGUMENTS` contains `--json`, output **only** valid JSON matching this schema instead of markdown. Do not include any text outside the JSON object.
+
+```json
+{
+  "fixes": [
+    {
+      "file": "string — file path relative to project root",
+      "line": "number — line number of the issue",
+      "rule": "string — linter rule name (e.g. 'errcheck', 'govet')",
+      "severity": "string — 'error', 'warning', or 'info'",
+      "fix": "string — description of the fix applied"
+    }
+  ],
+  "summary": {
+    "errors": "number — total errors found",
+    "warnings": "number — total warnings found",
+    "fixed": "number — total issues auto-fixed"
+  }
+}
+```
+
+**Example:**
+
+```json
+{
+  "fixes": [
+    {"file": "pkg/api/handler.go", "line": 45, "rule": "errcheck", "severity": "error", "fix": "Added error check for db.Close()"},
+    {"file": "pkg/db/query.go", "line": 23, "rule": "gofmt", "severity": "warning", "fix": "Reformatted function signature"}
+  ],
+  "summary": {"errors": 1, "warnings": 1, "fixed": 2}
+}
+```
+
+Strip the `--json` flag from `$ARGUMENTS` before parsing path and options.
+
+---
+
 **Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.
