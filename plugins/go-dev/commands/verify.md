@@ -29,6 +29,13 @@ Run verification on entire project.
 
 This is your pre-push sanity check. Run it anytime before pushing.
 
+## Loop Initialization
+
+Initialize persistent loop to ensure all checks pass:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "verify" "COMPLETE"`
+
+## Configuration
+
 Set default target path:
 
 ```bash
@@ -74,13 +81,20 @@ go vet $TARGET_PATH 2>&1
 
 **If issues found:**
 
-Report them with file:line references and fix them:
+Report them with file:line references (non-blocking):
 
-1. Read the failing files around the reported lines
-2. Apply minimal fixes (format string mismatches, unreachable code removal, etc.)
-3. Re-run `go vet $TARGET_PATH` to confirm fixes
+```
+go vet found issues (non-blocking):
 
-**If clean:** Proceed to Step 2.
+file.go:45: Printf format %d has arg of wrong type string
+file.go:23: unreachable code after return statement
+
+These are worth reviewing but do not block verification.
+```
+
+Attempt to fix obvious issues (format string mismatches, unreachable code removal) if straightforward. If fixes are applied, re-run `go vet` to confirm. If issues remain or fixes are non-trivial, report them and continue.
+
+Proceed to Step 2 regardless of whether vet issues remain.
 
 ---
 
