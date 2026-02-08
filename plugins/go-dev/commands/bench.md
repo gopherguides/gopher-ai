@@ -136,7 +136,8 @@ Initialize persistent loop to ensure benchmarks are complete and analyzed:
    - Include sub-benchmarks for different input sizes where applicable
    - Create realistic test data, not trivial inputs
    - For unexported functions, use the same package (not `_test` suffix)
-   - For exported functions, prefer `_test` suffix package for realistic API testing
+   - For exported functions, use `_test` suffix package only when all parameter and return types
+     are also exported; otherwise use the same package to access unexported types
 
 4. **Run Benchmarks**
 
