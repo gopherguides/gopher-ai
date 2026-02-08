@@ -2,7 +2,7 @@
   "name": "gopher-ai",
   "owner": {
     "name": "Gopher Guides",
-    "email": "support@gopherguides.com"
+    "email": "info@gopherguides.com"
   },
   "metadata": {
     "description": "Claude Code plugins for Go developers - by Gopher Guides",
