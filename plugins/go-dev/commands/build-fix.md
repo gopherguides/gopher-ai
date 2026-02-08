@@ -22,9 +22,9 @@ Initialize persistent loop to ensure all build errors are resolved:
 
 **Important:** A project may have multiple build systems (e.g., Go backend + Vite frontend). Check ALL of the following independently and collect every detected system. Do not stop after the first match.
 
-If `$ARGUMENTS` is a file path that exists, use it directly as the log source and skip detection.
+If `$ARGUMENTS` is a file path that exists, use it as an additional log source for error parsing. **Still run detection below** so all build systems are known for re-checking in Step 6.
 
-Otherwise, check each build system:
+Check each build system:
 
 ### 1a. Air (Go hot-reload)
 
