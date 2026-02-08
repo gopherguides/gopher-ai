@@ -5,10 +5,6 @@ model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 
-**If `$ARGUMENTS` is empty or not provided:**
-
-Auto-detect the project's build system and fix all build errors.
-
 **Usage:** `/build-fix [log-path]`
 
 **Examples:**
@@ -16,22 +12,6 @@ Auto-detect the project's build system and fix all build errors.
 - `/build-fix` - Auto-detect build system and fix errors
 - `/build-fix ./tmp/air-combined.log` - Fix errors from a specific log file
 - `/build-fix ./build/output.log` - Fix errors from custom log location
-
-**Workflow:**
-
-1. Detect all project build systems (Air, Go, Node/Vite/Webpack)
-2. Locate and parse build error logs
-3. Read failing source files and understand errors
-4. Apply fixes (minimal, targeted changes)
-5. Re-check all builds until clean
-
-Proceed with auto-detection and fix all build errors.
-
----
-
-**If `$ARGUMENTS` is provided:**
-
-Fix build errors using the specified log file path or build system.
 
 ## Loop Initialization
 
