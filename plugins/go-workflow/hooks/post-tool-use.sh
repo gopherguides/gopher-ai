@@ -4,7 +4,7 @@ set -euo pipefail
 HOOK_INPUT=$(cat)
 TOOL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 TOOL_OUTPUT=$(echo "$HOOK_INPUT" | jq -r '.tool_output // empty' 2>/dev/null)
-RETRY_STATE="${TMPDIR:-/tmp}/.claude-hook-retry-$$"
+RETRY_STATE="${TMPDIR:-/tmp}/gopher-ai-retry-${TOOL_NAME}"
 
 detect_network_timeout() {
   echo "$TOOL_OUTPUT" | grep -qiE 'connection timed out|network.*(unreachable|timeout)|dial tcp.*timeout|context deadline exceeded|ETIMEDOUT'
