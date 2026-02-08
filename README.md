@@ -61,6 +61,31 @@ gemini extensions install ./dist/gemini/gopher-ai-go-workflow
 # ... or any other module
 ```
 
+## Tool Categories
+
+Gopher AI includes both **Go-specific** and **general-purpose** tools:
+
+### Go-Specific Tools
+
+These modules are designed specifically for Go development:
+
+| Module | Focus |
+|--------|-------|
+| **go-dev** | Go testing, linting, and code explanation |
+| **go-workflow** | Issue-to-PR workflow with git worktrees |
+| **go-web** | Go web app scaffolding (Go + Templ + HTMX + Tailwind) |
+| **gopher-guides** | Go best practices from Gopher Guides training materials |
+
+### General-Purpose Tools
+
+These modules work with any language or stack:
+
+| Module | Focus |
+|--------|-------|
+| **productivity** | Standup reports, changelogs, release management |
+| **llm-tools** | Multi-LLM delegation and comparison |
+| **tailwind** | Tailwind CSS v4 tooling (init, migrate, audit, optimize) |
+
 ## Available Modules
 
 ### go-workflow

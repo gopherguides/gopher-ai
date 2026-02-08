@@ -5,7 +5,7 @@
     "email": "info@gopherguides.com"
   },
   "metadata": {
-    "description": "Claude Code plugins for Go developers - by Gopher Guides",
+    "description": "Go-specific and general-purpose AI coding assistant plugins - by Gopher Guides",
     "version": "1.3.0"
   },
   "plugins": [
