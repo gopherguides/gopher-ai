@@ -91,6 +91,27 @@ else
   echo "OK (all v$MARKETPLACE_VER)"
 fi
 
+# Test 6: Plugin plugin.json versions match marketplace versions
+echo -n "Plugin plugin.json versions match marketplace... "
+PLUGIN_JSON_MISMATCHES=""
+for i in $(seq 0 $((PLUGIN_COUNT - 1))); do
+  NAME=$(jq -r ".plugins[$i].name" "$MARKETPLACE")
+  EXPECTED_VER=$(jq -r ".plugins[$i].version" "$MARKETPLACE")
+  PLUGIN_JSON="plugins/$NAME/.claude-plugin/plugin.json"
+  if [ -f "$PLUGIN_JSON" ]; then
+    ACTUAL_VER=$(jq -r '.version // empty' "$PLUGIN_JSON" 2>/dev/null)
+    if [ -n "$ACTUAL_VER" ] && [ "$ACTUAL_VER" != "$EXPECTED_VER" ]; then
+      PLUGIN_JSON_MISMATCHES="$PLUGIN_JSON_MISMATCHES $NAME(plugin.json:$ACTUAL_VER!=marketplace:$EXPECTED_VER)"
+    fi
+  fi
+done
+if [ -n "$PLUGIN_JSON_MISMATCHES" ]; then
+  echo "FAIL:$PLUGIN_JSON_MISMATCHES"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo ""
 if [ $ERRORS -gt 0 ]; then
   echo "FAILED: $ERRORS test(s) failed"
