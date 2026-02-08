@@ -21,6 +21,7 @@ Or install via marketplace:
 | `/lint-fix [path]` | Auto-fix Go linting issues with golangci-lint |
 | `/explain <target>` | Deep-dive explanation of Go code with diagrams |
 | `/build-fix [log-path]` | Auto-detect build system, parse errors, and fix until clean |
+| `/refactor-clean [path]` | Find and remove dead Go code, orphaned tests, and complexity issues |
 
 ## Skills (Auto-invoked)
 
@@ -36,6 +37,7 @@ Automatically applies idiomatic Go patterns when writing or reviewing code:
 
 - Go toolchain
 - `golangci-lint` (for `/lint-fix`)
+- `staticcheck` (optional, improves `/refactor-clean` accuracy)
 
 ## License
 
