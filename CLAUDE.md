@@ -117,3 +117,22 @@ After releasing, users must refresh their local cache:
 ```
 
 This script works around known Claude Code cache invalidation bugs ([#14061](https://github.com/anthropics/claude-code/issues/14061), [#15621](https://github.com/anthropics/claude-code/issues/15621)).
+
+## Prompt Caching for Skills
+
+Large skill files (400+ lines) use `<!-- cache:start -->` / `<!-- cache:end -->` markers to delineate static reference content eligible for prompt caching. When Claude Code loads skill content into context, these markers indicate cache-stable content blocks that remain unchanged across interactions.
+
+**How it works:**
+- Content between cache markers is static reference material (patterns, best practices, component docs)
+- Claude's prompt caching can cache these blocks, reducing token costs by up to 90% on cache hits
+- Cache has a 5-minute TTL that refreshes on each use
+
+**Cached skill files:**
+- `plugins/go-web/skills/templui/SKILL.md` (~408 lines) — templUI component patterns, HTMX/Alpine integration
+- `plugins/tailwind/skills/tailwind-best-practices/SKILL.md` (~446 lines) — Tailwind v4 syntax, theme config, best practices
+
+**Guidelines:**
+- Add cache markers to any skill file exceeding ~300 lines of static content
+- Place `<!-- cache:start -->` after the YAML frontmatter closing `---`
+- Place `<!-- cache:end -->` at the end of the file
+- Do not include dynamic or frequently-changing content within cache markers
