@@ -29,7 +29,14 @@ Run verification on entire project.
 
 This is your pre-push sanity check. Run it anytime before pushing.
 
-Proceed with verification of `./...`.
+Set default target path:
+
+```bash
+TARGET_PATH="./..."
+echo "Verifying: $TARGET_PATH"
+```
+
+Proceed with verification.
 
 ---
 
