@@ -42,7 +42,19 @@ esac
 mkdir -p "$(dirname "$CACHE_FILE")"
 
 # Generate cache key from endpoint + data
-CACHE_KEY=$(printf '%s:%s' "$ENDPOINT" "$JSON_DATA" | shasum -a 256 | cut -d' ' -f1)
+hash_input() {
+  if command -v sha256sum &>/dev/null; then
+    sha256sum | cut -d' ' -f1
+  elif command -v shasum &>/dev/null; then
+    shasum -a 256 | cut -d' ' -f1
+  elif command -v openssl &>/dev/null; then
+    openssl dgst -sha256 -r | cut -d' ' -f1
+  else
+    # Fallback: use raw input as key (no hashing)
+    cat | tr -dc 'a-zA-Z0-9_-' | cut -c1-64
+  fi
+}
+CACHE_KEY=$(printf '%s:%s' "$ENDPOINT" "$JSON_DATA" | hash_input)
 
 # Check cache
 if [ -f "$CACHE_FILE" ]; then
