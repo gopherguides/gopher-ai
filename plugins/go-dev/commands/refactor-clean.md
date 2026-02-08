@@ -33,13 +33,26 @@ Find and clean dead code across the entire Go project.
 4. Apply fixes only after user confirmation
 5. Verify code still compiles and tests pass
 
-Proceed with analyzing the entire project.
+**Set default path and proceed with full workflow below:**
+
+`TARGET_PATH="./..."`
 
 ---
 
 **If `$ARGUMENTS` is provided:**
 
 Analyze and clean dead code for the specified path or options.
+
+**Parse `$ARGUMENTS` to extract path and options:**
+
+- If argument starts with `./` or is a package pattern: set as `TARGET_PATH`
+- If argument is `--dry-run`: set `DRY_RUN=true`, use `TARGET_PATH="./..."`
+- If both path and `--dry-run`: extract path to `TARGET_PATH`, set `DRY_RUN=true`
+
+Example parsing:
+- `./pkg/...` → `TARGET_PATH="./pkg/..."`
+- `--dry-run` → `TARGET_PATH="./..."`, `DRY_RUN=true`
+- `./internal/auth --dry-run` → `TARGET_PATH="./internal/auth"`, `DRY_RUN=true`
 
 ## Loop Initialization
 
@@ -94,24 +107,28 @@ If no specialized tools are available, inform the user which tools would improve
 
 ### 3. Analyze Unused Exported Functions and Types
 
+**All commands use `$TARGET_PATH` from Configuration step.**
+
 **With staticcheck:**
 
 ```bash
-staticcheck -checks U1000 ./... 2>&1
+staticcheck -checks U1000 $TARGET_PATH 2>&1
 ```
 
 **With deadcode (more thorough for reachability):**
 
 ```bash
-deadcode ./... 2>&1
+deadcode $TARGET_PATH 2>&1
 ```
 
 **Manual fallback (no tools):**
 
-1. List all exported functions and types:
+1. List all exported functions and types (convert package pattern to directory):
 ```bash
-grep -rn '^func [A-Z]' --include='*.go' --exclude='*_test.go' .
-grep -rn '^type [A-Z]' --include='*.go' --exclude='*_test.go' .
+# Convert $TARGET_PATH to directory for grep (e.g., ./pkg/... → ./pkg/)
+SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
+grep -rn '^func [A-Z]' --include='*.go' --exclude='*_test.go' "$SEARCH_DIR"
+grep -rn '^type [A-Z]' --include='*.go' --exclude='*_test.go' "$SEARCH_DIR"
 ```
 
 2. For each exported symbol, search for references outside its defining file:
@@ -136,7 +153,9 @@ grep -rn 'SymbolName' --include='*.go' . | grep -v 'func SymbolName'
 Look for test files whose corresponding source files no longer exist or whose test targets have been removed.
 
 ```bash
-find . -name '*_test.go' -not -path './vendor/*' -not -path './.git/*' | sort
+# Convert $TARGET_PATH to directory for find
+SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
+find "$SEARCH_DIR" -name '*_test.go' -not -path './vendor/*' -not -path './.git/*' | sort
 ```
 
 For each `*_test.go` file:
@@ -168,13 +187,16 @@ If `go list` succeeds, the test package is valid even without non-test source fi
 **With gocyclo:**
 
 ```bash
-gocyclo -over 15 . 2>&1
+# Convert $TARGET_PATH to directory for gocyclo
+SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
+gocyclo -over 15 "$SEARCH_DIR" 2>&1
 ```
 
 **With gocognit:**
 
 ```bash
-gocognit -over 15 . 2>&1
+SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
+gocognit -over 15 "$SEARCH_DIR" 2>&1
 ```
 
 **Manual fallback:**
@@ -204,13 +226,15 @@ For complex functions, suggest specific extraction points:
 **With goimports:**
 
 ```bash
-goimports -l . 2>&1
+# Convert $TARGET_PATH to directory for goimports
+SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
+goimports -l "$SEARCH_DIR" 2>&1
 ```
 
 **Via go build (catches what goimports misses):**
 
 ```bash
-go build ./... 2>&1 | grep 'imported and not used'
+go build $TARGET_PATH 2>&1 | grep 'imported and not used'
 ```
 
 **Beyond standard unused imports — identify unnecessary dependencies:**
