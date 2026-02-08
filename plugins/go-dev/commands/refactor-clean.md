@@ -123,11 +123,15 @@ deadcode $TARGET_PATH 2>&1
 
 **Manual fallback (no tools):**
 
-1. List all exported functions and types (convert package pattern to directory):
+1. List all exported functions, methods, and types (convert package pattern to directory):
 ```bash
 # Convert $TARGET_PATH to directory for grep (e.g., ./pkg/... → ./pkg/)
 SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
+# Exported standalone functions: func ExportedName(...)
 grep -rn '^func [A-Z]' --include='*.go' --exclude='*_test.go' "$SEARCH_DIR"
+# Exported methods: func (r *Receiver) ExportedName(...) or func (r Receiver) ExportedName(...)
+grep -rn '^func ([^)]*) [A-Z]' --include='*.go' --exclude='*_test.go' "$SEARCH_DIR"
+# Exported types
 grep -rn '^type [A-Z]' --include='*.go' --exclude='*_test.go' "$SEARCH_DIR"
 ```
 
