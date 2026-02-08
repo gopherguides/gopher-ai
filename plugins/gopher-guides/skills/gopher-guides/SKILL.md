@@ -10,18 +10,17 @@ description: |
 
 Access official Gopher Guides training materials via API for authoritative Go best practices.
 
+## Important: Always Use `--variable`/`--expand-header` Syntax
+
+**Do NOT use `$VAR` or `${VAR}` shell expansion in curl commands.** Environment variable expansion is unreliable in AI coding assistant shell/bash tools (Claude Code, Codex, etc.). Always use curl's built-in `--variable %` and `--expand-header` syntax instead.
+
+> **Requires curl 8.3+.** If you get `unknown option: --variable`, see the fallback note at the bottom.
+
 ## Step 1: Verify API Key
 
-**For Claude Code** (curl 8.3+ with env var in shell profile):
 ```bash
 curl -s --variable %GOPHER_GUIDES_API_KEY \
   --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
-  https://gopherguides.com/api/gopher-ai/me
-```
-
-**Standard curl** (portable, works everywhere):
-```bash
-curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   https://gopherguides.com/api/gopher-ai/me
 ```
 
@@ -37,20 +36,11 @@ curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
 
 ## Step 2: Query the API
 
-Use the `--variable`/`--expand-header` syntax for Claude Code, or standard `$VAR` syntax for other tools.
-
 ### For "what's the best way to..." questions
 
 ```bash
-# Claude Code (curl 8.3+)
 curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
   --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
-  -H "Content-Type: application/json" \
-  -d '{"topic": "error handling"}' \
-  https://gopherguides.com/api/gopher-ai/practices
-
-# Standard curl
-curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"topic": "error handling"}' \
   https://gopherguides.com/api/gopher-ai/practices
@@ -59,15 +49,8 @@ curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
 ### For code review/audit
 
 ```bash
-# Claude Code (curl 8.3+)
 curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
   --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
-  -H "Content-Type: application/json" \
-  -d '{"code": "<user code here>", "focus": "error-handling"}' \
-  https://gopherguides.com/api/gopher-ai/audit
-
-# Standard curl
-curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"code": "<user code here>", "focus": "error-handling"}' \
   https://gopherguides.com/api/gopher-ai/audit
@@ -76,15 +59,8 @@ curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
 ### For "show me an example of..."
 
 ```bash
-# Claude Code (curl 8.3+)
 curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
   --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
-  -H "Content-Type: application/json" \
-  -d '{"topic": "table driven tests"}' \
-  https://gopherguides.com/api/gopher-ai/examples
-
-# Standard curl
-curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"topic": "table driven tests"}' \
   https://gopherguides.com/api/gopher-ai/examples
@@ -93,15 +69,8 @@ curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
 ### For PR/diff review
 
 ```bash
-# Claude Code (curl 8.3+)
 curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
   --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
-  -H "Content-Type: application/json" \
-  -d '{"diff": "<diff output>"}' \
-  https://gopherguides.com/api/gopher-ai/review
-
-# Standard curl
-curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"diff": "<diff output>"}' \
   https://gopherguides.com/api/gopher-ai/review
@@ -126,6 +95,17 @@ The training materials cover:
 - **Database**: SQL, ORMs, migrations
 - **Best Practices**: Code organization, error handling, interfaces
 - **Tooling**: go mod, go test, linters, profiling
+
+## Fallback for curl < 8.3
+
+If `--variable` is not supported (curl versions before 8.3), use `printf` to avoid shell expansion issues:
+
+```bash
+printf -v AUTH_HEADER "Authorization: Bearer %s" "$(printenv GOPHER_GUIDES_API_KEY)"
+curl -s -H "$AUTH_HEADER" https://gopherguides.com/api/gopher-ai/me
+```
+
+Check your curl version with `curl --version`.
 
 ---
 
