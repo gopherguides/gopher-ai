@@ -100,9 +100,8 @@ The training materials cover:
 
 If `--variable` is not supported (curl versions before 8.3), use `printf` to avoid shell expansion issues:
 
-```bash
-printf -v AUTH_HEADER "Authorization: Bearer %s" "$(printenv GOPHER_GUIDES_API_KEY)"
-curl -s -H "$AUTH_HEADER" https://gopherguides.com/api/gopher-ai/me
+```sh
+KEY=$(printenv GOPHER_GUIDES_API_KEY) && curl -s -H "Authorization: Bearer $KEY" https://gopherguides.com/api/gopher-ai/me
 ```
 
 Check your curl version with `curl --version`.
