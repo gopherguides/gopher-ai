@@ -153,9 +153,15 @@ grep -rn 'func.*FunctionName' --include='*.go' --exclude='*_test.go' path/to/pac
 
 **Orphan indicators:**
 
-- Test file exists but no non-test `.go` files in the same directory
 - Test functions reference functions that no longer exist in the package
 - Test file imports packages that no longer exist in `go.mod`
+- Directory contains only `*_test.go` files AND `go list` fails on it (distinguishes broken tests from valid test-only packages like integration/blackbox tests)
+
+**Note:** Do NOT flag test-only directories as orphaned without verifying via `go list`. Directories containing only `*_test.go` files are valid if they form a standalone test package (e.g., `package foo_test` for blackbox testing). Use:
+```bash
+go list ./path/to/testdir 2>&1
+```
+If `go list` succeeds, the test package is valid even without non-test source files.
 
 ### 5. Identify Overly Complex Functions
 
