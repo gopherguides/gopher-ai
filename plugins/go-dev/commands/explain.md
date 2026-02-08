@@ -187,3 +187,22 @@ Before loading file content:
 - Use Go terminology correctly
 - Keep diagrams focused (5-10 nodes max)
 - Offer to explain any referenced code in more detail
+
+
+## Structured Output (--json)
+
+If `$ARGUMENTS` contains `--json`, strip the flag from the target argument and output **only** a JSON object (no markdown, no explanation) matching this schema:
+
+```json
+{
+  "summary": "string",
+  "components": [{"name": "string", "purpose": "string", "complexity": "string"}],
+  "call_graph": "string (mermaid)",
+  "recommendations": ["string"]
+}
+```
+
+- `summary`: 2-3 sentence overview of the code
+- `components`: Key types, functions, or interfaces with purpose and complexity level (low/medium/high)
+- `call_graph`: Mermaid diagram source as a string
+- `recommendations`: Actionable improvement suggestions

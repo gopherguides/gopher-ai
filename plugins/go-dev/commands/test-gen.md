@@ -208,6 +208,28 @@ Initialize persistent loop to ensure tests are complete and passing:
 
 ---
 
+## Structured Output (--json)
+
+If `$ARGUMENTS` contains `--json`, strip the flag from the target argument and after completing all steps, output **only** a JSON object (no markdown, no explanation) matching this schema:
+
+```json
+{
+  "test_cases": [
+    {"name": "string", "input": "any", "expected": "any", "edge_case": true}
+  ],
+  "coverage_estimate": "string",
+  "testing_framework": "string"
+}
+```
+
+- `test_cases`: Array of generated test case metadata (name, representative input/expected values, whether it's an edge case)
+- `coverage_estimate`: Estimated code coverage (e.g., "~85% - covers happy path, edge cases, error scenarios")
+- `testing_framework`: Detected framework (e.g., "stdlib", "testify", "gomock+testify")
+
+Still generate and write the test file as normal, but output JSON to stdout instead of the markdown summary.
+
+---
+
 ## Completion Criteria
 
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**

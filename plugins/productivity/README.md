@@ -37,6 +37,16 @@ Or install via marketplace:
 /changelog
 ```
 
+## Structured Output
+
+Commands that return data support a `--json` flag for structured JSON output:
+
+| Command | JSON Schema |
+|---------|-------------|
+| `/changelog [since] --json` | `{version, changes: {features, fixes, breaking}}` |
+
+When `--json` is passed, the command outputs only a JSON object instead of markdown.
+
 ## Requirements
 
 - Git repository with commit history

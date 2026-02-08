@@ -33,6 +33,18 @@ Automatically applies idiomatic Go patterns when writing or reviewing code:
 - Concurrency patterns
 - Testing conventions
 
+## Structured Output
+
+Commands that return data support a `--json` flag for structured JSON output:
+
+| Command | JSON Schema |
+|---------|-------------|
+| `/test-gen <target> --json` | `{test_cases, coverage_estimate, testing_framework}` |
+| `/explain <target> --json` | `{summary, components, call_graph, recommendations}` |
+| `/lint-fix [path] --json` | `{fixes, summary}` |
+
+When `--json` is passed, the command outputs only a JSON object instead of markdown.
+
 ## Requirements
 
 - Go toolchain

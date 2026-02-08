@@ -201,6 +201,26 @@ issues:
 
 ---
 
+## Structured Output (--json)
+
+If `$ARGUMENTS` contains `--json`, strip the flag from other arguments and after completing all steps, output **only** a JSON object (no markdown, no explanation) matching this schema:
+
+```json
+{
+  "fixes": [
+    {"file": "string", "line": 0, "rule": "string", "severity": "string", "fix": "string"}
+  ],
+  "summary": {"errors": 0, "warnings": 0, "fixed": 0}
+}
+```
+
+- `fixes`: Array of all fixes applied (file, line number, linter rule, severity, description of fix)
+- `summary`: Counts of errors found, warnings found, and total issues fixed
+
+Still apply all fixes as normal, but output JSON to stdout instead of the markdown report.
+
+---
+
 ## Completion Criteria
 
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**

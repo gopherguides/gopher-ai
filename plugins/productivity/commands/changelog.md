@@ -132,3 +132,24 @@ Generate a changelog from git commits since the specified starting point.
 - Keep descriptions concise but meaningful
 - Preserve original commit author attribution for team projects
 - If no conventional commit format, still categorize intelligently
+
+
+## Structured Output (--json)
+
+If `$ARGUMENTS` contains `--json`, strip the flag from other arguments and output **only** a JSON object (no markdown, no explanation) matching this schema:
+
+```json
+{
+  "version": "string",
+  "changes": {
+    "features": ["string"],
+    "fixes": ["string"],
+    "breaking": ["string"]
+  }
+}
+```
+
+- `version`: Suggested next version based on conventional commits (or "unreleased" if no version bump detected)
+- `changes.features`: List of feature descriptions from `feat:` commits
+- `changes.fixes`: List of fix descriptions from `fix:` commits
+- `changes.breaking`: List of breaking change descriptions from `BREAKING CHANGE:` commits
