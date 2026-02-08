@@ -38,15 +38,14 @@ elif [ -f air.toml ]; then
 fi
 ```
 
-If found, extract `tmp_dir` and the build log name using `awk` (handles missing keys with defaults):
+If found, extract `tmp_dir` and the build log name:
 
 ```bash
-eval "$(awk '
-  BEGIN { tmp="tmp"; log="build-errors.log" }
-  /^tmp_dir[[:space:]]*=/ { gsub(/.*=[[:space:]]*"|".*/, "", $0); tmp=$0 }
-  /^\[build\]/,/^\[/ { if ($0 ~ /^[[:space:]]*log[[:space:]]*=/) { gsub(/.*=[[:space:]]*"|".*/, "", $0); log=$0 } }
-  END { printf "TMP_DIR=%s\nBUILD_LOG=%s\n", tmp, log }
-' "$AIR_CONFIG")"
+TMP_DIR=$(awk '/^tmp_dir[[:space:]]*=/ { gsub(/.*=[[:space:]]*"|".*/, ""); print; exit }' "$AIR_CONFIG")
+TMP_DIR="${TMP_DIR:-tmp}"
+
+BUILD_LOG=$(awk '/^\[build\]/,/^\[/ { if ($0 ~ /^[[:space:]]*log[[:space:]]*=/) { gsub(/.*=[[:space:]]*"|".*/, ""); print; exit } }' "$AIR_CONFIG")
+BUILD_LOG="${BUILD_LOG:-build-errors.log}"
 ```
 
 **Log path priority** (check in order, use first that exists):
