@@ -20,6 +20,7 @@ Or install via marketplace:
 | `/test-gen <target>` | Generate comprehensive Go tests with table-driven patterns |
 | `/lint-fix [path]` | Auto-fix Go linting issues with golangci-lint |
 | `/explain <target>` | Deep-dive explanation of Go code with diagrams |
+| `/build-fix [log-path]` | Auto-detect build system, parse errors, and fix until clean |
 
 ## Skills (Auto-invoked)
 
