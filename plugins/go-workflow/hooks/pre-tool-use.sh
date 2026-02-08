@@ -43,12 +43,18 @@ check_tool_availability() {
   case "$TOOL_NAME" in
     Bash|bash)
       if echo "$cmd_text" | grep -q 'golangci-lint' && ! command -v golangci-lint &>/dev/null; then
-        printf '{"decision":"block","reason":"golangci-lint is not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"}\n'
-        exit 0
+        # Allow go install commands for the tool itself
+        if ! echo "$cmd_text" | grep -qE 'go install.*golangci-lint'; then
+          printf '{"decision":"block","reason":"golangci-lint is not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"}\n'
+          exit 0
+        fi
       fi
       if echo "$cmd_text" | grep -q 'templ ' && ! command -v templ &>/dev/null; then
-        printf '{"decision":"block","reason":"templ is not installed. Install with: go install github.com/a-h/templ/cmd/templ@latest"}\n'
-        exit 0
+        # Allow go install commands for the tool itself
+        if ! echo "$cmd_text" | grep -qE 'go install.*templ'; then
+          printf '{"decision":"block","reason":"templ is not installed. Install with: go install github.com/a-h/templ/cmd/templ@latest"}\n'
+          exit 0
+        fi
       fi
       if echo "$cmd_text" | grep -qE '^gh |[|&;] *gh ' && ! command -v gh &>/dev/null; then
         printf '{"decision":"block","reason":"GitHub CLI (gh) is not installed. Install from https://cli.github.com/"}\n'
