@@ -36,45 +36,51 @@ curl -s --variable %GOPHER_GUIDES_API_KEY \
 
 ## Step 2: Query the API
 
+Use the cache wrapper script for all API calls. It automatically caches responses
+(24h for practices/examples, 1h for audit/review) to avoid redundant API calls.
+
+The cache wrapper is at `${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh`.
+
 ### For "what's the best way to..." questions
 
 ```bash
-curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
-  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
-  -H "Content-Type: application/json" \
-  -d '{"topic": "error handling"}' \
-  https://gopherguides.com/api/gopher-ai/practices
+"${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh" practices '{"topic": "error handling"}'
 ```
 
 ### For code review/audit
 
 ```bash
-curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
-  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
-  -H "Content-Type: application/json" \
-  -d '{"code": "<user code here>", "focus": "error-handling"}' \
-  https://gopherguides.com/api/gopher-ai/audit
+"${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh" audit '{"code": "<user code here>", "focus": "error-handling"}'
 ```
 
 ### For "show me an example of..."
 
 ```bash
-curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
-  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
-  -H "Content-Type: application/json" \
-  -d '{"topic": "table driven tests"}' \
-  https://gopherguides.com/api/gopher-ai/examples
+"${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh" examples '{"topic": "table driven tests"}'
 ```
 
 ### For PR/diff review
 
 ```bash
-curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
-  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
-  -H "Content-Type: application/json" \
-  -d '{"diff": "<diff output>"}' \
-  https://gopherguides.com/api/gopher-ai/review
+"${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh" review '{"diff": "<diff output>"}'
 ```
+
+### Direct API calls (bypassing cache)
+
+If you need to bypass the cache, use curl directly:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "error handling"}' \
+  https://gopherguides.com/api/gopher-ai/practices
+```
+
+### Cache Management
+
+- Cache location: `.claude/gopher-guides-cache.json`
+- Clear cache: Use `/clear-cache` command
+- TTL: 24 hours (practices, examples), 1 hour (audit, review)
 
 ## Response Handling
 
