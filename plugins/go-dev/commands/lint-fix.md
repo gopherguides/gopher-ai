@@ -219,6 +219,8 @@ If `$ARGUMENTS` contains `--json`, strip the flag from other arguments and after
 
 Still apply all fixes as normal, but output JSON to stdout instead of the markdown report.
 
+> **Important:** When using `--json` mode, do NOT emit the `<done>COMPLETE</done>` marker. The JSON output itself signals completion.
+
 ---
 
 ## Completion Criteria

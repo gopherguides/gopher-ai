@@ -228,6 +228,8 @@ If `$ARGUMENTS` contains `--json`, strip the flag from the target argument and a
 
 Still generate and write the test file as normal, but output JSON to stdout instead of the markdown summary.
 
+> **Important:** When using `--json` mode, do NOT emit the `<done>COMPLETE</done>` marker. The JSON output itself signals completion.
+
 ---
 
 ## Completion Criteria
