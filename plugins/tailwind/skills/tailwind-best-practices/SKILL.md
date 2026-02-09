@@ -8,6 +8,8 @@ description: |
   questions about other CSS frameworks (Bootstrap, etc.)
 ---
 
+<!-- cache:start -->
+
 # Tailwind CSS v4 Best Practices
 
 You have access to up-to-date Tailwind CSS documentation via MCP tools. Use these tools to provide accurate, current information.
@@ -443,3 +445,5 @@ When helping with Tailwind CSS:
 ---
 
 *For the latest documentation, always refer to https://tailwindcss.com/docs*
+
+<!-- cache:end -->

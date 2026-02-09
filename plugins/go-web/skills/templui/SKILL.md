@@ -7,8 +7,9 @@ description: |
 ---
 
 
-<!-- cache:start --># templUI & HTMX/Alpine Best Practices
+<!-- cache:start -->
 
+# templUI & HTMX/Alpine Best Practices
 Apply templUI patterns and HTMX/Alpine.js best practices when building Go/Templ web applications.
 
 ## The Frontend Stack
