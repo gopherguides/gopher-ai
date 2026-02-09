@@ -25,10 +25,9 @@ categories:
     rules:
       - govet
       - staticcheck
-      - nilcheck
-      - copylock
+      - nilerr
 
-  error-handling:
+  error_handling:
     severity: critical
     description: "Unchecked or improperly handled errors"
     rules:
@@ -40,18 +39,15 @@ categories:
     severity: critical
     description: "Security vulnerabilities and unsafe patterns"
     rules:
-      - gosec
-      - sql-injection
-      - hardcoded-credentials
+      - gosec          # Includes G101 (hardcoded credentials), G201-G203 (SQL injection)
 
   concurrency:
     severity: critical
     description: "Data races, goroutine leaks, and deadlocks"
     rules:
-      - race-detector
-      - goroutine-leak
-      - mutex-misuse
-      - context-propagation
+      # Use: go test -race ./...
+      - govet          # Includes copylock, loopclosure analyzers
+      - contextcheck
 
   performance:
     severity: warning
@@ -78,7 +74,6 @@ categories:
       - gocritic
       - revive
       - dupl
-      - deadcode
       - unused
 
   naming:
@@ -88,7 +83,7 @@ categories:
       - stylecheck
       - revive/exported
       - revive/package-comments
-      - acronym-consistency
+      - revive/var-naming
 
   style:
     severity: suggestion
@@ -103,9 +98,9 @@ categories:
     severity: suggestion
     description: "Missing godoc, package comments, examples"
     rules:
-      - godoc
-      - package-comments
-      - example-tests
+      - revive/exported
+      - revive/package-comments
+      # Convention check — not a linter
 
 # ── Per-Rule Overrides ────────────────────────────────────────────────────────
 #
@@ -134,9 +129,14 @@ coverage:
 # Weights should sum to 100.
 
 score_weights:
-  error_handling: 20
-  test_coverage: 20
-  naming_style: 15
-  documentation: 15
-  complexity: 15
-  safety: 15
+  bugs: 10
+  error_handling: 15
+  security: 10
+  concurrency: 10
+  performance: 10
+  complexity: 10
+  maintainability: 10
+  naming: 5
+  style: 5
+  documentation: 10
+  coverage: 5

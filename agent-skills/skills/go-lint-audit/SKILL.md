@@ -20,25 +20,16 @@ Extended lint analysis with human-readable explanations. Wraps golangci-lint wit
 
 ## Steps
 
-### 0. Verify API Key
+### API Integration (Optional)
 
-Before proceeding, verify your Gopher Guides API key is set and valid:
+If `GOPHER_GUIDES_API_KEY` is set, verify it:
 
 ```bash
 curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   https://gopherguides.com/api/gopher-ai/me
 ```
 
-If this fails or `GOPHER_GUIDES_API_KEY` is not set:
-
-1. Get your API key at [gopherguides.com](https://gopherguides.com)
-2. Set it in your shell profile:
-   ```bash
-   export GOPHER_GUIDES_API_KEY="your-key"
-   ```
-3. Restart your terminal or run the export command
-
-**Do not proceed without a valid API key.**
+If not set, local analysis tools (go vet, staticcheck, golangci-lint) still provide comprehensive analysis. Set the key for enhanced API-powered insights. Get your key at [gopherguides.com](https://gopherguides.com).
 
 ### 1. Check Configuration
 
@@ -208,28 +199,13 @@ run:
 
 ## Gopher Guides API Integration
 
-When `GOPHER_GUIDES_API_KEY` is available, get expert analysis on lint findings:
+> **Note:** API calls send source code to gopherguides.com for analysis. Ensure your organization's policy permits external code analysis.
 
-**Standard shell:**
-
-```bash
-CODE=$(cat main.go | jq -Rs .)
-curl -s -X POST \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{\"code\": $CODE, \"focus\": \"audit\"}" \
-  https://gopherguides.com/api/gopher-ai/audit
-```
-
-**Claude Code syntax:**
-
-```
-Run: CODE=$(cat main.go | jq -Rs .); curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d "{\"code\": $CODE, \"focus\": \"audit\"}" https://gopherguides.com/api/gopher-ai/audit
-```
+For full API usage examples, see [API Usage Reference](../references/api-usage.md).
 
 ### Helper Script
 
-Run the full audit including lint + API:
+After installation via `install.sh`, scripts are at `.github/skills/scripts/`. Run the full audit including lint + API:
 
 ```bash
 bash .github/skills/scripts/audit.sh
@@ -237,7 +213,7 @@ bash .github/skills/scripts/audit.sh
 
 ### Severity Configuration
 
-Lint categories map to severity levels in `.github/skills/config/severity.yaml`. See the [Setup Guide](../SETUP.md) for details.
+After installation via `install.sh`, lint categories map to severity levels at `.github/skills/config/severity.yaml`. See the [Setup Guide](../SETUP.md) for details.
 
 ## References
 

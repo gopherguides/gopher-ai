@@ -6,13 +6,6 @@
 
 set -euo pipefail
 
-if [ -z "${GOPHER_GUIDES_API_KEY:-}" ]; then
-    echo "ERROR: GOPHER_GUIDES_API_KEY is not set."
-    echo "Get your API key at: https://gopherguides.com"
-    echo "Then: export GOPHER_GUIDES_API_KEY=\"your-key\""
-    exit 1
-fi
-
 MINIMUM="${1:-80}"
 COVERAGE_FILE="coverage.out"
 EXIT_CODE=0
@@ -21,6 +14,34 @@ header() { printf "\n\033[1;34m══ %s ══\033[0m\n\n" "$1"; }
 pass()   { printf "  \033[32m✅ %s\033[0m\n" "$1"; }
 fail()   { printf "  \033[31m🔴 %s\033[0m\n" "$1"; }
 warn()   { printf "  \033[33m🟡 %s\033[0m\n" "$1"; }
+
+compare_float() {
+    local val="$1"
+    local threshold="$2"
+    if command -v bc &>/dev/null; then
+        (( $(echo "$val < $threshold" | bc -l) ))
+    else
+        local val_int="${val%%.*}"
+        local thr_int="${threshold%%.*}"
+        val_int="${val_int:-0}"
+        thr_int="${thr_int:-0}"
+        [[ "$val_int" -lt "$thr_int" ]]
+    fi
+}
+
+compare_float_gte() {
+    local val="$1"
+    local threshold="$2"
+    if command -v bc &>/dev/null; then
+        (( $(echo "$val >= $threshold" | bc -l) ))
+    else
+        local val_int="${val%%.*}"
+        local thr_int="${threshold%%.*}"
+        val_int="${val_int:-0}"
+        thr_int="${thr_int:-0}"
+        [[ "$val_int" -ge "$thr_int" ]]
+    fi
+}
 
 # ── Generate coverage ─────────────────────────────────────────────────
 header "Running Tests with Coverage"
@@ -51,11 +72,10 @@ while IFS= read -r line; do
         continue
     fi
 
-    # Strip % for comparison
     cov_num="${cov%\%}"
-    if (( $(echo "$cov_num < $MINIMUM" | bc -l 2>/dev/null || echo 0) )); then
+    if compare_float "$cov_num" "$MINIMUM"; then
         printf "  \033[31m%-50s %s\033[0m\n" "$pkg" "$cov"
-    elif (( $(echo "$cov_num < 100" | bc -l 2>/dev/null || echo 0) )); then
+    elif compare_float "$cov_num" "100"; then
         printf "  \033[33m%-50s %s\033[0m\n" "$pkg" "$cov"
     else
         printf "  \033[32m%-50s %s\033[0m\n" "$pkg" "$cov"
@@ -65,7 +85,7 @@ done < <(go tool cover -func="$COVERAGE_FILE" 2>/dev/null | grep -E "^(total:|[a
 # ── Uncovered functions ───────────────────────────────────────────────
 header "Uncovered Functions (0.0%)"
 
-UNCOVERED=$(go tool cover -func="$COVERAGE_FILE" 2>/dev/null | grep "0.0%" | grep -v "total:" || true)
+UNCOVERED=$(go tool cover -func="$COVERAGE_FILE" 2>/dev/null | grep -E '\b0\.0%' | grep -v "total:" || true)
 if [[ -n "$UNCOVERED" ]]; then
     echo "$UNCOVERED" | while IFS= read -r line; do
         fail "$line"
@@ -74,8 +94,11 @@ else
     pass "No completely uncovered functions"
 fi
 
-# ── Missing test files ────────────────────────────────────────────────
-header "Missing Test Files"
+# ── Missing test files (heuristic) ───────────────────────────────────
+header "Source Files Without Matching Test Files (heuristic)"
+
+echo "  Note: Go only requires test files per package, not per source file."
+echo ""
 
 MISSING=0
 while IFS= read -r gofile; do
@@ -99,7 +122,7 @@ echo "  Minimum target: ${MINIMUM}%"
 
 if [[ -n "$TOTAL_COVERAGE" ]]; then
     TOTAL_NUM="${TOTAL_COVERAGE%\%}"
-    if (( $(echo "$TOTAL_NUM >= $MINIMUM" | bc -l 2>/dev/null || echo 0) )); then
+    if compare_float_gte "$TOTAL_NUM" "$MINIMUM"; then
         pass "Coverage meets minimum threshold"
     else
         fail "Coverage ($TOTAL_COVERAGE) is below minimum (${MINIMUM}%)"
@@ -113,7 +136,6 @@ if [[ -f "$COVERAGE_FILE" ]]; then
         echo "  📄 HTML report: coverage.html" || true
 fi
 
-# Cleanup
-rm -f "$COVERAGE_FILE"
+echo "  📄 Coverage data: $COVERAGE_FILE"
 
 exit $EXIT_CODE

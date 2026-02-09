@@ -10,7 +10,7 @@ The `main.go` file contains:
 - Unchecked errors
 - Missing error wrapping
 - Global mutable state
-- Exported name stuttering
+- Name that would stutter in a dedicated package
 - Missing godoc comments
 - Unnecessary init() function
 
@@ -21,15 +21,25 @@ The `main_test.go` file has:
 
 ## Try It
 
+After installing skills to your repo with `install.sh`:
+
 ```bash
-# Run the audit skill
-bash .github/skills/scripts/audit.sh
+# Run the audit
+bash .github/skills/scripts/audit.sh .
 
 # Check coverage
 bash .github/skills/scripts/coverage-report.sh
 
-# Run golangci-lint
+# Or use Makefile targets
 make audit
+make coverage
+```
+
+If testing from within the gopher-ai monorepo:
+
+```bash
+make audit SKILLS_SCRIPTS=../../agent-skills/scripts
+make coverage SKILLS_SCRIPTS=../../agent-skills/scripts
 ```
 
 ## Makefile Targets
@@ -44,4 +54,4 @@ make audit
 
 ---
 
-*Part of [gopherguides/gopher-ai](https://github.com/gopherguides/gopher-ai) — ref [#51](https://github.com/gopherguides/gopher-ai/issues/51)*
+*Part of [gopherguides/gopher-ai](https://github.com/gopherguides/gopher-ai)*

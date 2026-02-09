@@ -9,17 +9,17 @@ import (
 	"sync"
 )
 
-// BUG: Global mutable state
+// Issue: Global mutable state
 var userCache = map[string]string{}
 var cacheMu sync.Mutex
 
-// BUG: Unnecessary init function
+// Issue: Unnecessary init function
 func init() {
 	userCache["admin"] = "Administrator"
 }
 
 // UserService is a user service.
-// BUG: Exported name stutters (user.UserService)
+// Issue: In a 'user' package, this name would stutter (user.UserService)
 type UserService struct {
 	db string
 }
@@ -38,7 +38,7 @@ func (s *UserService) GetUser(id string) (string, error) {
 	}
 	cacheMu.Unlock()
 
-	// BUG: Simulated DB call without context.Context
+	// Issue: Simulated DB call without context.Context
 	return fmt.Sprintf("user_%s", id), nil
 }
 
@@ -48,26 +48,26 @@ func (s *UserService) SaveUser(id, name string) error {
 	userCache[id] = name
 	cacheMu.Unlock()
 
-	// BUG: Error not wrapped with context
+	// Issue: Error not wrapped with context
 	return nil
 }
 
 // DeleteTempFiles cleans up temporary files.
 func DeleteTempFiles(pattern string) {
-	files, _ := os.ReadDir("/tmp") // BUG: Error ignored
+	files, _ := os.ReadDir("/tmp") // Issue: Error ignored
 	for _, f := range files {
-		// BUG: Error from Remove not checked
+		// Issue: Error from Remove not checked
 		os.Remove("/tmp/" + f.Name())
 	}
 }
 
 // handleHealth is an HTTP health check handler.
 func handleHealth(w http.ResponseWriter, r *http.Request) {
-	// BUG: Error from Write not checked
+	// Issue: Error from Write not checked
 	w.Write([]byte("ok"))
 }
 
-// BUG: Missing godoc on exported function
+// Issue: Missing godoc on exported function
 func FormatID(prefix string, id int) string {
 	return fmt.Sprintf("%s-%d", prefix, id)
 }
@@ -86,6 +86,6 @@ func main() {
 		fmt.Fprintf(w, "Hello, %s", name)
 	})
 
-	// BUG: log.Fatal in main is fine, but no graceful shutdown
+	// Issue: log.Fatal in main is fine, but no graceful shutdown
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

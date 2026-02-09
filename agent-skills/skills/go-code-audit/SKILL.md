@@ -47,25 +47,16 @@ Comprehensive code quality analysis against Go best practices. Identifies code s
 
 ## How to Run
 
-### Step 0: Verify API Key
+### API Integration (Optional)
 
-Before proceeding, verify your Gopher Guides API key is set and valid:
+If `GOPHER_GUIDES_API_KEY` is set, verify it:
 
 ```bash
 curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   https://gopherguides.com/api/gopher-ai/me
 ```
 
-If this fails or `GOPHER_GUIDES_API_KEY` is not set:
-
-1. Get your API key at [gopherguides.com](https://gopherguides.com)
-2. Set it in your shell profile:
-   ```bash
-   export GOPHER_GUIDES_API_KEY="your-key"
-   ```
-3. Restart your terminal or run the export command
-
-**Do not proceed without a valid API key.**
+If not set, local analysis tools (go vet, staticcheck, golangci-lint) still provide comprehensive analysis. Set the key for enhanced API-powered insights. Get your key at [gopherguides.com](https://gopherguides.com).
 
 ### Full Project Audit
 
@@ -87,28 +78,13 @@ Then review the codebase for patterns the tools don't catch:
 
 ### Gopher Guides API (Enhanced Analysis)
 
-If `GOPHER_GUIDES_API_KEY` is set, submit code for expert-level review:
+> **Note:** API calls send source code to gopherguides.com for analysis. Ensure your organization's policy permits external code analysis.
 
-**Standard shell:**
-
-```bash
-CODE=$(cat main.go | jq -Rs .)
-curl -s -X POST \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{\"code\": $CODE, \"focus\": \"audit\"}" \
-  https://gopherguides.com/api/gopher-ai/audit
-```
-
-**Claude Code syntax:**
-
-```
-Run: CODE=$(cat main.go | jq -Rs .); curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d "{\"code\": $CODE, \"focus\": \"audit\"}" https://gopherguides.com/api/gopher-ai/audit
-```
+For full API usage examples, see [API Usage Reference](../references/api-usage.md).
 
 ### Helper Script
 
-For a full audit including local tools + API:
+After installation via `install.sh`, scripts are at `.github/skills/scripts/`. For a full audit including local tools + API:
 
 ```bash
 bash .github/skills/scripts/audit.sh
@@ -116,7 +92,7 @@ bash .github/skills/scripts/audit.sh
 
 ### Severity Configuration
 
-Findings are categorized using `.github/skills/config/severity.yaml`. Teams can override severity levels per category or per rule. See the [Setup Guide](../SETUP.md) for details.
+After installation via `install.sh`, severity configuration is at `.github/skills/config/severity.yaml`. Teams can override severity levels per category or per rule. See the [Setup Guide](../SETUP.md) for details.
 
 ## Output Format
 

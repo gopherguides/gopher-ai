@@ -1,5 +1,7 @@
 .PHONY: test lint audit coverage review
 
+SKILLS_SCRIPTS ?= .github/skills/scripts
+
 ## Run tests
 test:
 	go test -race -count=1 ./...
@@ -10,11 +12,11 @@ lint:
 
 ## Full code quality audit (go vet + staticcheck + golangci-lint + API)
 audit:
-	@bash ../../.github/skills/scripts/audit.sh .
+	@bash $(SKILLS_SCRIPTS)/audit.sh .
 
 ## Coverage report with gap analysis
 coverage:
-	@bash ../../.github/skills/scripts/coverage-report.sh
+	@bash $(SKILLS_SCRIPTS)/coverage-report.sh
 
 ## Review changes against main
 review:

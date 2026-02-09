@@ -20,13 +20,7 @@ Get your API key at [gopherguides.com](https://gopherguides.com).
 
 ## Rate Limits
 
-| Plan | Requests/min | Requests/day |
-|------|-------------|-------------|
-| Free | 10 | 100 |
-| Pro | 60 | 5,000 |
-| Team | 120 | 20,000 |
-
-Rate limit headers are included in every response:
+Rate limiting is enforced per API key. Check response headers (`X-RateLimit-Remaining`) for current limits.
 
 ```
 X-RateLimit-Limit: 60
@@ -244,173 +238,10 @@ curl -s -X POST \
 
 ---
 
-## Proposed Endpoints (Phase 3)
+## Proposed Endpoints (Not Yet Implemented)
 
-> These endpoints are planned for future releases.
-
-### `GET /api/gopher-ai/rules`
-
-Get configurable rule sets with severity levels and categories.
-
-**Request:**
-
-```bash
-curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-  https://gopherguides.com/api/gopher-ai/rules
-```
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "version": "2025.1",
-  "categories": [
-    {
-      "name": "error-handling",
-      "severity": "critical",
-      "rules": [
-        {
-          "id": "errcheck",
-          "description": "Check for unchecked errors",
-          "severity": "critical",
-          "configurable": true
-        }
-      ]
-    }
-  ]
-}
-```
-
----
-
-### `POST /api/gopher-ai/analyze`
-
-Submit a full project for comprehensive analysis (code + dependencies).
-
-**Request:**
-
-```bash
-# Create project archive
-tar -czf /tmp/project.tar.gz --exclude=vendor --exclude=.git .
-
-# Submit for analysis
-curl -s -X POST \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-  -F "project=@/tmp/project.tar.gz" \
-  -F "options={\"focus\":[\"all\"]}" \
-  https://gopherguides.com/api/gopher-ai/analyze
-```
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `project` | file | yes | `.tar.gz` archive of Go project |
-| `options.focus` | array | no | Areas to analyze: `all`, `security`, `performance`, `best-practices` |
-| `options.severity_config` | object | no | Custom severity overrides |
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "analysis_id": "ana_xyz789",
-  "status": "complete",
-  "score": 72,
-  "findings": [...],
-  "dependencies": {
-    "direct": 12,
-    "indirect": 45,
-    "outdated": 3,
-    "vulnerable": 0
-  },
-  "coverage": {
-    "overall": 68.5,
-    "packages": [...]
-  },
-  "report_url": "https://gopherguides.com/reports/ana_xyz789"
-}
-```
-
----
-
-### `GET /api/gopher-ai/metrics/{repo}`
-
-Get quality metrics over time for a repository.
-
-**Request:**
-
-```bash
-curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-  "https://gopherguides.com/api/gopher-ai/metrics/gopherguides%2Fgopher-ai?period=30d"
-```
-
-**Parameters:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `repo` | path | yes | Repository in `owner/name` format (URL-encoded) |
-| `period` | query | no | Time period: `7d`, `30d` (default), `90d`, `1y` |
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "repo": "gopherguides/gopher-ai",
-  "period": "30d",
-  "data_points": [
-    {
-      "date": "2025-02-01",
-      "score": 72,
-      "coverage": 68.5,
-      "critical_findings": 2,
-      "warning_findings": 8
-    }
-  ],
-  "trend": "improving",
-  "delta": "+5 score points"
-}
-```
-
----
-
-### `POST /api/gopher-ai/metrics/report`
-
-Submit audit results for tracking and trend analysis.
-
-**Request:**
-
-```bash
-curl -s -X POST \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "repo": "gopherguides/gopher-ai",
-    "commit": "abc123",
-    "score": 78,
-    "coverage": 72.3,
-    "findings": {
-      "critical": 1,
-      "warning": 5,
-      "suggestion": 12
-    }
-  }' \
-  https://gopherguides.com/api/gopher-ai/metrics/report
-```
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "report_id": "rpt_abc123",
-  "trend": "improving",
-  "previous_score": 72,
-  "delta": "+6"
-}
-```
+> **These endpoints are planned for future releases. Do not depend on them in production.**
+> See [`openapi-proposed.yaml`](openapi-proposed.yaml) for the draft specification.
 
 ---
 
@@ -441,8 +272,8 @@ All errors follow this format:
 
 ## SDKs & Integration
 
-- **Agent Skills:** [`.github/skills/`](../../.github/skills/) — Copilot skills with built-in API integration
-- **Helper Scripts:** [`.github/skills/scripts/`](../../.github/skills/scripts/) — Shell scripts for CI/CD
+- **Agent Skills:** [`agent-skills/`](../../agent-skills/) — GitHub Copilot skills with built-in API integration
+- **Helper Scripts:** [`agent-skills/scripts/`](../../agent-skills/scripts/) — Shell scripts for CI/CD
 - **OpenAPI Spec:** [`openapi.yaml`](openapi.yaml) — Formal API specification
 
 ---

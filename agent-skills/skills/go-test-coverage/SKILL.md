@@ -20,25 +20,16 @@ Test coverage gap analysis and recommendations for Go projects. Identifies missi
 
 ## Steps
 
-### 0. Verify API Key
+### API Integration (Optional)
 
-Before proceeding, verify your Gopher Guides API key is set and valid:
+If `GOPHER_GUIDES_API_KEY` is set, verify it:
 
 ```bash
 curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   https://gopherguides.com/api/gopher-ai/me
 ```
 
-If this fails or `GOPHER_GUIDES_API_KEY` is not set:
-
-1. Get your API key at [gopherguides.com](https://gopherguides.com)
-2. Set it in your shell profile:
-   ```bash
-   export GOPHER_GUIDES_API_KEY="your-key"
-   ```
-3. Restart your terminal or run the export command
-
-**Do not proceed without a valid API key.**
+If not set, local analysis tools (go vet, staticcheck, golangci-lint) still provide comprehensive analysis. Set the key for enhanced API-powered insights. Get your key at [gopherguides.com](https://gopherguides.com).
 
 ### 1. Measure Current Coverage
 
@@ -173,13 +164,13 @@ Test stubs have been written to:
 
 ## Helper Script
 
-Run the coverage report script for a formatted summary with gap analysis:
+After installation via `install.sh`, scripts are at `.github/skills/scripts/`. Run the coverage report script for a formatted summary with gap analysis:
 
 ```bash
 bash .github/skills/scripts/coverage-report.sh [minimum-coverage-percent]
 ```
 
-Default minimum is 80%. Configure thresholds in `.github/skills/config/severity.yaml`:
+Default minimum is 80%. Configure thresholds in severity configuration at the installed path:
 
 ```yaml
 coverage:
@@ -190,24 +181,9 @@ coverage:
 
 ## Gopher Guides API Integration
 
-When `GOPHER_GUIDES_API_KEY` is available, submit code for expert test recommendations:
+> **Note:** API calls send source code to gopherguides.com for analysis. Ensure your organization's policy permits external code analysis.
 
-**Standard shell:**
-
-```bash
-CODE=$(cat handler.go | jq -Rs .)
-curl -s -X POST \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{\"code\": $CODE, \"focus\": \"audit\"}" \
-  https://gopherguides.com/api/gopher-ai/audit
-```
-
-**Claude Code syntax:**
-
-```
-Run: CODE=$(cat handler.go | jq -Rs .); curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d "{\"code\": $CODE, \"focus\": \"audit\"}" https://gopherguides.com/api/gopher-ai/audit
-```
+For full API usage examples, see [API Usage Reference](../references/api-usage.md).
 
 ## References
 

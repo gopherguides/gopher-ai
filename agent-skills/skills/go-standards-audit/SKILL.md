@@ -1,5 +1,5 @@
 ---
-name: go-best-practices
+name: go-standards-audit
 description: |
   WHEN: User wants to validate their Go project against Gopher Guides coding standards, check
   documentation completeness, review concurrency patterns, or validate project structure.
@@ -7,29 +7,20 @@ description: |
 license: MIT
 ---
 
-# Go Best Practices
+# Go Standards Audit
 
 Gopher Guides coding standards enforcement. Validates Go projects against professional standards for documentation, concurrency, dependencies, and project structure.
 
-## Step 0: Verify API Key
+## API Integration (Optional)
 
-Before proceeding, verify your Gopher Guides API key is set and valid:
+If `GOPHER_GUIDES_API_KEY` is set, verify it:
 
 ```bash
 curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   https://gopherguides.com/api/gopher-ai/me
 ```
 
-If this fails or `GOPHER_GUIDES_API_KEY` is not set:
-
-1. Get your API key at [gopherguides.com](https://gopherguides.com)
-2. Set it in your shell profile:
-   ```bash
-   export GOPHER_GUIDES_API_KEY="your-key"
-   ```
-3. Restart your terminal or run the export command
-
-**Do not proceed without a valid API key.**
+If not set, local analysis tools (go vet, staticcheck, golangci-lint) still provide comprehensive analysis. Set the key for enhanced API-powered insights. Get your key at [gopherguides.com](https://gopherguides.com).
 
 ## What It Checks
 
@@ -141,45 +132,13 @@ project/
 
 ## Gopher Guides API Integration
 
-When `GOPHER_GUIDES_API_KEY` is available, query for authoritative guidance:
+> **Note:** API calls send source code to gopherguides.com for analysis. Ensure your organization's policy permits external code analysis.
 
-**Standard shell:**
-
-```bash
-curl -s -X POST \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"topic": "project structure", "level": "detailed"}' \
-  https://gopherguides.com/api/gopher-ai/practices
-```
-
-**Claude Code syntax:**
-
-```
-Run: curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d '{"topic": "project structure", "level": "detailed"}' https://gopherguides.com/api/gopher-ai/practices
-```
-
-For code examples on specific patterns:
-
-**Standard shell:**
-
-```bash
-curl -s -X POST \
-  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"topic": "functional options pattern", "complexity": "intermediate"}' \
-  https://gopherguides.com/api/gopher-ai/examples
-```
-
-**Claude Code syntax:**
-
-```
-Run: curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d '{"topic": "functional options pattern", "complexity": "intermediate"}' https://gopherguides.com/api/gopher-ai/examples
-```
+For full API usage examples, see [API Usage Reference](../references/api-usage.md).
 
 ### Severity Configuration
 
-Findings are categorized using `.github/skills/config/severity.yaml`. See the [Setup Guide](../SETUP.md) for details.
+After installation via `install.sh`, scripts are at `.github/skills/scripts/`. Findings are categorized using severity configuration at the installed path. See the [Setup Guide](../SETUP.md) for details.
 
 ## Output Format
 
@@ -217,7 +176,7 @@ Findings are categorized using `.github/skills/config/severity.yaml`. See the [S
 - Existing gopher-ai skill: `plugins/go-dev/skills/go-best-practices/`
 - Gopher Guides API: `plugins/gopher-guides/skills/gopher-guides/`
 - [Effective Go](https://go.dev/doc/effective_go)
-- [Standard Go Project Layout](https://github.com/golang-standards/project-layout)
+- [Organizing a Go Module](https://go.dev/doc/modules/layout)
 
 ---
 

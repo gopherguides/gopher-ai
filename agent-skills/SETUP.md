@@ -2,8 +2,6 @@
 
 Step-by-step guide for installing and configuring Go code quality agent skills for your team.
 
-> **Reference:** [gopherguides/gopher-ai#51](https://github.com/gopherguides/gopher-ai/issues/51)
-
 ---
 
 ## Prerequisites
@@ -14,16 +12,17 @@ Step-by-step guide for installing and configuring Go code quality agent skills f
 | **GitHub CLI** | `brew install gh` | `gh --version` |
 | **golangci-lint** | `brew install golangci-lint` | `golangci-lint --version` |
 | **staticcheck** | `go install honnef.co/go/tools/cmd/staticcheck@latest` | `staticcheck -version` |
-| **GitHub Copilot subscription** | [github.com/features/copilot](https://github.com/features/copilot) | — |
 | **Gopher Guides API key** *(optional)* | [gopherguides.com](https://gopherguides.com) | See below |
 
-### Verify API key
+### Verify API key (optional)
 
 ```bash
 export GOPHER_GUIDES_API_KEY="your-key-here"
 curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   https://gopherguides.com/api/gopher-ai/me
 ```
+
+All skills work without an API key using local tools. The API provides enhanced analysis.
 
 ---
 
@@ -34,51 +33,47 @@ curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
 ```bash
 cd your-project
 
-# Clone and copy skills
-git clone https://github.com/gopherguides/gopher-ai /tmp/gopher-ai
-cp -r /tmp/gopher-ai/.github/skills .github/skills
-
-# Or use the install script
-curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/.github/skills/scripts/install.sh | bash -s -- --repo .
-```
-
-Commit the `.github/skills/` directory to your repository. Every contributor with Copilot will automatically get the skills.
-
-### Option B: Personal Installation
-
-Install to your personal Copilot skills directory (works across all your repos):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/.github/skills/scripts/install.sh | bash -s -- --personal
+# Use the install script
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/agent-skills/scripts/install.sh) --repo .
 ```
 
 Or manually:
 
 ```bash
 git clone https://github.com/gopherguides/gopher-ai /tmp/gopher-ai
-mkdir -p ~/.copilot/skills
-cp -r /tmp/gopher-ai/.github/skills/* ~/.copilot/skills/
+mkdir -p .github/skills
+cp -r /tmp/gopher-ai/agent-skills/skills/* .github/skills/
+cp -r /tmp/gopher-ai/agent-skills/scripts .github/skills/scripts
+cp -r /tmp/gopher-ai/agent-skills/config .github/skills/config
+```
+
+Commit the `.github/skills/` directory to your repository. Every contributor with a compatible agent will automatically get the skills.
+
+### Option B: Personal Installation
+
+Install to your personal skills directory (works across all your repos):
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/agent-skills/scripts/install.sh) --personal
 ```
 
 ### Option C: Claude Code Plugin
 
+For Claude Code users, the existing plugins provide the same functionality plus slash commands:
+
 ```bash
 /plugin marketplace add gopherguides/gopher-ai
 /plugin install go-dev@gopher-ai
+/plugin install gopher-guides@gopher-ai
 ```
 
 ---
 
 ## Configuring Severity Levels
 
-The file `.github/skills/config/severity.yaml` controls which rules are critical, warning, or suggestion.
+After installation, edit `.github/skills/config/severity.yaml` to customize which rules are critical, warning, or suggestion.
 
 ### Customize for your team
-
-```bash
-# Edit severity config
-$EDITOR .github/skills/config/severity.yaml
-```
 
 Common overrides:
 
@@ -112,11 +107,7 @@ gh extension install github/gh-aw
 
 ### Available workflows
 
-Copy the workflow templates to your repo:
-
-```bash
-cp -r /tmp/gopher-ai/.github/agentic-workflows .github/agentic-workflows
-```
+The install script copies workflow templates to `.github/agentic-workflows/`:
 
 | Workflow | Schedule | Description |
 |---|---|---|
@@ -131,10 +122,6 @@ gh aw run daily-code-audit
 gh aw run pr-quality-gate
 gh aw run weekly-test-coverage
 ```
-
-### Configure schedule
-
-Edit the workflow files in `.github/agentic-workflows/` to change cron schedules, notification channels, etc.
 
 ---
 
@@ -165,7 +152,7 @@ jobs:
       - name: Run audit
         env:
           GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
-        run: bash .github/skills/scripts/audit.sh
+        run: bash .github/skills/scripts/audit.sh . --yes
       - name: Coverage check
         run: bash .github/skills/scripts/coverage-report.sh
 ```
@@ -176,11 +163,13 @@ jobs:
 gh secret set GOPHER_GUIDES_API_KEY --body "your-key-here"
 ```
 
+The audit script works without the key (local tools only). Add the secret for API-enhanced analysis.
+
 ---
 
 ## Using the Skills
 
-Once installed, skills activate automatically in Copilot Chat and Claude Code:
+Once installed, skills activate automatically in compatible agents:
 
 | Trigger | Skill |
 |---|---|
@@ -188,32 +177,21 @@ Once installed, skills activate automatically in Copilot Chat and Claude Code:
 | "Review this PR" / "review my changes" | `go-code-review` |
 | "What tests am I missing?" / "improve coverage" | `go-test-coverage` |
 | "Run linting" / "what's wrong with my code?" | `go-lint-audit` |
-| "Check best practices" / "is this idiomatic?" | `go-best-practices` |
-
-### With API integration
-
-Set your API key in the environment:
-
-```bash
-export GOPHER_GUIDES_API_KEY="your-key-here"
-```
-
-Skills will automatically use the Gopher Guides API for enhanced analysis when the key is available.
+| "Check best practices" / "is this idiomatic?" | `go-standards-audit` |
 
 ---
 
 ## Troubleshooting
 
-### Skills not showing up in Copilot
+### Skills not activating
 
 1. Verify files are in `.github/skills/` (per-repo) or `~/.copilot/skills/` (personal)
 2. Each skill folder must contain a `SKILL.md` with valid YAML frontmatter
-3. Restart your editor / Copilot session
+3. Restart your editor / agent session
 
 ### API key not working
 
 ```bash
-# Test the key
 curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   https://gopherguides.com/api/gopher-ai/me
 
@@ -226,41 +204,25 @@ curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
 ### golangci-lint errors
 
 ```bash
-# Update to latest
 brew upgrade golangci-lint
-
-# Clear cache
 golangci-lint cache clean
-
-# Run with verbose output
 golangci-lint run -v ./...
 ```
 
 ### Coverage report fails
 
 ```bash
-# Ensure tests compile
 go test -run=^$ ./...
-
-# Check for build tags
 go test -tags=integration -coverprofile=coverage.out ./...
 ```
-
-### Agentic workflows not running
-
-1. Verify `gh aw` is installed: `gh aw --version`
-2. Check workflow files exist in `.github/agentic-workflows/`
-3. Ensure GitHub Actions is enabled for the repository
-4. Check workflow run logs: `gh run list --workflow=code-quality.yml`
 
 ---
 
 ## Next Steps
 
-- 📖 [API Documentation](../../docs/api/README.md) — Full API reference
-- 🎯 [Severity Configuration](config/severity.yaml) — Customize rule severity
-- 📊 [Skills Overview](README.md) — All available skills
-- 🏗️ [Demo Repository](../../examples/demo-repo/) — Try skills on sample code
+- [API Documentation](../docs/api/README.md) — Full API reference
+- [Severity Configuration](config/severity.yaml) — Customize rule severity
+- [Demo Repository](examples/demo-repo/) — Try skills on sample code
 
 ---
 

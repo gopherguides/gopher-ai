@@ -1,6 +1,13 @@
 # Recommended golangci-lint configuration for Go projects
 # See: https://golangci-lint.run/usage/configuration/
 
+version: "2"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
 linters:
   enable:
     # Bug detection
@@ -11,8 +18,6 @@ linters:
     - errcheck
     - errorlint
     # Style
-    - gofmt
-    - goimports
     - misspell
     # Complexity
     - cyclop

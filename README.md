@@ -2,34 +2,6 @@
 
 Cross-platform AI coding assistant toolkit for Go developers - by [Gopher Guides](https://gopherguides.com).
 
-## 🆕 GitHub Agent Skills for Go Code Quality
-
-**5 agent skills** that automatically audit, review, and improve your Go code:
-
-| Skill | What It Does |
-|-------|-------------|
-| [`go-code-audit`](.github/skills/go-code-audit/) | Full project audit — code smells, anti-patterns, quality score |
-| [`go-code-review`](.github/skills/go-code-review/) | Automated PR review with inline comments and breaking change detection |
-| [`go-test-coverage`](.github/skills/go-test-coverage/) | Coverage gap analysis with test stub generation |
-| [`go-lint-audit`](.github/skills/go-lint-audit/) | Human-readable lint explanations with fix examples |
-| [`go-best-practices`](.github/skills/go-best-practices/) | Gopher Guides coding standards enforcement |
-
-**Plus:** 3 agentic workflow templates (daily audit, PR quality gate, weekly coverage), configurable severity levels, helper scripts, and optional API integration.
-
-### Quick Install
-
-```bash
-# Install to your repo (one-liner)
-curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/.github/skills/scripts/install.sh | bash -s -- --repo .
-
-# Or install personally (works across all repos)
-curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/.github/skills/scripts/install.sh | bash -s -- --personal
-```
-
-📖 **[Full Setup Guide](.github/skills/SETUP.md)** · 📊 **[API Docs](docs/api/README.md)** · 🏗️ **[Demo Repo](examples/demo-repo/)**
-
----
-
 ## Overview
 
 Gopher AI provides skills and commands for the three major AI coding assistants:
@@ -199,6 +171,18 @@ Skills are auto-invoked behaviors that activate based on context. Available acro
 | `tailwind-best-practices` | Working with Tailwind CSS classes, themes, utilities |
 | `templui` | Building Go/Templ web apps, HTMX/Alpine.js integration |
 | `gopher-guides` | Asking about Go idioms, "what's the right way to..." |
+
+## Agent Skills (GitHub Copilot)
+
+Distributable [Agent Skills](https://agentskills.io) for Go code quality auditing. Install to your repo:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/agent-skills/scripts/install.sh) --repo .
+```
+
+Skills included: `go-code-audit`, `go-test-coverage`, `go-standards-audit`, `go-lint-audit`, `go-code-review`
+
+See [`agent-skills/README.md`](agent-skills/README.md) for details.
 
 ## Platform-Specific Notes
 

@@ -9,13 +9,6 @@
 
 set -euo pipefail
 
-if [ -z "${GOPHER_GUIDES_API_KEY:-}" ]; then
-    echo "ERROR: GOPHER_GUIDES_API_KEY is not set."
-    echo "Get your API key at: https://gopherguides.com"
-    echo "Then: export GOPHER_GUIDES_API_KEY=\"your-key\""
-    exit 1
-fi
-
 REPO_URL="https://github.com/gopherguides/gopher-ai"
 BRANCH="main"
 TMPDIR=""
@@ -75,7 +68,7 @@ echo "📦 Fetching gopher-ai skills..."
 TMPDIR=$(mktemp -d)
 git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$TMPDIR" 2>/dev/null
 
-if [[ ! -d "$TMPDIR/.github/skills" ]]; then
+if [[ ! -d "$TMPDIR/agent-skills/skills" ]]; then
     echo "❌ Skills directory not found in repository"
     exit 1
 fi
@@ -86,13 +79,21 @@ if [[ "$MODE" == "repo" ]]; then
     DEST="$TARGET/.github/skills"
     mkdir -p "$DEST"
 
-    # Copy skills (not the scripts/config — those go too)
-    cp -r "$TMPDIR/.github/skills/"* "$DEST/"
+    cp -r "$TMPDIR/agent-skills/skills/"*/ "$DEST/"
 
-    # Also copy agentic workflows if they exist
-    if [[ -d "$TMPDIR/.github/agentic-workflows" ]]; then
+    if [[ -d "$TMPDIR/agent-skills/scripts" ]]; then
+        mkdir -p "$DEST/scripts"
+        cp -r "$TMPDIR/agent-skills/scripts/"* "$DEST/scripts/"
+    fi
+
+    if [[ -d "$TMPDIR/agent-skills/config" ]]; then
+        mkdir -p "$DEST/config"
+        cp -r "$TMPDIR/agent-skills/config/"* "$DEST/config/"
+    fi
+
+    if [[ -d "$TMPDIR/agent-skills/workflows" ]]; then
         mkdir -p "$TARGET/.github/agentic-workflows"
-        cp -r "$TMPDIR/.github/agentic-workflows/"* "$TARGET/.github/agentic-workflows/"
+        cp -r "$TMPDIR/agent-skills/workflows/"* "$TARGET/.github/agentic-workflows/"
         echo "✅ Agentic workflows installed to $TARGET/.github/agentic-workflows/"
     fi
 
@@ -101,14 +102,13 @@ if [[ "$MODE" == "repo" ]]; then
     echo "Next steps:"
     echo "  1. git add .github/skills/ .github/agentic-workflows/"
     echo "  2. git commit -m 'feat: add Gopher AI agent skills'"
-    echo "  3. Set API key: export GOPHER_GUIDES_API_KEY=\"your-key\""
+    echo "  3. Set API key for enhanced analysis: export GOPHER_GUIDES_API_KEY=\"your-key\""
 
 elif [[ "$MODE" == "personal" ]]; then
     DEST="$HOME/.copilot/skills"
     mkdir -p "$DEST"
 
-    # Copy each skill folder
-    for skill_dir in "$TMPDIR/.github/skills"/*/; do
+    for skill_dir in "$TMPDIR/agent-skills/skills"/*/; do
         if [[ -f "$skill_dir/SKILL.md" ]]; then
             skill_name=$(basename "$skill_dir")
             cp -r "$skill_dir" "$DEST/$skill_name"
@@ -120,6 +120,6 @@ elif [[ "$MODE" == "personal" ]]; then
     echo "✅ Skills installed to $DEST/"
     echo ""
     echo "Next steps:"
-    echo "  1. Set API key: export GOPHER_GUIDES_API_KEY=\"your-key\""
+    echo "  1. Set API key for enhanced analysis: export GOPHER_GUIDES_API_KEY=\"your-key\""
     echo "  2. Skills will activate automatically in Copilot Chat"
 fi
