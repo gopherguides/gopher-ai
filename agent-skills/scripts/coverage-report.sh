@@ -132,8 +132,9 @@ fi
 
 # ── HTML report ───────────────────────────────────────────────────────
 if [[ -f "$COVERAGE_FILE" ]]; then
-    go tool cover -html="$COVERAGE_FILE" -o coverage.html 2>/dev/null && \
-        echo "  📄 HTML report: coverage.html" || true
+    if go tool cover -html="$COVERAGE_FILE" -o coverage.html 2>/dev/null; then
+        echo "  📄 HTML report: coverage.html"
+    fi
 fi
 
 echo "  📄 Coverage data: $COVERAGE_FILE"
