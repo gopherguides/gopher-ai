@@ -151,6 +151,44 @@ Test stubs have been written to:
 - `pkg/api/response_test.go`
 ```
 
+## Helper Script
+
+Run the coverage report script for a formatted summary with gap analysis:
+
+```bash
+bash .github/skills/scripts/coverage-report.sh [minimum-coverage-percent]
+```
+
+Default minimum is 80%. Configure thresholds in `.github/skills/config/severity.yaml`:
+
+```yaml
+coverage:
+  minimum: 80
+  per_package_minimum: 60
+  below_threshold_severity: warning
+```
+
+## Gopher Guides API Integration
+
+When `GOPHER_GUIDES_API_KEY` is available, submit code for expert test recommendations:
+
+**Standard shell:**
+
+```bash
+CODE=$(cat handler.go | jq -Rs .)
+curl -s -X POST \
+  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"code\": $CODE, \"focus\": \"audit\"}" \
+  https://gopherguides.com/api/gopher-ai/audit
+```
+
+**Claude Code syntax:**
+
+```
+Run: CODE=$(cat handler.go | jq -Rs .); curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d "{\"code\": $CODE, \"focus\": \"audit\"}" https://gopherguides.com/api/gopher-ai/audit
+```
+
 ## References
 
 - Existing gopher-ai command: `plugins/go-dev/commands/test-gen.md`

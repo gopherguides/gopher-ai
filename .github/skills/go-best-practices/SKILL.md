@@ -123,12 +123,43 @@ project/
 
 When `GOPHER_GUIDES_API_KEY` is available, query for authoritative guidance:
 
+**Standard shell:**
+
 ```bash
-curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+curl -s -X POST \
+  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"topic": "project structure"}' \
+  -d '{"topic": "project structure", "level": "detailed"}' \
   https://gopherguides.com/api/gopher-ai/practices
 ```
+
+**Claude Code syntax:**
+
+```
+Run: curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d '{"topic": "project structure", "level": "detailed"}' https://gopherguides.com/api/gopher-ai/practices
+```
+
+For code examples on specific patterns:
+
+**Standard shell:**
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"topic": "functional options pattern", "complexity": "intermediate"}' \
+  https://gopherguides.com/api/gopher-ai/examples
+```
+
+**Claude Code syntax:**
+
+```
+Run: curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d '{"topic": "functional options pattern", "complexity": "intermediate"}' https://gopherguides.com/api/gopher-ai/examples
+```
+
+### Severity Configuration
+
+Findings are categorized using `.github/skills/config/severity.yaml`. See the [Setup Guide](../SETUP.md) for details.
 
 ## Output Format
 

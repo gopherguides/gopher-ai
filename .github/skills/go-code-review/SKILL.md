@@ -102,13 +102,26 @@ git diff main...HEAD -- '*.go' | grep -E "^-func [A-Z]|^-type [A-Z]|^-var [A-Z]|
 
 When `GOPHER_GUIDES_API_KEY` is available:
 
+**Standard shell:**
+
 ```bash
 DIFF=$(git diff main...HEAD)
-curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+curl -s -X POST \
+  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   -H "Content-Type: application/json" \
   -d "{\"diff\": $(echo "$DIFF" | jq -Rs .)}" \
   https://gopherguides.com/api/gopher-ai/review
 ```
+
+**Claude Code syntax:**
+
+```
+Run: DIFF=$(git diff main...HEAD); curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d "{\"diff\": $(echo "$DIFF" | jq -Rs .)}" https://gopherguides.com/api/gopher-ai/review
+```
+
+### Severity Configuration
+
+Review findings use severity levels from `.github/skills/config/severity.yaml`. See the [Setup Guide](../SETUP.md) for details.
 
 ## Output Format
 

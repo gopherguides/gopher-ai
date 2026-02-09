@@ -186,6 +186,39 @@ run:
 {list of auto-fixable issues with `golangci-lint run --fix`}
 ```
 
+## Gopher Guides API Integration
+
+When `GOPHER_GUIDES_API_KEY` is available, get expert analysis on lint findings:
+
+**Standard shell:**
+
+```bash
+CODE=$(cat main.go | jq -Rs .)
+curl -s -X POST \
+  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{\"code\": $CODE, \"focus\": \"audit\"}" \
+  https://gopherguides.com/api/gopher-ai/audit
+```
+
+**Claude Code syntax:**
+
+```
+Run: CODE=$(cat main.go | jq -Rs .); curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d "{\"code\": $CODE, \"focus\": \"audit\"}" https://gopherguides.com/api/gopher-ai/audit
+```
+
+### Helper Script
+
+Run the full audit including lint + API:
+
+```bash
+bash .github/skills/scripts/audit.sh
+```
+
+### Severity Configuration
+
+Lint categories map to severity levels in `.github/skills/config/severity.yaml`. See the [Setup Guide](../SETUP.md) for details.
+
 ## References
 
 - Existing gopher-ai command: `plugins/go-dev/commands/lint-fix.md`

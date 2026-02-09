@@ -69,12 +69,34 @@ Then review the codebase for patterns the tools don't catch:
 
 If `GOPHER_GUIDES_API_KEY` is set, submit code for expert-level review:
 
+**Standard shell:**
+
 ```bash
-curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+CODE=$(cat main.go | jq -Rs .)
+curl -s -X POST \
+  -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"code": "<code>", "focus": "audit"}' \
+  -d "{\"code\": $CODE, \"focus\": \"audit\"}" \
   https://gopherguides.com/api/gopher-ai/audit
 ```
+
+**Claude Code syntax:**
+
+```
+Run: CODE=$(cat main.go | jq -Rs .); curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" -H "Content-Type: application/json" -d "{\"code\": $CODE, \"focus\": \"audit\"}" https://gopherguides.com/api/gopher-ai/audit
+```
+
+### Helper Script
+
+For a full audit including local tools + API:
+
+```bash
+bash .github/skills/scripts/audit.sh
+```
+
+### Severity Configuration
+
+Findings are categorized using `.github/skills/config/severity.yaml`. Teams can override severity levels per category or per rule. See the [Setup Guide](../SETUP.md) for details.
 
 ## Output Format
 
