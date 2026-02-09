@@ -1,0 +1,40 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-installation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test plugin installation
+        run: ./scripts/test-installation.sh
+
+  test-commands:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test command files
+        run: ./scripts/test-commands.sh
+
+  test-hooks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test hook files
+        run: ./scripts/test-hooks.sh
+
+  check-shared-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check shared files are in sync
+        run: ./scripts/check-shared-sync.sh
