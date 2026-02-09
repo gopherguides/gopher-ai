@@ -6,6 +6,13 @@
 
 set -euo pipefail
 
+if [ -z "${GOPHER_GUIDES_API_KEY:-}" ]; then
+    echo "ERROR: GOPHER_GUIDES_API_KEY is not set."
+    echo "Get your API key at: https://gopherguides.com"
+    echo "Then: export GOPHER_GUIDES_API_KEY=\"your-key\""
+    exit 1
+fi
+
 MINIMUM="${1:-80}"
 COVERAGE_FILE="coverage.out"
 EXIT_CODE=0

@@ -9,6 +9,13 @@
 
 set -euo pipefail
 
+if [ -z "${GOPHER_GUIDES_API_KEY:-}" ]; then
+    echo "ERROR: GOPHER_GUIDES_API_KEY is not set."
+    echo "Get your API key at: https://gopherguides.com"
+    echo "Then: export GOPHER_GUIDES_API_KEY=\"your-key\""
+    exit 1
+fi
+
 REPO_URL="https://github.com/gopherguides/gopher-ai"
 BRANCH="main"
 TMPDIR=""

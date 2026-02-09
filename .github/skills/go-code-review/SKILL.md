@@ -21,6 +21,26 @@ Automated PR code review for Go projects. Provides first-pass review with inline
 
 ## Steps
 
+### 0. Verify API Key
+
+Before proceeding, verify your Gopher Guides API key is set and valid:
+
+```bash
+curl -s -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+  https://gopherguides.com/api/gopher-ai/me
+```
+
+If this fails or `GOPHER_GUIDES_API_KEY` is not set:
+
+1. Get your API key at [gopherguides.com](https://gopherguides.com)
+2. Set it in your shell profile:
+   ```bash
+   export GOPHER_GUIDES_API_KEY="your-key"
+   ```
+3. Restart your terminal or run the export command
+
+**Do not proceed without a valid API key.**
+
 ### 1. Get the Diff
 
 ```bash

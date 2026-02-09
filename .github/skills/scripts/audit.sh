@@ -7,6 +7,13 @@
 
 set -euo pipefail
 
+if [ -z "${GOPHER_GUIDES_API_KEY:-}" ]; then
+    echo "ERROR: GOPHER_GUIDES_API_KEY is not set."
+    echo "Get your API key at: https://gopherguides.com"
+    echo "Then: export GOPHER_GUIDES_API_KEY=\"your-key\""
+    exit 1
+fi
+
 TARGET="${1:-.}/..."
 REPORT=""
 EXIT_CODE=0
@@ -53,28 +60,24 @@ fi
 
 # ── Gopher Guides API audit ──────────────────────────────────────────
 header "Gopher Guides API Audit"
-if [[ -n "${GOPHER_GUIDES_API_KEY:-}" ]]; then
-    # Collect Go source files (limit to 50KB to stay within API limits)
-    CODE=$(find "${1:-.}" -name '*.go' ! -name '*_test.go' ! -path '*/vendor/*' -exec cat {} + | head -c 50000)
-    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-        -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
-        -H "Content-Type: application/json" \
-        -d "$(jq -n --arg code "$CODE" '{code: $code, focus: "audit"}')" \
-        https://gopherguides.com/api/gopher-ai/audit 2>&1) || true
+# Collect Go source files (limit to 50KB to stay within API limits)
+CODE=$(find "${1:-.}" -name '*.go' ! -name '*_test.go' ! -path '*/vendor/*' -exec cat {} + | head -c 50000)
+RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg code "$CODE" '{code: $code, focus: "audit"}')" \
+    https://gopherguides.com/api/gopher-ai/audit 2>&1) || true
 
-    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | sed '$d')
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
 
-    if [[ "$HTTP_CODE" == "200" ]]; then
-        echo "$BODY" | jq -r '.summary // "Analysis complete"' 2>/dev/null || echo "$BODY"
-        SCORE=$(echo "$BODY" | jq -r '.score // "N/A"' 2>/dev/null || echo "N/A")
-        pass "API audit complete — Score: $SCORE/100"
-    else
-        warn "API returned HTTP $HTTP_CODE — skipping"
-    fi
+if [[ "$HTTP_CODE" == "200" ]]; then
+    echo "$BODY" | jq -r '.summary // "Analysis complete"' 2>/dev/null || echo "$BODY"
+    SCORE=$(echo "$BODY" | jq -r '.score // "N/A"' 2>/dev/null || echo "N/A")
+    pass "API audit complete — Score: $SCORE/100"
 else
-    warn "GOPHER_GUIDES_API_KEY not set — skipping API audit"
-    echo "  Set your key: export GOPHER_GUIDES_API_KEY=\"your-key\""
+    fail "API returned HTTP $HTTP_CODE"
+    EXIT_CODE=1
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────
