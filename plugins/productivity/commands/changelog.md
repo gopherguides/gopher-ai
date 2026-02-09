@@ -132,3 +132,61 @@ Generate a changelog from git commits since the specified starting point.
 - Keep descriptions concise but meaningful
 - Preserve original commit author attribution for team projects
 - If no conventional commit format, still categorize intelligently
+
+---
+
+## Structured Output (`--json`)
+
+When `$ARGUMENTS` contains `--json`, output **only** valid JSON matching this schema instead of markdown. Do not include any text outside the JSON object.
+
+```json
+{
+  "version": "string — suggested next version (e.g. 'v1.3.0') or 'unreleased'",
+  "changes": {
+    "features": ["string — description of each new feature"],
+    "fixes": ["string — description of each bug fix"],
+    "breaking": ["string — description of each breaking change"]
+  }
+}
+```
+
+**Example:**
+
+```json
+{
+  "version": "v1.3.0",
+  "changes": {
+    "features": [
+      "Add structured output support to commands (#32)",
+      "New /build-fix command for auto-fixing build errors"
+    ],
+    "fixes": [
+      "Fix environment variable expansion in plugin paths (#40)"
+    ],
+    "breaking": []
+  }
+}
+```
+
+Strip the `--json` flag from `$ARGUMENTS` before parsing the starting point.
+
+
+## Structured Output (--json)
+
+If `$ARGUMENTS` contains `--json`, strip the flag from other arguments and output **only** a JSON object (no markdown, no explanation) matching this schema:
+
+```json
+{
+  "version": "string",
+  "changes": {
+    "features": ["string"],
+    "fixes": ["string"],
+    "breaking": ["string"]
+  }
+}
+```
+
+- `version`: Suggested next version based on conventional commits (or "unreleased" if no version bump detected)
+- `changes.features`: List of feature descriptions from `feat:` commits
+- `changes.fixes`: List of fix descriptions from `fix:` commits
+- `changes.breaking`: List of breaking change descriptions from `BREAKING CHANGE:` commits

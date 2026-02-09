@@ -21,6 +21,12 @@ Or install via marketplace:
 | `/weekly-summary [weeks]` | Generate weekly work summary with metrics |
 | `/changelog [since]` | Generate changelog from commits since last release |
 
+### Structured Output
+
+`/changelog` supports a `--json` flag. When passed, the command outputs structured JSON with categorized changes instead of markdown. Useful for release automation and CI pipelines.
+
+Example: `/changelog --json v1.2.0`
+
 ## Examples
 
 ```bash
@@ -36,6 +42,16 @@ Or install via marketplace:
 # Changelog since last tag
 /changelog
 ```
+
+## Structured Output
+
+Commands that return data support a `--json` flag for structured JSON output:
+
+| Command | JSON Schema |
+|---------|-------------|
+| `/changelog [since] --json` | `{version, changes: {features, fixes, breaking}}` |
+
+When `--json` is passed, the command outputs only a JSON object instead of markdown.
 
 ## Requirements
 

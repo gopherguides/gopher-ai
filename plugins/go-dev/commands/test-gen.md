@@ -208,6 +208,30 @@ Initialize persistent loop to ensure tests are complete and passing:
 
 ---
 
+## Structured Output (--json)
+
+If `$ARGUMENTS` contains `--json`, strip the flag from the target argument and after completing all steps, output **only** a JSON object (no markdown, no explanation) matching this schema:
+
+```json
+{
+  "test_cases": [
+    {"name": "string", "input": "any", "expected": "any", "edge_case": true}
+  ],
+  "coverage_estimate": "string",
+  "testing_framework": "string"
+}
+```
+
+- `test_cases`: Array of generated test case metadata (name, representative input/expected values, whether it's an edge case)
+- `coverage_estimate`: Estimated code coverage (e.g., "~85% - covers happy path, edge cases, error scenarios")
+- `testing_framework`: Detected framework (e.g., "stdlib", "testify", "gomock+testify")
+
+Still generate and write the test file as normal, but output JSON to stdout instead of the markdown summary.
+
+> **Important:** When using `--json` mode, do NOT emit the `<done>COMPLETE</done>` marker. The JSON output itself signals completion.
+
+---
+
 ## Completion Criteria
 
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
@@ -224,6 +248,43 @@ Initialize persistent loop to ensure tests are complete and passing:
 ```
 
 This signals the loop to exit. If you output this prematurely, the tests may be incomplete or failing.
+
+---
+
+## Structured Output (`--json`)
+
+When `$ARGUMENTS` contains `--json`, output **only** valid JSON matching this schema instead of markdown. Do not include any text outside the JSON object.
+
+```json
+{
+  "test_cases": [
+    {
+      "name": "string — test case name (e.g. 'valid_input_returns_expected_result')",
+      "input": "any — the input value or description",
+      "expected": "any — the expected output value or description",
+      "edge_case": "boolean — true if this is an edge case or error scenario"
+    }
+  ],
+  "coverage_estimate": "string — estimated coverage percentage or qualitative assessment",
+  "testing_framework": "string — detected framework (e.g. 'stdlib', 'testify', 'gomock')"
+}
+```
+
+**Example:**
+
+```json
+{
+  "test_cases": [
+    {"name": "valid_email_returns_true", "input": "user@example.com", "expected": true, "edge_case": false},
+    {"name": "empty_string_returns_error", "input": "", "expected": "error: empty email", "edge_case": true},
+    {"name": "missing_at_symbol_returns_false", "input": "userexample.com", "expected": false, "edge_case": true}
+  ],
+  "coverage_estimate": "85% — covers happy path, empty input, and format validation",
+  "testing_framework": "testify"
+}
+```
+
+Strip the `--json` flag from `$ARGUMENTS` before identifying the target file/function.
 
 ---
 
