@@ -172,6 +172,18 @@ Skills are auto-invoked behaviors that activate based on context. Available acro
 | `templui` | Building Go/Templ web apps, HTMX/Alpine.js integration |
 | `gopher-guides` | Asking about Go idioms, "what's the right way to..." |
 
+## Agent Skills (GitHub Copilot)
+
+Distributable [Agent Skills](https://agentskills.io) for Go code quality auditing. Install to your repo:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/agent-skills/scripts/install.sh) --repo .
+```
+
+Skills included: `go-code-audit`, `go-test-coverage`, `go-standards-audit`, `go-lint-audit`, `go-code-review`
+
+See [`agent-skills/README.md`](agent-skills/README.md) for details.
+
 ## Platform-Specific Notes
 
 ### Claude Code

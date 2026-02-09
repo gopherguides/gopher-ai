@@ -1,0 +1,142 @@
+# Gopher Guides — Configurable Rule Severity Levels
+#
+# Teams can override this file to customize which rules are critical vs warning vs suggestion.
+# Skills reference these severity mappings when generating reports.
+#
+# Severity levels:
+#   critical  — Must fix before merge. Blocks CI.
+#   warning   — Should fix. Flagged in reviews.
+#   suggestion — Nice to have. Informational only.
+#
+# Reference: https://github.com/gopherguides/gopher-ai/issues/51
+
+# ── Defaults ──────────────────────────────────────────────────────────────────
+
+defaults:
+  # Fallback severity when a rule isn't explicitly listed
+  severity: warning
+
+# ── Category Severity ─────────────────────────────────────────────────────────
+
+categories:
+  bugs:
+    severity: critical
+    description: "Issues that will cause runtime errors, panics, or incorrect behavior"
+    rules:
+      - govet
+      - staticcheck
+      - nilerr
+
+  error_handling:
+    severity: critical
+    description: "Unchecked or improperly handled errors"
+    rules:
+      - errcheck
+      - errorlint
+      - wrapcheck
+
+  security:
+    severity: critical
+    description: "Security vulnerabilities and unsafe patterns"
+    rules:
+      - gosec          # Includes G101 (hardcoded credentials), G201-G203 (SQL injection)
+
+  concurrency:
+    severity: critical
+    description: "Data races, goroutine leaks, and deadlocks"
+    rules:
+      # Use: go test -race ./...
+      - govet          # Includes copylock, loopclosure analyzers
+      - contextcheck
+
+  performance:
+    severity: warning
+    description: "Unnecessary allocations, missing preallocation, resource leaks"
+    rules:
+      - prealloc
+      - bodyclose
+      - ineffassign
+      - unparam
+
+  complexity:
+    severity: warning
+    description: "Overly complex or long functions"
+    rules:
+      - cyclop
+      - gocognit
+      - funlen
+      - nestif
+
+  maintainability:
+    severity: warning
+    description: "Code smells, duplication, dead code"
+    rules:
+      - gocritic
+      - revive
+      - dupl
+      - unused
+
+  naming:
+    severity: suggestion
+    description: "Naming conventions and stuttering"
+    rules:
+      - stylecheck
+      - revive/exported
+      - revive/package-comments
+      - revive/var-naming
+
+  style:
+    severity: suggestion
+    description: "Formatting and import ordering"
+    rules:
+      - gofmt
+      - goimports
+      - misspell
+      - whitespace
+
+  documentation:
+    severity: suggestion
+    description: "Missing godoc, package comments, examples"
+    rules:
+      - revive/exported
+      - revive/package-comments
+      # Convention check — not a linter
+
+# ── Per-Rule Overrides ────────────────────────────────────────────────────────
+#
+# Override individual rules regardless of their category default.
+# Useful for promoting/demoting specific checks for your team.
+
+overrides: {}
+  # Examples:
+  # gofmt: critical          # Enforce formatting as a hard gate
+  # prealloc: suggestion     # Demote prealloc to suggestion
+  # funlen: critical         # Your team enforces short functions
+
+# ── Coverage Thresholds ───────────────────────────────────────────────────────
+
+coverage:
+  # Minimum overall test coverage percentage
+  minimum: 80
+  # Per-package minimum (packages below this are flagged)
+  per_package_minimum: 60
+  # Severity when coverage is below threshold
+  below_threshold_severity: warning
+
+# ── Quality Score Weights ─────────────────────────────────────────────────────
+#
+# How much each category contributes to the overall quality score (0-100).
+# Weights should sum to 100.
+
+score_weights:
+  bugs: 10
+  error_handling: 15
+  security: 10
+  concurrency: 10
+  performance: 10
+  complexity: 10
+  maintainability: 10
+  naming: 5
+  style: 5
+  documentation: 10
+  coverage: 5

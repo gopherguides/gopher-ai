@@ -1,0 +1,54 @@
+# Recommended golangci-lint configuration for Go projects
+# See: https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+linters:
+  enable:
+    # Bug detection
+    - govet
+    - staticcheck
+    - gosec
+    # Error handling
+    - errcheck
+    - errorlint
+    # Style
+    - misspell
+    # Complexity
+    - cyclop
+    - gocognit
+    # Maintainability
+    - gocritic
+    - revive
+    - dupl
+    # Performance
+    - prealloc
+    - bodyclose
+
+linters-settings:
+  cyclop:
+    max-complexity: 15
+  gocognit:
+    min-complexity: 20
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  govet:
+    enable-all: true
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  timeout: 5m

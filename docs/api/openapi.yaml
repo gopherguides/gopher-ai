@@ -1,0 +1,336 @@
+openapi: "3.0.3"
+info:
+  title: Gopher AI API
+  description: |
+    Go code quality analysis API powered by Gopher Guides training materials.
+    Used by GitHub Agent Skills, CI/CD pipelines, and developer tools.
+  version: "1.0.0"
+  contact:
+    name: Gopher Guides
+    url: https://gopherguides.com
+    email: info@gopherguides.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://gopherguides.com
+    description: Production
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              example: invalid_api_key
+            message:
+              type: string
+              example: The provided API key is invalid or expired.
+
+    Finding:
+      type: object
+      properties:
+        severity:
+          type: string
+          enum: [critical, warning, suggestion]
+        category:
+          type: string
+          example: error-handling
+        title:
+          type: string
+          example: Unchecked error from os.Remove
+        file:
+          type: string
+          example: main.go
+        line:
+          type: integer
+          example: 42
+        description:
+          type: string
+        fix:
+          type: string
+
+    Practice:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        severity:
+          type: string
+          enum: [critical, warning, suggestion]
+        example:
+          type: string
+        references:
+          type: array
+          items:
+            type: string
+
+    ReviewComment:
+      type: object
+      properties:
+        file:
+          type: string
+        line:
+          type: integer
+        severity:
+          type: string
+          enum: [critical, warning, suggestion]
+        body:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: Invalid or expired API key
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+paths:
+  /api/gopher-ai/me:
+    get:
+      summary: Verify API key
+      description: Verify your API key and view account information.
+      operationId: getMe
+      tags: [Authentication]
+      responses:
+        "200":
+          description: Account info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      email:
+                        type: string
+                      plan:
+                        type: string
+                      requests_today:
+                        type: integer
+                      requests_limit:
+                        type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/gopher-ai/practices:
+    post:
+      summary: Get best practices
+      description: Get prescriptive best-practice guidance on a Go topic.
+      operationId: getPractices
+      tags: [Analysis]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [topic]
+              properties:
+                topic:
+                  type: string
+                  description: "Go topic (e.g., error handling, concurrency)"
+                level:
+                  type: string
+                  enum: [brief, standard, detailed]
+                  default: standard
+      responses:
+        "200":
+          description: Best practices for the topic
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  topic:
+                    type: string
+                  practices:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Practice"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/gopher-ai/audit:
+    post:
+      summary: Code audit
+      description: Submit Go code for expert-level quality audit.
+      operationId: auditCode
+      tags: [Analysis]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: Go source code to audit
+                focus:
+                  type: string
+                  enum: [audit, security, performance, concurrency]
+                  default: audit
+                severity_config:
+                  type: object
+                  description: Override default severity levels
+      responses:
+        "200":
+          description: Audit results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  findings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Finding"
+                  score:
+                    type: integer
+                    minimum: 0
+                    maximum: 100
+                  summary:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/gopher-ai/examples:
+    post:
+      summary: Code examples
+      description: Get code examples for specific Go patterns.
+      operationId: getExamples
+      tags: [Analysis]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [topic]
+              properties:
+                topic:
+                  type: string
+                complexity:
+                  type: string
+                  enum: [basic, intermediate, advanced]
+                  default: intermediate
+      responses:
+        "200":
+          description: Code examples
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  topic:
+                    type: string
+                  examples:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        code:
+                          type: string
+                        explanation:
+                          type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /api/gopher-ai/review:
+    post:
+      summary: PR/diff review
+      description: Review a PR diff against Gopher Guides standards.
+      operationId: reviewDiff
+      tags: [Analysis]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [diff]
+              properties:
+                diff:
+                  type: string
+                  description: Unified diff content
+                context:
+                  type: string
+                  description: Additional context about the PR
+                severity_config:
+                  type: object
+      responses:
+        "200":
+          description: Review results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  score:
+                    type: integer
+                  recommendation:
+                    type: string
+                    enum: [APPROVE, REQUEST_CHANGES, COMMENT]
+                  comments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ReviewComment"
+                  breaking_changes:
+                    type: array
+                    items:
+                      type: string
+                  summary:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"

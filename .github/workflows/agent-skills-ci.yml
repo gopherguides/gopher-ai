@@ -1,0 +1,319 @@
+name: Agent Skills CI
+
+on:
+  push:
+    branches: [main]
+    paths: ['agent-skills/**', '.github/workflows/agent-skills-ci.yml']
+  pull_request:
+    branches: [main]
+    paths: ['agent-skills/**', '.github/workflows/agent-skills-ci.yml']
+  workflow_dispatch:
+    inputs:
+      test-corp:
+        description: 'Run tests against gopherguides/corp'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+      - name: Lint shell scripts
+        run: shellcheck agent-skills/scripts/*.sh
+
+  validate-skills:
+    name: Validate SKILL.md files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check SKILL.md frontmatter and line counts
+        run: |
+          EXIT=0
+          for skill_dir in agent-skills/skills/*/; do
+            skill_name=$(basename "$skill_dir")
+            skill_file="$skill_dir/SKILL.md"
+
+            if [[ ! -f "$skill_file" ]]; then
+              echo "FAIL: $skill_dir missing SKILL.md"
+              EXIT=1
+              continue
+            fi
+
+            # Check line count < 500
+            lines=$(wc -l < "$skill_file")
+            if [[ $lines -ge 500 ]]; then
+              echo "FAIL: $skill_file has $lines lines (max 500)"
+              EXIT=1
+            else
+              echo "OK: $skill_file ($lines lines)"
+            fi
+
+            # Check frontmatter has name field
+            name=$(sed -n '/^---$/,/^---$/p' "$skill_file" | grep '^name:' | awk '{print $2}')
+            if [[ -z "$name" ]]; then
+              echo "FAIL: $skill_file missing 'name' in frontmatter"
+              EXIT=1
+            elif [[ "$name" != "$skill_name" ]]; then
+              echo "FAIL: $skill_file name '$name' != directory '$skill_name'"
+              EXIT=1
+            else
+              echo "OK: $skill_file name matches directory"
+            fi
+
+            # Check frontmatter has description
+            if ! grep -q '^description:' "$skill_file"; then
+              echo "FAIL: $skill_file missing 'description' in frontmatter"
+              EXIT=1
+            fi
+          done
+          exit $EXIT
+
+      - name: Validate severity.yaml
+        run: |
+          pip install pyyaml
+          python3 -c "import yaml; yaml.safe_load(open('agent-skills/config/severity.yaml'))"
+
+  test-demo-repo:
+    name: Build and test demo repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build demo repo
+        working-directory: agent-skills/examples/demo-repo
+        run: go build ./...
+      - name: Test demo repo
+        working-directory: agent-skills/examples/demo-repo
+        run: go test ./...
+
+  test-scripts-no-key:
+    name: Test scripts without API key
+    runs-on: ubuntu-latest
+    needs: [test-demo-repo]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Install Go tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run audit.sh without API key
+        working-directory: agent-skills/examples/demo-repo
+        run: |
+          # Should run local tools and skip API gracefully
+          # Demo repo has intentional issues, so audit exits non-zero — that's expected
+          bash ../../scripts/audit.sh . --yes 2>&1 | tee /tmp/audit-output.txt || true
+          # Verify local tools ran
+          grep -q "go vet" /tmp/audit-output.txt
+          # Verify API was skipped gracefully
+          grep -qi "skipping\|no.*api.*key\|optional" /tmp/audit-output.txt
+          echo "PASS: audit.sh works without API key"
+      - name: Run coverage-report.sh without API key
+        working-directory: agent-skills/examples/demo-repo
+        run: |
+          # Demo repo has low coverage, so script exits non-zero — that's expected
+          bash ../../scripts/coverage-report.sh 2>&1 | tee /tmp/coverage-output.txt || true
+          grep -q "Coverage" /tmp/coverage-output.txt
+          echo "PASS: coverage-report.sh works without API key"
+      - name: Test install.sh --help
+        run: |
+          bash agent-skills/scripts/install.sh --help 2>&1 | grep -q "Usage"
+          echo "PASS: install.sh --help works"
+
+  test-api-endpoints:
+    name: Test API endpoints
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test GET /me
+        env:
+          GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+            https://gopherguides.com/api/gopher-ai/me)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP $HTTP_CODE"
+          echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "FAIL: /me returned $HTTP_CODE"
+            exit 1
+          fi
+          echo "PASS: /me returns 200"
+
+      - name: Test POST /practices
+        env:
+          GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"topic": "error handling"}' \
+            https://gopherguides.com/api/gopher-ai/practices)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP $HTTP_CODE"
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "FAIL: /practices returned $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+          # Verify response has content
+          if echo "$BODY" | jq -e '.content // .practices' > /dev/null 2>&1; then
+            echo "PASS: /practices returns valid response"
+          else
+            echo "WARN: /practices response structure unexpected"
+            echo "$BODY" | head -c 500
+          fi
+
+      - name: Test POST /audit
+        env:
+          GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
+        run: |
+          CODE='package main
+
+          import "fmt"
+
+          func main() {
+            fmt.Println("hello")
+          }'
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg code "$CODE" '{code: $code, focus: "audit"}')" \
+            https://gopherguides.com/api/gopher-ai/audit)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP $HTTP_CODE"
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "FAIL: /audit returned $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+          echo "PASS: /audit returns 200"
+
+      - name: Test POST /examples
+        env:
+          GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"topic": "table driven tests"}' \
+            https://gopherguides.com/api/gopher-ai/examples)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP $HTTP_CODE"
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "FAIL: /examples returned $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+          echo "PASS: /examples returns 200"
+
+      - name: Test POST /review
+        env:
+          GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
+        run: |
+          DIFF='diff --git a/main.go b/main.go
+          --- a/main.go
+          +++ b/main.go
+          @@ -1,3 +1,5 @@
+           package main
+          +
+          +import "fmt"
+          +
+          +func main() { fmt.Println("hello") }'
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg diff "$DIFF" '{diff: $diff}')" \
+            https://gopherguides.com/api/gopher-ai/review)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "HTTP $HTTP_CODE"
+          if [[ "$HTTP_CODE" != "200" ]]; then
+            echo "FAIL: /review returned $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+          echo "PASS: /review returns 200"
+
+  test-scripts-with-key:
+    name: Test scripts with API key
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: [test-demo-repo]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Install Go tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run audit.sh with API key
+        working-directory: agent-skills/examples/demo-repo
+        env:
+          GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
+        run: |
+          bash ../../scripts/audit.sh . --yes 2>&1 | tee /tmp/audit-full.txt || true
+          # Verify local tools ran
+          grep -q "go vet" /tmp/audit-full.txt
+          # Verify API section ran (not skipped)
+          if grep -qi "API" /tmp/audit-full.txt; then
+            echo "PASS: audit.sh ran with API integration"
+          else
+            echo "WARN: API section may not have run"
+          fi
+      - name: Run coverage-report.sh with API key
+        working-directory: agent-skills/examples/demo-repo
+        env:
+          GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
+        run: |
+          bash ../../scripts/coverage-report.sh 2>&1 | tee /tmp/coverage-full.txt || true
+          grep -q "Coverage" /tmp/coverage-full.txt
+          echo "PASS: coverage-report.sh ran successfully"
+
+  test-against-corp:
+    name: Test against gopherguides/corp
+    runs-on: ubuntu-latest
+    if: github.event.inputs.test-corp == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: gopherguides/corp
+          path: corp
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Install Go tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run audit on corp
+        env:
+          GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
+        run: |
+          cd corp
+          bash ../agent-skills/scripts/audit.sh . --yes 2>&1 || true
+          echo "Audit completed on corp repo"
+      - name: Run coverage on corp
+        run: |
+          cd corp
+          bash ../agent-skills/scripts/coverage-report.sh 50 2>&1 || true
+          echo "Coverage report completed on corp repo"
