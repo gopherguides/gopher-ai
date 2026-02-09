@@ -72,8 +72,12 @@ The `shared/` directory contains code used by multiple plugins:
 - `lib/loop-state.sh` - Loop state functions
 - `commands/cancel-loop.md` - Cancel loop command
 
-**Hook ownership**: Only `go-workflow` has the stop hook registered. It owns persistent loop management for all `/start-issue` style commands.
-
+**Hook ownership**: Only `go-workflow` has hooks registered:
+- **Stop hook** (`stop-hook.sh`): Persistent loop management for `/start-issue` style commands
+- **PreToolUse hook** (`pre-tool-use.sh`): Validates environment, tools, and git state before tool execution:
+  - Checks for required env vars (GOPHER_GUIDES_API_KEY, GITHUB_TOKEN, OPENAI_API_KEY) contextually
+  - Blocks execution if required tools are missing (golangci-lint, templ, gh, node)
+  - Warns on uncommitted changes before tests; blocks releases with dirty git state
 **When editing `shared/`**: The pre-commit hook automatically syncs changes to plugins. If you need to sync manually:
 
 ```bash
