@@ -6,7 +6,8 @@ description: |
   WHEN NOT: Non-Go projects, general web development without templ
 ---
 
-# templUI & HTMX/Alpine Best Practices
+
+<!-- cache:start --># templUI & HTMX/Alpine Best Practices
 
 Apply templUI patterns and HTMX/Alpine.js best practices when building Go/Templ web applications.
 
@@ -405,3 +406,5 @@ See "CRITICAL: Templ Interpolation in JavaScript" section above.
 ---
 
 *This skill provides templUI and HTMX/Alpine.js best practices for Go/Templ web development.*
+
+<!-- cache:end -->

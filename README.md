@@ -258,6 +258,43 @@ Extensions are installed per-module. Each extension includes:
 - `skills/` - Auto-invoked skills
 - `commands/` - Command definitions (TOML format)
 
+## MCP Servers
+
+The **tailwind** module includes an MCP (Model Context Protocol) server for Tailwind CSS documentation lookups. This is configured automatically when using Claude Code.
+
+### tailwindcss-mcp-server
+
+**Defined in:** `plugins/tailwind/.claude-plugin/plugin.json`
+
+```json
+{
+  "mcpServers": {
+    "tailwindcss": {
+      "command": "npx",
+      "args": ["-y", "tailwindcss-mcp-server"]
+    }
+  }
+}
+```
+
+**Dependencies:**
+- Node.js 16+ (`node` and `npx` must be on your PATH)
+- Internet access on first run (to download the package)
+
+**Available MCP tools:**
+- `search_tailwind_docs` — Search Tailwind CSS documentation
+- `get_tailwind_utilities` — Get utility classes for CSS properties
+- `get_tailwind_colors` — Get color palette information
+- `convert_css_to_tailwind` — Convert CSS to Tailwind utilities
+
+**Fallback behavior:**
+If the MCP server is unavailable (Node.js not installed, network issues, or using a non-Claude platform), the Tailwind slash commands (`/tailwind-init`, `/tailwind-migrate`, `/tailwind-audit`, `/tailwind-optimize`) still work fully — they do not depend on the MCP server. The MCP tools provide supplementary documentation lookups only.
+
+**Troubleshooting:**
+- **"npx: command not found"** — Install Node.js 16+ (`brew install node` or [nodejs.org](https://nodejs.org))
+- **MCP tools not appearing** — Ensure you installed the `tailwind` plugin module; run `/plugin install tailwind@gopher-ai`
+- **Timeout on first run** — The first `npx -y tailwindcss-mcp-server` invocation downloads the package; subsequent runs are cached
+
 ## Requirements
 
 **All platforms:**
