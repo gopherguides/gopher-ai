@@ -25,20 +25,18 @@ if [ -n "$SHARED_CHANGED" ]; then
   "$ROOT_DIR/scripts/sync-shared.sh"
 
   # Stage the synced files
+  # Note: Only go-workflow has hooks/ — other plugins only get scripts/, lib/, and commands/
   git add \
     plugins/go-workflow/hooks \
     plugins/go-workflow/scripts \
     plugins/go-workflow/lib \
     plugins/go-workflow/commands/cancel-loop.md \
-    plugins/go-web/hooks \
     plugins/go-web/scripts \
     plugins/go-web/lib \
     plugins/go-web/commands/cancel-loop.md \
-    plugins/go-dev/hooks \
     plugins/go-dev/scripts \
     plugins/go-dev/lib \
     plugins/go-dev/commands/cancel-loop.md \
-    plugins/tailwind/hooks \
     plugins/tailwind/scripts \
     plugins/tailwind/lib \
     plugins/tailwind/commands/cancel-loop.md \
