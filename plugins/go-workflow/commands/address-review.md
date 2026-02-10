@@ -118,9 +118,16 @@ echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
    ```bash
    if [ -n "$(git status --porcelain)" ]; then
      echo "ERROR: Working tree has uncommitted changes. Stash or commit before rebasing."
+     exit 1
    fi
    ```
-   If dirty, ask the user how to proceed before continuing.
+   **If dirty, STOP immediately.** Use AskUserQuestion to ask:
+   > "Working tree has uncommitted changes. How would you like to proceed?"
+   > - Stash changes (`git stash`)
+   > - Commit changes first
+   > - Abort and let me handle manually
+
+   **Do not proceed to rebase until the working tree is clean.**
 
 2. Perform the rebase:
    ```bash
@@ -152,13 +159,25 @@ echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
 If a rebase was performed, wait for CI to pass before addressing comments. Review comments may reference lines that shifted during rebase.
 
 ```bash
-for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
+for i in 1 2 3; do
+  sleep 10
+  if gh pr checks "$PR_NUM" --watch; then
+    echo "CI passed"
+    break
+  fi
+  if [ "$i" -eq 3 ]; then
+    echo "ERROR: CI checks not passing after 3 attempts"
+    exit 1
+  fi
+done
 ```
 
-**If CI fails after rebase:**
-1. Analyze and fix the failure
-2. Commit and push the fix
-3. Watch CI again until green
+**If CI checks never pass or the loop exhausts retries:**
+- **STOP immediately** — do not proceed to address review comments
+- Analyze the CI failure output
+- Fix the issue, commit, and push
+- Re-run `gh pr checks "$PR_NUM" --watch` until all checks pass
+- Only then continue to Step 3
 
 **Do not proceed to address review comments until CI passes on the rebased branch.**
 
