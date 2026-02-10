@@ -121,11 +121,10 @@ Ask the user: "What issue or PR number would you like to work on?"
 
 6. **Check if worktree already exists**
 
-   Search existing worktrees for this issue number:
+   Search existing worktrees for this issue number (only match the path column, not branch names):
    ```bash
-   EXISTING=`git worktree list | grep -E "issue-${ISSUE_NUM}-"`
-   if [ -n "$EXISTING" ]; then
-     EXISTING_PATH=`echo "$EXISTING" | awk '{print $1}'`
+   EXISTING_PATH=`git worktree list | awk '{print $1}' | grep -E "issue-${ISSUE_NUM}-"`
+   if [ -n "$EXISTING_PATH" ]; then
      echo "WORKTREE_EXISTS"
      echo "Path: $EXISTING_PATH"
    else
