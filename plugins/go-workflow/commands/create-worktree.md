@@ -65,14 +65,14 @@ Ask the user: "What issue or PR number would you like to work on?"
 
    **If PR was detected:**
    - Extract the PR's branch name from `headRefName`
-   - Try to extract an issue number from the branch name (pattern: `issue-<NUM>-` or `fix/<NUM>-` or `feat/<NUM>-`)
+   - Try to extract an issue number from the branch name using our `issue-<NUM>-` convention only (branches like `fix/2fa-login` or `feat/2024-roadmap` contain numbers that aren't issue IDs, so only `issue-` prefix is trusted)
    - If no issue number found in branch name, check PR body for "Fixes #NNN", "Closes #NNN", or "Resolves #NNN"
    - If an issue number was found, use that as the ISSUE_NUM going forward
    - If no linked issue found, use the PR number itself as the identifier and the PR title for naming
 
    ```bash
    BRANCH_FROM_PR=`echo "$PR_JSON" | grep -o '"headRefName":"[^"]*"' | sed 's/"headRefName":"//;s/"//'`
-   ISSUE_FROM_BRANCH=`echo "$BRANCH_FROM_PR" | grep -oE '(issue|fix|feat)[/-]([0-9]+)' | grep -oE '[0-9]+' | head -1`
+   ISSUE_FROM_BRANCH=`echo "$BRANCH_FROM_PR" | grep -oE 'issue-([0-9]+)(-|$)' | grep -oE '[0-9]+' | head -1`
    if [ -z "$ISSUE_FROM_BRANCH" ]; then
      PR_BODY=`gh pr view "$ARGUMENTS" --json body --jq '.body' 2>/dev/null`
      ISSUE_FROM_BODY=`echo "$PR_BODY" | grep -oiE '(fixes|closes|resolves) #[0-9]+' | grep -oE '[0-9]+' | head -1`
@@ -121,9 +121,9 @@ Ask the user: "What issue or PR number would you like to work on?"
 
 6. **Check if worktree already exists**
 
-   Search existing worktrees for this issue number (only match the path column, not branch names):
+   Search existing worktree paths for this issue number (only match path column, take first match if multiple exist):
    ```bash
-   EXISTING_PATH=`git worktree list | awk '{print $1}' | grep -E "issue-${ISSUE_NUM}-"`
+   EXISTING_PATH=`git worktree list | awk '{print $1}' | grep -E "issue-${ISSUE_NUM}-" | head -1`
    if [ -n "$EXISTING_PATH" ]; then
      echo "WORKTREE_EXISTS"
      echo "Path: $EXISTING_PATH"
