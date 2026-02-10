@@ -162,20 +162,30 @@ If no rebase was needed (`$BEHIND` was 0), skip this entire section and proceed 
 
 If a rebase was performed, wait for CI to pass before addressing comments. Review comments may reference lines that shifted during rebase.
 
+**First, check if the repo has CI configured:**
+
 ```bash
 if [ "$BEHIND" -gt 0 ]; then
-  echo "Waiting for CI after rebase..."
-  for i in 1 2 3; do
-    sleep 10
-    if gh pr checks "$PR_NUM" --watch; then
-      echo "CI passed"
-      break
-    fi
-    if [ "$i" -eq 3 ]; then
-      echo "ERROR: CI checks not passing after 3 attempts"
-      exit 1
-    fi
-  done
+  # Check if repo has workflow files
+  REPO_ROOT=$(git rev-parse --show-toplevel)
+  HAS_CI=$(find "$REPO_ROOT/.github/workflows" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | head -1)
+
+  if [ -z "$HAS_CI" ]; then
+    echo "No CI workflows found — skipping CI wait"
+  else
+    echo "Waiting for CI after rebase..."
+    for i in 1 2 3; do
+      sleep 10
+      if gh pr checks "$PR_NUM" --watch; then
+        echo "CI passed"
+        break
+      fi
+      if [ "$i" -eq 3 ]; then
+        echo "ERROR: CI checks not passing after 3 attempts"
+        exit 1
+      fi
+    done
+  fi
 fi
 ```
 
@@ -187,6 +197,8 @@ fi
 - Only then continue to Step 3
 
 **Do not proceed to address review comments until CI passes on the rebased branch.**
+
+**If no CI workflows exist:** Proceed directly to Step 3 after rebase.
 
 **If no rebase was needed:** Proceed directly to Step 3.
 
