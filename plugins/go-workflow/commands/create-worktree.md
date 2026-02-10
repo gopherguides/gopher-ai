@@ -87,9 +87,19 @@ Ask the user: "What issue or PR number would you like to work on?"
    Only set ISSUE_NUM if the PR detection above didn't already set it:
    !if [ -z "$ISSUE_NUM" ]; then ISSUE_NUM="$ARGUMENTS"; echo "Using issue number: $ISSUE_NUM"; fi
 
-4. **Fetch issue/PR details from GitHub**
+4. **Validate the identifier exists**
 
-   If this was a PR, we already have details. If it was an issue:
+   Verify the number resolves to either a valid PR or issue. If neither exists, abort:
+   ```bash
+   ISSUE_EXISTS=`gh issue view "$ISSUE_NUM" --json number 2>/dev/null`
+   PR_EXISTS=`gh pr view "$ARGUMENTS" --json number 2>/dev/null`
+   if [ -z "$ISSUE_EXISTS" ] && [ -z "$PR_EXISTS" ]; then
+     echo "Error: #$ARGUMENTS is neither a valid issue nor PR"
+     exit 1
+   fi
+   ```
+
+   Fetch issue details if available:
    !gh issue view "$ISSUE_NUM" --json title,state,number 2>/dev/null || echo "Issue #$ISSUE_NUM not found — using PR details"
 
 5. **Build worktree naming variables**
@@ -170,8 +180,8 @@ Ask the user: "What issue or PR number would you like to work on?"
     If reusing an existing worktree, use `$EXISTING_PATH`. If newly created, use `$WORKTREE_PATH`.
 
     Determine the target path:
-    - If `$EXISTING_PATH` is set (existing worktree): `TARGET_PATH="$EXISTING_PATH"`
-    - Otherwise: `TARGET_PATH="$WORKTREE_PATH"`
+    !if [ -n "$EXISTING_PATH" ]; then TARGET_PATH="$EXISTING_PATH"; else TARGET_PATH="$WORKTREE_PATH"; fi
+    !echo "Target worktree path: $TARGET_PATH"
 
     **Change and verify directory:**
     !cd "$TARGET_PATH" && pwd
