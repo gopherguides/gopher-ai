@@ -263,13 +263,13 @@ CI takes time to register after a push. **Wait 10 seconds and retry, up to 3 tim
 for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
 ```
 
-If still no checks after retries, verify the repo actually has CI workflows:
+If still no checks after retries, verify the repo actually has CI workflow files:
 
 ```bash
-ls .github/workflows/ 2>/dev/null || echo "No workflow files found"
+ls .github/workflows/*.{yml,yaml} 2>/dev/null || echo "No workflow files found"
 ```
 
-Only conclude there are no CI checks if the repo has no workflow files. If workflow files exist, the checks are likely still propagating — wait longer and retry.
+Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. If workflow files exist, the checks are likely still propagating — wait longer and retry.
 
 ### If CI fails:
 

@@ -320,11 +320,11 @@ After creating the PR, watch CI and fix any failures:
    ```bash
    for i in 1 2 3; do sleep 10 && gh pr checks --watch && break; done
    ```
-   If still no checks after retries, verify the repo actually has CI workflows:
+   If still no checks after retries, verify the repo actually has CI workflow files:
    ```bash
-   ls .github/workflows/ 2>/dev/null || echo "No workflow files found"
+   ls .github/workflows/*.{yml,yaml} 2>/dev/null || echo "No workflow files found"
    ```
-   Only conclude there are no CI checks if the repo has no workflow files. If workflow files exist, the checks are likely still propagating — wait longer and retry.
+   Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. If workflow files exist, the checks are likely still propagating — wait longer and retry.
 3. If checks fail:
    - Get failure details: `gh pr checks --json name,state,description`
    - Analyze and fix the failing check (test, lint, build)
@@ -449,11 +449,11 @@ After creating the PR, watch CI and fix any failures:
    ```bash
    for i in 1 2 3; do sleep 10 && gh pr checks --watch && break; done
    ```
-   If still no checks after retries, verify the repo actually has CI workflows:
+   If still no checks after retries, verify the repo actually has CI workflow files:
    ```bash
-   ls .github/workflows/ 2>/dev/null || echo "No workflow files found"
+   ls .github/workflows/*.{yml,yaml} 2>/dev/null || echo "No workflow files found"
    ```
-   Only conclude there are no CI checks if the repo has no workflow files. If workflow files exist, the checks are likely still propagating — wait longer and retry.
+   Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. If workflow files exist, the checks are likely still propagating — wait longer and retry.
 3. If checks fail:
    - Get failure details: `gh pr checks --json name,state,description`
    - Analyze and fix the failing check (test, lint, build)
