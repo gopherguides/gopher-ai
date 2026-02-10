@@ -266,7 +266,7 @@ for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
 If still no checks after retries, verify the repo actually has CI workflow files:
 
 ```bash
-ls .github/workflows/*.{yml,yaml} 2>/dev/null || echo "No workflow files found"
+find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1 | grep -q . || echo "No workflow files found"
 ```
 
 Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. If workflow files exist, the checks are likely still propagating — wait longer and retry.
