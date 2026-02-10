@@ -84,7 +84,8 @@ Ask the user: "What issue or PR number would you like to work on?"
    ```
 
    **If NOT a PR, treat as issue:**
-   !ISSUE_NUM="$ARGUMENTS"
+   Only set ISSUE_NUM if the PR detection above didn't already set it:
+   !if [ -z "$ISSUE_NUM" ]; then ISSUE_NUM="$ARGUMENTS"; echo "Using issue number: $ISSUE_NUM"; fi
 
 4. **Fetch issue/PR details from GitHub**
 
