@@ -152,27 +152,34 @@ echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
 5. Inform the user:
    > "Rebased branch onto latest `$BASE_BRANCH` ($BEHIND commits behind). Force-pushed updated branch."
 
-**If `$BEHIND` is 0:** No rebase needed, continue to next step.
+**If `$BEHIND` is 0:** No rebase needed, skip Step 2c and continue directly to Step 3.
 
-### 2c. Wait for CI after rebase (if rebased)
+### 2c. Wait for CI after rebase (ONLY if rebased)
+
+**IMPORTANT: Only execute this step if `$BEHIND > 0` and a rebase was performed in Step 2b.**
+
+If no rebase was needed (`$BEHIND` was 0), skip this entire section and proceed to Step 3.
 
 If a rebase was performed, wait for CI to pass before addressing comments. Review comments may reference lines that shifted during rebase.
 
 ```bash
-for i in 1 2 3; do
-  sleep 10
-  if gh pr checks "$PR_NUM" --watch; then
-    echo "CI passed"
-    break
-  fi
-  if [ "$i" -eq 3 ]; then
-    echo "ERROR: CI checks not passing after 3 attempts"
-    exit 1
-  fi
-done
+if [ "$BEHIND" -gt 0 ]; then
+  echo "Waiting for CI after rebase..."
+  for i in 1 2 3; do
+    sleep 10
+    if gh pr checks "$PR_NUM" --watch; then
+      echo "CI passed"
+      break
+    fi
+    if [ "$i" -eq 3 ]; then
+      echo "ERROR: CI checks not passing after 3 attempts"
+      exit 1
+    fi
+  done
+fi
 ```
 
-**If CI checks never pass or the loop exhausts retries:**
+**If CI checks never pass or the loop exhausts retries (after a rebase):**
 - **STOP immediately** — do not proceed to address review comments
 - Analyze the CI failure output
 - Fix the issue, commit, and push
@@ -180,6 +187,8 @@ done
 - Only then continue to Step 3
 
 **Do not proceed to address review comments until CI passes on the rebased branch.**
+
+**If no rebase was needed:** Proceed directly to Step 3.
 
 ---
 
