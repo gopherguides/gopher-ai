@@ -316,12 +316,21 @@ Commit, push, and create a PR referencing the issue.
 After creating the PR, watch CI and fix any failures:
 
 1. Run: `gh pr checks --watch`
-2. If checks fail:
+2. **If "no checks reported"**: CI takes time to register after a push. **Wait 10 seconds and retry, up to 3 times**, before concluding there are no checks:
+   ```bash
+   for i in 1 2 3; do sleep 10 && gh pr checks --watch && break; done
+   ```
+   If still no checks after retries, verify the repo actually has CI workflows:
+   ```bash
+   ls .github/workflows/ 2>/dev/null || echo "No workflow files found"
+   ```
+   Only conclude there are no CI checks if the repo has no workflow files. If workflow files exist, the checks are likely still propagating — wait longer and retry.
+3. If checks fail:
    - Get failure details: `gh pr checks --json name,state,description`
    - Analyze and fix the failing check (test, lint, build)
    - Commit and push the fix
    - Return to step 1
-3. Continue only when all checks pass
+4. Continue only when all checks pass
 
 ---
 
@@ -436,12 +445,21 @@ Commit, push, and create a PR referencing the issue.
 After creating the PR, watch CI and fix any failures:
 
 1. Run: `gh pr checks --watch`
-2. If checks fail:
+2. **If "no checks reported"**: CI takes time to register after a push. **Wait 10 seconds and retry, up to 3 times**, before concluding there are no checks:
+   ```bash
+   for i in 1 2 3; do sleep 10 && gh pr checks --watch && break; done
+   ```
+   If still no checks after retries, verify the repo actually has CI workflows:
+   ```bash
+   ls .github/workflows/ 2>/dev/null || echo "No workflow files found"
+   ```
+   Only conclude there are no CI checks if the repo has no workflow files. If workflow files exist, the checks are likely still propagating — wait longer and retry.
+3. If checks fail:
    - Get failure details: `gh pr checks --json name,state,description`
    - Analyze and fix the failing check (test, lint, build)
    - Commit and push the fix
    - Return to step 1
-3. Continue only when all checks pass
+4. Continue only when all checks pass
 
 ---
 
