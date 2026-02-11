@@ -94,158 +94,70 @@ DISABLE_BOT_REREVIEW=true
 
 ## Step 2: Check for Rebase
 
-**CRITICAL: Always check if the PR branch needs rebasing before addressing review comments.**
+**Always check if the PR branch needs rebasing before addressing review comments.** Addressing comments on a stale branch wastes effort — files may have changed, conflicts may exist, and CI will run against outdated code.
 
-Addressing comments on a stale branch wastes effort — files may have changed, conflicts may exist, and CI will run against outdated code. Rebase first, then address reviews.
+### 2a. Ensure we're on the PR branch
 
-### 2a. Verify we're on the PR branch
-
-**Before any rebase operations, verify we're on the correct PR branch by SHA, not just name:**
-
-Branch names are not unique across remotes/forks. A local branch with the same name could be unrelated to the PR. Always verify using the PR's head commit SHA.
+Always run `gh pr checkout` to guarantee we're on the correct branch. This is idempotent (no-op if already on the right branch) and handles same-repo PRs, fork PRs, and branch tracking automatically:
 
 ```bash
-PR_INFO=$(gh pr view "$PR_NUM" --json headRefName,headRefOid)
-PR_BRANCH=$(echo "$PR_INFO" | jq -r '.headRefName')
-PR_HEAD_SHA=$(echo "$PR_INFO" | jq -r '.headRefOid')
-CURRENT_BRANCH=$(git branch --show-current)
-CURRENT_SHA=$(git rev-parse HEAD)
-
-# Check both branch name AND that current HEAD is an ancestor of (or equal to) PR head
-if [ "$CURRENT_BRANCH" != "$PR_BRANCH" ] || ! git merge-base --is-ancestor "$CURRENT_SHA" "$PR_HEAD_SHA" 2>/dev/null; then
-  echo "WARNING: Current branch/commit does not match PR #$PR_NUM head"
-  echo "  Current: $CURRENT_BRANCH @ $CURRENT_SHA"
-  echo "  PR head: $PR_BRANCH @ $PR_HEAD_SHA"
-  echo "Checking out PR branch..."
-  gh pr checkout "$PR_NUM"
-fi
+gh pr checkout "$PR_NUM"
 ```
 
-**Why SHA verification matters:** In fork-based workflows, you may have a local branch with the same name as the PR branch but pointing to different commits. Using `gh pr checkout` ensures you're on the actual PR branch, not a same-named local branch.
-
-### 2b. Determine base branch and check if behind
-
-**Important for fork-based workflows:** The PR's base branch may be in a different repository (upstream) than `origin` (which is typically the fork). Resolve the correct remote before fetching.
+### 2b. Check if behind and rebase if needed
 
 ```bash
-# Get base branch and base repo info
-BASE_INFO=$(gh pr view "$PR_NUM" --json baseRefName,baseRepository)
-BASE_BRANCH=$(echo "$BASE_INFO" | jq -r '.baseRefName')
-BASE_REPO=$(echo "$BASE_INFO" | jq -r '.baseRepository.owner.login + "/" + .baseRepository.name')
-
-echo "Base branch: $BASE_BRANCH"
-echo "Base repo: $BASE_REPO"
-
-# Determine the correct remote for the base repo
-# Check if 'upstream' remote exists and points to base repo, otherwise use 'origin'
-BASE_REMOTE="origin"
-if git remote get-url upstream &>/dev/null; then
-  UPSTREAM_URL=$(git remote get-url upstream)
-  if echo "$UPSTREAM_URL" | grep -q "$BASE_REPO"; then
-    BASE_REMOTE="upstream"
-  fi
-fi
-echo "Using remote: $BASE_REMOTE"
-
-git fetch "$BASE_REMOTE" "$BASE_BRANCH"
-
-BEHIND=$(git rev-list --count "HEAD..$BASE_REMOTE/$BASE_BRANCH")
-echo "Commits behind $BASE_REMOTE/$BASE_BRANCH: $BEHIND"
+BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
+git fetch origin "$BASE_BRANCH"
+BEHIND=$(git rev-list --count "HEAD..origin/$BASE_BRANCH")
+echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
 ```
 
-**Note:** In fork workflows, set up an `upstream` remote pointing to the original repo. The script will detect and use it for rebasing.
-
-### 2c. If behind, rebase onto base branch
+**If `$BEHIND` is 0:** No rebase needed, skip to Step 3.
 
 **If `$BEHIND` is greater than 0:**
 
-1. Ensure working tree is clean before rebasing:
+1. Check working tree is clean:
    ```bash
-   if [ -n "$(git status --porcelain)" ]; then
-     echo "ERROR: Working tree has uncommitted changes. Stash or commit before rebasing."
-     exit 1
-   fi
+   git status --porcelain
    ```
-   **If dirty, STOP immediately.** Use AskUserQuestion to ask:
-   > "Working tree has uncommitted changes. How would you like to proceed?"
-   > - Stash changes (`git stash`)
-   > - Commit changes first
-   > - Abort and let me handle manually
+   **If dirty, STOP.** Use AskUserQuestion to ask how to proceed (stash, commit, or abort). Do not rebase until the working tree is clean.
 
-   **Do not proceed to rebase until the working tree is clean.**
-
-2. Perform the rebase:
+2. Rebase onto base branch:
    ```bash
-   git rebase "$BASE_REMOTE/$BASE_BRANCH"
+   git rebase "origin/$BASE_BRANCH"
    ```
 
 3. **If rebase conflicts occur:**
-   - List conflicting files: `git diff --name-only --diff-filter=U`
-   - Read each conflicting file and resolve conflicts intelligently:
-     - Understand the intent of both sides
-     - Preserve PR changes where they don't conflict with base
-     - Accept base changes for unrelated updates
+   - Read each conflicting file and resolve intelligently
    - After resolving each file: `git add <file>`
-   - Continue the rebase: `git rebase --continue`
-   - If conflicts are too complex to resolve automatically, **STOP and ask the user** for guidance
+   - Continue: `git rebase --continue`
+   - If too complex, **STOP and ask the user**
 
-4. Force-push the rebased branch:
+4. Force-push the rebased branch (explicit remote+ref required):
    ```bash
-   git push --force-with-lease
+   git push --force-with-lease origin HEAD
    ```
 
-5. Inform the user:
-   > "Rebased branch onto latest `$BASE_REMOTE/$BASE_BRANCH` ($BEHIND commits behind). Force-pushed updated branch."
+5. Inform the user of the rebase.
 
-**If `$BEHIND` is 0:** No rebase needed, skip Step 2d and continue directly to Step 3.
+### 2c. Wait for CI after rebase
 
-### 2d. Wait for CI after rebase (ONLY if rebased)
+**Only run this if a rebase was performed in 2b.**
 
-**IMPORTANT: Only execute this step if `$BEHIND > 0` and a rebase was performed in Step 2c.**
-
-If no rebase was needed (`$BEHIND` was 0), skip this entire section and proceed to Step 3.
-
-If a rebase was performed, wait for CI to pass before addressing comments. Review comments may reference lines that shifted during rebase.
-
-**First, check if the repo has CI configured:**
+First check if the repo has CI workflows. If no `.github/workflows/*.yml` files exist, skip CI wait:
 
 ```bash
-if [ "$BEHIND" -gt 0 ]; then
-  # Check if repo has workflow files
-  REPO_ROOT=$(git rev-parse --show-toplevel)
-  HAS_CI=$(find "$REPO_ROOT/.github/workflows" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | head -1)
-
-  if [ -z "$HAS_CI" ]; then
-    echo "No CI workflows found — skipping CI wait"
-  else
-    echo "Waiting for CI after rebase..."
-    for i in 1 2 3; do
-      sleep 10
-      if gh pr checks "$PR_NUM" --watch; then
-        echo "CI passed"
-        break
-      fi
-      if [ "$i" -eq 3 ]; then
-        echo "ERROR: CI checks not passing after 3 attempts"
-        exit 1
-      fi
-    done
-  fi
-fi
+find "$(git rev-parse --show-toplevel)/.github/workflows" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | head -1
 ```
 
-**If CI checks never pass or the loop exhausts retries (after a rebase):**
-- **STOP immediately** — do not proceed to address review comments
-- Analyze the CI failure output
-- Fix the issue, commit, and push
-- Re-run `gh pr checks "$PR_NUM" --watch` until all checks pass
-- Only then continue to Step 3
+If CI workflows exist, wait for checks to pass:
 
-**Do not proceed to address review comments until CI passes on the rebased branch.**
+```bash
+for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
+```
 
-**If no CI workflows exist:** Proceed directly to Step 3 after rebase.
-
-**If no rebase was needed:** Proceed directly to Step 3.
+**If CI fails after rebase:** Analyze the failure, fix, commit, push, and re-watch until green. Do not proceed to Step 3 until CI passes.
 
 ---
 
