@@ -100,32 +100,60 @@ Addressing comments on a stale branch wastes effort — files may have changed, 
 
 ### 2a. Verify we're on the PR branch
 
-**Before any rebase operations, verify the current branch matches the PR's head branch:**
+**Before any rebase operations, verify we're on the correct PR branch by SHA, not just name:**
+
+Branch names are not unique across remotes/forks. A local branch with the same name could be unrelated to the PR. Always verify using the PR's head commit SHA.
 
 ```bash
-PR_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
+PR_INFO=$(gh pr view "$PR_NUM" --json headRefName,headRefOid)
+PR_BRANCH=$(echo "$PR_INFO" | jq -r '.headRefName')
+PR_HEAD_SHA=$(echo "$PR_INFO" | jq -r '.headRefOid')
 CURRENT_BRANCH=$(git branch --show-current)
+CURRENT_SHA=$(git rev-parse HEAD)
 
-if [ "$CURRENT_BRANCH" != "$PR_BRANCH" ]; then
-  echo "WARNING: Current branch ($CURRENT_BRANCH) differs from PR branch ($PR_BRANCH)"
+# Check both branch name AND that current HEAD is an ancestor of (or equal to) PR head
+if [ "$CURRENT_BRANCH" != "$PR_BRANCH" ] || ! git merge-base --is-ancestor "$CURRENT_SHA" "$PR_HEAD_SHA" 2>/dev/null; then
+  echo "WARNING: Current branch/commit does not match PR #$PR_NUM head"
+  echo "  Current: $CURRENT_BRANCH @ $CURRENT_SHA"
+  echo "  PR head: $PR_BRANCH @ $PR_HEAD_SHA"
   echo "Checking out PR branch..."
   gh pr checkout "$PR_NUM"
 fi
 ```
 
-**If the branches don't match:** Use `gh pr checkout "$PR_NUM"` to switch to the correct branch before proceeding. This prevents accidentally rebasing/force-pushing an unrelated branch.
+**Why SHA verification matters:** In fork-based workflows, you may have a local branch with the same name as the PR branch but pointing to different commits. Using `gh pr checkout` ensures you're on the actual PR branch, not a same-named local branch.
 
 ### 2b. Determine base branch and check if behind
 
+**Important for fork-based workflows:** The PR's base branch may be in a different repository (upstream) than `origin` (which is typically the fork). Resolve the correct remote before fetching.
+
 ```bash
-BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
+# Get base branch and base repo info
+BASE_INFO=$(gh pr view "$PR_NUM" --json baseRefName,baseRepository)
+BASE_BRANCH=$(echo "$BASE_INFO" | jq -r '.baseRefName')
+BASE_REPO=$(echo "$BASE_INFO" | jq -r '.baseRepository.owner.login + "/" + .baseRepository.name')
+
 echo "Base branch: $BASE_BRANCH"
+echo "Base repo: $BASE_REPO"
 
-git fetch origin "$BASE_BRANCH"
+# Determine the correct remote for the base repo
+# Check if 'upstream' remote exists and points to base repo, otherwise use 'origin'
+BASE_REMOTE="origin"
+if git remote get-url upstream &>/dev/null; then
+  UPSTREAM_URL=$(git remote get-url upstream)
+  if echo "$UPSTREAM_URL" | grep -q "$BASE_REPO"; then
+    BASE_REMOTE="upstream"
+  fi
+fi
+echo "Using remote: $BASE_REMOTE"
 
-BEHIND=$(git rev-list --count "HEAD..origin/$BASE_BRANCH")
-echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
+git fetch "$BASE_REMOTE" "$BASE_BRANCH"
+
+BEHIND=$(git rev-list --count "HEAD..$BASE_REMOTE/$BASE_BRANCH")
+echo "Commits behind $BASE_REMOTE/$BASE_BRANCH: $BEHIND"
 ```
+
+**Note:** In fork workflows, set up an `upstream` remote pointing to the original repo. The script will detect and use it for rebasing.
 
 ### 2c. If behind, rebase onto base branch
 
@@ -148,7 +176,7 @@ echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
 
 2. Perform the rebase:
    ```bash
-   git rebase "origin/$BASE_BRANCH"
+   git rebase "$BASE_REMOTE/$BASE_BRANCH"
    ```
 
 3. **If rebase conflicts occur:**
@@ -167,7 +195,7 @@ echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
    ```
 
 5. Inform the user:
-   > "Rebased branch onto latest `$BASE_BRANCH` ($BEHIND commits behind). Force-pushed updated branch."
+   > "Rebased branch onto latest `$BASE_REMOTE/$BASE_BRANCH` ($BEHIND commits behind). Force-pushed updated branch."
 
 **If `$BEHIND` is 0:** No rebase needed, skip Step 2d and continue directly to Step 3.
 
