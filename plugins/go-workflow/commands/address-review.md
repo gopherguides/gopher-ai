@@ -106,19 +106,28 @@ gh pr checkout "$PR_NUM"
 
 ### 2b. Check if behind and rebase if needed
 
-First, identify the remote that points to the base repository. This handles both:
-- Direct clones where `origin` is the base repo
-- Fork workflows where `upstream` points to the base repo
+First, identify the remote that points to the PR's base repository by matching URLs:
 
 ```bash
 BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
 
-# Find the remote pointing to the base repo (check upstream first, then origin)
-# upstream is the convention for fork workflows
-if git remote | grep -q '^upstream$'; then
-  BASE_REMOTE="upstream"
-else
-  BASE_REMOTE="origin"
+# Get the base repo URL from gh (it operates in the context of the base repo)
+BASE_REPO_URL=$(gh repo view --json url --jq '.url')
+
+# Find a remote that points to the base repo by matching URLs
+BASE_REMOTE=""
+for remote in $(git remote); do
+  REMOTE_URL=$(git remote get-url "$remote" | sed 's|\.git$||' | sed 's|git@github\.com:|https://github.com/|')
+  if [ "$REMOTE_URL" = "$BASE_REPO_URL" ]; then
+    BASE_REMOTE="$remote"
+    break
+  fi
+done
+
+if [ -z "$BASE_REMOTE" ]; then
+  echo "Error: No remote found pointing to the base repository ($BASE_REPO_URL)"
+  echo "Please add a remote for the base repository and try again."
+  exit 1
 fi
 
 git fetch "$BASE_REMOTE" "$BASE_BRANCH"
