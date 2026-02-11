@@ -106,17 +106,24 @@ gh pr checkout "$PR_NUM"
 
 ### 2b. Check if behind and rebase if needed
 
+First, identify the remote that points to the base repository. This handles both:
+- Direct clones where `origin` is the base repo
+- Fork workflows where `upstream` points to the base repo
+
 ```bash
-# Get base branch and base repo URL from the PR (handles fork workflows where origin may not be the base)
 BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
-BASE_REPO_URL=$(gh pr view "$PR_NUM" --json url --jq '.url' | sed 's|/pull/[0-9]*||')
 
-# Fetch base branch directly from the PR's base repository
-git fetch "$BASE_REPO_URL" "$BASE_BRANCH"
+# Find the remote pointing to the base repo (check upstream first, then origin)
+# upstream is the convention for fork workflows
+if git remote | grep -q '^upstream$'; then
+  BASE_REMOTE="upstream"
+else
+  BASE_REMOTE="origin"
+fi
 
-# FETCH_HEAD now points to the base branch tip
-BEHIND=$(git rev-list --count "HEAD..FETCH_HEAD")
-echo "Commits behind $BASE_BRANCH: $BEHIND"
+git fetch "$BASE_REMOTE" "$BASE_BRANCH"
+BEHIND=$(git rev-list --count "HEAD..${BASE_REMOTE}/${BASE_BRANCH}")
+echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
 ```
 
 **If `$BEHIND` is 0:** No rebase needed, skip to Step 3.
@@ -131,7 +138,7 @@ echo "Commits behind $BASE_BRANCH: $BEHIND"
 
 2. Rebase onto base branch:
    ```bash
-   git rebase FETCH_HEAD
+   git rebase "${BASE_REMOTE}/${BASE_BRANCH}"
    ```
 
 3. **If rebase conflicts occur:**
