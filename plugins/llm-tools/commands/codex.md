@@ -179,6 +179,24 @@ Ask the user which model to use:
 
 Default: `gpt-5.3-codex`
 
+### R2.5. Select Review Depth
+
+**If PR/issue context is included**, ask the user:
+
+| Option | Description |
+|--------|-------------|
+| Single pass | One review pass (default, fastest) |
+| Multi-pass (3) | Three passes, de-duplicated (recommended for thorough review) |
+| Multi-pass (custom) | Specify number of passes |
+
+Default: `Single pass`
+
+**If "Multi-pass (custom)":** Ask: "How many passes? (2-5)" — validate numeric, clamp to range.
+
+Store the pass count for use in R3.
+
+**If no PR/issue context is selected**, skip this prompt entirely (single pass is implicit).
+
 ### R3. Run Codex Review
 
 Assemble and execute the command based on what to review and context settings.
@@ -207,7 +225,7 @@ codex review --commit <sha> -c model=<model>
 
 #### If PR/Issue Context IS Included
 
-Since `--base`, `--uncommitted`, and `--commit` flags cannot be combined with custom prompts, pipe the context and diff together via stdin using `codex exec`.
+Use `codex review -` (stdin mode) to keep the native review pipeline/rubric active while passing custom context. This preserves review quality that would be lost with `codex exec`.
 
 **Step 1: Generate the diff**
 
@@ -294,21 +312,102 @@ Specifically:
 Review these changes against the requirements above. Ensure the implementation fulfills the original intent.
 ```
 
-**Step 3: Execute via stdin**
+**Step 3: Execute review via stdin**
+
+#### Single Pass (or no multi-pass selected)
 
 ```bash
-codex exec -m <model> -s read-only --skip-git-repo-check - <<'EOF'
+codex review -c model=<model> - <<'EOF'
 <constructed context block with diff>
 EOF
 ```
 
-**Note:** Review mode defaults to `read-only` sandbox since code review should not modify files.
+Capture the output as `FINDINGS`.
+
+#### Multi-Pass Review
+
+**If multi-pass was selected in R2.5**, run the review loop:
+
+**Pass 1:** Execute the same command as single pass above. Capture output as `PASS_1_FINDINGS`.
+
+**Pass 2 through N:** Build an augmented prompt that appends a summarized "Previous Findings" section to the original context block. To avoid exceeding context limits, summarize prior findings rather than concatenating full text:
+
+**Summarizing prior findings:**
+- Extract a one-line summary for each finding: `<file>:<line> - <issue title>`
+- Cap at 50 findings maximum; if more, include only the 50 most significant (by severity or detail level)
+- Total summary should not exceed ~2000 characters
+
+```text
+<original context block with diff>
+
+---
+
+## Previous Findings Summary (from passes 1 through <current-1>)
+
+The following issues have already been identified:
+- <file1>:<line> - <issue title>
+- <file2>:<line> - <issue title>
+...
+
+---
+
+## Instructions for This Pass
+
+You have already identified the issues listed above. For this pass, ONLY report NET-NEW findings that are NOT covered by the summary above. Focus on issues that were missed, edge cases, or deeper analysis.
+
+If there are no new findings to report, respond with exactly: NO_NEW_FINDINGS
+```
+
+Execute:
+
+```bash
+codex review -c model=<model> - <<'EOF'
+<augmented context block>
+EOF
+```
+
+Capture output as `PASS_<N>_FINDINGS`.
+
+**Early stop:** If the output, after stripping leading/trailing whitespace, equals exactly `NO_NEW_FINDINGS` or is substantively empty (fewer than 20 characters of content), stop the loop immediately. Do not match substring occurrences — only an exact trimmed match triggers early stop.
+
+**After all passes complete:** Proceed to de-duplication.
+
+#### De-Duplicate Findings
+
+After collecting findings from all passes, de-duplicate before presenting results:
+
+1. Parse each finding to extract: file path, exact line number/range, finding title/summary
+2. Normalize titles for comparison: lowercase, collapse whitespace
+3. Group by (file path, exact line number, normalized title) — use exact line matches only; do not merge nearby lines as this can collapse distinct issues in repeated patterns
+4. For duplicate groups: keep the variant with the most detail or clearest explanation
+5. Sort final findings by file path, then line number
+
+Format the aggregated output as:
+
+```text
+## Code Review Findings (<N> passes, <M> unique findings)
+
+### <file-path>
+
+**Line <N>:** <finding title>
+<finding detail>
+
+### <next-file-path>
+
+**Line <N>:** <finding title>
+<finding detail>
+```
+
+If early stop occurred, note: "Review completed in X of Y passes (no additional findings in pass X)."
+
+Store the final aggregated output as `FINDINGS` for use in R4.
 
 ### R4. Report Results
 
 After execution completes:
 
-- Show the review output to the user
+- **Single pass:** Show the review output (`FINDINGS`) to the user
+- **Multi-pass:** Show the aggregated, de-duplicated findings to the user with a summary header (e.g., "3 passes, 12 unique findings" or "Completed in 2 of 3 passes — no new findings in pass 2")
 
 **If PR/issue context was included:**
 
@@ -325,10 +424,10 @@ Default: `Done`
 
 **If "Post to PR":**
 
-Format the key findings as a markdown comment and post:
+Format the findings as a markdown comment and post. For multi-pass reviews, use the aggregated de-duplicated output:
 
 ```bash
-gh pr comment <pr_number> --body "<formatted review findings>"
+gh pr comment <pr_number> --body "<formatted FINDINGS>"
 ```
 
 **If no context was included:**
