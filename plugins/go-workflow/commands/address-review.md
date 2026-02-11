@@ -98,7 +98,24 @@ DISABLE_BOT_REREVIEW=true
 
 Addressing comments on a stale branch wastes effort — files may have changed, conflicts may exist, and CI will run against outdated code. Rebase first, then address reviews.
 
-### 2a. Determine base branch and check if behind
+### 2a. Verify we're on the PR branch
+
+**Before any rebase operations, verify the current branch matches the PR's head branch:**
+
+```bash
+PR_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
+CURRENT_BRANCH=$(git branch --show-current)
+
+if [ "$CURRENT_BRANCH" != "$PR_BRANCH" ]; then
+  echo "WARNING: Current branch ($CURRENT_BRANCH) differs from PR branch ($PR_BRANCH)"
+  echo "Checking out PR branch..."
+  gh pr checkout "$PR_NUM"
+fi
+```
+
+**If the branches don't match:** Use `gh pr checkout "$PR_NUM"` to switch to the correct branch before proceeding. This prevents accidentally rebasing/force-pushing an unrelated branch.
+
+### 2b. Determine base branch and check if behind
 
 ```bash
 BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
@@ -110,7 +127,7 @@ BEHIND=$(git rev-list --count "HEAD..origin/$BASE_BRANCH")
 echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
 ```
 
-### 2b. If behind, rebase onto base branch
+### 2c. If behind, rebase onto base branch
 
 **If `$BEHIND` is greater than 0:**
 
@@ -152,11 +169,11 @@ echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
 5. Inform the user:
    > "Rebased branch onto latest `$BASE_BRANCH` ($BEHIND commits behind). Force-pushed updated branch."
 
-**If `$BEHIND` is 0:** No rebase needed, skip Step 2c and continue directly to Step 3.
+**If `$BEHIND` is 0:** No rebase needed, skip Step 2d and continue directly to Step 3.
 
-### 2c. Wait for CI after rebase (ONLY if rebased)
+### 2d. Wait for CI after rebase (ONLY if rebased)
 
-**IMPORTANT: Only execute this step if `$BEHIND > 0` and a rebase was performed in Step 2b.**
+**IMPORTANT: Only execute this step if `$BEHIND > 0` and a rebase was performed in Step 2c.**
 
 If no rebase was needed (`$BEHIND` was 0), skip this entire section and proceed to Step 3.
 
