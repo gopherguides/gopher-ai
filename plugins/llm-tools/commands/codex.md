@@ -330,22 +330,30 @@ Capture the output as `FINDINGS`.
 
 **Pass 1:** Execute the same command as single pass above. Capture output as `PASS_1_FINDINGS`.
 
-**Pass 2 through N:** Build an augmented prompt that appends a "Previous Findings" section to the original context block:
+**Pass 2 through N:** Build an augmented prompt that appends a summarized "Previous Findings" section to the original context block. To avoid exceeding context limits, summarize prior findings rather than concatenating full text:
+
+**Summarizing prior findings:**
+- Extract a one-line summary for each finding: `<file>:<line> - <issue title>`
+- Cap at 50 findings maximum; if more, include only the 50 most significant (by severity or detail level)
+- Total summary should not exceed ~2000 characters
 
 ```text
 <original context block with diff>
 
 ---
 
-## Previous Findings (from passes 1 through <current-1>)
+## Previous Findings Summary (from passes 1 through <current-1>)
 
-<concatenated findings from all prior passes>
+The following issues have already been identified:
+- <file1>:<line> - <issue title>
+- <file2>:<line> - <issue title>
+...
 
 ---
 
 ## Instructions for This Pass
 
-You have already identified the findings listed above. For this pass, ONLY report NET-NEW findings that are NOT covered by the previous findings. Focus on issues that were missed, edge cases, or deeper analysis.
+You have already identified the issues listed above. For this pass, ONLY report NET-NEW findings that are NOT covered by the summary above. Focus on issues that were missed, edge cases, or deeper analysis.
 
 If there are no new findings to report, respond with exactly: NO_NEW_FINDINGS
 ```
@@ -368,9 +376,9 @@ Capture output as `PASS_<N>_FINDINGS`.
 
 After collecting findings from all passes, de-duplicate before presenting results:
 
-1. Parse each finding to extract: file path, line number/range, finding title/summary
-2. Normalize for comparison: lowercase titles, collapse whitespace, treat line numbers within ±3 lines as the same location
-3. Group by (file path, normalized line range, normalized title)
+1. Parse each finding to extract: file path, exact line number/range, finding title/summary
+2. Normalize titles for comparison: lowercase, collapse whitespace
+3. Group by (file path, exact line number, normalized title) — use exact line matches only; do not merge nearby lines as this can collapse distinct issues in repeated patterns
 4. For duplicate groups: keep the variant with the most detail or clearest explanation
 5. Sort final findings by file path, then line number
 
