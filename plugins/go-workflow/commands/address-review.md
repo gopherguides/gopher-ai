@@ -134,10 +134,12 @@ echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
    - Continue: `git rebase --continue`
    - If too complex, **STOP and ask the user**
 
-4. Force-push the rebased branch (explicit remote+ref required):
+4. Force-push the rebased branch to its configured remote:
    ```bash
-   git push --force-with-lease origin HEAD
+   BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote")
+   git push --force-with-lease "$BRANCH_REMOTE" HEAD
    ```
+   Note: After `gh pr checkout`, the branch's remote is correctly configured (fork remote for fork PRs, `origin` for same-repo PRs).
 
 5. Inform the user of the rebase.
 
