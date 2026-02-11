@@ -92,13 +92,115 @@ DISABLE_BOT_REREVIEW=true
 
 ---
 
-## Step 2: Fetch All Review Feedback
+## Step 2: Check for Rebase
+
+**Always check if the PR branch needs rebasing before addressing review comments.** Addressing comments on a stale branch wastes effort — files may have changed, conflicts may exist, and CI will run against outdated code.
+
+### 2a. Ensure we're on the PR branch
+
+Always run `gh pr checkout` to guarantee we're on the correct branch. This is idempotent (no-op if already on the right branch) and handles same-repo PRs, fork PRs, and branch tracking automatically:
+
+```bash
+gh pr checkout "$PR_NUM"
+```
+
+### 2b. Check if behind and rebase if needed
+
+First, identify the remote that points to the PR's base repository by matching the `owner/repo` path:
+
+```bash
+BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
+
+# Extract owner/repo from gh repo view (always returns https://github.com/owner/repo)
+BASE_OWNER_REPO=$(gh repo view --json owner,name --jq '"\(.owner.login)/\(.name)"')
+
+# Find a remote that points to the same owner/repo
+# Handles: https://, git@host:, ssh://git@host/ formats and .git suffix
+BASE_REMOTE=""
+for remote in $(git remote); do
+  REMOTE_URL=$(git remote get-url "$remote")
+  # Extract owner/repo from any URL format
+  REMOTE_OWNER_REPO=$(echo "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
+  if [ "$REMOTE_OWNER_REPO" = "$BASE_OWNER_REPO" ]; then
+    BASE_REMOTE="$remote"
+    break
+  fi
+done
+
+if [ -z "$BASE_REMOTE" ]; then
+  echo "Error: No remote found pointing to the base repository ($BASE_OWNER_REPO)"
+  echo "Please add a remote for the base repository and try again."
+  exit 1
+fi
+
+git fetch "$BASE_REMOTE" "$BASE_BRANCH"
+BEHIND=$(git rev-list --count "HEAD..${BASE_REMOTE}/${BASE_BRANCH}")
+echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
+```
+
+**If `$BEHIND` is 0:** No rebase needed, skip to Step 3.
+
+**If `$BEHIND` is greater than 0:**
+
+1. Check working tree is clean:
+   ```bash
+   git status --porcelain
+   ```
+   **If dirty, STOP.** Use AskUserQuestion to ask how to proceed (stash, commit, or abort). Do not rebase until the working tree is clean.
+
+2. Rebase onto base branch:
+   ```bash
+   git rebase "${BASE_REMOTE}/${BASE_BRANCH}"
+   ```
+
+3. **If rebase conflicts occur:**
+   - Read each conflicting file and resolve intelligently
+   - After resolving each file: `git add <file>`
+   - Continue: `git rebase --continue`
+   - If too complex, **STOP and ask the user**
+
+4. Force-push the rebased branch to the PR's head branch:
+   ```bash
+   # Get the PR's actual head branch name (may differ from local branch name)
+   PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
+   BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote")
+   git push --force-with-lease "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
+   ```
+   Note: After `gh pr checkout`, the branch's remote is correctly configured (fork remote for fork PRs, `origin` for same-repo PRs). We push to the explicit PR head branch name to handle cases where the local branch was renamed.
+
+5. Inform the user of the rebase.
+
+### 2c. Wait for CI after rebase
+
+**Only run this if a rebase was performed in 2b.**
+
+Wait for CI checks to pass (handles both GitHub Actions and external CI providers):
+
+```bash
+for i in 1 2 3 4 5; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
+```
+
+**After the loop, verify CI status:**
+
+```bash
+gh pr checks "$PR_NUM"
+```
+
+- If all checks show `pass`: Proceed to Step 3.
+- If any checks show `fail`: Analyze the failure, fix, commit, push, and re-watch until green.
+- If "no checks reported" after 5 retries: The repo may not have CI configured. Proceed with caution, but note this to the user.
+
+**Do not proceed to Step 3 until all CI checks pass (or confirmed no CI is configured).**
+
+---
+
+## Step 3: Fetch All Review Feedback
 
 GitHub has two types of review feedback:
 1. **Review threads** (line-specific comments) - CAN be auto-resolved via GraphQL
 2. **Review comments** (general feedback from CHANGES_REQUESTED reviews) - CANNOT be auto-resolved, only the reviewer can approve
 
-### 2a. Fetch review threads (resolvable)
+### 3a. Fetch review threads (resolvable)
 
 ```bash
 OWNER=$(gh repo view --json owner --jq '.owner.login')
@@ -129,7 +231,7 @@ gh api graphql -f query='
 ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM"
 ```
 
-### 2b. Fetch pending reviews (not auto-resolvable)
+### 3b. Fetch pending reviews (not auto-resolvable)
 
 ```bash
 gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES_REQUESTED")'
@@ -137,7 +239,7 @@ gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES
 
 ---
 
-## Step 3: Display and Categorize Comments
+## Step 4: Display and Categorize Comments
 
 ### Categorize feedback into two groups:
 
@@ -145,12 +247,12 @@ gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES
 - Thread ID (needed for resolution later)
 - File path and line number
 - Comment body
-- Author username (track for re-review in Step 10)
+- Author username (track for re-review in Step 11)
 - These CAN be auto-resolved after fixing
 
 **Group B - Pending reviews** (from `reviews` with `state: CHANGES_REQUESTED`):
 - Review body/comments
-- Author username (track for re-review in Step 10)
+- Author username (track for re-review in Step 11)
 - These CANNOT be auto-resolved - the reviewer must approve
 
 ### Track unique reviewers
@@ -172,11 +274,11 @@ Address the feedback, but note to the user:
 
 ---
 
-## Step 4: Address Each Comment
+## Step 5: Address Each Comment
 
 For each unresolved review comment:
 
-### 4a. Understand the Request
+### 5a. Understand the Request
 
 Read the comment carefully. Determine what change is being requested:
 - Code style fix?
@@ -185,7 +287,7 @@ Read the comment carefully. Determine what change is being requested:
 - Test addition?
 - Refactoring?
 
-### 4b. Locate the Code
+### 5b. Locate the Code
 
 Use the file path and line number from the thread to find the relevant code:
 
@@ -193,14 +295,14 @@ Use the file path and line number from the thread to find the relevant code:
 # Read the file around the commented line
 ```
 
-### 4c. Make the Fix
+### 5c. Make the Fix
 
 Edit the code to address the feedback. Follow these principles:
 - Make the **minimal change** that addresses the comment
 - Follow existing code patterns
 - Don't introduce unrelated changes
 
-### 4d. Validate Fix Against Feedback
+### 5d. Validate Fix Against Feedback
 
 After making each fix, verify it actually addresses what the reviewer asked for:
 
@@ -211,7 +313,7 @@ After making each fix, verify it actually addresses what the reviewer asked for:
 
 If the fix doesn't match the reviewer's intent, revise before moving to the next comment.
 
-### 4e. Track the Fix
+### 5e. Track the Fix
 
 Keep a mental note of:
 - Thread ID
@@ -220,7 +322,7 @@ Keep a mental note of:
 
 ---
 
-## Step 5: Verify Fixes Locally
+## Step 6: Verify Fixes Locally
 
 Before committing, run the full verification checklist. **All must pass before proceeding:**
 
@@ -233,7 +335,7 @@ If any step fails, fix the issue and re-run until all green. This catches proble
 
 ---
 
-## Step 6: Commit and Push All Fixes
+## Step 7: Commit and Push All Fixes
 
 After verification passes, bundle changes into a single commit:
 
@@ -247,7 +349,7 @@ git push
 
 ---
 
-## Step 7: Watch CI
+## Step 8: Watch CI
 
 After pushing, watch CI and fix any failures:
 
@@ -294,11 +396,11 @@ Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. 
    gh pr checks "$PR_NUM" --watch
    ```
 
-**Do not proceed to Step 8 until all CI checks pass.**
+**Do not proceed to Step 9 until all CI checks pass.**
 
 ---
 
-## Step 8: Reply to Each Comment
+## Step 9: Reply to Each Comment
 
 For each addressed comment, post a reply explaining the fix:
 
@@ -313,13 +415,13 @@ gh pr comment "$PR_NUM" --body "Fixed in latest commit: [brief explanation of wh
 
 ---
 
-## Step 9: Resolve Review Threads (Group A only)
+## Step 10: Resolve Review Threads (Group A only)
 
 **CRITICAL:** Only resolve threads after CI passes and fixes are pushed.
 
 **This only applies to line-specific review threads (Group A).** Pending reviews (Group B) cannot be auto-resolved.
 
-For each thread ID collected in Step 3 (Group A), resolve it via GraphQL:
+For each thread ID collected in Step 4 (Group A), resolve it via GraphQL:
 
 ```bash
 gh api graphql -f query='
@@ -335,11 +437,11 @@ gh api graphql -f query='
 
 ---
 
-## Step 10: Request Re-review
+## Step 11: Request Re-review
 
 After all fixes are committed and CI passes, request re-review from reviewers.
 
-### 10a. Check for opt-out flag
+### 11a. Check for opt-out flag
 
 Before requesting bot re-reviews, check if the project has opted out. Use the repo root to find the project's CLAUDE.md (handles running from subdirectories):
 
@@ -351,13 +453,13 @@ if [ -f "$REPO_ROOT/CLAUDE.md" ] && grep -q "DISABLE_BOT_REREVIEW=true" "$REPO_R
 fi
 ```
 
-**If `DISABLE_BOT_REREVIEW=true` is found:** Skip step 10c (bot re-reviews) entirely. Only request re-review from human reviewers.
+**If `DISABLE_BOT_REREVIEW=true` is found:** Skip step 11c (bot re-reviews) entirely. Only request re-review from human reviewers.
 
 **If not found or file doesn't exist:** Proceed with bot re-reviews.
 
-### 10b. Identify reviewer types
+### 11b. Identify reviewer types
 
-From the reviewers collected in Step 3, categorize them:
+From the reviewers collected in Step 4, categorize them:
 
 **Bot reviewers** (trigger via PR comment):
 - `codex`, `chatgpt-codex-connector` → `@codex review`
@@ -370,9 +472,9 @@ From the reviewers collected in Step 3, categorize them:
 **Skip these bots** (no re-review needed):
 - `github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`
 
-### 10c. Request re-review from bot reviewers
+### 11c. Request re-review from bot reviewers
 
-**Skip this step if `DISABLE_BOT_REREVIEW=true` was found in step 10a.**
+**Skip this step if `DISABLE_BOT_REREVIEW=true` was found in step 11a.**
 
 **Before requesting bot re-reviews, inform the user:**
 
@@ -399,7 +501,7 @@ gh pr comment "$PR_NUM" --body "@greptileai review"
 
 **Important:** Only post ONE comment per bot, even if the bot left multiple comments.
 
-### 10d. Request re-review from human reviewers
+### 11d. Request re-review from human reviewers
 
 For human reviewers who left CHANGES_REQUESTED:
 
@@ -407,14 +509,14 @@ For human reviewers who left CHANGES_REQUESTED:
 gh pr edit "$PR_NUM" --add-reviewer "REVIEWER_USERNAME"
 ```
 
-### 10e. Inform the user
+### 11e. Inform the user
 
 After requesting re-reviews:
 > "Requested re-review from: [list of reviewers]. Bot reviewers will automatically review the updated code. Human reviewers will need to manually approve."
 
 ---
 
-## Step 11: Verify Completion
+## Step 12: Verify Completion
 
 Confirm all resolvable threads are resolved:
 
@@ -451,14 +553,15 @@ gh pr checks "$PR_NUM"
 
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
 
-1. All review feedback (threads AND pending reviews) has been addressed with code changes
-2. Each fix has been validated against the reviewer's intent (not just mechanical edits)
-3. Local verification passes (`go build`, `go test`, `golangci-lint`)
-4. Changes are committed and pushed
-5. CI checks pass (`gh pr checks` shows all green)
-6. Replies have been posted to each comment
-7. All resolvable review threads (Group A) are resolved via GraphQL
-8. Re-review requested from all reviewers:
+1. PR branch is rebased onto latest base branch (or was already up to date)
+2. All review feedback (threads AND pending reviews) has been addressed with code changes
+3. Each fix has been validated against the reviewer's intent (not just mechanical edits)
+4. Local verification passes (`go build`, `go test`, `golangci-lint`)
+5. Changes are committed and pushed
+6. CI checks pass (`gh pr checks` shows all green)
+7. Replies have been posted to each comment
+8. All resolvable review threads (Group A) are resolved via GraphQL
+9. Re-review requested from all reviewers:
    - Bot reviewers: via `@bot review` comment (one per bot)
    - Human reviewers: via `gh pr edit --add-reviewer`
 
