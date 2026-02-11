@@ -107,10 +107,16 @@ gh pr checkout "$PR_NUM"
 ### 2b. Check if behind and rebase if needed
 
 ```bash
+# Get base branch and base repo URL from the PR (handles fork workflows where origin may not be the base)
 BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
-git fetch origin "$BASE_BRANCH"
-BEHIND=$(git rev-list --count "HEAD..origin/$BASE_BRANCH")
-echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
+BASE_REPO_URL=$(gh pr view "$PR_NUM" --json url --jq '.url' | sed 's|/pull/[0-9]*||')
+
+# Fetch base branch directly from the PR's base repository
+git fetch "$BASE_REPO_URL" "$BASE_BRANCH"
+
+# FETCH_HEAD now points to the base branch tip
+BEHIND=$(git rev-list --count "HEAD..FETCH_HEAD")
+echo "Commits behind $BASE_BRANCH: $BEHIND"
 ```
 
 **If `$BEHIND` is 0:** No rebase needed, skip to Step 3.
@@ -125,7 +131,7 @@ echo "Commits behind origin/$BASE_BRANCH: $BEHIND"
 
 2. Rebase onto base branch:
    ```bash
-   git rebase "origin/$BASE_BRANCH"
+   git rebase FETCH_HEAD
    ```
 
 3. **If rebase conflicts occur:**
