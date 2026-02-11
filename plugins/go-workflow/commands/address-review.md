@@ -140,12 +140,14 @@ echo "Commits behind $BASE_BRANCH: $BEHIND"
    - Continue: `git rebase --continue`
    - If too complex, **STOP and ask the user**
 
-4. Force-push the rebased branch to its configured remote:
+4. Force-push the rebased branch to the PR's head branch:
    ```bash
+   # Get the PR's actual head branch name (may differ from local branch name)
+   PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
    BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote")
-   git push --force-with-lease "$BRANCH_REMOTE" HEAD
+   git push --force-with-lease "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
    ```
-   Note: After `gh pr checkout`, the branch's remote is correctly configured (fork remote for fork PRs, `origin` for same-repo PRs).
+   Note: After `gh pr checkout`, the branch's remote is correctly configured (fork remote for fork PRs, `origin` for same-repo PRs). We push to the explicit PR head branch name to handle cases where the local branch was renamed.
 
 5. Inform the user of the rebase.
 
@@ -162,10 +164,20 @@ find "$(git rev-parse --show-toplevel)/.github/workflows" -maxdepth 1 \( -name '
 If CI workflows exist, wait for checks to pass:
 
 ```bash
-for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
+for i in 1 2 3 4 5; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
 ```
 
-**If CI fails after rebase:** Analyze the failure, fix, commit, push, and re-watch until green. Do not proceed to Step 3 until CI passes.
+**After the loop, verify CI status:**
+
+```bash
+gh pr checks "$PR_NUM"
+```
+
+- If all checks show `pass`: Proceed to Step 3.
+- If any checks show `fail`: Analyze the failure, fix, commit, push, and re-watch until green.
+- If "no checks reported" after 5 retries AND workflow files exist: **STOP** and ask the user — CI may be misconfigured or the push didn't trigger workflows.
+
+**Do not proceed to Step 3 until all CI checks pass.**
 
 ---
 
