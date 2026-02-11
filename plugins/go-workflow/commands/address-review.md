@@ -155,13 +155,7 @@ echo "Commits behind $BASE_BRANCH: $BEHIND"
 
 **Only run this if a rebase was performed in 2b.**
 
-First check if the repo has CI workflows. If no `.github/workflows/*.yml` files exist, skip CI wait:
-
-```bash
-find "$(git rev-parse --show-toplevel)/.github/workflows" -maxdepth 1 \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | head -1
-```
-
-If CI workflows exist, wait for checks to pass:
+Wait for CI checks to pass (handles both GitHub Actions and external CI providers):
 
 ```bash
 for i in 1 2 3 4 5; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
@@ -175,9 +169,9 @@ gh pr checks "$PR_NUM"
 
 - If all checks show `pass`: Proceed to Step 3.
 - If any checks show `fail`: Analyze the failure, fix, commit, push, and re-watch until green.
-- If "no checks reported" after 5 retries AND workflow files exist: **STOP** and ask the user — CI may be misconfigured or the push didn't trigger workflows.
+- If "no checks reported" after 5 retries: The repo may not have CI configured. Proceed with caution, but note this to the user.
 
-**Do not proceed to Step 3 until all CI checks pass.**
+**Do not proceed to Step 3 until all CI checks pass (or confirmed no CI is configured).**
 
 ---
 
