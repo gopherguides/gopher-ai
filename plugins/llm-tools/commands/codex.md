@@ -360,7 +360,7 @@ EOF
 
 Capture output as `PASS_<N>_FINDINGS`.
 
-**Early stop:** If the output contains `NO_NEW_FINDINGS` or is substantively empty (fewer than 20 characters of content after stripping whitespace), stop the loop immediately.
+**Early stop:** If the output, after stripping leading/trailing whitespace, equals exactly `NO_NEW_FINDINGS` or is substantively empty (fewer than 20 characters of content), stop the loop immediately. Do not match substring occurrences — only an exact trimmed match triggers early stop.
 
 **After all passes complete:** Proceed to de-duplication.
 
