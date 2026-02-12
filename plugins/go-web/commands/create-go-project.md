@@ -2087,6 +2087,305 @@ Dashboard page with:
 
 Admin route handlers.
 
+### Clerk Integration Files (if selected)
+
+If the user selected Clerk, create these additional files and modify existing ones.
+
+**CRITICAL Clerk CDN Rules:**
+1. The publishable key MUST be a `data-clerk-publishable-key` attribute on the `<script>` tag — NOT in a `<meta>` tag
+2. Pin to major version `@clerk/clerk-js@5` — NEVER use `@latest`
+3. After loading, `Clerk` is a global object — call `Clerk.load()`, NOT `new Clerk()` or `new window.Clerk()`
+4. Always wrap initialization in `window.addEventListener('load', ...)` to ensure the SDK script has executed
+5. In templ, use `@templ.Raw()` to render the script tag since templ doesn't support dynamic attributes on `<script>` tags
+
+#### Update .envrc and .envrc.example
+
+Add to both files:
+
+```bash
+# Clerk (authentication)
+export CLERK_PUBLISHABLE_KEY="pk_test_YOUR_KEY_HERE"
+export CLERK_SECRET_KEY="sk_test_YOUR_KEY_HERE"
+```
+
+#### Update internal/config/config.go
+
+Uncomment and populate the Clerk fields:
+
+```go
+type Config struct {
+    DatabaseURL      string
+    Port             string
+    Env              string
+    Site             SiteConfig
+    ClerkPublishableKey string
+    ClerkSecretKey      string
+}
+
+func Load() *Config {
+    cfg := &Config{
+        // ... existing fields ...
+        ClerkPublishableKey: os.Getenv("CLERK_PUBLISHABLE_KEY"),
+        ClerkSecretKey:      os.Getenv("CLERK_SECRET_KEY"),
+    }
+
+    if cfg.ClerkPublishableKey == "" {
+        slog.Error("CLERK_PUBLISHABLE_KEY environment variable is required")
+        os.Exit(1)
+    }
+
+    // ... rest of Load() ...
+}
+```
+
+#### Update internal/middleware/middleware.go
+
+Add Clerk CSP domains and optional auth middleware:
+
+In `Setup()`, update the ContentSecurityPolicy to allow Clerk domains:
+
+```go
+ContentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.clerk.accounts.dev; frame-src 'self' https://*.clerk.accounts.dev; img-src 'self' https://img.clerk.com;",
+```
+
+Add an optional Clerk auth middleware for protecting routes:
+
+```go
+func OptionalClerkAuth() echo.MiddlewareFunc {
+    return func(next echo.HandlerFunc) echo.HandlerFunc {
+        return func(c echo.Context) error {
+            cookie, err := c.Cookie("__session")
+            if err != nil || cookie.Value == "" {
+                c.Set("clerk_user_id", "")
+                return next(c)
+            }
+            // Clerk session cookie is a JWT — for server-side verification,
+            // use github.com/clerk/clerk-sdk-go/v2 to verify.
+            // For CDN-only integration, client-side Clerk.user handles auth state.
+            c.Set("clerk_session", cookie.Value)
+            return next(c)
+        }
+    }
+}
+
+func RequireClerkAuth() echo.MiddlewareFunc {
+    return func(next echo.HandlerFunc) echo.HandlerFunc {
+        return func(c echo.Context) error {
+            cookie, err := c.Cookie("__session")
+            if err != nil || cookie.Value == "" {
+                return c.Redirect(302, "/sign-in")
+            }
+            c.Set("clerk_session", cookie.Value)
+            return next(c)
+        }
+    }
+}
+```
+
+#### templates/components/clerk/clerk.templ
+
+Clerk script loader component using `templ.Raw()` for dynamic attributes:
+
+```templ
+package clerk
+
+templ Script(publishableKey string) {
+    @templ.Raw("<script async crossorigin=\"anonymous\" data-clerk-publishable-key=\"" + publishableKey + "\" src=\"https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js\" type=\"text/javascript\"></script>")
+}
+
+templ SignIn(redirectURL string, signUpURL string) {
+    <div id="sign-in"></div>
+    <script>
+        window.addEventListener('load', async function () {
+            await Clerk.load();
+            if (Clerk.user) {
+                window.location.href = '{{ redirectURL }}';
+                return;
+            }
+            Clerk.mountSignIn(document.getElementById('sign-in'), {
+                forceRedirectUrl: '{{ redirectURL }}',
+                signUpUrl: '{{ signUpURL }}'
+            });
+        });
+    </script>
+}
+
+templ SignUp(redirectURL string, signInURL string) {
+    <div id="sign-up"></div>
+    <script>
+        window.addEventListener('load', async function () {
+            await Clerk.load();
+            if (Clerk.user) {
+                window.location.href = '{{ redirectURL }}';
+                return;
+            }
+            Clerk.mountSignUp(document.getElementById('sign-up'), {
+                forceRedirectUrl: '{{ redirectURL }}',
+                signInUrl: '{{ signInURL }}'
+            });
+        });
+    </script>
+}
+
+templ UserButton() {
+    <div id="user-button"></div>
+    <script>
+        window.addEventListener('load', async function () {
+            await Clerk.load();
+            if (Clerk.user) {
+                Clerk.mountUserButton(document.getElementById('user-button'));
+            }
+        });
+    </script>
+}
+
+templ AuthRedirect(redirectURL string) {
+    <script>
+        window.addEventListener('load', async function () {
+            await Clerk.load();
+            if (Clerk.user) {
+                window.location.href = '{{ redirectURL }}';
+            }
+        });
+    </script>
+}
+```
+
+#### Update templates/layouts/base.templ
+
+Add the Clerk script to the `<head>` (it must load before any component scripts):
+
+```templ
+import "$ARGUMENTS/templates/components/clerk"
+
+templ Base(m meta.PageMeta, clerkPublishableKey string) {
+    <!DOCTYPE html>
+    <html lang="en">
+        <head>
+            // ... existing meta, CSS, HTMX ...
+            @clerk.Script(clerkPublishableKey)
+        </head>
+        // ... rest of body ...
+    </html>
+}
+```
+
+**Note:** The handler must pass `cfg.ClerkPublishableKey` when rendering any layout that includes Clerk.
+
+#### templates/pages/sign-in.templ
+
+```templ
+package pages
+
+import (
+    "$ARGUMENTS/templates/layouts"
+    "$ARGUMENTS/templates/components/clerk"
+    "$ARGUMENTS/internal/meta"
+)
+
+templ SignIn(m meta.PageMeta) {
+    @layouts.Base(m) {
+        <div class="flex min-h-[60vh] items-center justify-center">
+            @clerk.SignIn("/dashboard", "/sign-up")
+        </div>
+    }
+}
+```
+
+#### templates/pages/sign-up.templ
+
+```templ
+package pages
+
+import (
+    "$ARGUMENTS/templates/layouts"
+    "$ARGUMENTS/templates/components/clerk"
+    "$ARGUMENTS/internal/meta"
+)
+
+templ SignUp(m meta.PageMeta) {
+    @layouts.Base(m) {
+        <div class="flex min-h-[60vh] items-center justify-center">
+            @clerk.SignUp("/dashboard", "/sign-in")
+        </div>
+    }
+}
+```
+
+#### Update templates/pages/home.templ
+
+Add client-side auth redirect as a fallback for authenticated users on the landing page:
+
+```templ
+import "$ARGUMENTS/templates/components/clerk"
+
+templ Home() {
+    @layouts.Base(m) {
+        @clerk.AuthRedirect("/dashboard")
+        // ... existing home page content ...
+    }
+}
+```
+
+#### Update internal/handler/handler.go
+
+Add Clerk auth routes:
+
+```go
+func (h *Handler) RegisterRoutes(e *echo.Echo) {
+    // ... existing static, health, public routes ...
+
+    // Auth pages (public)
+    e.GET("/sign-in", h.SignIn)
+    e.GET("/sign-up", h.SignUp)
+
+    // Protected routes
+    protected := e.Group("", middleware.RequireClerkAuth())
+    protected.GET("/dashboard", h.Dashboard)
+}
+```
+
+#### internal/handler/auth.go
+
+```go
+package handler
+
+import (
+    "net/http"
+
+    "$ARGUMENTS/templates/pages"
+
+    "github.com/labstack/echo/v4"
+)
+
+func (h *Handler) SignIn(c echo.Context) error {
+    return pages.SignIn().Render(c.Request().Context(), c.Response().Writer)
+}
+
+func (h *Handler) SignUp(c echo.Context) error {
+    return pages.SignUp().Render(c.Request().Context(), c.Response().Writer)
+}
+```
+
+#### Clerk integration summary
+
+| Method | Usage |
+|--------|-------|
+| `Clerk.mountSignIn(el, opts)` | Mount sign-in form |
+| `Clerk.mountSignUp(el, opts)` | Mount sign-up form |
+| `Clerk.mountUserButton(el)` | Mount user avatar/menu |
+| `Clerk.user` | Current user object (null if not signed in) |
+| `Clerk.session` | Current session object |
+
+**Key options for mount methods:**
+- `forceRedirectUrl` — guarantees redirect after auth (use instead of deprecated `afterSignInUrl`/`afterSignUpUrl`)
+- `signUpUrl` / `signInUrl` — cross-links between sign-in and sign-up pages
+
+**References:**
+- https://clerk.com/docs/js-frontend/getting-started/quickstart
+- https://clerk.com/docs/js-frontend/reference/components/authentication/sign-in
+- https://clerk.com/docs/guides/development/customize-redirect-urls
+
 ### Deployment Files
 
 Based on the deployment platform selected:
