@@ -607,6 +607,7 @@ module [project-name]
 go 1.25
 
 require (
+    github.com/go-chi/chi/v5 v5.2.1
     github.com/labstack/echo/v4 v4.14.0
     github.com/a-h/templ v0.3.960
     github.com/lmittmann/tint v1.1.2
@@ -1169,6 +1170,7 @@ import (
     "[project-name]/internal/handler"
     "[project-name]/internal/middleware"
 
+    chimw "github.com/go-chi/chi/v5/middleware"
     "github.com/labstack/echo/v4"
 )
 
@@ -1191,6 +1193,8 @@ func main() {
 
     h := handler.New(cfg, db)
     h.RegisterRoutes(e)
+
+    e.Use(echo.WrapMiddleware(chimw.Logger))
 
     ln, actualPort, err := findAvailablePort(cfg.Port)
     if err != nil {
@@ -1540,8 +1544,6 @@ package middleware
 
 import (
     "context"
-    "log/slog"
-    "time"
 
     "[project-name]/internal/config"
     "[project-name]/internal/ctxkeys"
@@ -1554,7 +1556,6 @@ func Setup(e *echo.Echo, cfg *config.Config) {
     e.Use(middleware.RequestID())
     e.Use(middleware.Recover())
     e.Use(SiteConfigMiddleware(cfg.Site))
-    e.Use(requestLogger(cfg.IsDevelopment()))
     e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
         AllowOrigins: []string{"*"},
         AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -1577,37 +1578,6 @@ func SiteConfigMiddleware(site config.SiteConfig) echo.MiddlewareFunc {
             ctx := context.WithValue(c.Request().Context(), ctxkeys.SiteConfig, site)
             c.SetRequest(c.Request().WithContext(ctx))
             return next(c)
-        }
-    }
-}
-
-func requestLogger(isDev bool) echo.MiddlewareFunc {
-    return func(next echo.HandlerFunc) echo.HandlerFunc {
-        return func(c echo.Context) error {
-            start := time.Now()
-            err := next(c)
-            latency := time.Since(start)
-
-            req := c.Request()
-            res := c.Response()
-
-            attrs := []any{
-                "request_id", c.Response().Header().Get(echo.HeaderXRequestID),
-                "method", req.Method,
-                "uri", req.RequestURI,
-                "status", res.Status,
-                "latency", latency.String(),
-            }
-
-            if isDev {
-                slog.Debug("request", attrs...)
-            } else if res.Status >= 500 {
-                slog.Error("request", attrs...)
-            } else {
-                slog.Info("request", attrs...)
-            }
-
-            return err
         }
     }
 }
