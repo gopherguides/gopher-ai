@@ -174,7 +174,7 @@ Railway or Fly.io are better choices since they support persistent volumes.
 
 - **Railway**: Like Heroku but modern. Your app runs as a traditional server (same
   as local development). $5/month credit usually covers small projects for free.
-  Good choice for SQLite or if you want a traditional server setup.
+  Good choice for SQLite or if you want a traditional server setup. Uses Nixpacks by default.
 
 - **Fly.io**: Runs your app in multiple locations worldwide for faster access.
   More setup required (Docker helps) but great for global users. Works well with
@@ -188,6 +188,28 @@ Railway or Fly.io are better choices since they support persistent volumes.
 - User: "Where should I deploy?" → Default to Vercel + Neon
 - User chose SQLite earlier → Recommend Railway or Fly.io
 - User: "I need to self-host" → Provide self-hosted guidance
+
+### Build Method (for Railway, Fly.io, and Self-hosted)
+
+After selecting a deployment platform that runs the app as a server (Railway, Fly.io, or Self-hosted), ask the user how they want to build:
+
+| Build Method | When to Use |
+|--------------|-------------|
+| **Nixpacks** (recommended) | Simplest option — auto-detects Go, builds and runs with zero config. Used by Railway, Coolify, Dokploy, and other modern PaaS platforms. |
+| **Dockerfile** | Full control over build environment. Required for Fly.io. Use when you need custom system packages, multi-stage builds, or specific base images. |
+| **Plain binary** | No containerization — just `make build` and run the binary directly. Good for VPS/bare-metal deployments with systemd. |
+
+**Plain explanations for beginners:**
+
+- **Nixpacks**: Like a smart auto-builder. It looks at your code, figures out it's
+  Go, and builds it automatically. No configuration file needed for basic apps, but
+  you can add a `nixpacks.toml` for customization. Railway uses this by default.
+
+- **Dockerfile**: A recipe file that tells Docker exactly how to build your app.
+  More verbose but gives you complete control. Required for Fly.io deployments.
+
+- **Plain binary**: Skip containers entirely. Run `make build` to get a binary,
+  copy it to your server, run it. Simplest for a single VPS with systemd.
 
 ---
 
@@ -2358,20 +2380,134 @@ func (h *Handler) SignUp(c echo.Context) error {
 
 ### Deployment Files
 
-Based on the deployment platform selected:
+Based on the deployment platform and build method selected:
 
 **For Vercel:** Create `vercel.json`, `api/index.go`, and `public/` directory.
 
-**For Railway:** Create `railway.toml`.
+**For Nixpacks (Railway, Coolify, Dokploy, self-hosted with Nixpacks):**
 
-**For Fly.io:** Create `fly.toml` and `Dockerfile`.
+Create `nixpacks.toml`:
 
-**For Self-hosted:** Ask the user if they want a Dockerfile (default to No). If Yes, create `Dockerfile`. If No, the Makefile already includes everything needed:
+```toml
+providers = ['go']
+
+[variables]
+CGO_ENABLED = '0'
+GOFLAGS = '-buildvcs=false'
+
+[phases.setup]
+nixPkgs = ['...', 'nodejs_22']
+
+[phases.build]
+cmds = [
+    'npm install',
+    'go install github.com/a-h/templ/cmd/templ@latest',
+    'templ generate',
+    'npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify',
+    'go build -o out ./cmd/server',
+]
+
+[start]
+cmd = './out'
+```
+
+This handles the full build pipeline: installs Node (for Tailwind CSS), generates templ files, compiles Tailwind, and builds the Go binary. The `CGO_ENABLED=0` produces a static binary.
+
+If the project uses SQLite, add the SQLite Nix package and enable CGO:
+
+```toml
+[variables]
+CGO_ENABLED = '1'
+
+[phases.setup]
+nixPkgs = ['...', 'nodejs_22', 'sqlite']
+```
+
+**For Railway (with Nixpacks):** Also create `railway.toml` for Railway-specific config:
+
+```toml
+[build]
+builder = "nixpacks"
+
+[deploy]
+healthcheckPath = "/health"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+```
+
+**For Dockerfile (Fly.io, self-hosted, or user preference):**
+
+Create a multi-stage `Dockerfile`:
+
+```dockerfile
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache git nodejs npm
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY package.json package-lock.json ./
+RUN npm install
+
+COPY . .
+
+RUN go install github.com/a-h/templ/cmd/templ@latest && \
+    templ generate && \
+    npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify && \
+    CGO_ENABLED=0 go build -o server ./cmd/server
+
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+COPY --from=builder /app/server .
+COPY --from=builder /app/static ./static
+COPY --from=builder /app/internal/database/migrations ./internal/database/migrations
+
+EXPOSE 3000
+
+CMD ["./server"]
+```
+
+If the project uses SQLite, the final stage needs the SQLite library and a volume for the database:
+
+```dockerfile
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata sqlite
+# ... same COPY lines ...
+VOLUME /app/data
+```
+
+**For Fly.io:** Also create `fly.toml`:
+
+```toml
+app = "$ARGUMENTS"
+primary_region = "ord"
+
+[build]
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+```
+
+**For plain binary (self-hosted, no containers):**
+
+No additional files needed. The Makefile already includes everything:
 - `make dev` - Development with Air hot reload (logs to `tmp/air-combined.log`)
 - `make build` - Build production binary
 - `make run` - Build and run the server
 
-For production without Docker, users can run `make build` to create the binary, then deploy and run it directly.
+For production, users run `make build` to create the binary, then deploy and run it directly (e.g., with systemd, supervisor, or a simple shell script).
 
 ### Project Documentation
 
