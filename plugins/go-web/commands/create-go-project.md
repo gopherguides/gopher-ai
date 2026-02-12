@@ -773,9 +773,13 @@ package main
 
 import (
     "context"
+    "fmt"
     "log/slog"
+    "net"
     "os"
     "os/signal"
+    "strconv"
+    "strings"
     "syscall"
     "time"
 
@@ -807,10 +811,22 @@ func main() {
     h := handler.New(cfg, db)
     h.RegisterRoutes(e)
 
+    ln, actualPort, err := findAvailablePort(cfg.Port)
+    if err != nil {
+        slog.Error("failed to find available port", "error", err)
+        os.Exit(1)
+    }
+    e.Listener = ln
+
+    if actualPort != cfg.Port {
+        slog.Warn("configured port unavailable, using next available", "configured", cfg.Port, "actual", actualPort)
+        cfg.Port = actualPort
+        cfg.Site.URL = replacePort(cfg.Site.URL, actualPort)
+    }
+
     go func() {
-        addr := ":" + cfg.Port
-        slog.Info("starting server", "url", "http://localhost:"+cfg.Port, "env", cfg.Env)
-        if err := e.Start(addr); err != nil {
+        slog.Info("starting server", "url", fmt.Sprintf("http://localhost:%s", cfg.Port), "env", cfg.Env)
+        if err := e.Start(""); err != nil {
             slog.Info("shutting down server")
         }
     }()
@@ -827,6 +843,38 @@ func main() {
     }
 
     slog.Info("server stopped")
+}
+
+func findAvailablePort(configuredPort string) (net.Listener, string, error) {
+    startPort, err := strconv.Atoi(configuredPort)
+    if err != nil {
+        return nil, "", fmt.Errorf("invalid port %q: %w", configuredPort, err)
+    }
+
+    maxPort := startPort + 100
+    for port := startPort; port <= maxPort; port++ {
+        addr := ":" + strconv.Itoa(port)
+        ln, err := net.Listen("tcp", addr)
+        if err != nil {
+            continue
+        }
+        return ln, strconv.Itoa(port), nil
+    }
+
+    return nil, "", fmt.Errorf("no available port found in range %d-%d", startPort, maxPort)
+}
+
+func replacePort(rawURL string, newPort string) string {
+    const localhostPrefix = "://localhost:"
+    if idx := strings.Index(rawURL, localhostPrefix); idx >= 0 {
+        afterScheme := idx + len(localhostPrefix)
+        end := strings.IndexAny(rawURL[afterScheme:], "/?#")
+        if end == -1 {
+            return rawURL[:afterScheme] + newPort
+        }
+        return rawURL[:afterScheme] + newPort + rawURL[afterScheme+end:]
+    }
+    return rawURL
 }
 ```
 
