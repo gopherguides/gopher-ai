@@ -2140,39 +2140,96 @@ In `Setup()`, update the ContentSecurityPolicy to allow Clerk domains:
 ContentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.clerk.accounts.dev; frame-src 'self' https://*.clerk.accounts.dev; img-src 'self' https://img.clerk.com;",
 ```
 
-Add an optional Clerk auth middleware for protecting routes:
+Add Clerk auth middleware for protecting routes. This requires the Clerk SDK:
+
+**Add to go.mod:**
+```go
+github.com/clerk/clerk-sdk-go/v2 v2.4.1
+```
+
+**Middleware code:**
 
 ```go
-func OptionalClerkAuth() echo.MiddlewareFunc {
+import (
+    "github.com/clerk/clerk-sdk-go/v2"
+    "github.com/clerk/clerk-sdk-go/v2/jwt"
+)
+
+// ClerkAuth verifies Clerk session tokens and sets user info in context.
+// Pass cfg.ClerkSecretKey when creating the middleware.
+func ClerkAuth(clerkSecretKey string) echo.MiddlewareFunc {
     return func(next echo.HandlerFunc) echo.HandlerFunc {
         return func(c echo.Context) error {
-            cookie, err := c.Cookie("__session")
-            if err != nil || cookie.Value == "" {
+            sessionToken := ""
+
+            // Check cookie first (browser sessions)
+            if cookie, err := c.Cookie("__session"); err == nil && cookie.Value != "" {
+                sessionToken = cookie.Value
+            }
+
+            // Fall back to Authorization header (API clients)
+            if sessionToken == "" {
+                authHeader := c.Request().Header.Get("Authorization")
+                if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+                    sessionToken = authHeader[7:]
+                }
+            }
+
+            if sessionToken == "" {
                 c.Set("clerk_user_id", "")
                 return next(c)
             }
-            // Clerk session cookie is a JWT — for server-side verification,
-            // use github.com/clerk/clerk-sdk-go/v2 to verify.
-            // For CDN-only integration, client-side Clerk.user handles auth state.
-            c.Set("clerk_session", cookie.Value)
+
+            // Verify the JWT with Clerk
+            claims, err := jwt.Verify(c.Request().Context(), &jwt.VerifyParams{
+                Token: sessionToken,
+            })
+            if err != nil {
+                c.Set("clerk_user_id", "")
+                return next(c)
+            }
+
+            c.Set("clerk_user_id", claims.Subject)
+            c.Set("clerk_session_id", claims.SessionID)
             return next(c)
         }
     }
 }
 
+// RequireClerkAuth redirects to sign-in if no valid Clerk session exists.
+// Must be used AFTER ClerkAuth middleware in the chain.
 func RequireClerkAuth() echo.MiddlewareFunc {
     return func(next echo.HandlerFunc) echo.HandlerFunc {
         return func(c echo.Context) error {
-            cookie, err := c.Cookie("__session")
-            if err != nil || cookie.Value == "" {
+            userID := c.Get("clerk_user_id")
+            if userID == nil || userID == "" {
                 return c.Redirect(302, "/sign-in")
             }
-            c.Set("clerk_session", cookie.Value)
             return next(c)
         }
     }
 }
 ```
+
+**Usage in handler.go:**
+
+```go
+func (h *Handler) RegisterRoutes(e *echo.Echo) {
+    // Apply Clerk verification to all routes
+    e.Use(middleware.ClerkAuth(h.cfg.ClerkSecretKey))
+
+    // Public routes
+    e.GET("/", h.Home)
+    e.GET("/sign-in", h.SignIn)
+    e.GET("/sign-up", h.SignUp)
+
+    // Protected routes - require valid session
+    protected := e.Group("", middleware.RequireClerkAuth())
+    protected.GET("/dashboard", h.Dashboard)
+}
+```
+
+**Note:** `ClerkAuth` verifies the JWT and sets `clerk_user_id` in context (empty string if invalid/missing). `RequireClerkAuth` checks for that value and redirects if empty. This two-middleware pattern allows some routes to optionally use auth info without requiring it.
 
 #### templates/components/clerk/clerk.templ
 
@@ -2275,8 +2332,8 @@ import (
     "$ARGUMENTS/internal/meta"
 )
 
-templ SignIn(m meta.PageMeta) {
-    @layouts.Base(m) {
+templ SignIn(m meta.PageMeta, clerkPublishableKey string) {
+    @layouts.Base(m, clerkPublishableKey) {
         <div class="flex min-h-[60vh] items-center justify-center">
             @clerk.SignIn("/dashboard", "/sign-up")
         </div>
@@ -2295,8 +2352,8 @@ import (
     "$ARGUMENTS/internal/meta"
 )
 
-templ SignUp(m meta.PageMeta) {
-    @layouts.Base(m) {
+templ SignUp(m meta.PageMeta, clerkPublishableKey string) {
+    @layouts.Base(m, clerkPublishableKey) {
         <div class="flex min-h-[60vh] items-center justify-center">
             @clerk.SignUp("/dashboard", "/sign-in")
         </div>
@@ -2343,19 +2400,26 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 package handler
 
 import (
-    "net/http"
-
+    "$ARGUMENTS/internal/meta"
     "$ARGUMENTS/templates/pages"
 
     "github.com/labstack/echo/v4"
 )
 
 func (h *Handler) SignIn(c echo.Context) error {
-    return pages.SignIn().Render(c.Request().Context(), c.Response().Writer)
+    m := meta.PageMeta{
+        Title:       "Sign In",
+        Description: "Sign in to your account",
+    }
+    return pages.SignIn(m, h.cfg.ClerkPublishableKey).Render(c.Request().Context(), c.Response().Writer)
 }
 
 func (h *Handler) SignUp(c echo.Context) error {
-    return pages.SignUp().Render(c.Request().Context(), c.Response().Writer)
+    m := meta.PageMeta{
+        Title:       "Sign Up",
+        Description: "Create a new account",
+    }
+    return pages.SignUp(m, h.cfg.ClerkPublishableKey).Render(c.Request().Context(), c.Response().Writer)
 }
 ```
 
