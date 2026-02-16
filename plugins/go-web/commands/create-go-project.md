@@ -2151,7 +2151,6 @@ github.com/clerk/clerk-sdk-go/v2 v2.4.1
 
 ```go
 import (
-    "github.com/clerk/clerk-sdk-go/v2"
     "github.com/clerk/clerk-sdk-go/v2/jwt"
 )
 
