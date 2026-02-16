@@ -1177,13 +1177,13 @@ package main
 
 import (
     "context"
+    "errors"
     "fmt"
     "log/slog"
     "net"
     "os"
     "os/signal"
     "strconv"
-    "strings"
     "syscall"
     "time"
 
@@ -1264,7 +1264,7 @@ func findAvailablePort(configuredPort string) (net.Listener, string, error) {
         ln, err := net.Listen("tcp", addr)
         if err != nil {
             // Only retry for "address in use" errors; return other errors immediately
-            if !strings.Contains(err.Error(), "address already in use") {
+            if !errors.Is(err, syscall.EADDRINUSE) {
                 return nil, "", fmt.Errorf("failed to listen on port %d: %w", port, err)
             }
             continue
@@ -2539,11 +2539,13 @@ templ UserButton() {
 }
 
 templ AuthRedirect(redirectURL string) {
+    <div id="auth-redirect" data-redirect-url={ redirectURL }></div>
     <script>
         window.addEventListener('load', async function () {
             await Clerk.load();
             if (Clerk.user) {
-                window.location.href = '{{ redirectURL }}';
+                const el = document.getElementById('auth-redirect');
+                window.location.href = el.dataset.redirectUrl;
             }
         });
     </script>
