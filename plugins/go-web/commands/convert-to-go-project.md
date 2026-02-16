@@ -2811,6 +2811,8 @@ RUN npm install
 COPY . .
 
 RUN go install github.com/a-h/templ/cmd/templ@latest && \
+    go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest && \
+    sqlc generate && \
     templ generate && \
     npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify && \
     CGO_ENABLED=0 go build -o server ./cmd/server
