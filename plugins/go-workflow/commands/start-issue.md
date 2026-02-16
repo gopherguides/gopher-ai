@@ -135,20 +135,40 @@ Use AskUserQuestion with this exact configuration:
    done
    ```
 
-5. **Inform user**: "Created worktree at $WORKTREE_PATH. Continuing with issue workflow..."
+5. **Capture absolute worktree path**
 
-6. **CRITICAL: Change working directory to worktree**
-
-   Your session started in `$SOURCE_DIR`. **ALL subsequent work MUST happen in `$WORKTREE_PATH`.**
-
-   Run this now to change and verify directory:
    ```bash
-   cd "$WORKTREE_PATH" && pwd
+   WORKTREE_ABS_PATH=`cd "$WORKTREE_PATH" && pwd`
+   echo "Worktree absolute path: $WORKTREE_ABS_PATH"
+   ls "$WORKTREE_ABS_PATH"
    ```
 
-   **For every Bash command in this session**, prefix with `cd "$WORKTREE_PATH" &&` to ensure you're working in the worktree.
+   **Save this absolute path.** You will use it for EVERY tool call from this point forward.
 
-   **WARNING:** If you edit files or run commands without changing to the worktree first, you will modify the wrong codebase.
+6. **Inform user**: "Created worktree at `$WORKTREE_ABS_PATH`. All work will happen there."
+
+---
+
+## ⚠️ MANDATORY: All Work Happens in the Worktree ⚠️
+
+**Your shell CWD does NOT persist between Bash calls. Claude Code resets it every time.** You CANNOT just `cd` once — it will be forgotten. You must actively use the worktree path in EVERY tool call.
+
+**Rules for EVERY tool call from this point forward:**
+
+| Tool | How to use the worktree path |
+|------|------------------------------|
+| **Bash** | Prefix EVERY command: `cd "$WORKTREE_ABS_PATH" && <your command>` |
+| **Read** | Use `$WORKTREE_ABS_PATH/path/to/file` as the `file_path` |
+| **Edit** | Use `$WORKTREE_ABS_PATH/path/to/file` as the `file_path` |
+| **Write** | Use `$WORKTREE_ABS_PATH/path/to/file` as the `file_path` |
+| **Glob** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
+| **Grep** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
+
+**If you forget to use the worktree path, you WILL edit the wrong codebase.** There is no safety net. The original repo and the worktree have identical file structures — you won't get an error, you'll just silently modify the wrong files.
+
+**Self-check before EVERY file operation:** "Does this path start with `$WORKTREE_ABS_PATH`?" If not, STOP and fix it.
+
+---
 
 **Note:** When using a worktree, the branch is already created as `issue-<num>-<title>`. Skip the "Create Branch" step in the workflows below.
 
