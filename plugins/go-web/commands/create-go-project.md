@@ -2253,7 +2253,9 @@ Clerk script loader component using `templ.Raw()` for dynamic attributes:
 package clerk
 
 templ Script(publishableKey string) {
-    @templ.Raw("<script async crossorigin=\"anonymous\" data-clerk-publishable-key=\"" + publishableKey + "\" src=\"https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js\" type=\"text/javascript\"></script>")
+    if publishableKey != "" {
+        @templ.Raw("<script async crossorigin=\"anonymous\" data-clerk-publishable-key=\"" + publishableKey + "\" src=\"https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js\" type=\"text/javascript\"></script>")
+    }
 }
 
 templ SignIn(redirectURL string, signUpURL string) {
