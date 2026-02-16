@@ -2158,12 +2158,16 @@ github.com/clerk/clerk-sdk-go/v2 v2.4.1
 
 ```go
 import (
+    "github.com/clerk/clerk-sdk-go/v2"
     "github.com/clerk/clerk-sdk-go/v2/jwt"
 )
 
 // ClerkAuth verifies Clerk session tokens and sets user info in context.
 // Pass cfg.ClerkSecretKey when creating the middleware.
 func ClerkAuth(clerkSecretKey string) echo.MiddlewareFunc {
+    // Configure Clerk SDK with the secret key for JWT verification
+    clerk.SetKey(clerkSecretKey)
+
     return func(next echo.HandlerFunc) echo.HandlerFunc {
         return func(c echo.Context) error {
             sessionToken := ""
@@ -2553,7 +2557,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY package.json package-lock.json ./
+# Copy package files (package-lock.json is optional)
+COPY package.json package-lock.json* ./
 RUN npm install
 
 COPY . .
