@@ -180,15 +180,15 @@ Ask the user: "What issue or PR number would you like to work on?"
 
     Determine and capture the absolute target path:
     ```bash
-    if [ -n "$EXISTING_PATH" ]; then TARGET_PATH="$EXISTING_PATH"; else TARGET_PATH=`cd "$WORKTREE_PATH" && pwd`; fi
-    echo "WORKTREE_ABS_PATH=$TARGET_PATH"
-    ls "$TARGET_PATH"
+    if [ -n "$EXISTING_PATH" ]; then WORKTREE_ABS_PATH="$EXISTING_PATH"; else WORKTREE_ABS_PATH=`cd "$WORKTREE_PATH" && pwd`; fi
+    echo "WORKTREE_ABS_PATH=$WORKTREE_ABS_PATH"
+    ls "$WORKTREE_ABS_PATH"
     ```
 
-    **Save this absolute path as `WORKTREE_ABS_PATH`.** You will use it for EVERY tool call from this point forward.
+    **Save this `WORKTREE_ABS_PATH` value.** You will use it for EVERY tool call from this point forward.
 
     **If this was an existing worktree**, display the current branch and status:
-    !cd "$TARGET_PATH" && git branch --show-current && git status --short
+    !cd "$WORKTREE_ABS_PATH" && git branch --show-current && git status --short
 
 ---
 
