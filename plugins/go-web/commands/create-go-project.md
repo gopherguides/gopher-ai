@@ -174,7 +174,7 @@ Railway or Fly.io are better choices since they support persistent volumes.
 
 - **Railway**: Like Heroku but modern. Your app runs as a traditional server (same
   as local development). $5/month credit usually covers small projects for free.
-  Good choice for SQLite or if you want a traditional server setup.
+  Good choice for SQLite or if you want a traditional server setup. Uses Nixpacks by default.
 
 - **Fly.io**: Runs your app in multiple locations worldwide for faster access.
   More setup required (Docker helps) but great for global users. Works well with
@@ -188,6 +188,28 @@ Railway or Fly.io are better choices since they support persistent volumes.
 - User: "Where should I deploy?" → Default to Vercel + Neon
 - User chose SQLite earlier → Recommend Railway or Fly.io
 - User: "I need to self-host" → Provide self-hosted guidance
+
+### Build Method (for Railway, Fly.io, and Self-hosted)
+
+After selecting a deployment platform that runs the app as a server (Railway, Fly.io, or Self-hosted), ask the user how they want to build:
+
+| Build Method | When to Use |
+|--------------|-------------|
+| **Nixpacks** (recommended) | Simplest option — auto-detects Go, builds and runs with zero config. Used by Railway, Coolify, Dokploy, and other modern PaaS platforms. |
+| **Dockerfile** | Full control over build environment. Required for Fly.io. Use when you need custom system packages, multi-stage builds, or specific base images. |
+| **Plain binary** | No containerization — just `make build` and run the binary directly. Good for VPS/bare-metal deployments with systemd. |
+
+**Plain explanations for beginners:**
+
+- **Nixpacks**: Like a smart auto-builder. It looks at your code, figures out it's
+  Go, and builds it automatically. No configuration file needed for basic apps, but
+  you can add a `nixpacks.toml` for customization. Railway uses this by default.
+
+- **Dockerfile**: A recipe file that tells Docker exactly how to build your app.
+  More verbose but gives you complete control. Required for Fly.io deployments.
+
+- **Plain binary**: Skip containers entirely. Run `make build` to get a binary,
+  copy it to your server, run it. Simplest for a single VPS with systemd.
 
 ---
 
@@ -222,6 +244,7 @@ module $ARGUMENTS
 go 1.25
 
 require (
+    github.com/go-chi/chi/v5 v5.2.1
     github.com/labstack/echo/v4 v4.14.0
     github.com/a-h/templ v0.3.960
     github.com/lmittmann/tint v1.1.2
@@ -773,9 +796,14 @@ package main
 
 import (
     "context"
+    "errors"
+    "fmt"
     "log/slog"
+    "net"
     "os"
     "os/signal"
+    "strconv"
+    "strings"
     "syscall"
     "time"
 
@@ -784,6 +812,7 @@ import (
     "$ARGUMENTS/internal/handler"
     "$ARGUMENTS/internal/middleware"
 
+    chimw "github.com/go-chi/chi/v5/middleware"
     "github.com/labstack/echo/v4"
 )
 
@@ -802,15 +831,29 @@ func main() {
     e.HideBanner = true
     e.HidePort = true
 
+    ln, actualPort, err := findAvailablePort(cfg.Port)
+    if err != nil {
+        slog.Error("failed to find available port", "error", err)
+        os.Exit(1)
+    }
+    e.Listener = ln
+
+    if actualPort != cfg.Port {
+        slog.Warn("configured port unavailable, using next available", "configured", cfg.Port, "actual", actualPort)
+        cfg.Port = actualPort
+        cfg.Site.URL = replacePort(cfg.Site.URL, actualPort)
+    }
+
     middleware.Setup(e, cfg)
 
     h := handler.New(cfg, db)
     h.RegisterRoutes(e)
 
+    e.Use(echo.WrapMiddleware(chimw.Logger))
+
     go func() {
-        addr := ":" + cfg.Port
-        slog.Info("starting server", "url", "http://localhost:"+cfg.Port, "env", cfg.Env)
-        if err := e.Start(addr); err != nil {
+        slog.Info("starting server", "url", fmt.Sprintf("http://localhost:%s", cfg.Port), "env", cfg.Env)
+        if err := e.Start(""); err != nil {
             slog.Info("shutting down server")
         }
     }()
@@ -827,6 +870,44 @@ func main() {
     }
 
     slog.Info("server stopped")
+}
+
+func findAvailablePort(configuredPort string) (net.Listener, string, error) {
+    startPort, err := strconv.Atoi(configuredPort)
+    if err != nil {
+        return nil, "", fmt.Errorf("invalid port %q: %w", configuredPort, err)
+    }
+
+    maxPort := startPort + 100
+    for port := startPort; port <= maxPort; port++ {
+        addr := ":" + strconv.Itoa(port)
+        ln, err := net.Listen("tcp", addr)
+        if err != nil {
+            // Only retry for "address in use" errors; return other errors immediately
+            if !errors.Is(err, syscall.EADDRINUSE) {
+                return nil, "", fmt.Errorf("failed to listen on port %d: %w", port, err)
+            }
+            continue
+        }
+        // Get actual bound port (important when port is 0)
+        actualPort := ln.Addr().(*net.TCPAddr).Port
+        return ln, strconv.Itoa(actualPort), nil
+    }
+
+    return nil, "", fmt.Errorf("no available port found in range %d-%d", startPort, maxPort)
+}
+
+func replacePort(rawURL string, newPort string) string {
+    const localhostPrefix = "://localhost:"
+    if idx := strings.Index(rawURL, localhostPrefix); idx >= 0 {
+        afterScheme := idx + len(localhostPrefix)
+        end := strings.IndexAny(rawURL[afterScheme:], "/?#")
+        if end == -1 {
+            return rawURL[:afterScheme] + newPort
+        }
+        return rawURL[:afterScheme] + newPort + rawURL[afterScheme+end:]
+    }
+    return rawURL
 }
 ```
 
@@ -1198,8 +1279,6 @@ package middleware
 
 import (
     "context"
-    "log/slog"
-    "time"
 
     "$ARGUMENTS/internal/config"
     "$ARGUMENTS/internal/ctxkeys"
@@ -1212,7 +1291,6 @@ func Setup(e *echo.Echo, cfg *config.Config) {
     e.Use(middleware.RequestID())
     e.Use(middleware.Recover())
     e.Use(SiteConfigMiddleware(cfg.Site))
-    e.Use(requestLogger(cfg.IsDevelopment()))
     e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
         AllowOrigins: []string{"*"},
         AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -1235,37 +1313,6 @@ func SiteConfigMiddleware(site config.SiteConfig) echo.MiddlewareFunc {
             ctx := context.WithValue(c.Request().Context(), ctxkeys.SiteConfig, site)
             c.SetRequest(c.Request().WithContext(ctx))
             return next(c)
-        }
-    }
-}
-
-func requestLogger(isDev bool) echo.MiddlewareFunc {
-    return func(next echo.HandlerFunc) echo.HandlerFunc {
-        return func(c echo.Context) error {
-            start := time.Now()
-            err := next(c)
-            latency := time.Since(start)
-
-            req := c.Request()
-            res := c.Response()
-
-            attrs := []any{
-                "request_id", c.Response().Header().Get(echo.HeaderXRequestID),
-                "method", req.Method,
-                "uri", req.RequestURI,
-                "status", res.Status,
-                "latency", latency.String(),
-            }
-
-            if isDev {
-                slog.Debug("request", attrs...)
-            } else if res.Status >= 500 {
-                slog.Error("request", attrs...)
-            } else {
-                slog.Info("request", attrs...)
-            }
-
-            return err
         }
     }
 }
@@ -2039,22 +2086,545 @@ Dashboard page with:
 
 Admin route handlers.
 
+### Clerk Integration Files (if selected)
+
+If the user selected Clerk, create these additional files and modify existing ones.
+
+**CRITICAL Clerk CDN Rules:**
+1. The publishable key MUST be a `data-clerk-publishable-key` attribute on the `<script>` tag — NOT in a `<meta>` tag
+2. Pin to major version `@clerk/clerk-js@5` — NEVER use `@latest`
+3. After loading, `Clerk` is a global object — call `Clerk.load()`, NOT `new Clerk()` or `new window.Clerk()`
+4. Always wrap initialization in `window.addEventListener('load', ...)` to ensure the SDK script has executed
+5. In templ, use `@templ.Raw()` to render the script tag since templ doesn't support dynamic attributes on `<script>` tags
+
+#### Update .envrc and .envrc.example
+
+Add to both files:
+
+```bash
+# Clerk (authentication)
+export CLERK_PUBLISHABLE_KEY="pk_test_YOUR_KEY_HERE"
+export CLERK_SECRET_KEY="sk_test_YOUR_KEY_HERE"
+```
+
+#### Update internal/config/config.go
+
+Uncomment and populate the Clerk fields:
+
+```go
+type Config struct {
+    DatabaseURL      string
+    Port             string
+    Env              string
+    Site             SiteConfig
+    ClerkPublishableKey string
+    ClerkSecretKey      string
+}
+
+func Load() *Config {
+    cfg := &Config{
+        // ... existing fields ...
+        ClerkPublishableKey: os.Getenv("CLERK_PUBLISHABLE_KEY"),
+        ClerkSecretKey:      os.Getenv("CLERK_SECRET_KEY"),
+    }
+
+    if cfg.ClerkPublishableKey == "" {
+        slog.Error("CLERK_PUBLISHABLE_KEY environment variable is required")
+        os.Exit(1)
+    }
+    if cfg.ClerkSecretKey == "" {
+        slog.Error("CLERK_SECRET_KEY environment variable is required")
+        os.Exit(1)
+    }
+
+    // ... rest of Load() ...
+}
+```
+
+#### Update internal/middleware/middleware.go
+
+Add Clerk CSP domains and optional auth middleware:
+
+In `Setup()`, update the ContentSecurityPolicy to allow Clerk domains:
+
+```go
+ContentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.clerk.accounts.dev; frame-src 'self' https://*.clerk.accounts.dev; img-src 'self' https://img.clerk.com;",
+```
+
+Add Clerk auth middleware for protecting routes. This requires the Clerk SDK:
+
+**Add to go.mod:**
+```go
+github.com/clerk/clerk-sdk-go/v2 v2.4.1
+```
+
+**Middleware code:**
+
+```go
+import (
+    "github.com/clerk/clerk-sdk-go/v2"
+    "github.com/clerk/clerk-sdk-go/v2/jwt"
+)
+
+// ClerkAuth verifies Clerk session tokens and sets user info in context.
+// Pass cfg.ClerkSecretKey when creating the middleware.
+func ClerkAuth(clerkSecretKey string) echo.MiddlewareFunc {
+    // Configure Clerk SDK with the secret key for JWT verification
+    clerk.SetKey(clerkSecretKey)
+
+    return func(next echo.HandlerFunc) echo.HandlerFunc {
+        return func(c echo.Context) error {
+            sessionToken := ""
+
+            // Check cookie first (browser sessions)
+            if cookie, err := c.Cookie("__session"); err == nil && cookie.Value != "" {
+                sessionToken = cookie.Value
+            }
+
+            // Fall back to Authorization header (API clients)
+            if sessionToken == "" {
+                authHeader := c.Request().Header.Get("Authorization")
+                if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
+                    sessionToken = authHeader[7:]
+                }
+            }
+
+            if sessionToken == "" {
+                c.Set("clerk_user_id", "")
+                return next(c)
+            }
+
+            // Verify the JWT with Clerk
+            claims, err := jwt.Verify(c.Request().Context(), &jwt.VerifyParams{
+                Token: sessionToken,
+            })
+            if err != nil {
+                c.Set("clerk_user_id", "")
+                return next(c)
+            }
+
+            c.Set("clerk_user_id", claims.Subject)
+            c.Set("clerk_session_id", claims.SessionID)
+            return next(c)
+        }
+    }
+}
+
+// RequireClerkAuth redirects to sign-in if no valid Clerk session exists.
+// Must be used AFTER ClerkAuth middleware in the chain.
+func RequireClerkAuth() echo.MiddlewareFunc {
+    return func(next echo.HandlerFunc) echo.HandlerFunc {
+        return func(c echo.Context) error {
+            userID := c.Get("clerk_user_id")
+            if userID == nil || userID == "" {
+                return c.Redirect(302, "/sign-in")
+            }
+            return next(c)
+        }
+    }
+}
+```
+
+**Usage in handler.go:**
+
+```go
+func (h *Handler) RegisterRoutes(e *echo.Echo) {
+    // Apply Clerk verification to all routes
+    e.Use(middleware.ClerkAuth(h.cfg.ClerkSecretKey))
+
+    // Public routes
+    e.GET("/", h.Home)
+    e.GET("/sign-in", h.SignIn)
+    e.GET("/sign-up", h.SignUp)
+
+    // Protected routes - require valid session
+    protected := e.Group("", middleware.RequireClerkAuth())
+    protected.GET("/dashboard", h.Dashboard)
+}
+```
+
+**Note:** `ClerkAuth` verifies the JWT and sets `clerk_user_id` in context (empty string if invalid/missing). `RequireClerkAuth` checks for that value and redirects if empty. This two-middleware pattern allows some routes to optionally use auth info without requiring it.
+
+#### templates/components/clerk/clerk.templ
+
+Clerk script loader component using `templ.Raw()` for dynamic attributes:
+
+```templ
+package clerk
+
+templ Script(publishableKey string) {
+    if publishableKey != "" {
+        @templ.Raw("<script async crossorigin=\"anonymous\" data-clerk-publishable-key=\"" + publishableKey + "\" src=\"https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js\" type=\"text/javascript\"></script>")
+    }
+}
+
+templ SignIn(redirectURL string, signUpURL string) {
+    <div id="sign-in" data-redirect-url={ redirectURL } data-sign-up-url={ signUpURL }></div>
+    <script>
+        window.addEventListener('load', async function () {
+            await Clerk.load();
+            const el = document.getElementById('sign-in');
+            const redirectURL = el.dataset.redirectUrl;
+            if (Clerk.user) {
+                window.location.href = redirectURL;
+                return;
+            }
+            Clerk.mountSignIn(el, {
+                forceRedirectUrl: redirectURL,
+                signUpUrl: el.dataset.signUpUrl
+            });
+        });
+    </script>
+}
+
+templ SignUp(redirectURL string, signInURL string) {
+    <div id="sign-up" data-redirect-url={ redirectURL } data-sign-in-url={ signInURL }></div>
+    <script>
+        window.addEventListener('load', async function () {
+            await Clerk.load();
+            const el = document.getElementById('sign-up');
+            const redirectURL = el.dataset.redirectUrl;
+            if (Clerk.user) {
+                window.location.href = redirectURL;
+                return;
+            }
+            Clerk.mountSignUp(el, {
+                forceRedirectUrl: redirectURL,
+                signInUrl: el.dataset.signInUrl
+            });
+        });
+    </script>
+}
+
+templ UserButton() {
+    <div id="user-button"></div>
+    <script>
+        window.addEventListener('load', async function () {
+            await Clerk.load();
+            if (Clerk.user) {
+                Clerk.mountUserButton(document.getElementById('user-button'));
+            }
+        });
+    </script>
+}
+
+templ AuthRedirect(redirectURL string) {
+    <div id="auth-redirect" data-redirect-url={ redirectURL }></div>
+    <script>
+        window.addEventListener('load', async function () {
+            await Clerk.load();
+            if (Clerk.user) {
+                const el = document.getElementById('auth-redirect');
+                window.location.href = el.dataset.redirectUrl;
+            }
+        });
+    </script>
+}
+```
+
+#### Update templates/layouts/base.templ
+
+Add the Clerk script to the `<head>` (it must load before any component scripts):
+
+```templ
+import "$ARGUMENTS/templates/components/clerk"
+
+templ Base(m meta.PageMeta, clerkPublishableKey string) {
+    <!DOCTYPE html>
+    <html lang="en">
+        <head>
+            // ... existing meta, CSS, HTMX ...
+            @clerk.Script(clerkPublishableKey)
+        </head>
+        // ... rest of body ...
+    </html>
+}
+```
+
+**Note:** The handler must pass `cfg.ClerkPublishableKey` when rendering any layout that includes Clerk.
+
+**IMPORTANT - Update all existing templates:** When adding Clerk, the Base signature changes from `Base(m meta.PageMeta)` to `Base(m meta.PageMeta, clerkPublishableKey string)`. You MUST update ALL existing templates that call `@layouts.Base(m)` to use the new two-argument signature:
+- For pages that need auth (sign-in, sign-up, dashboard): pass the publishable key
+- For pages that don't need auth (home, notes, etc.): pass empty string `""`
+
+Example: `@layouts.Base(meta.New("Notes", "..."))` becomes `@layouts.Base(meta.New("Notes", "..."), "")`
+
+#### templates/pages/sign-in.templ
+
+```templ
+package pages
+
+import (
+    "$ARGUMENTS/templates/layouts"
+    "$ARGUMENTS/templates/components/clerk"
+    "$ARGUMENTS/internal/meta"
+)
+
+templ SignIn(m meta.PageMeta, clerkPublishableKey string) {
+    @layouts.Base(m, clerkPublishableKey) {
+        <div class="flex min-h-[60vh] items-center justify-center">
+            @clerk.SignIn("/dashboard", "/sign-up")
+        </div>
+    }
+}
+```
+
+#### templates/pages/sign-up.templ
+
+```templ
+package pages
+
+import (
+    "$ARGUMENTS/templates/layouts"
+    "$ARGUMENTS/templates/components/clerk"
+    "$ARGUMENTS/internal/meta"
+)
+
+templ SignUp(m meta.PageMeta, clerkPublishableKey string) {
+    @layouts.Base(m, clerkPublishableKey) {
+        <div class="flex min-h-[60vh] items-center justify-center">
+            @clerk.SignUp("/dashboard", "/sign-in")
+        </div>
+    }
+}
+```
+
+#### Update templates/pages/home.templ
+
+Add client-side auth redirect as a fallback for authenticated users on the landing page:
+
+```templ
+import "$ARGUMENTS/templates/components/clerk"
+
+templ Home(clerkPublishableKey string) {
+    @layouts.Base(meta.PageMeta{Title: "Home"}, clerkPublishableKey) {
+        @clerk.AuthRedirect("/dashboard")
+        // ... existing home page content ...
+    }
+}
+```
+
+**Note:** Update the Home handler to pass `h.cfg.ClerkPublishableKey` when calling `pages.Home(key)`.
+
+#### Update internal/handler/handler.go
+
+Add Clerk auth routes:
+
+```go
+func (h *Handler) RegisterRoutes(e *echo.Echo) {
+    // ... existing static, health, public routes ...
+
+    // Install Clerk auth middleware globally - verifies JWT and sets clerk_user_id
+    e.Use(middleware.ClerkAuth(h.cfg.ClerkSecretKey))
+
+    // Auth pages (public)
+    e.GET("/sign-in", h.SignIn)
+    e.GET("/sign-up", h.SignUp)
+
+    // Protected routes - RequireClerkAuth checks for clerk_user_id set by ClerkAuth
+    protected := e.Group("", middleware.RequireClerkAuth())
+    protected.GET("/dashboard", h.Dashboard)
+}
+```
+
+#### internal/handler/auth.go
+
+```go
+package handler
+
+import (
+    "$ARGUMENTS/internal/meta"
+    "$ARGUMENTS/templates/pages"
+
+    "github.com/labstack/echo/v4"
+)
+
+func (h *Handler) SignIn(c echo.Context) error {
+    m := meta.PageMeta{
+        Title:       "Sign In",
+        Description: "Sign in to your account",
+    }
+    return pages.SignIn(m, h.cfg.ClerkPublishableKey).Render(c.Request().Context(), c.Response().Writer)
+}
+
+func (h *Handler) SignUp(c echo.Context) error {
+    m := meta.PageMeta{
+        Title:       "Sign Up",
+        Description: "Create a new account",
+    }
+    return pages.SignUp(m, h.cfg.ClerkPublishableKey).Render(c.Request().Context(), c.Response().Writer)
+}
+```
+
+#### Clerk integration summary
+
+| Method | Usage |
+|--------|-------|
+| `Clerk.mountSignIn(el, opts)` | Mount sign-in form |
+| `Clerk.mountSignUp(el, opts)` | Mount sign-up form |
+| `Clerk.mountUserButton(el)` | Mount user avatar/menu |
+| `Clerk.user` | Current user object (null if not signed in) |
+| `Clerk.session` | Current session object |
+
+**Key options for mount methods:**
+- `forceRedirectUrl` — guarantees redirect after auth (use instead of deprecated `afterSignInUrl`/`afterSignUpUrl`)
+- `signUpUrl` / `signInUrl` — cross-links between sign-in and sign-up pages
+
+**References:**
+- https://clerk.com/docs/js-frontend/getting-started/quickstart
+- https://clerk.com/docs/js-frontend/reference/components/authentication/sign-in
+- https://clerk.com/docs/guides/development/customize-redirect-urls
+
 ### Deployment Files
 
-Based on the deployment platform selected:
+Based on the deployment platform and build method selected:
 
 **For Vercel:** Create `vercel.json`, `api/index.go`, and `public/` directory.
 
-**For Railway:** Create `railway.toml`.
+**For Nixpacks (Railway, Coolify, Dokploy, self-hosted with Nixpacks):**
 
-**For Fly.io:** Create `fly.toml` and `Dockerfile`.
+Create `nixpacks.toml`:
 
-**For Self-hosted:** Ask the user if they want a Dockerfile (default to No). If Yes, create `Dockerfile`. If No, the Makefile already includes everything needed:
+```toml
+[phases.setup]
+nixpkgsArchive = 'a1bab9e494f5f4939442a57a58d0449a109593fe'
+nixPkgs = ["go_1_25", "nodejs_20"]
+
+[phases.install]
+cmds = [
+    "npm install",
+    "go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest",
+    "go install github.com/a-h/templ/cmd/templ@latest",
+]
+
+[phases.build]
+cmds = [
+    "/root/go/bin/sqlc generate -f sqlc/sqlc.yaml",
+    "/root/go/bin/templ generate",
+    "npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify",
+    "go build -o out ./cmd/server",
+]
+
+[start]
+cmd = "./out"
+```
+
+**CRITICAL Nixpacks rules (learned the hard way):**
+
+1. **Do NOT use `providers = ["go", "node"]`** — dual providers cause npm bash completion conflicts between auto-installed `nodejs_18` and your `nodejs_20`. Manage all packages manually via `nixPkgs` instead.
+2. **Always use `nodejs_20`** — `nodejs_22` does NOT exist in most nixpkgs archives. Use `nodejs_20` or plain `nodejs`.
+3. **Do NOT add `npm` to `nixPkgs`** — npm is bundled inside `nodejs_20`. Adding `"npm"` as a separate package will fail.
+4. **Pin a nixpkgs archive with Go 1.25** — the default archive only has Go 1.22. Use archive `a1bab9e494f5f4939442a57a58d0449a109593fe` which has `go_1_25`. Find archive hashes at https://www.nixhub.io/packages/go.
+5. **Use full paths for `go install` binaries in build phase** — `go install` puts binaries in `/root/go/bin/` which is NOT in `$PATH` during the build phase. Always use `/root/go/bin/sqlc`, `/root/go/bin/templ`.
+6. **Separate install and build phases** — `go install` needs network access (install phase has it, build phase does not). Put `go install` commands in `[phases.install]`, not `[phases.build]`.
+7. **Auto-detection doesn't work for dual-language projects** — Nixpacks sees `go.mod` and ignores `package.json`. You MUST explicitly install Node.js in `nixPkgs`.
+
+If the project uses SQLite, add the SQLite Nix package:
+
+```toml
+[phases.setup]
+nixpkgsArchive = 'a1bab9e494f5f4939442a57a58d0449a109593fe'
+nixPkgs = ["go_1_25", "nodejs_20", "sqlite"]
+```
+
+**For Dokploy with SQLite:** Configure a persistent volume so the database survives deploys:
+
+| Setting | Value |
+|---------|-------|
+| Mount Type | Volume Mount |
+| Volume Name | `<project>-data` |
+| Mount Path | `/app/data` |
+
+The app's `DATABASE_URL` defaults to `data/<project>.db` which resolves to `/app/data/<project>.db` in the container.
+
+**For Railway (with Nixpacks):** Also create `railway.toml` for Railway-specific config:
+
+```toml
+[build]
+builder = "nixpacks"
+
+[deploy]
+healthcheckPath = "/health"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+```
+
+**For Dockerfile (Fly.io, self-hosted, or user preference):**
+
+Create a multi-stage `Dockerfile`:
+
+```dockerfile
+FROM golang:1.25-alpine AS builder
+
+RUN apk add --no-cache git nodejs npm
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy package files (package-lock.json is optional)
+COPY package.json package-lock.json* ./
+RUN npm install
+
+COPY . .
+
+RUN go install github.com/a-h/templ/cmd/templ@latest && \
+    go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest && \
+    sqlc generate -f sqlc/sqlc.yaml && \
+    templ generate && \
+    npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify && \
+    CGO_ENABLED=0 go build -o server ./cmd/server
+
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates tzdata
+
+WORKDIR /app
+
+COPY --from=builder /app/server .
+COPY --from=builder /app/static ./static
+COPY --from=builder /app/internal/database/migrations ./internal/database/migrations
+
+EXPOSE 3000
+
+CMD ["./server"]
+```
+
+If the project uses SQLite, the final stage needs the SQLite library and a volume for the database:
+
+```dockerfile
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates tzdata sqlite
+# ... same COPY lines ...
+VOLUME /app/data
+```
+
+**For Fly.io:** Also create `fly.toml`:
+
+```toml
+app = "$ARGUMENTS"
+primary_region = "ord"
+
+[build]
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+```
+
+**For plain binary (self-hosted, no containers):**
+
+No additional files needed. The Makefile already includes everything:
 - `make dev` - Development with Air hot reload (logs to `tmp/air-combined.log`)
 - `make build` - Build production binary
 - `make run` - Build and run the server
 
-For production without Docker, users can run `make build` to create the binary, then deploy and run it directly.
+For production, users run `make build` to create the binary, then deploy and run it directly (e.g., with systemd, supervisor, or a simple shell script).
 
 ### Project Documentation
 
