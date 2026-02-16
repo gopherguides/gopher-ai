@@ -884,7 +884,9 @@ func findAvailablePort(configuredPort string) (net.Listener, string, error) {
         if err != nil {
             continue
         }
-        return ln, strconv.Itoa(port), nil
+        // Get actual bound port (important when port is 0)
+        actualPort := ln.Addr().(*net.TCPAddr).Port
+        return ln, strconv.Itoa(actualPort), nil
     }
 
     return nil, "", fmt.Errorf("no available port found in range %d-%d", startPort, maxPort)
@@ -2242,34 +2244,38 @@ templ Script(publishableKey string) {
 }
 
 templ SignIn(redirectURL string, signUpURL string) {
-    <div id="sign-in"></div>
+    <div id="sign-in" data-redirect-url={ redirectURL } data-sign-up-url={ signUpURL }></div>
     <script>
         window.addEventListener('load', async function () {
             await Clerk.load();
+            const el = document.getElementById('sign-in');
+            const redirectURL = el.dataset.redirectUrl;
             if (Clerk.user) {
-                window.location.href = '{{ redirectURL }}';
+                window.location.href = redirectURL;
                 return;
             }
-            Clerk.mountSignIn(document.getElementById('sign-in'), {
-                forceRedirectUrl: '{{ redirectURL }}',
-                signUpUrl: '{{ signUpURL }}'
+            Clerk.mountSignIn(el, {
+                forceRedirectUrl: redirectURL,
+                signUpUrl: el.dataset.signUpUrl
             });
         });
     </script>
 }
 
 templ SignUp(redirectURL string, signInURL string) {
-    <div id="sign-up"></div>
+    <div id="sign-up" data-redirect-url={ redirectURL } data-sign-in-url={ signInURL }></div>
     <script>
         window.addEventListener('load', async function () {
             await Clerk.load();
+            const el = document.getElementById('sign-up');
+            const redirectURL = el.dataset.redirectUrl;
             if (Clerk.user) {
-                window.location.href = '{{ redirectURL }}';
+                window.location.href = redirectURL;
                 return;
             }
-            Clerk.mountSignUp(document.getElementById('sign-up'), {
-                forceRedirectUrl: '{{ redirectURL }}',
-                signInUrl: '{{ signInURL }}'
+            Clerk.mountSignUp(el, {
+                forceRedirectUrl: redirectURL,
+                signInUrl: el.dataset.signInUrl
             });
         });
     </script>
