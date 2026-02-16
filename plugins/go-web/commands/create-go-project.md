@@ -2132,6 +2132,10 @@ func Load() *Config {
         slog.Error("CLERK_PUBLISHABLE_KEY environment variable is required")
         os.Exit(1)
     }
+    if cfg.ClerkSecretKey == "" {
+        slog.Error("CLERK_SECRET_KEY environment variable is required")
+        os.Exit(1)
+    }
 
     // ... rest of Load() ...
 }
@@ -2486,7 +2490,7 @@ nixPkgs = ["go_1_25", "nodejs_20"]
 
 [phases.install]
 cmds = [
-    "npm ci",
+    "npm install",
     "go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest",
     "go install github.com/a-h/templ/cmd/templ@latest",
 ]
