@@ -2574,6 +2574,12 @@ templ Base(m meta.PageMeta, clerkPublishableKey string) {
 
 **Note:** The handler must pass `cfg.ClerkPublishableKey` when rendering any layout that includes Clerk.
 
+**IMPORTANT - Update all existing templates:** When adding Clerk, the Base signature changes from `Base(m meta.PageMeta)` to `Base(m meta.PageMeta, clerkPublishableKey string)`. You MUST update ALL existing templates that call `@layouts.Base(m)` to use the new two-argument signature:
+- For pages that need auth (sign-in, sign-up, dashboard): pass the publishable key
+- For pages that don't need auth (home, notes, etc.): pass empty string `""`
+
+Example: `@layouts.Base(meta.New("Notes", "..."))` becomes `@layouts.Base(meta.New("Notes", "..."), "")`
+
 #### templates/pages/sign-in.templ
 
 ```templ
