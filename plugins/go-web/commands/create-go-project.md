@@ -830,13 +830,6 @@ func main() {
     e.HideBanner = true
     e.HidePort = true
 
-    middleware.Setup(e, cfg)
-
-    h := handler.New(cfg, db)
-    h.RegisterRoutes(e)
-
-    e.Use(echo.WrapMiddleware(chimw.Logger))
-
     ln, actualPort, err := findAvailablePort(cfg.Port)
     if err != nil {
         slog.Error("failed to find available port", "error", err)
@@ -849,6 +842,13 @@ func main() {
         cfg.Port = actualPort
         cfg.Site.URL = replacePort(cfg.Site.URL, actualPort)
     }
+
+    middleware.Setup(e, cfg)
+
+    h := handler.New(cfg, db)
+    h.RegisterRoutes(e)
+
+    e.Use(echo.WrapMiddleware(chimw.Logger))
 
     go func() {
         slog.Info("starting server", "url", fmt.Sprintf("http://localhost:%s", cfg.Port), "env", cfg.Env)
@@ -2368,13 +2368,15 @@ Add client-side auth redirect as a fallback for authenticated users on the landi
 ```templ
 import "$ARGUMENTS/templates/components/clerk"
 
-templ Home() {
-    @layouts.Base(m) {
+templ Home(clerkPublishableKey string) {
+    @layouts.Base(meta.PageMeta{Title: "Home"}, clerkPublishableKey) {
         @clerk.AuthRedirect("/dashboard")
         // ... existing home page content ...
     }
 }
 ```
+
+**Note:** Update the Home handler to pass `h.cfg.ClerkPublishableKey` when calling `pages.Home(key)`.
 
 #### Update internal/handler/handler.go
 
