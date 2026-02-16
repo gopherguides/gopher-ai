@@ -174,31 +174,46 @@ Ask the user: "What issue or PR number would you like to work on?"
 
     **Continue to Step 12.**
 
-12. **CRITICAL: Change working directory to worktree**
+12. **Capture absolute worktree path and verify**
 
     If reusing an existing worktree, use `$EXISTING_PATH`. If newly created, use `$WORKTREE_PATH`.
 
-    Determine the target path:
-    !if [ -n "$EXISTING_PATH" ]; then TARGET_PATH="$EXISTING_PATH"; else TARGET_PATH="$WORKTREE_PATH"; fi
-    !echo "Target worktree path: $TARGET_PATH"
+    Determine and capture the absolute target path:
+    ```bash
+    if [ -n "$EXISTING_PATH" ]; then TARGET_PATH="$EXISTING_PATH"; else TARGET_PATH=`cd "$WORKTREE_PATH" && pwd`; fi
+    echo "WORKTREE_ABS_PATH=$TARGET_PATH"
+    ls "$TARGET_PATH"
+    ```
 
-    **Change and verify directory:**
-    !cd "$TARGET_PATH" && pwd
-
-    This `cd` persists across Bash tool calls — Claude Code tracks the working directory via a temp file after each command. The status line's `workspace.current_dir` field updates automatically to reflect the new location.
-
-    **For every Bash command after this**, prefix with `cd "$TARGET_PATH" &&` to ensure you stay in the worktree. This is necessary because the Bash tool can sometimes lose track of the working directory.
-
-    **For Read, Edit, Write, and Glob tools**, use absolute paths rooted in `$TARGET_PATH` rather than relative paths. This ensures file operations target the worktree, not the original project directory.
-
-    **WARNING:** If you edit files or run commands without ensuring the worktree directory, you will modify the wrong codebase.
+    **Save this absolute path as `WORKTREE_ABS_PATH`.** You will use it for EVERY tool call from this point forward.
 
     **If this was an existing worktree**, display the current branch and status:
     !cd "$TARGET_PATH" && git branch --show-current && git status --short
 
+---
+
+## ⚠️ MANDATORY: All Work Happens in the Worktree ⚠️
+
+**Your shell CWD does NOT persist between Bash calls. Claude Code resets it every time.** You CANNOT just `cd` once — it will be forgotten. You must actively use the worktree path in EVERY tool call.
+
+**Rules for EVERY tool call from this point forward:**
+
+| Tool | How to use the worktree path |
+|------|------------------------------|
+| **Bash** | Prefix EVERY command: `cd "$WORKTREE_ABS_PATH" && <your command>` |
+| **Read** | Use `$WORKTREE_ABS_PATH/path/to/file` as the `file_path` |
+| **Edit** | Use `$WORKTREE_ABS_PATH/path/to/file` as the `file_path` |
+| **Write** | Use `$WORKTREE_ABS_PATH/path/to/file` as the `file_path` |
+| **Glob** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
+| **Grep** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
+
+**If you forget to use the worktree path, you WILL edit the wrong codebase.** There is no safety net. The original repo and the worktree have identical file structures — you won't get an error, you'll just silently modify the wrong files.
+
+**Self-check before EVERY file operation:** "Does this path start with `$WORKTREE_ABS_PATH`?" If not, STOP and fix it.
+
+---
+
 ## Next Steps
 
-- You are now in the worktree directory
-- The session's working directory has been changed — subsequent commands will execute here
 - Start working on the issue, or continue where you left off if resuming an existing worktree
 - When done, use `/prune-worktree` to clean up or `/remove-worktree` to remove a specific worktree
