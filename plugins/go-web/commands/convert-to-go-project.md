@@ -1263,6 +1263,10 @@ func findAvailablePort(configuredPort string) (net.Listener, string, error) {
         addr := ":" + strconv.Itoa(port)
         ln, err := net.Listen("tcp", addr)
         if err != nil {
+            // Only retry for "address in use" errors; return other errors immediately
+            if !strings.Contains(err.Error(), "address already in use") {
+                return nil, "", fmt.Errorf("failed to listen on port %d: %w", port, err)
+            }
             continue
         }
         // Get actual bound port (important when port is 0)
@@ -2632,11 +2636,14 @@ Add Clerk auth routes:
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
     // ... existing static, health, public routes ...
 
+    // Install Clerk auth middleware globally - verifies JWT and sets clerk_user_id
+    e.Use(middleware.ClerkAuth(h.cfg.ClerkSecretKey))
+
     // Auth pages (public)
     e.GET("/sign-in", h.SignIn)
     e.GET("/sign-up", h.SignUp)
 
-    // Protected routes
+    // Protected routes - RequireClerkAuth checks for clerk_user_id set by ClerkAuth
     protected := e.Group("", middleware.RequireClerkAuth())
     protected.GET("/dashboard", h.Dashboard)
 }
