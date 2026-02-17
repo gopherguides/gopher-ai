@@ -219,7 +219,7 @@ Example failure: Assistant suggests `make build` but the project uses a `Justfil
 - Check for project-specific package.json, go.mod, or similar dependency files before assuming library availability
 - Look for Makefile or build scripts to understand the project's build process
 - Respect any CI/CD configurations when making changes
-- Check workflows/.github/workflows to see what linters will run in CI
+- Check .github/workflows to see what linters will run in CI
 ```
 
 ### Customization Notes
