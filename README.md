@@ -295,6 +295,23 @@ If the MCP server is unavailable (Node.js not installed, network issues, or usin
 - **MCP tools not appearing** — Ensure you installed the `tailwind` plugin module; run `/plugin install tailwind@gopher-ai`
 - **Timeout on first run** — The first `npx -y tailwindcss-mcp-server` invocation downloads the package; subsequent runs are cached
 
+## Best Practices Guide
+
+We maintain a [Claude Code Best Practices](docs/claude-best-practices.md) reference — battle-tested `CLAUDE.md` rules for safety, git workflows, CI, PR creation, and more.
+
+**Quick setup:** Copy this prompt into your AI coding assistant to adopt the practices that fit your workflow:
+
+```
+Read the Claude Code best practices guide at docs/claude-best-practices.md in the
+gopherguides/gopher-ai repo (https://github.com/gopherguides/gopher-ai). Then read
+my current ~/.claude/CLAUDE.md (or create one if it doesn't exist). Compare them
+section-by-section and walk me through which best practices I'm missing. For each
+one, explain what problem it prevents and let me decide whether to adopt it. Apply
+my choices to my config file.
+```
+
+Works with Claude Code, Codex, Cursor, and any LLM-powered coding assistant.
+
 ## Requirements
 
 **All platforms:**
