@@ -26,7 +26,7 @@ allowed-tools: ["Read", "Bash(git:*)", "Bash(gh:*)", "Bash(cat:*)", "Bash(ls:*)"
 
 Ensure the branch is pushed to the remote:
 ```bash
-git push -u origin $(git branch --show-current)
+git push -u origin `git branch --show-current`
 ```
 
 ### Step 2: Determine PR Body
