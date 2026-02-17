@@ -1,6 +1,6 @@
 ---
 description: "Create a PR following the repo's PR template"
-allowed-tools: ["Read", "Bash(git:*)", "Bash(gh:*)", "Glob", "AskUserQuestion"]
+allowed-tools: ["Read", "Bash(git:*)", "Bash(gh:*)", "Bash(cat:*)", "Bash(ls:*)", "Glob", "AskUserQuestion"]
 ---
 
 # Create Pull Request
