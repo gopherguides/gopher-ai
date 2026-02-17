@@ -68,10 +68,10 @@ git push -u origin $(git branch --show-current)
 
 Create the PR using heredoc for body formatting:
 ```bash
-gh pr create --title "<title>" --body "$(cat <<'EOF'
+gh pr create --title "<title>" --body "`cat <<'EOF'
 <filled-in template or default body>
 EOF
-)"
+`"
 ```
 
 ### Step 6: Report

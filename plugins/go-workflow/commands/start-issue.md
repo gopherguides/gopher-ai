@@ -352,10 +352,10 @@ Commit and push changes, then create a PR:
    ```
 6. Create the PR with heredoc formatting:
    ```bash
-   gh pr create --title "<type>(<scope>): <subject>" --body "$(cat <<'EOF'
+   gh pr create --title "<type>(<scope>): <subject>" --body "`cat <<'EOF'
    <filled-in template or default body>
    EOF
-   )"
+   `"
    ```
 
 ### 10. Watch CI
@@ -508,10 +508,10 @@ Commit and push changes, then create a PR:
    ```
 6. Create the PR with heredoc formatting:
    ```bash
-   gh pr create --title "<type>(<scope>): <subject>" --body "$(cat <<'EOF'
+   gh pr create --title "<type>(<scope>): <subject>" --body "`cat <<'EOF'
    <filled-in template or default body>
    EOF
-   )"
+   `"
    ```
 
 ### 11. Watch CI
