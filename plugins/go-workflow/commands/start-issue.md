@@ -329,7 +329,33 @@ Consider running `/codex review` for an independent code review before creating 
 
 ### 9. Submit
 
-Commit, push, and create a PR referencing the issue.
+Commit and push changes, then create a PR:
+
+1. Stage and commit with a conventional commit message referencing the issue
+2. Push the branch: `git push -u origin <branch>`
+3. **Check for PR template** — look for a template file in these locations (in order):
+   - `.github/pull_request_template.md`
+   - `.github/PULL_REQUEST_TEMPLATE.md`
+   - `docs/pull_request_template.md`
+   - `pull_request_template.md` (repo root)
+4. **If template found**: Read the template and use its exact section structure for the PR body. Fill in every section — do not omit or skip sections.
+5. **If no template found**: Use this default format:
+   ```
+   ## Summary
+   <1-3 bullet points describing what changed and why>
+
+   Fixes #<issue-number>
+
+   ## Test Plan
+   <How the changes were tested>
+   ```
+6. Create the PR with heredoc formatting:
+   ```bash
+   gh pr create --title "<type>(<scope>): <subject>" --body "$(cat <<'EOF'
+   <filled-in template or default body>
+   EOF
+   )"
+   ```
 
 ### 10. Watch CI
 
@@ -458,7 +484,33 @@ Consider running `/codex review` for an independent code review before creating 
 
 ### 10. Submit
 
-Commit, push, and create a PR referencing the issue.
+Commit and push changes, then create a PR:
+
+1. Stage and commit with a conventional commit message referencing the issue
+2. Push the branch: `git push -u origin <branch>`
+3. **Check for PR template** — look for a template file in these locations (in order):
+   - `.github/pull_request_template.md`
+   - `.github/PULL_REQUEST_TEMPLATE.md`
+   - `docs/pull_request_template.md`
+   - `pull_request_template.md` (repo root)
+4. **If template found**: Read the template and use its exact section structure for the PR body. Fill in every section — do not omit or skip sections.
+5. **If no template found**: Use this default format:
+   ```
+   ## Summary
+   <1-3 bullet points describing what changed and why>
+
+   Fixes #<issue-number>
+
+   ## Test Plan
+   <How the changes were tested>
+   ```
+6. Create the PR with heredoc formatting:
+   ```bash
+   gh pr create --title "<type>(<scope>): <subject>" --body "$(cat <<'EOF'
+   <filled-in template or default body>
+   EOF
+   )"
+   ```
 
 ### 11. Watch CI
 
