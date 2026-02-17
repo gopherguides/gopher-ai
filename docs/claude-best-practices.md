@@ -158,7 +158,7 @@ After pushing to a PR, always watch CI and fix failures:
    ```bash
    find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1 | grep -q . || echo "No workflow files found"
    ```
-   Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. If workflow files exist, the checks are still propagating — wait longer and retry.
+   Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. If workflow files exist but still no checks appear, note that some workflows only trigger on specific events (push-only, scheduled, path-filtered) and may not run for every PR. Inform the user rather than retrying indefinitely.
 3. If checks fail:
    - Get failure details: `gh pr checks --json name,state,description`
    - Analyze and fix the failing check (test, lint, build)
@@ -191,10 +191,11 @@ Example failure: The team's PR template requires a "## Database Migrations" sect
 ## Pull Request Creation
 
 When creating any pull request in any repository:
-1. Check for a PR template at `.github/pull_request_template.md` or `.github/PULL_REQUEST_TEMPLATE.md` (also check `docs/` and repo root)
+1. Check for a PR template in these locations (in order): `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/PULL_REQUEST_TEMPLATE/` (directory with multiple templates — list and ask user which to use), `docs/pull_request_template.md`, `pull_request_template.md` (repo root)
 2. If found, read the template and follow its exact section structure for the PR body — fill in every section, do not omit or skip any
-3. If not found, use this default format: `## Summary` (bullet points), issue reference (`Fixes #N`), `## Test Plan`
-4. Always pass the body via heredoc to `gh pr create` to preserve formatting
+3. Always include an issue reference (`Fixes #N` or `Closes #N`) in the PR body, even when following a template that doesn't have a dedicated section for it
+4. If no template found, use this default format: `## Summary` (bullet points), issue reference (`Fixes #N`), `## Test Plan`
+5. Always pass the body via heredoc to `gh pr create` to preserve formatting
 ```
 
 ### Customization Notes
