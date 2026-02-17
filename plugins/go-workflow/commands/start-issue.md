@@ -338,7 +338,9 @@ Commit and push changes, then create a PR:
    - `.github/PULL_REQUEST_TEMPLATE.md`
    - `.github/PULL_REQUEST_TEMPLATE/` (directory with multiple templates — list and ask user which to use)
    - `docs/pull_request_template.md`
+   - `docs/PULL_REQUEST_TEMPLATE/` (directory with multiple templates)
    - `pull_request_template.md` (repo root)
+   - `PULL_REQUEST_TEMPLATE/` (repo root directory with multiple templates)
 4. **If template found**: Read the template and use its exact section structure for the PR body. Fill in every section — do not omit or skip sections. Always include `Fixes #<issue-number>` or `Closes #<issue-number>` even if the template doesn't have a dedicated section for it.
 5. **If no template found**: Use this default format:
    ```
@@ -494,7 +496,9 @@ Commit and push changes, then create a PR:
    - `.github/PULL_REQUEST_TEMPLATE.md`
    - `.github/PULL_REQUEST_TEMPLATE/` (directory with multiple templates — list and ask user which to use)
    - `docs/pull_request_template.md`
+   - `docs/PULL_REQUEST_TEMPLATE/` (directory with multiple templates)
    - `pull_request_template.md` (repo root)
+   - `PULL_REQUEST_TEMPLATE/` (repo root directory with multiple templates)
 4. **If template found**: Read the template and use its exact section structure for the PR body. Fill in every section — do not omit or skip sections. Always include `Fixes #<issue-number>` or `Closes #<issue-number>` even if the template doesn't have a dedicated section for it.
 5. **If no template found**: Use this default format:
    ```
