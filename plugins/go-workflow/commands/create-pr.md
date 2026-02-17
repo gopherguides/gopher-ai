@@ -31,15 +31,15 @@ git push -u origin `git branch --show-current`
 
 ### Step 2: Determine PR Body
 
-**If multiple templates directory exists** (the "Multiple templates directory" context above does NOT say "NO_TEMPLATE_DIR"):
-- List the available templates and ask the user which one to use via AskUserQuestion
-- Read the selected template and use its structure
-
 **If a PR template was found** (the "PR template" context above does NOT say "NO_TEMPLATE_FOUND"):
 - Use the template's exact section structure for the PR body
 - Fill in **every** section — do not omit or skip any sections
 - Replace placeholder text with actual content based on the commits and diff
 - If a section asks for something not applicable, write "N/A" with a brief reason
+
+**Else if multiple templates directory exists** (no single-file template found, but the "Multiple templates directory" context above does NOT say "NO_TEMPLATE_DIR"):
+- List the available templates and ask the user which one to use via AskUserQuestion
+- Read the selected template and use its structure
 
 **If no PR template exists**:
 - Use this default format:
