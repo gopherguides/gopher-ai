@@ -8,10 +8,10 @@ allowed-tools: ["Read", "Bash(git:*)", "Bash(gh:*)", "Glob", "AskUserQuestion"]
 ## Context
 
 - Current branch: !`git branch --show-current`
-- Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
-- Commits on this branch: !`git log $(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")..HEAD --oneline 2>/dev/null || echo "No commits found"`
-- Diff stat: !`git diff $(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")..HEAD --stat 2>/dev/null || echo "No diff"`
-- PR template: !`cat .github/pull_request_template.md 2>/dev/null || cat .github/PULL_REQUEST_TEMPLATE.md 2>/dev/null || cat docs/pull_request_template.md 2>/dev/null || cat pull_request_template.md 2>/dev/null || echo "NO_TEMPLATE_FOUND"`
+- Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main"`
+- Commits on this branch: !`git log $(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main")..HEAD --oneline 2>/dev/null || echo "No commits found"`
+- Diff stat: !`git diff $(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main")..HEAD --stat 2>/dev/null || echo "No diff"`
+- PR template: !`cat .github/pull_request_template.md 2>/dev/null || cat .github/PULL_REQUEST_TEMPLATE.md 2>/dev/null || cat docs/pull_request_template.md 2>/dev/null || cat pull_request_template.md 2>/dev/null || ls .github/PULL_REQUEST_TEMPLATE/*.md 2>/dev/null || echo "NO_TEMPLATE_FOUND"`
 - Multiple templates directory: !`ls .github/PULL_REQUEST_TEMPLATE/ 2>/dev/null || echo "NO_TEMPLATE_DIR"`
 
 ## Branch Protection
