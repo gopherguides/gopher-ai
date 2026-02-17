@@ -1,6 +1,6 @@
 ---
 description: "Batch cleanup of all completed issue worktrees"
-allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(basename:*)", "Bash(grep:*)", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(basename:*)", "Bash(grep:*)", "Bash(*worktree-state*)", "Read", "AskUserQuestion"]
 model: haiku
 ---
 
@@ -77,6 +77,14 @@ For each worktree matching the `{REPO_NAME}-issue-*` pattern:
 ```bash
 git worktree remove "/path/to/worktree"
 git branch -D "branch-name"
+```
+
+## Worktree State Cleanup
+
+After removing worktrees, clear the active worktree state so the pre-tool-use hook stops enforcing path prefixes:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear
 ```
 
 ## Manual Override
