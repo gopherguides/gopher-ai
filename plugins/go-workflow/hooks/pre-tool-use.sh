@@ -120,7 +120,8 @@ check_worktree_path() {
       # remove-worktree and prune-worktree clear state at prompt assembly time,
       # so they won't be affected by this restriction
       if ! echo "$cmd_text" | grep -qE '&&|\|\||;' 2>/dev/null; then
-        if echo "$cmd_text" | grep -qE "^(git (worktree|branch|fetch|remote|status|rev-parse|log)|gh (pr|issue|api)|echo |basename )" 2>/dev/null; then
+        # Only allow read-only git branch commands (not -D, -m, -M which are mutating)
+        if echo "$cmd_text" | grep -qE "^(git (worktree|branch (--merged|--list|-a|-r|--contains)|fetch|remote|status|rev-parse|log)|gh (pr|issue|api)|echo |basename )" 2>/dev/null; then
           return 0
         fi
       fi
@@ -141,6 +142,10 @@ check_worktree_path() {
         "cd \"${worktree_path}\"") cd_ok=true ;;
         "cd '${worktree_path}' &&"*) cd_ok=true ;;
         "cd '${worktree_path}'") cd_ok=true ;;
+        'cd "$WORKTREE_ABS_PATH" &&'*) cd_ok=true ;;
+        'cd "$WORKTREE_ABS_PATH"') cd_ok=true ;;
+        'cd $WORKTREE_ABS_PATH &&'*) cd_ok=true ;;
+        'cd $WORKTREE_ABS_PATH') cd_ok=true ;;
       esac
       if [ "$cd_ok" = false ]; then
         printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command must start with cd into the worktree. Prefix with: cd %s && "}\n' "$worktree_path"
