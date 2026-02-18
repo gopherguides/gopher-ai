@@ -173,7 +173,7 @@ check_worktree_path() {
       ;;
     *)
       # Relative path — block with guidance to use absolute worktree path
-      printf '{"decision":"block","reason":"WRONG DIRECTORY: Relative path \"%s\" resolves to the original repo CWD, not the worktree. Use absolute path: %s/%s"}\n' \
+      printf '{"decision":"block","reason":"WRONG DIRECTORY: Relative path (%s) resolves to the original repo CWD, not the worktree. Use absolute path: %s/%s"}\n' \
         "$target_path" "$worktree_path" "$target_path"
       exit 0
       ;;
