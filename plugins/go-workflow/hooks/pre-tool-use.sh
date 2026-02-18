@@ -86,7 +86,80 @@ check_git_state() {
   fi
 }
 
+check_worktree_path() {
+  local state_file="${HOME}/.claude/worktree-state.json"
+  [ -f "$state_file" ] || return 0
+
+  local worktree_path original_path target_path=""
+  worktree_path=$(jq -r '.worktree_path // empty' "$state_file" 2>/dev/null)
+  original_path=$(jq -r '.original_path // empty' "$state_file" 2>/dev/null)
+  [ -z "$worktree_path" ] || [ -z "$original_path" ] && return 0
+
+  # Only enforce if current repo matches the saved original_path or worktree_path
+  # original_path is now always the repo root (from git rev-parse --show-toplevel)
+  local current_repo
+  current_repo=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  [ "$current_repo" != "$original_path" ] && [ "$current_repo" != "$worktree_path" ] && return 0
+
+  case "$TOOL_NAME" in
+    Read|Edit|Write)
+      target_path=$(echo "$TOOL_INPUT" | jq -r '.file_path // empty' 2>/dev/null)
+      ;;
+    Glob|Grep)
+      target_path=$(echo "$TOOL_INPUT" | jq -r '.path // empty' 2>/dev/null)
+      ;;
+    Bash|bash)
+      local cmd_text
+      cmd_text=$(echo "$TOOL_INPUT" | jq -r '.command // .cmd // empty' 2>/dev/null)
+      [ -z "$cmd_text" ] && return 0
+      # Always allow worktree-state.sh commands (even with || true for cleanup)
+      if echo "$cmd_text" | grep -qF "worktree-state.sh" 2>/dev/null; then
+        return 0
+      fi
+      # Block commands that explicitly reference the original repo path
+      # This is the Bash safety net — file path checks handle Read/Edit/Write/Glob/Grep
+      if echo "$cmd_text" | grep -qF "$original_path" 2>/dev/null; then
+        if ! echo "$cmd_text" | grep -qF "$worktree_path" 2>/dev/null; then
+          printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command references the original repo (%s) instead of the worktree (%s). Replace the path to use the worktree."}\n' "$original_path" "$worktree_path"
+          exit 0
+        fi
+      fi
+      return 0
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  [ -z "$target_path" ] && return 0
+
+  # Block relative paths — they resolve to the original repo CWD after plan mode reset
+  case "$target_path" in
+    /*)
+      # Absolute path — allow worktree, block original repo
+      # original_path is always the repo root (git rev-parse --show-toplevel)
+      case "$target_path" in
+        "${worktree_path}"|"${worktree_path}"/*)
+          return 0
+          ;;
+        "${original_path}"|"${original_path}"/*)
+          printf '{"decision":"block","reason":"WRONG DIRECTORY: You are targeting the original repo (%s) instead of the worktree (%s). Use path: %s%s"}\n' \
+            "$original_path" "$worktree_path" "$worktree_path" "${target_path#"$original_path"}"
+          exit 0
+          ;;
+      esac
+      ;;
+    *)
+      # Relative path — block with guidance to use absolute worktree path
+      printf '{"decision":"block","reason":"WRONG DIRECTORY: Relative path (%s) resolves to the original repo CWD, not the worktree. Use absolute path: %s/%s"}\n' \
+        "$target_path" "$worktree_path" "$target_path"
+      exit 0
+      ;;
+  esac
+}
+
 check_env_vars
 check_tool_availability
 check_git_state
+check_worktree_path
 exit 0

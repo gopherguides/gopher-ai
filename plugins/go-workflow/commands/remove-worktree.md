@@ -1,6 +1,6 @@
 ---
 description: "Interactively select and remove a git worktree"
-allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(cd:*)", "Bash(grep:*)", "Bash(cat:*)", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(cd:*)", "Bash(grep:*)", "Bash(cat:*)", "Bash(*worktree-state*)", "Read", "AskUserQuestion"]
 model: haiku
 ---
 
@@ -9,6 +9,11 @@ model: haiku
 This command interactively removes a single git worktree. Unlike `/prune-worktree` which auto-removes all safe worktrees, this command lets you select a specific worktree and handles cases where the issue isn't closed or branch isn't merged.
 
 **Usage:** `/remove-worktree` (no arguments - interactive selection)
+
+## Clear Worktree State
+
+Clear any active worktree state so the pre-tool-use hook doesn't block cleanup commands:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
 
 ## Context
 
@@ -137,7 +142,15 @@ Ask: "Also delete the local branch '$BRANCH_NAME'? (Use -D to force delete unmer
 If confirmed:
 !git branch -D "$BRANCH_NAME"
 
-### 6. Completion
+### 6. Clear Worktree State
+
+Clear the active worktree state so the pre-tool-use hook stops enforcing path prefixes:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear
+```
+
+### 7. Completion
 
 Display final status:
 !echo "Done."

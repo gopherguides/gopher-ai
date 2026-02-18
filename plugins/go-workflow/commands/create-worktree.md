@@ -1,7 +1,7 @@
 ---
 argument-hint: "<issue-or-pr-number>"
 description: "Create a new git worktree for a GitHub issue or PR"
-allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(pwd:*)", "Bash(echo:*)", "Bash(cp:*)", "Bash(basename:*)", "Bash(for:*)", "Bash(if:*)", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(pwd:*)", "Bash(echo:*)", "Bash(cp:*)", "Bash(basename:*)", "Bash(for:*)", "Bash(if:*)", "Bash(*worktree-state*)", "Read", "AskUserQuestion"]
 model: haiku
 ---
 
@@ -38,6 +38,11 @@ Ask the user: "What issue or PR number would you like to work on?"
 ---
 
 **If `$ARGUMENTS` is provided:**
+
+## Clear Worktree State
+
+Clear any stale worktree state so the pre-tool-use hook doesn't block setup commands:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
 
 ## Context
 
@@ -186,6 +191,15 @@ Ask the user: "What issue or PR number would you like to work on?"
     ```
 
     **Save this `WORKTREE_ABS_PATH` value.** You will use it for EVERY tool call from this point forward.
+
+13. **Register worktree state** (enables hook-based path enforcement)
+
+    ```bash
+    REPO_ROOT=`git rev-parse --show-toplevel`
+    "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ISSUE_NUM"
+    ```
+
+    This saves the worktree path so the pre-tool-use hook will **block** any tool call that accidentally targets the original repo instead of the worktree.
 
     **If this was an existing worktree**, display the current branch and status:
     !cd "$WORKTREE_ABS_PATH" && git branch --show-current && git status --short

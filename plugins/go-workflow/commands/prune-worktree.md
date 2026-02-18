@@ -1,6 +1,6 @@
 ---
 description: "Batch cleanup of all completed issue worktrees"
-allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(basename:*)", "Bash(grep:*)", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(basename:*)", "Bash(grep:*)", "Bash(*worktree-state*)", "Read", "AskUserQuestion"]
 model: haiku
 ---
 
@@ -23,6 +23,11 @@ This command safely removes worktrees for completed GitHub issues.
 - Provides manual commands for edge cases
 
 **Usage:** `/prune-worktree` (no arguments needed)
+
+## Clear Worktree State
+
+Clear any active worktree state so the pre-tool-use hook doesn't block cleanup commands:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
 
 ## Context
 
@@ -77,6 +82,14 @@ For each worktree matching the `{REPO_NAME}-issue-*` pattern:
 ```bash
 git worktree remove "/path/to/worktree"
 git branch -D "branch-name"
+```
+
+## Worktree State Cleanup
+
+After removing worktrees, clear the active worktree state so the pre-tool-use hook stops enforcing path prefixes:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear
 ```
 
 ## Manual Override

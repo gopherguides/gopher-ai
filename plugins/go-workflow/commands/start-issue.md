@@ -33,13 +33,10 @@ Ask the user: "What issue number would you like to work on?"
 
 **If `$ARGUMENTS` is provided:**
 
-## Plan Mode Check
+## Clear Stale Worktree State
 
-**FIRST ACTION — before anything else:**
-
-If you are NOT currently in plan mode (no "Plan mode is active" in your system context), call the `EnterPlanMode` tool now. This ensures a proper plan is created and approved before implementation begins.
-
-If you ARE already in plan mode, continue with the workflow below.
+Clear any leftover worktree state from a prior session. This prevents the pre-tool-use hook from blocking commands in a fresh `/start-issue` invocation:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
 
 ## Security Validation
 
@@ -61,11 +58,12 @@ Initialize persistent loop to ensure work continues until complete:
 
 ---
 
-## **HARD STOP** - Worktree Decision Required
+## **HARD STOP** - Worktree Decision Required (BEFORE Plan Mode)
 
-**You MUST use AskUserQuestion NOW before doing anything else.**
+**You MUST use AskUserQuestion NOW before doing anything else — including EnterPlanMode.**
 
 Do not:
+- Call EnterPlanMode yet
 - Analyze the issue beyond the context already gathered
 - Launch Task or Explore agents
 - Start any implementation work
@@ -84,6 +82,8 @@ Use AskUserQuestion with this exact configuration:
 ## If user chose "Yes, create worktree":
 
 **CRITICAL: When executing bash commands below, use backticks (\`) for command substitution, NOT $(). Claude Code has a bug that mangles $() syntax.**
+
+**Create the worktree NOW, before entering plan mode.** This ensures the worktree path is a concrete, established fact when the plan is written.
 
 1. **Capture source directory first**
    ```bash
@@ -145,7 +145,42 @@ Use AskUserQuestion with this exact configuration:
 
    **Save this absolute path.** You will use it for EVERY tool call from this point forward.
 
-6. **Inform user**: "Created worktree at `$WORKTREE_ABS_PATH`. All work will happen there."
+6. **Register worktree state** (enables hook-based path enforcement)
+
+   ```bash
+   REPO_ROOT=`git rev-parse --show-toplevel`
+   "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ARGUMENTS"
+   ```
+
+   This saves the worktree path so the pre-tool-use hook will **block** any tool call that accidentally targets the original repo instead of the worktree.
+
+7. **Inform user**: "Created worktree at `$WORKTREE_ABS_PATH`. All work will happen there."
+
+---
+
+## Plan Mode Check (AFTER worktree is established)
+
+**Now** call `EnterPlanMode` to create a plan for the implementation.
+
+If you are NOT currently in plan mode (no "Plan mode is active" in your system context), call the `EnterPlanMode` tool now.
+
+**CRITICAL: When writing your plan, you MUST include these facts at the top of the plan file:**
+
+If a worktree was created:
+```
+## Working Directory
+All work MUST happen in: <the concrete WORKTREE_ABS_PATH value>
+Original repo (DO NOT USE): <the SOURCE_DIR value>
+The pre-tool-use hook will BLOCK any tool call targeting the original repo.
+```
+
+If no worktree (working in current directory):
+```
+## Working Directory
+Working in current directory. A feature branch will be created.
+```
+
+If you ARE already in plan mode, continue with the workflow below.
 
 ---
 
@@ -164,7 +199,7 @@ Use AskUserQuestion with this exact configuration:
 | **Glob** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
 | **Grep** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
 
-**If you forget to use the worktree path, you WILL edit the wrong codebase.** There is no safety net. The original repo and the worktree have identical file structures — you won't get an error, you'll just silently modify the wrong files.
+**If you forget to use the worktree path, the pre-tool-use hook will BLOCK the tool call** and tell you the correct path to use. This is your safety net.
 
 **Self-check before EVERY file operation:** "Does this path start with `$WORKTREE_ABS_PATH`?" If not, STOP and fix it.
 
@@ -179,6 +214,8 @@ Continue to **Step 1: Detect Issue Type** below.
 ## If user chose "No, work in current directory":
 
 Continue to **Step 1: Detect Issue Type** below. You will create a branch in the appropriate workflow step.
+
+**Now** call `EnterPlanMode` to create a plan for the implementation (if not already in plan mode).
 
 ---
 
