@@ -119,12 +119,11 @@ check_worktree_path() {
       if echo "$cmd_text" | grep -qF "worktree-state.sh" 2>/dev/null; then
         return 0
       fi
-      # Whitelist: standalone management commands that don't need worktree prefix
-      # Only applies to simple commands (no &&, ||, ; chains) to prevent bypass
-      if ! echo "$cmd_text" | grep -qE '&&|\|\||;' 2>/dev/null; then
-        if echo "$cmd_text" | grep -qE "git worktree|git branch|git fetch|git remote|git status|git rev-parse|gh (pr|issue|api)|^echo |^basename " 2>/dev/null; then
-          return 0
-        fi
+      # Whitelist: git/gh management commands (safe from any directory)
+      # These are needed by remove-worktree and prune-worktree flows,
+      # which run from the main repo to check merge status and clean up branches
+      if echo "$cmd_text" | grep -qE "^(git (worktree|branch|fetch|remote|status|rev-parse|log)|gh (pr|issue|api)|echo |basename )" 2>/dev/null; then
+        return 0
       fi
       # Block commands that explicitly reference the original repo
       if echo "$cmd_text" | grep -qF "$original_path" 2>/dev/null; then
@@ -151,17 +150,29 @@ check_worktree_path() {
   # Block relative paths — they resolve to the original repo CWD after plan mode reset
   case "$target_path" in
     /*)
-      # Absolute path — check if it targets the original repo (use repo root, not saved subdir)
+      # Absolute path — check if it targets the original repo
+      # Check worktree first (allow), then block both original_path and current_repo
+      # This handles both cases: running from main repo or from inside the worktree
       case "$target_path" in
         "${worktree_path}"|"${worktree_path}"/*)
           return 0
           ;;
-        "${current_repo}"|"${current_repo}"/*)
-          printf '{"decision":"block","reason":"WRONG DIRECTORY: You are targeting the original repo (%s) instead of the worktree (%s). Use path: %s%s"}\n' \
-            "$current_repo" "$worktree_path" "$worktree_path" "${target_path#"$current_repo"}"
-          exit 0
-          ;;
       esac
+      # Derive the original repo root for blocking
+      local block_path=""
+      case "$target_path" in
+        "${current_repo}"|"${current_repo}"/*) block_path="$current_repo" ;;
+      esac
+      if [ -z "$block_path" ]; then
+        case "$target_path" in
+          "${original_path}"|"${original_path}"/*) block_path="$original_path" ;;
+        esac
+      fi
+      if [ -n "$block_path" ]; then
+        printf '{"decision":"block","reason":"WRONG DIRECTORY: You are targeting the original repo (%s) instead of the worktree (%s). Use path: %s%s"}\n' \
+            "$block_path" "$worktree_path" "$worktree_path" "${target_path#"$block_path"}"
+        exit 0
+      fi
       ;;
     *)
       # Relative path — block with guidance to use absolute worktree path
