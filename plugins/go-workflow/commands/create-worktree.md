@@ -39,6 +39,11 @@ Ask the user: "What issue or PR number would you like to work on?"
 
 **If `$ARGUMENTS` is provided:**
 
+## Clear Worktree State
+
+Clear any stale worktree state so the pre-tool-use hook doesn't block setup commands:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
+
 ## Context
 
 - Current directory: !`pwd`

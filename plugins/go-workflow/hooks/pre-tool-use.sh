@@ -131,9 +131,18 @@ check_worktree_path() {
           exit 0
         fi
       fi
-      # Require commands to cd into the exact worktree path (with boundary)
-      # Prevents: echo "/path/to/worktree" tricks and cd into sibling dirs
-      if ! echo "$cmd_text" | grep -qE "^cd [\"']?${worktree_path}[\"']?( *&&| *$)" 2>/dev/null; then
+      # Require commands to cd into the exact worktree path
+      # Uses case pattern matching (not regex) to avoid metacharacter issues in paths
+      local cd_ok=false
+      case "$cmd_text" in
+        "cd ${worktree_path} &&"*) cd_ok=true ;;
+        "cd ${worktree_path}") cd_ok=true ;;
+        "cd \"${worktree_path}\" &&"*) cd_ok=true ;;
+        "cd \"${worktree_path}\"") cd_ok=true ;;
+        "cd '${worktree_path}' &&"*) cd_ok=true ;;
+        "cd '${worktree_path}'") cd_ok=true ;;
+      esac
+      if [ "$cd_ok" = false ]; then
         printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command must start with cd into the worktree. Prefix with: cd %s && "}\n' "$worktree_path"
         exit 0
       fi
