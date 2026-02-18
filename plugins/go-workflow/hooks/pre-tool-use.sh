@@ -124,18 +124,26 @@ check_worktree_path() {
 
   [ -z "$target_path" ] && return 0
 
+  # Block relative paths — they resolve to the original repo CWD after plan mode reset
   case "$target_path" in
-    "${original_path}"*)
+    /*)
+      # Absolute path — check if it targets the original repo
       case "$target_path" in
         "${worktree_path}"*)
           return 0
           ;;
-        *)
+        "${original_path}"*)
           printf '{"decision":"block","reason":"WRONG DIRECTORY: You are targeting the original repo (%s) instead of the worktree (%s). Use path: %s%s"}\n' \
             "$original_path" "$worktree_path" "$worktree_path" "${target_path#"$original_path"}"
           exit 0
           ;;
       esac
+      ;;
+    *)
+      # Relative path — block with guidance to use absolute worktree path
+      printf '{"decision":"block","reason":"WRONG DIRECTORY: Relative path \"%s\" resolves to the original repo CWD, not the worktree. Use absolute path: %s/%s"}\n' \
+        "$target_path" "$worktree_path" "$target_path"
+      exit 0
       ;;
   esac
 }
