@@ -115,10 +115,14 @@ check_worktree_path() {
       local cmd_text
       cmd_text=$(echo "$TOOL_INPUT" | jq -r '.command // .cmd // empty' 2>/dev/null)
       [ -z "$cmd_text" ] && return 0
+      # Always allow worktree-state.sh commands (even with || true for cleanup)
+      if echo "$cmd_text" | grep -qF "worktree-state.sh" 2>/dev/null; then
+        return 0
+      fi
       # Whitelist: standalone management commands that don't need worktree prefix
       # Only applies to simple commands (no &&, ||, ; chains) to prevent bypass
       if ! echo "$cmd_text" | grep -qE '&&|\|\||;' 2>/dev/null; then
-        if echo "$cmd_text" | grep -qE "worktree-state\.sh|git worktree|git branch|git fetch|git remote|git status|git rev-parse|gh (pr|issue|api)|^echo |^basename " 2>/dev/null; then
+        if echo "$cmd_text" | grep -qE "git worktree|git branch|git fetch|git remote|git status|git rev-parse|gh (pr|issue|api)|^echo |^basename " 2>/dev/null; then
           return 0
         fi
       fi
@@ -147,14 +151,14 @@ check_worktree_path() {
   # Block relative paths — they resolve to the original repo CWD after plan mode reset
   case "$target_path" in
     /*)
-      # Absolute path — check if it targets the original repo
+      # Absolute path — check if it targets the original repo (use repo root, not saved subdir)
       case "$target_path" in
         "${worktree_path}"|"${worktree_path}"/*)
           return 0
           ;;
-        "${original_path}"|"${original_path}"/*)
+        "${current_repo}"|"${current_repo}"/*)
           printf '{"decision":"block","reason":"WRONG DIRECTORY: You are targeting the original repo (%s) instead of the worktree (%s). Use path: %s%s"}\n' \
-            "$original_path" "$worktree_path" "$worktree_path" "${target_path#"$original_path"}"
+            "$current_repo" "$worktree_path" "$worktree_path" "${target_path#"$current_repo"}"
           exit 0
           ;;
       esac
