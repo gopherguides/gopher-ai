@@ -95,10 +95,14 @@ check_worktree_path() {
   original_path=$(jq -r '.original_path // empty' "$state_file" 2>/dev/null)
   [ -z "$worktree_path" ] || [ -z "$original_path" ] && return 0
 
-  # Only enforce if current repo matches the saved original_path
+  # Only enforce if current repo overlaps the saved original or worktree path
+  # Use prefix check: original_path may be a subdirectory of the repo root
   local current_repo
   current_repo=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
-  [ "$current_repo" != "$original_path" ] && [ "$current_repo" != "$worktree_path" ] && return 0
+  local repo_match=false
+  case "$original_path" in "${current_repo}"|"${current_repo}"/*) repo_match=true ;; esac
+  case "$current_repo" in "${worktree_path}"|"${worktree_path}"/*) repo_match=true ;; esac
+  [ "$repo_match" = false ] && return 0
 
   case "$TOOL_NAME" in
     Read|Edit|Write)
@@ -125,9 +129,9 @@ check_worktree_path() {
           exit 0
         fi
       fi
-      # Require commands to cd into the worktree, not just mention the path
-      # This prevents tricks like: echo "/path/to/worktree" && go test ./...
-      if ! echo "$cmd_text" | grep -qE "^cd [\"']?${worktree_path}[\"']?" 2>/dev/null; then
+      # Require commands to cd into the exact worktree path (with boundary)
+      # Prevents: echo "/path/to/worktree" tricks and cd into sibling dirs
+      if ! echo "$cmd_text" | grep -qE "^cd [\"']?${worktree_path}[\"']?( *&&| *$)" 2>/dev/null; then
         printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command must start with cd into the worktree. Prefix with: cd %s && "}\n' "$worktree_path"
         exit 0
       fi
