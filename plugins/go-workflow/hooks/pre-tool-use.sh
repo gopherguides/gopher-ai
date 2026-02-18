@@ -95,6 +95,11 @@ check_worktree_path() {
   original_path=$(jq -r '.original_path // empty' "$state_file" 2>/dev/null)
   [ -z "$worktree_path" ] || [ -z "$original_path" ] && return 0
 
+  # Only enforce if current repo matches the saved original_path
+  local current_repo
+  current_repo=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  [ "$current_repo" != "$original_path" ] && [ "$current_repo" != "$worktree_path" ] && return 0
+
   case "$TOOL_NAME" in
     Read|Edit|Write)
       target_path=$(echo "$TOOL_INPUT" | jq -r '.file_path // empty' 2>/dev/null)

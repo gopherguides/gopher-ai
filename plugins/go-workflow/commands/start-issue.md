@@ -33,6 +33,11 @@ Ask the user: "What issue number would you like to work on?"
 
 **If `$ARGUMENTS` is provided:**
 
+## Clear Stale Worktree State
+
+Clear any leftover worktree state from a prior session. This prevents the pre-tool-use hook from blocking commands in a fresh `/start-issue` invocation:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
+
 ## Security Validation
 
 First, validate input is numeric (prevent command injection):
@@ -206,14 +211,6 @@ Continue to **Step 1: Detect Issue Type** below.
 ---
 
 ## If user chose "No, work in current directory":
-
-**First**, clear any stale worktree state from previous sessions:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear
-```
-
-This prevents the pre-tool-use hook from blocking edits in the current directory due to leftover state from a prior worktree session.
 
 Continue to **Step 1: Detect Issue Type** below. You will create a branch in the appropriate workflow step.
 
