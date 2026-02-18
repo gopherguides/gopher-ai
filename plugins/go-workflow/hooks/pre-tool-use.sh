@@ -116,40 +116,13 @@ check_worktree_path() {
       if echo "$cmd_text" | grep -qF "worktree-state.sh" 2>/dev/null; then
         return 0
       fi
-      # Whitelist: simple (non-compound) git/gh management commands
-      # remove-worktree and prune-worktree clear state at prompt assembly time,
-      # so they won't be affected by this restriction
-      if ! echo "$cmd_text" | grep -qE '&&|\|\||;' 2>/dev/null; then
-        # Only allow read-only git branch commands (not -D, -m, -M which are mutating)
-        if echo "$cmd_text" | grep -qE "^(git (worktree|branch (--merged|--list|-a|-r|--contains)|fetch|remote|status|rev-parse|log)|gh (pr|issue|api)|echo |basename )" 2>/dev/null; then
-          return 0
-        fi
-      fi
-      # Block commands that explicitly reference the original repo
+      # Block commands that explicitly reference the original repo path
+      # This is the Bash safety net — file path checks handle Read/Edit/Write/Glob/Grep
       if echo "$cmd_text" | grep -qF "$original_path" 2>/dev/null; then
         if ! echo "$cmd_text" | grep -qF "$worktree_path" 2>/dev/null; then
           printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command references the original repo (%s) instead of the worktree (%s). Replace the path to use the worktree."}\n' "$original_path" "$worktree_path"
           exit 0
         fi
-      fi
-      # Require commands to cd into the exact worktree path
-      # Uses case pattern matching (not regex) to avoid metacharacter issues in paths
-      local cd_ok=false
-      case "$cmd_text" in
-        "cd ${worktree_path} &&"*) cd_ok=true ;;
-        "cd ${worktree_path}") cd_ok=true ;;
-        "cd \"${worktree_path}\" &&"*) cd_ok=true ;;
-        "cd \"${worktree_path}\"") cd_ok=true ;;
-        "cd '${worktree_path}' &&"*) cd_ok=true ;;
-        "cd '${worktree_path}'") cd_ok=true ;;
-        'cd "$WORKTREE_ABS_PATH" &&'*) cd_ok=true ;;
-        'cd "$WORKTREE_ABS_PATH"') cd_ok=true ;;
-        'cd $WORKTREE_ABS_PATH &&'*) cd_ok=true ;;
-        'cd $WORKTREE_ABS_PATH') cd_ok=true ;;
-      esac
-      if [ "$cd_ok" = false ]; then
-        printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command must start with cd into the worktree. Prefix with: cd %s && "}\n' "$worktree_path"
-        exit 0
       fi
       return 0
       ;;
