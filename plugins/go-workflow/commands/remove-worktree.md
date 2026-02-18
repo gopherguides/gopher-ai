@@ -10,6 +10,11 @@ This command interactively removes a single git worktree. Unlike `/prune-worktre
 
 **Usage:** `/remove-worktree` (no arguments - interactive selection)
 
+## Clear Worktree State
+
+Clear any active worktree state so the pre-tool-use hook doesn't block cleanup commands:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
+
 ## Context
 
 - Repository name: !`basename $(git rev-parse --show-toplevel)`

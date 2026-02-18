@@ -24,6 +24,11 @@ This command safely removes worktrees for completed GitHub issues.
 
 **Usage:** `/prune-worktree` (no arguments needed)
 
+## Clear Worktree State
+
+Clear any active worktree state so the pre-tool-use hook doesn't block cleanup commands:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
+
 ## Context
 
 - Repository name: !`basename $(git rev-parse --show-toplevel)`

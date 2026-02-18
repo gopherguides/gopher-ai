@@ -190,7 +190,8 @@ Ask the user: "What issue or PR number would you like to work on?"
 13. **Register worktree state** (enables hook-based path enforcement)
 
     ```bash
-    "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$SOURCE_DIR" "$ISSUE_NUM"
+    REPO_ROOT=`git rev-parse --show-toplevel`
+    "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ISSUE_NUM"
     ```
 
     This saves the worktree path so the pre-tool-use hook will **block** any tool call that accidentally targets the original repo instead of the worktree.

@@ -148,7 +148,8 @@ Use AskUserQuestion with this exact configuration:
 6. **Register worktree state** (enables hook-based path enforcement)
 
    ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$SOURCE_DIR" "$ARGUMENTS"
+   REPO_ROOT=`git rev-parse --show-toplevel`
+   "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ARGUMENTS"
    ```
 
    This saves the worktree path so the pre-tool-use hook will **block** any tool call that accidentally targets the original repo instead of the worktree.
