@@ -106,14 +106,21 @@ check_worktree_path() {
       local cmd_text
       cmd_text=$(echo "$TOOL_INPUT" | jq -r '.command // .cmd // empty' 2>/dev/null)
       [ -z "$cmd_text" ] && return 0
+      # Whitelist: management commands that don't need worktree prefix
       if echo "$cmd_text" | grep -qE "worktree-state\.sh|git worktree|gh (pr|issue)" 2>/dev/null; then
         return 0
       fi
+      # Block commands that explicitly reference the original repo
       if echo "$cmd_text" | grep -qF "$original_path" 2>/dev/null; then
         if ! echo "$cmd_text" | grep -qF "$worktree_path" 2>/dev/null; then
           printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command references the original repo (%s) instead of the worktree (%s). Replace the path to use the worktree."}\n' "$original_path" "$worktree_path"
           exit 0
         fi
+      fi
+      # Block commands that omit any path — they run in the original repo CWD
+      if ! echo "$cmd_text" | grep -qF "$worktree_path" 2>/dev/null; then
+        printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command does not reference the worktree (%s). Without an explicit cd, it runs in the original repo. Prefix with: cd %s && "}\n' "$worktree_path" "$worktree_path"
+        exit 0
       fi
       return 0
       ;;
