@@ -116,11 +116,13 @@ check_worktree_path() {
       if echo "$cmd_text" | grep -qF "worktree-state.sh" 2>/dev/null; then
         return 0
       fi
-      # Whitelist: git/gh management commands (safe from any directory)
-      # These are needed by remove-worktree and prune-worktree flows,
-      # which run from the main repo to check merge status and clean up branches
-      if echo "$cmd_text" | grep -qE "^(git (worktree|branch|fetch|remote|status|rev-parse|log)|gh (pr|issue|api)|echo |basename )" 2>/dev/null; then
-        return 0
+      # Whitelist: simple (non-compound) git/gh management commands
+      # remove-worktree and prune-worktree clear state at prompt assembly time,
+      # so they won't be affected by this restriction
+      if ! echo "$cmd_text" | grep -qE '&&|\|\||;' 2>/dev/null; then
+        if echo "$cmd_text" | grep -qE "^(git (worktree|branch|fetch|remote|status|rev-parse|log)|gh (pr|issue|api)|echo |basename )" 2>/dev/null; then
+          return 0
+        fi
       fi
       # Block commands that explicitly reference the original repo
       if echo "$cmd_text" | grep -qF "$original_path" 2>/dev/null; then
