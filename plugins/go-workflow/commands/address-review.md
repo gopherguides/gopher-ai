@@ -71,27 +71,6 @@ echo "Working on PR #$PR_NUM"
 
 ---
 
-## Known AI/Bot Reviewers
-
-Track these reviewers for automatic re-review requests at the end:
-
-| Bot Username | Re-review Trigger |
-|--------------|-------------------|
-| `codex`, `chatgpt-codex-connector` | `@codex review` (comment on PR) |
-| `copilot` | Add via GitHub Reviewers dropdown |
-| `coderabbitai` | `@coderabbitai review` (comment on PR) |
-| `greptileai` | `@greptileai review` (comment on PR) |
-| `github-actions[bot]` | N/A (CI bot, no re-review) |
-| `dependabot[bot]` | N/A (dependency bot, no re-review) |
-
-**To disable auto bot re-review:** Add to your project's CLAUDE.md:
-```
-## Bot Review Settings
-DISABLE_BOT_REREVIEW=true
-```
-
----
-
 ## Step 2: Check for Rebase
 
 **Always check if the PR branch needs rebasing before addressing review comments.** Addressing comments on a stale branch wastes effort — files may have changed, conflicts may exist, and CI will run against outdated code.
@@ -257,7 +236,7 @@ gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES
 
 ### Track unique reviewers
 
-Build a list of unique reviewer usernames from both groups. Note which are bots vs humans (see "Known AI/Bot Reviewers" table above).
+Build a list of unique reviewer usernames from both groups (only reviewers who actually left feedback on THIS PR). This list drives Step 11 — only these reviewers will be contacted for re-review.
 
 ### If no feedback found:
 
@@ -437,73 +416,39 @@ gh api graphql -f query='
 
 ---
 
-## Step 11: Request Re-review
+## Step 11: Request Re-review From Actual Reviewers Only
 
-After all fixes are committed and CI passes, request re-review from reviewers.
+**CRITICAL: Only request re-review from reviewers who actually left feedback on this PR (collected in Step 4). Do NOT request review from bots or services that never reviewed this PR. If a bot like codex, coderabbitai, or greptileai is not in the reviewer list from Step 4, do NOT contact them.**
 
-### 11a. Check for opt-out flag
+### 11a. Check the reviewer list from Step 4
 
-Before requesting bot re-reviews, check if the project has opted out. Use the repo root to find the project's CLAUDE.md (handles running from subdirectories):
+Look at the unique reviewers you collected in Step 4. If the list is empty (no reviewers left feedback), skip this entire step.
+
+### 11b. Check for bot re-review opt-out
 
 ```bash
-# Find repo root and check for DISABLE_BOT_REREVIEW=true
 REPO_ROOT=$(git rev-parse --show-toplevel)
 if [ -f "$REPO_ROOT/CLAUDE.md" ] && grep -q "DISABLE_BOT_REREVIEW=true" "$REPO_ROOT/CLAUDE.md"; then
   echo "Bot re-review disabled by project settings"
 fi
 ```
 
-**If `DISABLE_BOT_REREVIEW=true` is found:** Skip step 11c (bot re-reviews) entirely. Only request re-review from human reviewers.
+**If `DISABLE_BOT_REREVIEW=true` is found:** Skip bot re-reviews. Only request re-review from human reviewers.
 
-**If not found or file doesn't exist:** Proceed with bot re-reviews.
+### 11c. Request re-review from bot reviewers who left feedback
 
-### 11b. Identify reviewer types
+**Only do this for bots that appear in your Step 4 reviewer list.** If none of these bots reviewed the PR, skip this sub-step entirely.
 
-From the reviewers collected in Step 4, categorize them:
+Known bot re-review triggers (use ONLY if the bot is in your reviewer list):
+- `codex` or `chatgpt-codex-connector` → `gh pr comment "$PR_NUM" --body "@codex review"`
+- `coderabbitai` → `gh pr comment "$PR_NUM" --body "@coderabbitai review"`
+- `greptileai` → `gh pr comment "$PR_NUM" --body "@greptileai review"`
 
-**Bot reviewers** (trigger via PR comment):
-- `codex`, `chatgpt-codex-connector` → `@codex review`
-- `coderabbitai` → `@coderabbitai review`
-- `greptileai` → `@greptileai review`
+Ignore CI/dependency bots (`github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`) — they don't do re-reviews.
 
-**Human reviewers** (trigger via GitHub API):
-- All other reviewers → `gh pr edit --add-reviewer`
+### 11d. Request re-review from human reviewers who left feedback
 
-**Skip these bots** (no re-review needed):
-- `github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`
-
-### 11c. Request re-review from bot reviewers
-
-**Skip this step if `DISABLE_BOT_REREVIEW=true` was found in step 11a.**
-
-**Before requesting bot re-reviews, inform the user:**
-
-> 🤖 **Auto-requesting re-review from bot reviewers:** [list bots]
->
-> This is automatic. To disable, add to your project's CLAUDE.md:
-> ```
-> ## Bot Review Settings
-> DISABLE_BOT_REREVIEW=true
-> ```
-
-For each bot reviewer that left feedback, post a single comment requesting re-review:
-
-```bash
-# Example for Codex:
-gh pr comment "$PR_NUM" --body "@codex review"
-
-# Example for CodeRabbit:
-gh pr comment "$PR_NUM" --body "@coderabbitai review"
-
-# Example for Greptile:
-gh pr comment "$PR_NUM" --body "@greptileai review"
-```
-
-**Important:** Only post ONE comment per bot, even if the bot left multiple comments.
-
-### 11d. Request re-review from human reviewers
-
-For human reviewers who left CHANGES_REQUESTED:
+For human reviewers from your Step 4 list who left CHANGES_REQUESTED:
 
 ```bash
 gh pr edit "$PR_NUM" --add-reviewer "REVIEWER_USERNAME"
@@ -511,8 +456,7 @@ gh pr edit "$PR_NUM" --add-reviewer "REVIEWER_USERNAME"
 
 ### 11e. Inform the user
 
-After requesting re-reviews:
-> "Requested re-review from: [list of reviewers]. Bot reviewers will automatically review the updated code. Human reviewers will need to manually approve."
+After requesting re-reviews, list who was contacted and why. If no re-reviews were requested, say so.
 
 ---
 
@@ -561,11 +505,12 @@ gh pr checks "$PR_NUM"
 6. CI checks pass (`gh pr checks` shows all green)
 7. Replies have been posted to each comment
 8. All resolvable review threads (Group A) are resolved via GraphQL
-9. Re-review requested from all reviewers:
-   - Bot reviewers: via `@bot review` comment (one per bot)
-   - Human reviewers: via `gh pr edit --add-reviewer`
+9. Re-review requested from reviewers who actually left feedback on this PR (from Step 4 list only):
+   - Bot reviewers that left feedback: via `@bot review` comment (one per bot)
+   - Human reviewers that left feedback: via `gh pr edit --add-reviewer`
+   - If no bots reviewed, no bot re-review comments were posted
 
-**Note:** Pending reviews (CHANGES_REQUESTED) cannot be auto-resolved. Bot reviewers will automatically re-review. Human reviewers will need to manually approve.
+**Note:** Pending reviews (CHANGES_REQUESTED) cannot be auto-resolved. Do NOT request review from bots or services that never reviewed this PR.
 
 **When ALL criteria are met, output exactly:**
 

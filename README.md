@@ -110,7 +110,7 @@ The `/start-issue` command handles the full issue-to-PR workflow:
 The `/address-review` command automates PR review handling:
 1. Addresses feedback from human and bot reviewers
 2. Auto-resolves review threads after fixes
-3. Requests re-review from bot reviewers (Codex, CodeRabbit, Greptile)
+3. Requests re-review only from reviewers who actually left feedback on the PR (including bots such as Codex, CodeRabbit, and Greptile when applicable)
 
 ### go-dev
 
