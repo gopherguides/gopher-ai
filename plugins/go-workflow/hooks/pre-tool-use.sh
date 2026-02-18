@@ -112,7 +112,8 @@ check_worktree_path() {
       cmd_text=$(echo "$TOOL_INPUT" | jq -r '.command // .cmd // empty' 2>/dev/null)
       [ -z "$cmd_text" ] && return 0
       # Whitelist: management commands that don't need worktree prefix
-      if echo "$cmd_text" | grep -qE "worktree-state\.sh|git worktree|gh (pr|issue)" 2>/dev/null; then
+      # Covers worktree management, git branch ops, gh CLI, and simple echo/basename
+      if echo "$cmd_text" | grep -qE "worktree-state\.sh|git worktree|git branch|git fetch|git remote|git status|git rev-parse|gh (pr|issue|api)|^echo |^basename " 2>/dev/null; then
         return 0
       fi
       # Block commands that explicitly reference the original repo
