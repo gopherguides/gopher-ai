@@ -125,9 +125,10 @@ check_worktree_path() {
           exit 0
         fi
       fi
-      # Block commands that omit any path — they run in the original repo CWD
-      if ! echo "$cmd_text" | grep -qF "$worktree_path" 2>/dev/null; then
-        printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command does not reference the worktree (%s). Without an explicit cd, it runs in the original repo. Prefix with: cd %s && "}\n' "$worktree_path" "$worktree_path"
+      # Require commands to cd into the worktree, not just mention the path
+      # This prevents tricks like: echo "/path/to/worktree" && go test ./...
+      if ! echo "$cmd_text" | grep -qE "^cd [\"']?${worktree_path}[\"']?" 2>/dev/null; then
+        printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command must start with cd into the worktree. Prefix with: cd %s && "}\n' "$worktree_path"
         exit 0
       fi
       return 0
@@ -144,10 +145,10 @@ check_worktree_path() {
     /*)
       # Absolute path — check if it targets the original repo
       case "$target_path" in
-        "${worktree_path}"*)
+        "${worktree_path}"|"${worktree_path}"/*)
           return 0
           ;;
-        "${original_path}"*)
+        "${original_path}"|"${original_path}"/*)
           printf '{"decision":"block","reason":"WRONG DIRECTORY: You are targeting the original repo (%s) instead of the worktree (%s). Use path: %s%s"}\n' \
             "$original_path" "$worktree_path" "$worktree_path" "${target_path#"$original_path"}"
           exit 0
