@@ -20,14 +20,13 @@ save_state() {
   created=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
   mkdir -p "$(dirname "$STATE_FILE")"
-  cat > "$STATE_FILE" <<EOF
-{
-  "worktree_path": "${worktree_path}",
-  "original_path": "${original_path}",
-  "issue": "${issue_num}",
-  "created": "${created}"
-}
-EOF
+  jq -n \
+    --arg wt "$worktree_path" \
+    --arg orig "$original_path" \
+    --arg issue "$issue_num" \
+    --arg ts "$created" \
+    '{worktree_path: $wt, original_path: $orig, issue: $issue, created: $ts}' \
+    > "$STATE_FILE"
   echo "Worktree state saved: ${worktree_path}"
 }
 
