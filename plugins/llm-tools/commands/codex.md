@@ -53,50 +53,17 @@ Otherwise, continue with **Exec Flow**.
 
 Use this flow when the prompt contains "review".
 
-### R1. Select What to Review
+### R1. Silent Auto-Detection (no user interaction)
 
-Ask the user what to review:
-
-| Option | Description |
-|--------|-------------|
-| Uncommitted changes | Review staged, unstaged, and untracked changes |
-| Changes vs branch | Review changes against a base branch |
-| Specific commit | Review changes introduced by a commit |
-
-Default: `Changes vs branch`
-
-**If "Changes vs branch":** Ask for the base branch name. Default: `main`
-
-**If "Specific commit":** Ask for the commit SHA.
-
-### R1.5. PR/Issue Context Detection
-
-Before selecting a model, detect if PR/issue context is available for the current branch.
-
-#### Step 1: Auto-detect PR
-
-Run silently to check for a PR on the current branch:
+Before asking any questions, silently detect PR context for the current branch:
 
 ```bash
 PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
 ```
 
-#### Step 2: Handle PR Detection Result
-
 **If PR found (`$PR_JSON` is not empty):**
 
-Extract and display PR summary:
-
-```
-Found PR for current branch:
-
-**PR #<number>**: "<title>"
-- State: <state>
-- Comments: <count>
-- Reviews: <count>
-```
-
-Check for linked issues using `closingIssuesReferences`. For each linked issue, fetch details:
+Fetch linked issues and inline review comments silently:
 
 ```bash
 REPO=`gh repo view --json nameWithOwner --jq '.nameWithOwner'`
@@ -114,88 +81,98 @@ done
 gh api "repos/$REPO/pulls/$PR_NUM/comments" --jq '.[] | {path, line, body, user: .user.login}' 2>/dev/null
 ```
 
-Display linked issues if found:
+Display a brief summary of what was found:
+
+```
+Found PR for current branch:
+
+**PR #<number>**: "<title>"
+- State: <state>
+- Comments: <count>
+- Reviews: <count>
+```
+
+If linked issues were found, also display:
 
 ```
 **Linked Issues:**
 - Issue #<num>: "<title>" (<labels>)
 ```
 
-**If PR NOT found:**
+Store the PR data and linked issue data for later use. Record `PR_DETECTED=true`.
 
-Ask the user:
+**If PR NOT found:** Record `PR_DETECTED=false`. Continue to R2.
+
+### R2. Batched Questions (single AskUserQuestion call)
+
+Ask all review configuration questions in a **single `AskUserQuestion` call** with up to 4 questions:
+
+**Question 1 — "What do you want to review?"**
 
 | Option | Description |
 |--------|-------------|
-| Skip context | Review code changes only (default) |
+| Changes vs branch (Recommended) | Review changes against a base branch |
+| Uncommitted changes | Review staged, unstaged, and untracked changes |
+| Specific commit | Review changes introduced by a commit |
+
+**Question 2 — "Include PR/issue context?"**
+
+**If `PR_DETECTED=true`:**
+
+| Option | Description |
+|--------|-------------|
+| Full context (Recommended) | Include PR/issue descriptions, all comments, and review feedback |
+| Summary only | Include titles and key requirements only (~200 words) |
+| No context | Review code changes only |
+
+**If `PR_DETECTED=false`:**
+
+| Option | Description |
+|--------|-------------|
+| Skip (Recommended) | Review code changes only |
 | Provide PR number | Manually enter a PR number to use as context |
 | Provide issue number | Manually enter an issue number to use as context |
 
-Default: `Skip context`
-
-**If "Provide PR number":**
-- Ask: "Enter the PR number:"
-- Validate input is numeric: `echo "$NUM" | grep -qE '^[0-9]+$'`
-- If invalid, show error and ask again
-- Fetch PR: `gh pr view "$NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews`
-- Continue to fetch linked issues as above
-
-**If "Provide issue number":**
-- Ask: "Enter the issue number:"
-- Validate input is numeric
-- Fetch issue: `gh issue view "$NUM" --json number,title,body,labels,comments`
-- Skip PR-specific data (no reviews to fetch)
-
-#### Step 3: Context Inclusion Prompt
-
-**If PR or issue was found/provided:**
-
-Ask the user:
+**Question 3 — "Which model?"**
 
 | Option | Description |
 |--------|-------------|
-| Full context | Include PR/issue descriptions, all comments, and review feedback (recommended) |
-| Summary only | Include titles and key requirements only (~200 words) |
-| No context | Proceed with code changes only |
-
-Default: `Full context`
-
-Store the selection for use in R3.
-
-**If neither PR nor issue found and user chose "Skip context":**
-
-Proceed directly to R2 with no context.
-
-### R2. Select Model
-
-Ask the user which model to use:
-
-| Model | Best For |
-|-------|----------|
-| gpt-5.3-codex | Newest frontier model, best overall |
+| gpt-5.3-codex (Recommended) | Newest frontier model, best overall |
 | gpt-5.2-codex | Previous generation frontier model |
 | gpt-5.1-codex-max | Complex, long-running tasks (can run 24+ hours) |
 | gpt-5.1-codex-mini | Simple tasks, cost-efficient |
 
-Default: `gpt-5.3-codex`
-
-### R2.5. Select Review Depth
-
-**If PR/issue context is included**, ask the user:
+**Question 4 — "Review depth?"**
 
 | Option | Description |
 |--------|-------------|
-| Single pass | One review pass (default, fastest) |
-| Multi-pass (3) | Three passes, de-duplicated (recommended for thorough review) |
+| Single pass (Recommended) | One review pass (fastest) |
+| Multi-pass (3) | Three passes, de-duplicated (most thorough) |
 | Multi-pass (custom) | Specify number of passes |
 
-Default: `Single pass`
+Note: Multi-pass is most useful when PR/issue context is included.
 
-**If "Multi-pass (custom)":** Ask: "How many passes? (2-5)" — validate numeric, clamp to range.
+### R2.5. Conditional Follow-Up (only if needed)
 
-Store the pass count for use in R3.
+After processing answers from R2, check if any selections require additional input. If so, ask all follow-ups in a **single `AskUserQuestion` call** (up to 4 questions):
 
-**If no PR/issue context is selected**, skip this prompt entirely (single pass is implicit).
+- **"Changes vs branch"** was selected → ask: "What is the base branch?" (default: `main`)
+- **"Specific commit"** was selected → ask: "Enter the commit SHA"
+- **"Provide PR number"** was selected → ask: "Enter the PR number"
+  - Validate input is numeric: `echo "$NUM" | grep -qE '^[0-9]+$'`
+  - If invalid, show error and ask again
+  - Fetch PR: `gh pr view "$NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews`
+  - Fetch linked issues and inline review comments as in R1
+- **"Provide issue number"** was selected → ask: "Enter the issue number"
+  - Validate input is numeric
+  - Fetch issue: `gh issue view "$NUM" --json number,title,body,labels,comments`
+  - Skip PR-specific data (no reviews to fetch)
+- **"Multi-pass (custom)"** was selected → ask: "How many passes? (2-5)"
+  - Validate numeric, clamp to range
+
+If no follow-ups are needed (e.g., user chose "Uncommitted changes" + "Full context" or "Skip" + "Single pass"), proceed directly to R3.
+
+Store all selections for use in R3.
 
 ### R3. Run Codex Review
 
