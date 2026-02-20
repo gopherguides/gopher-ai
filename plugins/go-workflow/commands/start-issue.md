@@ -64,8 +64,8 @@ Initialize persistent loop to ensure work continues until complete:
 
 ```bash
 IN_WORKTREE=false
-GIT_DIR_ABS="$(cd "$(git rev-parse --git-dir 2>/dev/null)" && pwd)"
-GIT_COMMON_ABS="$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd)"
+GIT_DIR_ABS=`cd \`git rev-parse --git-dir 2>/dev/null\` && pwd`
+GIT_COMMON_ABS=`cd \`git rev-parse --git-common-dir 2>/dev/null\` && pwd`
 if [ -n "$GIT_DIR_ABS" ] && [ -n "$GIT_COMMON_ABS" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
   IN_WORKTREE=true
 fi
