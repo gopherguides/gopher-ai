@@ -65,13 +65,20 @@ Initialize persistent loop to ensure work continues until complete:
 ```bash
 IN_WORKTREE=false
 TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"
-COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null | sed 's|/\.git$||')"
+GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null)"
+# Normalize to absolute path and strip trailing /.git
+if [ -n "$GIT_COMMON" ]; then
+  case "$GIT_COMMON" in
+    /*) COMMON_DIR="${GIT_COMMON%/.git}" ;;
+    *)  COMMON_DIR="$(cd "$TOPLEVEL" && cd "$GIT_COMMON/.." && pwd)" ;;
+  esac
+fi
 if [ -n "$TOPLEVEL" ] && [ -n "$COMMON_DIR" ] && [ "$TOPLEVEL" != "$COMMON_DIR" ]; then
   IN_WORKTREE=true
 fi
 ```
 
-This compares `--show-toplevel` (current checkout root) against `--git-common-dir` (main repo's `.git` parent). They differ only in a true worktree, not in submodules or `--separate-git-dir` setups.
+This compares `--show-toplevel` (current checkout root) against the normalized `--git-common-dir` parent. In a main repo both resolve to the same absolute path; they differ only in a true worktree.
 
 **If `IN_WORKTREE=true`:** Skip the worktree question entirely. You are already in an isolated worktree. Proceed directly to "Plan Mode Check" (the "No, work in current directory" path). Display:
 
