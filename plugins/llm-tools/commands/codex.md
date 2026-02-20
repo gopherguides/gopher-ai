@@ -63,39 +63,31 @@ Before asking any questions, silently detect PR context using multiple strategie
 PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
 ```
 
-**Strategy 2 — Match commit SHAs against open PRs (handles worktrees, no naming assumptions):**
+**Strategy 2 — Match HEAD commit against open PRs via GitHub search (handles worktrees):**
+
+Uses GitHub's native commit-to-PR mapping. Only checks HEAD (not ancestors) to avoid stacked-branch misdetection. No branch name assumptions — works from worktrees, detached HEAD, or any checkout that shares a commit with a PR.
 
 ```bash
 if [ -z "$PR_JSON" ]; then
-  CURRENT_BRANCH=`git rev-parse --abbrev-ref HEAD 2>/dev/null`
-  ALL_PRS=`gh pr list --state open --json number,headRefOid,headRefName 2>/dev/null`
-
-  for SHA in `git log --format=%H -10 2>/dev/null`; do
-    # Only match if current branch matches the PR's head branch (prevents stacked-branch misdetection)
-    PR_NUM=`echo "$ALL_PRS" | jq -r ".[] | select(.headRefOid == \"$SHA\" and .headRefName == \"$CURRENT_BRANCH\") | .number" 2>/dev/null | head -1`
-    if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-      PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
-      break
-    fi
-  done
+  HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
+  PR_NUM=`gh pr list --search "$HEAD_SHA" --state open --json number --jq '.[0].number' 2>/dev/null`
+  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+  fi
 fi
 ```
 
 **Strategy 3 — Check merged/closed PRs too (covers recently merged work):**
 
+Same HEAD-only search but includes all PR states. Safe on `main` because GitHub merge strategies (merge commit, squash, rebase) all produce new SHAs distinct from the PR's head commit.
+
 ```bash
 if [ -z "$PR_JSON" ]; then
-  CURRENT_BRANCH=`git rev-parse --abbrev-ref HEAD 2>/dev/null`
-  ALL_PRS=`gh pr list --state all --limit 30 --json number,headRefOid,headRefName 2>/dev/null`
-
-  for SHA in `git log --format=%H -5 2>/dev/null`; do
-    # Only match if current branch matches the PR's head branch (prevents false matches on main)
-    PR_NUM=`echo "$ALL_PRS" | jq -r ".[] | select(.headRefOid == \"$SHA\" and .headRefName == \"$CURRENT_BRANCH\") | .number" 2>/dev/null | head -1`
-    if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-      PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
-      break
-    fi
-  done
+  HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
+  PR_NUM=`gh pr list --search "$HEAD_SHA" --state all --limit 5 --json number --jq '.[0].number' 2>/dev/null`
+  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+  fi
 fi
 ```
 
