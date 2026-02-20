@@ -83,10 +83,12 @@ fi
 
 ```bash
 if [ -z "$PR_JSON" ]; then
-  ALL_PRS=`gh pr list --state all --limit 30 --json number,headRefOid 2>/dev/null`
+  CURRENT_BRANCH=`git rev-parse --abbrev-ref HEAD 2>/dev/null`
+  ALL_PRS=`gh pr list --state all --limit 30 --json number,headRefOid,headRefName 2>/dev/null`
 
   for SHA in `git log --format=%H -5 2>/dev/null`; do
-    PR_NUM=`echo "$ALL_PRS" | jq -r ".[] | select(.headRefOid == \"$SHA\") | .number" 2>/dev/null | head -1`
+    # Only match if current branch matches the PR's head branch (prevents false matches on main)
+    PR_NUM=`echo "$ALL_PRS" | jq -r ".[] | select(.headRefOid == \"$SHA\" and .headRefName == \"$CURRENT_BRANCH\") | .number" 2>/dev/null | head -1`
     if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
       PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
       break
