@@ -58,9 +58,28 @@ Initialize persistent loop to ensure work continues until complete:
 
 ---
 
-## **HARD STOP** - Worktree Decision Required (BEFORE Plan Mode)
+## Worktree Detection & Decision (BEFORE Plan Mode)
 
-**You MUST use AskUserQuestion NOW before doing anything else — including EnterPlanMode.**
+**First, check if already running inside a git worktree:**
+
+```bash
+IN_WORKTREE=false
+GIT_DIR_ABS=`cd \`git rev-parse --git-dir 2>/dev/null\` && pwd`
+GIT_COMMON_ABS=`cd \`git rev-parse --git-common-dir 2>/dev/null\` && pwd`
+if [ -n "$GIT_DIR_ABS" ] && [ -n "$GIT_COMMON_ABS" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
+  IN_WORKTREE=true
+fi
+```
+
+This resolves both `--git-dir` and `--git-common-dir` to absolute paths via `cd ... && pwd`, then compares them. In the main repo (even from a subdirectory) both resolve to the same absolute `.git` path. In a linked worktree, `--git-dir` resolves to `.git/worktrees/<name>` while `--git-common-dir` resolves to `.git`.
+
+**If `IN_WORKTREE=true`:** Skip the worktree question entirely. You are already in an isolated worktree. Proceed directly to "Plan Mode Check" (the "No, work in current directory" path). Display:
+
+```
+Already running in a worktree — skipping worktree creation.
+```
+
+**If `IN_WORKTREE=false`:** You MUST use AskUserQuestion NOW before doing anything else — including EnterPlanMode.
 
 Do not:
 - Call EnterPlanMode yet
