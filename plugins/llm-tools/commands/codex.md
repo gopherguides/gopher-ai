@@ -67,10 +67,12 @@ PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences,comme
 
 ```bash
 if [ -z "$PR_JSON" ]; then
-  ALL_PRS=`gh pr list --state open --json number,headRefOid 2>/dev/null`
+  CURRENT_BRANCH=`git rev-parse --abbrev-ref HEAD 2>/dev/null`
+  ALL_PRS=`gh pr list --state open --json number,headRefOid,headRefName 2>/dev/null`
 
   for SHA in `git log --format=%H -10 2>/dev/null`; do
-    PR_NUM=`echo "$ALL_PRS" | jq -r ".[] | select(.headRefOid == \"$SHA\") | .number" 2>/dev/null | head -1`
+    # Only match if current branch matches the PR's head branch (prevents stacked-branch misdetection)
+    PR_NUM=`echo "$ALL_PRS" | jq -r ".[] | select(.headRefOid == \"$SHA\" and .headRefName == \"$CURRENT_BRANCH\") | .number" 2>/dev/null | head -1`
     if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
       PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
       break
