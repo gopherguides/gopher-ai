@@ -58,9 +58,24 @@ Initialize persistent loop to ensure work continues until complete:
 
 ---
 
-## **HARD STOP** - Worktree Decision Required (BEFORE Plan Mode)
+## Worktree Detection & Decision (BEFORE Plan Mode)
 
-**You MUST use AskUserQuestion NOW before doing anything else — including EnterPlanMode.**
+**First, check if already running inside a git worktree:**
+
+```bash
+IN_WORKTREE=false
+if [ -f "$(git rev-parse --show-toplevel 2>/dev/null)/.git" ]; then
+  IN_WORKTREE=true
+fi
+```
+
+**If `IN_WORKTREE=true`:** Skip the worktree question entirely. You are already in an isolated worktree. Proceed directly to "Plan Mode Check" (the "No, work in current directory" path). Display:
+
+```
+Already running in a worktree — skipping worktree creation.
+```
+
+**If `IN_WORKTREE=false`:** You MUST use AskUserQuestion NOW before doing anything else — including EnterPlanMode.
 
 Do not:
 - Call EnterPlanMode yet
