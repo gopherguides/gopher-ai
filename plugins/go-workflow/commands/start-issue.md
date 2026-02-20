@@ -64,14 +64,14 @@ Initialize persistent loop to ensure work continues until complete:
 
 ```bash
 IN_WORKTREE=false
-GIT_DIR="$(git rev-parse --git-dir 2>/dev/null)"
-GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null)"
-if [ -n "$GIT_DIR" ] && [ -n "$GIT_COMMON" ] && [ "$GIT_DIR" != "$GIT_COMMON" ]; then
+GIT_DIR_ABS="$(cd "$(git rev-parse --git-dir 2>/dev/null)" && pwd)"
+GIT_COMMON_ABS="$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd)"
+if [ -n "$GIT_DIR_ABS" ] && [ -n "$GIT_COMMON_ABS" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
   IN_WORKTREE=true
 fi
 ```
 
-This compares `--git-dir` against `--git-common-dir`. In the main repo both return `.git`; in a linked worktree `--git-dir` points to `.git/worktrees/<name>` while `--git-common-dir` stays `.git`. No path normalization needed since both use the same reference frame.
+This resolves both `--git-dir` and `--git-common-dir` to absolute paths via `cd ... && pwd`, then compares them. In the main repo (even from a subdirectory) both resolve to the same absolute `.git` path. In a linked worktree, `--git-dir` resolves to `.git/worktrees/<name>` while `--git-common-dir` resolves to `.git`.
 
 **If `IN_WORKTREE=true`:** Skip the worktree question entirely. You are already in an isolated worktree. Proceed directly to "Plan Mode Check" (the "No, work in current directory" path). Display:
 
