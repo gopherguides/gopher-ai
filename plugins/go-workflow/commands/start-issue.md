@@ -64,21 +64,14 @@ Initialize persistent loop to ensure work continues until complete:
 
 ```bash
 IN_WORKTREE=false
-TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"
+GIT_DIR="$(git rev-parse --git-dir 2>/dev/null)"
 GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null)"
-# Normalize to absolute path and strip trailing /.git
-if [ -n "$GIT_COMMON" ]; then
-  case "$GIT_COMMON" in
-    /*) COMMON_DIR="${GIT_COMMON%/.git}" ;;
-    *)  COMMON_DIR="$(cd "$TOPLEVEL" && cd "$GIT_COMMON/.." && pwd)" ;;
-  esac
-fi
-if [ -n "$TOPLEVEL" ] && [ -n "$COMMON_DIR" ] && [ "$TOPLEVEL" != "$COMMON_DIR" ]; then
+if [ -n "$GIT_DIR" ] && [ -n "$GIT_COMMON" ] && [ "$GIT_DIR" != "$GIT_COMMON" ]; then
   IN_WORKTREE=true
 fi
 ```
 
-This compares `--show-toplevel` (current checkout root) against the normalized `--git-common-dir` parent. In a main repo both resolve to the same absolute path; they differ only in a true worktree.
+This compares `--git-dir` against `--git-common-dir`. In the main repo both return `.git`; in a linked worktree `--git-dir` points to `.git/worktrees/<name>` while `--git-common-dir` stays `.git`. No path normalization needed since both use the same reference frame.
 
 **If `IN_WORKTREE=true`:** Skip the worktree question entirely. You are already in an isolated worktree. Proceed directly to "Plan Mode Check" (the "No, work in current directory" path). Display:
 
