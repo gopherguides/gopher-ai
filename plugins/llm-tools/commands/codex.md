@@ -55,10 +55,40 @@ Use this flow when the prompt contains "review".
 
 ### R1. Silent Auto-Detection (no user interaction)
 
-Before asking any questions, silently detect PR context for the current branch:
+Before asking any questions, silently detect PR context using multiple strategies. Each strategy is tried only if the previous one returned empty. This handles git worktrees where the branch name may not match any PR.
+
+**Strategy 1 — Current branch (works when branch name matches a PR):**
 
 ```bash
 PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+```
+
+**Strategy 2 — Match HEAD commit against open PRs via GitHub search (handles worktrees):**
+
+Uses GitHub's native commit-to-PR mapping. Only checks HEAD (not ancestors) to avoid stacked-branch misdetection. No branch name assumptions — works from worktrees, detached HEAD, or any checkout that shares a commit with a PR.
+
+```bash
+if [ -z "$PR_JSON" ]; then
+  HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
+  PR_NUM=`gh pr list --search "$HEAD_SHA" --state open --json number --jq '.[0].number' 2>/dev/null`
+  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+  fi
+fi
+```
+
+**Strategy 3 — Check merged/closed PRs too (covers recently merged work):**
+
+Same HEAD-only search but includes all PR states. Safe on `main` because GitHub merge strategies (merge commit, squash, rebase) all produce new SHAs distinct from the PR's head commit.
+
+```bash
+if [ -z "$PR_JSON" ]; then
+  HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
+  PR_NUM=`gh pr list --search "$HEAD_SHA" --state all --limit 5 --json number --jq '.[0].number' 2>/dev/null`
+  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+  fi
+fi
 ```
 
 **If PR found (`$PR_JSON` is not empty):**
