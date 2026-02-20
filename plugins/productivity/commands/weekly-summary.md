@@ -7,9 +7,9 @@ allowed-tools: ["Bash(git:*)", "Bash(date:*)", "Bash(find:*)", "Read", "Glob", "
 
 ## Context
 
-- Current git user: !$(git config user.name 2>/dev/null || echo "unknown")
-- This week's commits: !$(git log --author="$(git config user.name 2>/dev/null)" --since="last monday" --format="%h %s" --all 2>/dev/null | head -15 || echo "No commits found")
-- Week start: !$(date -v-monday +%Y-%m-%d 2>/dev/null || date -d "last monday" +%Y-%m-%d 2>/dev/null || echo "Monday")
+- Current git user: !`git config user.name 2>/dev/null || echo "unknown"`
+- This week's commits: !`AUTHOR=\`git config user.name 2>/dev/null\`; git log --author="$AUTHOR" --since="last monday" --format="%h %s" --all 2>/dev/null | head -15 || echo "No commits found"`
+- Week start: !`date -v-monday +%Y-%m-%d 2>/dev/null || date -d "last monday" +%Y-%m-%d 2>/dev/null || echo "Monday"`
 
 **If `$ARGUMENTS` is empty or not provided:**
 
