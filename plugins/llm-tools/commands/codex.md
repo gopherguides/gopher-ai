@@ -55,10 +55,44 @@ Use this flow when the prompt contains "review".
 
 ### R1. Silent Auto-Detection (no user interaction)
 
-Before asking any questions, silently detect PR context for the current branch:
+Before asking any questions, silently detect PR context using multiple strategies. Each strategy is tried only if the previous one returned empty. This handles git worktrees where the branch name may not match any PR.
+
+**Strategy 1 — Current branch (works when branch name matches a PR):**
 
 ```bash
 PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+```
+
+**Strategy 2 — Match commit SHAs against open PRs (handles worktrees, no naming assumptions):**
+
+```bash
+if [ -z "$PR_JSON" ]; then
+  ALL_PRS=`gh pr list --state open --json number,headRefOid 2>/dev/null`
+
+  for SHA in `git log --format=%H -10 2>/dev/null`; do
+    PR_NUM=`echo "$ALL_PRS" | jq -r ".[] | select(.headRefOid == \"$SHA\") | .number" 2>/dev/null | head -1`
+    if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+      PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+      break
+    fi
+  done
+fi
+```
+
+**Strategy 3 — Check merged/closed PRs too (covers recently merged work):**
+
+```bash
+if [ -z "$PR_JSON" ]; then
+  ALL_PRS=`gh pr list --state all --limit 30 --json number,headRefOid 2>/dev/null`
+
+  for SHA in `git log --format=%H -5 2>/dev/null`; do
+    PR_NUM=`echo "$ALL_PRS" | jq -r ".[] | select(.headRefOid == \"$SHA\") | .number" 2>/dev/null | head -1`
+    if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+      PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+      break
+    fi
+  done
+fi
 ```
 
 **If PR found (`$PR_JSON` is not empty):**
