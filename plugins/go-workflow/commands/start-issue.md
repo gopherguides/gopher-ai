@@ -64,10 +64,14 @@ Initialize persistent loop to ensure work continues until complete:
 
 ```bash
 IN_WORKTREE=false
-if [ -f "$(git rev-parse --show-toplevel 2>/dev/null)/.git" ]; then
+TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"
+COMMON_DIR="$(git rev-parse --git-common-dir 2>/dev/null | sed 's|/\.git$||')"
+if [ -n "$TOPLEVEL" ] && [ -n "$COMMON_DIR" ] && [ "$TOPLEVEL" != "$COMMON_DIR" ]; then
   IN_WORKTREE=true
 fi
 ```
+
+This compares `--show-toplevel` (current checkout root) against `--git-common-dir` (main repo's `.git` parent). They differ only in a true worktree, not in submodules or `--separate-git-dir` setups.
 
 **If `IN_WORKTREE=true`:** Skip the worktree question entirely. You are already in an isolated worktree. Proceed directly to "Plan Mode Check" (the "No, work in current directory" path). Display:
 
