@@ -31,10 +31,10 @@ Clear any active worktree state so the pre-tool-use hook doesn't block cleanup c
 
 ## Context
 
-- Repository name: !`basename $(git rev-parse --show-toplevel)`
-- Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
-- All worktrees: !`git worktree list`
-- Issue worktrees: !`git worktree list | grep -E "issue-[0-9]+" || echo "No issue worktrees found"`
+- Repository name: !$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")
+- Default branch: !$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
+- All worktrees: !$(git worktree list 2>&1 || echo "No worktrees found")
+- Issue worktrees: !$(git worktree list 2>/dev/null | grep -E "issue-[0-9]+" || echo "No issue worktrees found")
 
 ---
 

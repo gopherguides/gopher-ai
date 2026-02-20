@@ -7,10 +7,10 @@ allowed-tools: ["Bash(git:*)", "Bash(date:*)", "Read", "Glob", "Grep"]
 
 ## Context
 
-- Current git user: !`git config user.name`
-- Current branch: !`git branch --show-current`
-- Today: !`date +%A`
-- Recent commits (24h): !`git log --author="$(git config user.name)" --since="24 hours ago" --format="%h %s" --all 2>/dev/null | head -10`
+- Current git user: !$(git config user.name 2>/dev/null || echo "unknown")
+- Current branch: !$(git branch --show-current 2>&1 || echo "unknown")
+- Today: !$(date +%A 2>/dev/null || echo "unknown")
+- Recent commits (24h): !$(git log --author="$(git config user.name 2>/dev/null)" --since="24 hours ago" --format="%h %s" --all 2>/dev/null | head -10 || echo "No commits found")
 
 **If `$ARGUMENTS` is empty or not provided:**
 
