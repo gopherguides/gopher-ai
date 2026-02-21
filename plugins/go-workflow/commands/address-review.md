@@ -82,7 +82,9 @@ fi
 echo "Current phase: ${CURRENT_PHASE:-<none>}"
 ```
 
-**If `CURRENT_PHASE` is `watching`:** The fix cycle (Steps 1-11) already completed in a previous iteration. Skip directly to Step 12a to check bot approval status. Do NOT re-run the fix cycle.
+**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `true`:** The fix cycle (Steps 1-11) already completed in a previous iteration. Skip directly to Step 12a to check bot approval status. Do NOT re-run the fix cycle.
+
+**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `false`:** Clear the stale phase and continue with the full fix cycle. (`--no-watch` mode should not inherit watching phase from a prior run.)
 
 **Otherwise:** Continue normally with the full flow below.
 
@@ -737,10 +739,11 @@ If the Greptile check shows `pass` AND no new inline comments were posted since 
 **Copilot (`copilot-pull-request-review[bot]`):** Timestamp-based check — verify the bot posted a NEW review AFTER the last push:
 
 ```bash
-# Get last push timestamp in UTC (required for comparison with GitHub API timestamps)
-# GitHub returns timestamps in Z format, so we must normalize to UTC
-LAST_PUSH=$(TZ=UTC git log -1 --format=%cd --date=format:'%Y-%m-%dT%H:%M:%SZ' HEAD)
-echo "Last push timestamp: $LAST_PUSH"
+# Get the PR's head commit timestamp from GitHub API (reflects when GitHub
+# received the push, not local commit date which can be preserved from rebases)
+HEAD_SHA=$(gh pr view "$PR_NUM" --json headRefOid --jq '.headRefOid')
+LAST_PUSH=$(gh api "repos/$OWNER/$REPO/commits/$HEAD_SHA" --jq '.commit.committer.date')
+echo "Push baseline timestamp: $LAST_PUSH"
 
 COPILOT_STATUS=$(gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
