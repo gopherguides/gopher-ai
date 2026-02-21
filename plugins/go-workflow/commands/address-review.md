@@ -1,6 +1,6 @@
 ---
-argument-hint: "[PR-number]"
-description: "Address PR review comments, make fixes, reply, and resolve"
+argument-hint: "[PR-number] [--no-watch]"
+description: "Address PR review comments, fix, and loop until bots approve (one-shot). Use --no-watch to exit after one fix cycle."
 model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion"]
 ---
@@ -17,9 +17,9 @@ gh pr view --json number --jq '.number' 2>/dev/null
 
 If no PR found, display usage and ask:
 
-**Usage:** `/address-review [PR-number]`
+**Usage:** `/address-review [PR-number] [--no-watch]`
 
-**Example:** `/address-review 123` or just `/address-review` on a PR branch
+**Example:** `/address-review 123` or just `/address-review` on a PR branch. Add `--no-watch` to exit after one fix cycle instead of watching for bot re-reviews.
 
 Ask the user: "No PR found for current branch. What PR number would you like to address?"
 
@@ -27,22 +27,130 @@ Ask the user: "No PR found for current branch. What PR number would you like to 
 
 **If PR number is available (from `$ARGUMENTS` or auto-detected):**
 
+## Parse Arguments
+
+Extract `--no-watch` flag and PR number from `$ARGUMENTS`:
+
+```bash
+WATCH_MODE=true
+PR_ARG=""
+for arg in $ARGUMENTS; do
+  case "$arg" in
+    --no-watch) WATCH_MODE=false ;;
+    *) PR_ARG="$arg" ;;
+  esac
+done
+echo "WATCH_MODE=$WATCH_MODE PR_ARG=$PR_ARG"
+```
+
+Store the parsed values:
+- `WATCH_MODE`: `true` (default, one-shot) enables watch loop so AI fully completes the task; `false` exits after one fix cycle requiring manual re-runs
+- `PR_ARG`: The PR number (may be empty for auto-detect)
+
 ## Security Validation
 
-Validate input is numeric:
-!if [ -n "$ARGUMENTS" ] && ! echo "$ARGUMENTS" | grep -qE '^[0-9]+$'; then echo "Error: PR number must be numeric"; exit 1; fi
+Validate input is numeric (using `PR_ARG` which has `--no-watch` stripped):
+!if [ -n "$PR_ARG" ] && ! echo "$PR_ARG" | grep -qE '^[0-9]+$'; then echo "Error: PR number must be numeric"; exit 1; fi
 
 ## Loop Initialization
 
 Initialize persistent loop to ensure work continues until complete:
 !`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${ARGUMENTS:-auto}" "COMPLETE"`
 
+## Bot Registry
+
+Reference table of known review bots. Used ONLY for matching against bots actually found on the PR — never for proactively contacting bots.
+
+| Login | Approval Signal | Has Issues Signal | Re-review Trigger |
+|---|---|---|---|
+| `coderabbitai[bot]` | Formal `APPROVED` review state (requires `request_changes_workflow` in `.coderabbit.yaml`) | `CHANGES_REQUESTED` review with inline comments | `@coderabbitai full review` |
+| `chatgpt-codex-connector[bot]` (mention as `@codex`) | Issue comment: `"Codex Review: Didn't find any major issues."` + 👍 reaction on trigger comment | `COMMENTED` review with inline P1/P2 badge comments | `@codex review` |
+| `greptileai` | Greptile status check passes + no inline comments posted | Inline comments on specific file changes | `@greptileai` |
+| `copilot-pull-request-review[bot]` | `COMMENTED` review with no inline file comments ("did not comment on any files") | `COMMENTED` review with inline suggestions | Re-request review button in PR sidebar _(no `@` mention trigger)_ |
+| `claude[bot]` | `COMMENTED` review or issue comment: `"No issues found."` (or silent) | `COMMENTED` review with inline comments scored by confidence | `@claude` |
+
+**How each bot signals it's done (detection logic):**
+
+- **CodeRabbit**: Only bot that uses formal GitHub review states. Query latest review from `coderabbitai[bot]` — if `state == "APPROVED"` → done. This is the most reliable signal.
+- **Codex**: Look for an issue comment from `chatgpt-codex-connector[bot]` containing `"Didn't find any major issues"`. Also reacts with 👍 on the `@codex review` trigger comment. If the bot posted `COMMENTED` reviews with P1/P2 inline comments, it still has issues. Eyes emoji (👀) on trigger comment means processing started (not done yet).
+- **Greptile**: Uses a **status check** (not review states). Check `gh pr checks` for a Greptile check — if it passes and no new inline comments were posted, Greptile is satisfied.
+- **Copilot**: Always posts `COMMENTED` reviews (never `APPROVED` or `CHANGES_REQUESTED`). If its review body says it "did not comment on any files" or has no inline comments → no issues found. Cannot be re-triggered via comment — must use the re-request review button in the GitHub PR sidebar.
+- **Claude**: Posts `COMMENTED` reviews. If no inline comments above confidence threshold → "No issues found" or no review posted at all. Re-trigger via `@claude` mention.
+
+**Ignore list:** `github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`, `netlify[bot]`, `vercel[bot]` — these are CI/deploy bots, not reviewers.
+
 ## Context
 
-- PR details: !`PR_NUM="${ARGUMENTS:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"; gh pr view "$PR_NUM" --json title,state,body,headRefName,baseRefName 2>/dev/null || echo "PR not found"`
+- PR details: !`PR_NUM="${PR_ARG:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"; gh pr view "$PR_NUM" --json title,state,body,headRefName,baseRefName 2>/dev/null || echo "PR not found"`
 - Current branch: !`git branch --show-current 2>&1 || echo "unknown"`
 - Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
-- PR number: !`echo "${ARGUMENTS:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"`
+- PR number: !`echo "${PR_ARG:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"`
+
+## Mode Banner and Bot Discovery
+
+**Display mode banner based on `WATCH_MODE`:**
+
+If `WATCH_MODE` is `true` (default):
+```
+🔄 Watch mode enabled (default) — will loop until all review bots approve.
+   Tip: Use /address-review [PR] --no-watch to exit after one fix cycle.
+```
+
+If `WATCH_MODE` is `false`:
+```
+⏩ No-watch mode — will fix comments once and exit. You may need to re-run if bots leave new feedback.
+```
+
+**Discover review bots on this PR** (only when `WATCH_MODE` is `true`):
+
+Query the PR for all unique comment/review authors and match against the bot registry:
+
+```bash
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
+PR_NUM="${PR_ARG:-$(gh pr view --json number --jq '.number')}"
+
+BOT_AUTHORS=$(gh api graphql -f query='
+  query($owner: String!, $repo: String!, $pr: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviews(first: 100) {
+          nodes {
+            author { login }
+            state
+          }
+        }
+        reviewThreads(first: 100) {
+          nodes {
+            comments(first: 50) {
+              nodes {
+                author { login }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq -r '
+  [
+    .data.repository.pullRequest.reviews.nodes[].author.login,
+    .data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].author.login
+  ] | unique | .[]
+')
+
+echo "All unique authors on PR: $BOT_AUTHORS"
+```
+
+Match the returned authors against the bot registry table above. For each match, note:
+- The bot's login
+- Its approval detection tier (1 or 2)
+- Its re-review trigger command (if any)
+
+Display the discovered bots:
+- If bots found: `"Monitoring reviews from: codex, coderabbitai"` (list only matched bots)
+- If no bots found: `"No review bots detected on this PR. Running one fix cycle."`
+  - In this case, complete the full fix cycle including CI verification (Steps 1-11) but skip Step 12 (no bot re-review polling needed)
 
 ---
 
@@ -53,7 +161,7 @@ Initialize persistent loop to ensure work continues until complete:
 ### 1a. Get PR number and checkout
 
 ```bash
-PR_NUM="${ARGUMENTS:-$(gh pr view --json number --jq '.number')}"
+PR_NUM="${PR_ARG:-$(gh pr view --json number --jq '.number')}"
 echo "Working on PR #$PR_NUM"
 gh pr checkout "$PR_NUM"
 ```
@@ -388,13 +496,53 @@ gh api graphql -f query='
 
 ---
 
-## Step 10: Request Re-review From Actual Reviewers Only
+## Step 10: Request Re-review From Actual Reviewers Only (Data-Driven)
 
-**CRITICAL: Only request re-review from reviewers who actually left feedback on this PR (collected in Step 3). Do NOT request review from bots or services that never reviewed this PR. If a bot like codex, coderabbitai, or greptileai is not in the reviewer list from Step 3, do NOT contact them.**
+**CRITICAL: This step is entirely data-driven. You iterate the reviewer list from Step 3 and look up trigger commands in the Bot Registry. You NEVER iterate the Bot Registry to find bots to contact.**
 
-### 10a. Check the reviewer list from Step 3
+### 10a. Query actual reviewers from the PR
 
-Look at the unique reviewers you collected in Step 3. If the list is empty (no reviewers left feedback), skip this entire step.
+Fetch the current list of unique authors who left reviews or thread comments on this PR:
+
+```bash
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
+
+ACTUAL_REVIEWERS=$(gh api graphql -f query='
+  query($owner: String!, $repo: String!, $pr: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviews(first: 100) {
+          nodes {
+            author { login }
+            state
+          }
+        }
+        reviewThreads(first: 100) {
+          nodes {
+            comments(first: 50) {
+              nodes {
+                author { login }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq -r '
+  [
+    .data.repository.pullRequest.reviews.nodes[].author.login,
+    .data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].author.login
+  ] | unique | .[]
+')
+
+echo "Actual reviewers on PR: $ACTUAL_REVIEWERS"
+```
+
+Cross-reference this list with the Step 3 reviewer list. Only proceed with reviewers that appear in BOTH.
+
+If the reviewer list is empty (no reviewers left feedback), skip this entire step.
 
 ### 10b. Check for bot re-review opt-out
 
@@ -407,16 +555,20 @@ fi
 
 **If `DISABLE_BOT_REREVIEW=true` is found:** Skip bot re-reviews. Only request re-review from human reviewers.
 
-### 10c. Request re-review from bot reviewers who left feedback
+### 10c. Request re-review from bot reviewers (data-driven lookup)
 
-**Only do this for bots that appear in your Step 3 reviewer list.** If none of these bots reviewed the PR, skip this sub-step entirely.
+**For each reviewer in the actual reviewer list from 10a:**
 
-Known bot re-review triggers (use ONLY if the bot is in your reviewer list):
-- `codex` or `chatgpt-codex-connector` → `gh pr comment "$PR_NUM" --body "@codex review"`
-- `coderabbitai` → `gh pr comment "$PR_NUM" --body "@coderabbitai review"`
-- `greptileai` → `gh pr comment "$PR_NUM" --body "@greptileai review"`
+1. Check if the login matches any entry in the Bot Registry table (from the "Bot Registry" section above)
+2. If it matches AND has a re-review trigger command → post the trigger:
+   ```bash
+   gh pr comment "$PR_NUM" --body "<trigger command from registry>"
+   ```
+3. If it matches but has no trigger command (e.g., `copilot-pull-request-review[bot]`) → skip, log: "Skipping <login>: no re-trigger mechanism available"
+4. If it's on the ignore list (`github-actions[bot]`, `dependabot[bot]`, etc.) → skip silently
+5. If it doesn't match any registry entry and looks like a bot (contains `[bot]` or `bot` suffix) → skip, log: "Skipping unknown bot <login>: no trigger command known"
 
-Ignore CI/dependency bots (`github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`) — they don't do re-reviews.
+**Never iterate the Bot Registry to find bots. Always iterate actual reviewers and look up triggers.**
 
 ### 10d. Request re-review from human reviewers who left feedback
 
@@ -465,7 +617,135 @@ gh pr checks "$PR_NUM"
 
 ---
 
+## Step 12: Watch for Bot Re-review (default, skipped with --no-watch)
+
+**Skip this entire step if `WATCH_MODE` is `false` or no review bots were detected in the Bot Discovery step.**
+
+### 12a. Check if all bots have approved
+
+For each bot discovered in the Bot Discovery step, check approval using the bot-specific detection logic from the Bot Registry:
+
+**CodeRabbit (`coderabbitai[bot]`):** Query latest review state:
+
+```bash
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
+
+gh api graphql -f query='
+  query($owner: String!, $repo: String!, $pr: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviews(last: 100) {
+          nodes {
+            author { login }
+            state
+          }
+        }
+      }
+    }
+  }
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq -r '
+  [.data.repository.pullRequest.reviews.nodes[] | select(.author.login == "coderabbitai[bot]")] | last | .state
+'
+```
+
+If result is `APPROVED` → done. If `CHANGES_REQUESTED` → still has issues.
+
+**Codex (`chatgpt-codex-connector[bot]`):** Check for the "all clear" issue comment:
+
+```bash
+gh api "repos/$OWNER/$REPO/issues/$PR_NUM/comments" --jq '
+  [.[] | select(.user.login == "chatgpt-codex-connector[bot]")] | last | .body
+'
+```
+
+If the latest comment body contains `"Didn't find any major issues"` → done. If the bot posted `COMMENTED` reviews with P1/P2 inline comments after the last push → still has issues. Also check: if the `@codex review` trigger comment has a 👀 (eyes) reaction but no 👍 (thumbs up) yet, the bot is still processing.
+
+**Greptile (`greptileai`):** Check status check result:
+
+```bash
+gh pr checks "$PR_NUM" --json name,state | jq '.[] | select(.name | test("greptile"; "i"))'
+```
+
+If the Greptile check shows `pass` AND no new inline comments were posted since last push → done.
+
+**Copilot (`copilot-pull-request-review[bot]`):** Check latest review for inline comments:
+
+```bash
+gh api graphql -f query='
+  query($owner: String!, $repo: String!, $pr: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviewThreads(first: 100) {
+          nodes {
+            isResolved
+            comments(first: 1) {
+              nodes {
+                author { login }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.comments.nodes[0].author.login == "copilot-pull-request-review[bot]")] | length'
+```
+
+If unresolved thread count is 0 → done. Note: Copilot cannot be re-triggered via comment (see 12d).
+
+**Claude (`claude[bot]`):** Same thread check as Copilot but for `claude[bot]`. If no unresolved threads → done.
+
+**If ALL detected bots are done → output `<done>COMPLETE</done>` and stop.**
+
+### 12b. Wait for bot re-review (quiet period detection)
+
+If any bot hasn't approved yet:
+
+1. **Record baseline:** Get the current count of reviews + thread comments per pending bot.
+
+2. **Poll every 15 seconds:**
+   ```bash
+   sleep 15
+   ```
+   Then re-query review/comment counts via the same GraphQL queries.
+
+3. **Quiet period detection:**
+   - If counts changed since last poll → reset quiet timer, bot is still posting. Keep polling.
+   - If counts are stable for 2 consecutive polls (30 seconds of no new activity) → bot has finished posting. Proceed to 12c.
+
+4. **Timeout:** If 5 minutes pass with no new activity from any bot AND bots haven't approved:
+   - Use `AskUserQuestion` to ask: "Bots haven't responded after 5 minutes. Would you like to keep waiting, re-trigger bot reviews, or exit?"
+   - If "keep waiting" → reset timeout, continue polling
+   - If "re-trigger" → go to 12d
+   - If "exit" → output `<done>COMPLETE</done>`
+
+### 12c. New comments found — loop back to Step 2
+
+After the quiet period ends and new unresolved comments/threads exist:
+
+1. Re-fetch all review feedback (Step 2) but **only address NEW unresolved comments** from bots. Already-resolved threads stay resolved.
+2. Loop back through Steps 2-11 for the new feedback only.
+3. After completing the fix cycle, return to Step 12a to re-check approval status.
+
+### 12d. No new comments but bot hasn't approved — re-trigger
+
+If a bot's quiet period ended with no new comments but it still hasn't approved:
+
+1. Look up the bot's re-review trigger command from the Bot Registry.
+2. If a trigger exists → post it:
+   ```bash
+   gh pr comment "$PR_NUM" --body "<trigger command>"
+   ```
+3. **Max 3 re-trigger attempts per bot.** Track the count.
+4. If 3 attempts exhausted → use `AskUserQuestion`: "Bot <login> hasn't approved after 3 re-trigger attempts. Keep trying, skip this bot, or exit?"
+5. After re-triggering → return to 12b to wait again.
+
+---
+
 ## Completion Criteria
+
+### With `--no-watch` (single fix cycle, no watch loop):
 
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
 
@@ -477,10 +757,21 @@ gh pr checks "$PR_NUM"
 6. CI checks pass (`gh pr checks` shows all green)
 7. Replies have been posted to each comment
 8. All resolvable review threads (Group A) are resolved via GraphQL
-9. Re-review requested from reviewers who actually left feedback on this PR (from Step 3 list only):
-   - Bot reviewers that left feedback: via `@bot review` comment (one per bot)
+9. Re-review requested from reviewers who actually left feedback on this PR (data-driven from Step 10):
+   - Bot reviewers that left feedback: via trigger command from Bot Registry (one per bot)
    - Human reviewers that left feedback: via `gh pr edit --add-reviewer`
    - If no bots reviewed, no bot re-review comments were posted
+
+### Default (watch mode):
+
+All conditions from `--no-watch` above, PLUS:
+
+10. All detected review bots have signaled approval (per their bot-specific detection from Step 12a):
+    - CodeRabbit: latest review state is `APPROVED`
+    - Codex: latest issue comment contains "Didn't find any major issues"
+    - Greptile: status check passes with no new inline comments
+    - Copilot/Claude: no unresolved threads from the bot
+11. If no review bots were detected, watch mode still completes the full fix cycle including CI verification (Steps 1-11) but skips Step 12 (no bot re-review polling needed)
 
 **Note:** Pending reviews (CHANGES_REQUESTED) cannot be auto-resolved. Do NOT request review from bots or services that never reviewed this PR.
 
