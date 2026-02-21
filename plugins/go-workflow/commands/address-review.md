@@ -682,6 +682,15 @@ phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:
 fi
 ```
 
+**CRITICAL: Capture the bot review baseline timestamp ONCE here, before entering Step 12.** This timestamp is used to detect post-push bot reviews. Capturing it once prevents the baseline from drifting on each poll iteration.
+
+```bash
+BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "Bot review baseline captured: $BOT_REVIEW_BASELINE"
+```
+
+Store this value and use it in all Step 12a bot checks. Do NOT recompute it on each poll iteration.
+
 ---
 
 ## Step 12: Watch for Bot Re-review (default, skipped with --no-watch)
@@ -736,15 +745,12 @@ gh pr checks "$PR_NUM" --json name,state | jq '.[] | select(.name | test("grepti
 
 If the Greptile check shows `pass` AND no new inline comments were posted since last push → done.
 
-**Copilot (`copilot-pull-request-review[bot]`):** Timestamp-based check — verify the bot posted a NEW review AFTER the last push:
+**Copilot (`copilot-pull-request-review[bot]`):** Timestamp-based check — verify the bot posted a NEW review AFTER the baseline captured in Phase Transition:
 
 ```bash
-# Use current UTC time as the baseline. Since we just pushed (Step 6) and
-# completed CI/replies/re-review requests, any bot review after NOW is a
-# re-review of our latest changes. This is more reliable than commit dates
-# which can be older due to rebases/cherry-picks.
-LAST_PUSH=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "Bot review baseline: $LAST_PUSH"
+# Use BOT_REVIEW_BASELINE captured in Phase Transition (do NOT recompute here).
+# This ensures the baseline stays fixed across polling iterations.
+echo "Using bot review baseline: $BOT_REVIEW_BASELINE"
 
 COPILOT_STATUS=$(gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
@@ -770,7 +776,7 @@ COPILOT_STATUS=$(gh api graphql -f query='
       }
     }
   }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq --arg push "$LAST_PUSH" --arg bot "copilot-pull-request-review[bot]" '
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq --arg push "$BOT_REVIEW_BASELINE" --arg bot "copilot-pull-request-review[bot]" '
   {
     has_post_push_review: ([.data.repository.pullRequest.reviews.nodes[] | select(.author.login == $bot and .createdAt > $push)] | length > 0),
     unresolved_threads: [.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.comments.nodes[0].author.login == $bot and .comments.nodes[0].createdAt > $push)] | length
@@ -787,7 +793,8 @@ Interpret the result:
 Note: Copilot cannot be re-triggered via comment (see 12d).
 
 **Claude (`claude[bot]`):** Same timestamp-based check as Copilot but for `claude[bot]`:
-- Get last push time, check if `claude[bot]` posted a NEW review AFTER that push
+- Use `BOT_REVIEW_BASELINE` captured in Phase Transition (do NOT recompute)
+- Check if `claude[bot]` posted a NEW review AFTER that baseline
 - If post-push review exists with 0 new unresolved threads → done
 - If no post-push review → hasn't re-reviewed yet (keep waiting)
 
