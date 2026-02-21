@@ -1,6 +1,6 @@
 ---
 argument-hint: "[PR-number] [--no-watch]"
-description: "Address PR review comments, fix, and loop until bots approve. Use --no-watch for one-shot mode."
+description: "Address PR review comments, fix, and loop until bots approve (one-shot). Use --no-watch to exit after one fix cycle."
 model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion"]
 ---
@@ -19,7 +19,7 @@ If no PR found, display usage and ask:
 
 **Usage:** `/address-review [PR-number] [--no-watch]`
 
-**Example:** `/address-review 123` or just `/address-review` on a PR branch. Add `--no-watch` for one-shot mode.
+**Example:** `/address-review 123` or just `/address-review` on a PR branch. Add `--no-watch` to exit after one fix cycle instead of watching for bot re-reviews.
 
 Ask the user: "No PR found for current branch. What PR number would you like to address?"
 
@@ -44,7 +44,7 @@ echo "WATCH_MODE=$WATCH_MODE PR_ARG=$PR_ARG"
 ```
 
 Store the parsed values:
-- `WATCH_MODE`: `true` (default) enables watch loop; `false` reverts to one-shot behavior
+- `WATCH_MODE`: `true` (default, one-shot) enables watch loop so AI fully completes the task; `false` exits after one fix cycle requiring manual re-runs
 - `PR_ARG`: The PR number (may be empty for auto-detect)
 
 ## Security Validation
@@ -89,12 +89,12 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 If `WATCH_MODE` is `true` (default):
 ```
 🔄 Watch mode enabled (default) — will loop until all review bots approve.
-   Tip: Use /address-review [PR] --no-watch for one-shot mode.
+   Tip: Use /address-review [PR] --no-watch to exit after one fix cycle.
 ```
 
 If `WATCH_MODE` is `false`:
 ```
-⏩ One-shot mode — will fix comments and exit without watching for bot re-review.
+⏩ No-watch mode — will fix comments once and exit. You may need to re-run if bots leave new feedback.
 ```
 
 **Discover review bots on this PR** (only when `WATCH_MODE` is `true`):
@@ -721,7 +721,7 @@ If a bot's quiet period ended with no new comments but it still hasn't approved:
 
 ## Completion Criteria
 
-### With `--no-watch` (one-shot mode):
+### With `--no-watch` (single fix cycle, no watch loop):
 
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
 
@@ -740,12 +740,12 @@ If a bot's quiet period ended with no new comments but it still hasn't approved:
 
 ### Default (watch mode):
 
-All conditions from one-shot mode above, PLUS:
+All conditions from `--no-watch` above, PLUS:
 
 10. All detected review bots have approved (per their tier-specific signal from Step 12a):
     - Tier 1 bots: latest review state is `APPROVED`
     - Tier 2 bots: no unresolved threads + no new comments since last push
-11. If no review bots were detected, watch mode behaves identically to one-shot mode
+11. If no review bots were detected, watch mode behaves identically to `--no-watch` (single fix cycle)
 
 **Note:** Pending reviews (CHANGES_REQUESTED) cannot be auto-resolved. Do NOT request review from bots or services that never reviewed this PR.
 
