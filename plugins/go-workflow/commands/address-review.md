@@ -82,11 +82,19 @@ fi
 echo "Current phase: ${CURRENT_PHASE:-<none>}"
 ```
 
-**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `true`:** The fix cycle (Steps 1-11) already completed in a previous iteration. Capture `BOT_REVIEW_BASELINE` (needed for Step 12a timestamp checks) then skip directly to Step 12a:
+**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `true`:** The fix cycle (Steps 1-11) already completed in a previous iteration. Restore `BOT_REVIEW_BASELINE` from the state file (persisted during Phase Transition) so timestamp checks use the original post-push baseline, not the current time:
 
 ```bash
-BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "Bot review baseline (re-entry): $BOT_REVIEW_BASELINE"
+BOT_REVIEW_BASELINE=""
+if [ -f "$LOOP_STATE_FILE" ]; then
+  BOT_REVIEW_BASELINE=$(grep '^bot_review_baseline:' "$LOOP_STATE_FILE" | sed 's/bot_review_baseline: *//' || true)
+fi
+if [ -z "$BOT_REVIEW_BASELINE" ]; then
+  BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  echo "Bot review baseline (fallback, not persisted): $BOT_REVIEW_BASELINE"
+else
+  echo "Bot review baseline (restored): $BOT_REVIEW_BASELINE"
+fi
 ```
 
 Do NOT re-run the fix cycle.
@@ -369,11 +377,12 @@ Build a list of unique reviewer usernames from both groups (only reviewers who a
 
 If there are no unresolved threads AND no pending reviews:
 
-- **If `WATCH_MODE` is `true` AND bots were detected:** The fix cycle is done but bots haven't re-reviewed yet. **First set `phase: watching`** (using the same code from the Phase Transition section), then skip to Step 12 (do NOT output COMPLETE).
+- **If `CURRENT_PHASE` is `fixing` AND `WATCH_MODE` is `true` AND bots were detected:** A fix cycle ran (we pushed changes) but bots haven't re-reviewed yet. Set phase to `watching` and skip to Step 12.
+- **If `CURRENT_PHASE` is empty/unset (fresh run):** The PR is already clean — no fixes were needed and no push occurred. Bots have nothing new to review. Output `<done>COMPLETE</done>`.
 - **If `WATCH_MODE` is `true` AND no bots detected:** No feedback and nothing to watch for → output `<done>COMPLETE</done>`.
 - **If `WATCH_MODE` is `false`:** No feedback to address → output `<done>COMPLETE</done>`.
 
-**Phase set code for "no feedback" path:**
+**Phase set code for post-fix-cycle "no feedback" path (only when `CURRENT_PHASE` is `fixing`):**
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
@@ -385,13 +394,11 @@ if [ -f "$LOOP_STATE_FILE" ]; then
     sed -i '' "/^completion_promise:/a\\
 phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:/a phase: watching" "$LOOP_STATE_FILE"
   fi
-  echo "Phase set to: watching (no feedback path)"
+  echo "Phase set to: watching (post-fix-cycle path)"
 fi
-
-# Capture baseline now since there's no Step 6 push in this path
-BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "Bot review baseline captured: $BOT_REVIEW_BASELINE"
 ```
+
+Note: `BOT_REVIEW_BASELINE` should already be set from Step 6 in this path since a fix cycle ran.
 
 ### If only pending reviews (no threads):
 
@@ -711,12 +718,25 @@ phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:
 fi
 ```
 
-**Note:** `BOT_REVIEW_BASELINE` should already be set from Step 6 (right after the push). If for some reason it wasn't captured earlier (e.g., re-entry after context loss), capture it now as a fallback, but this is less accurate since bots may have already reviewed during Steps 7-11.
+**Note:** `BOT_REVIEW_BASELINE` should already be set from Step 6 (right after the push). If for some reason it wasn't captured earlier (e.g., re-entry after context loss), capture it now as a fallback.
+
+**CRITICAL: Persist the baseline in the state file** so it survives context-loss re-entry:
 
 ```bash
 if [ -z "$BOT_REVIEW_BASELINE" ]; then
   BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   echo "Bot review baseline captured (fallback): $BOT_REVIEW_BASELINE"
+fi
+
+# Persist baseline in state file for re-entry
+if [ -f "$LOOP_STATE_FILE" ]; then
+  if grep -q '^bot_review_baseline:' "$LOOP_STATE_FILE"; then
+    sed -i '' "s/^bot_review_baseline: .*/bot_review_baseline: $BOT_REVIEW_BASELINE/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^bot_review_baseline: .*/bot_review_baseline: $BOT_REVIEW_BASELINE/" "$LOOP_STATE_FILE"
+  else
+    sed -i '' "/^phase:/a\\
+bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^phase:/a bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE"
+  fi
+  echo "Bot review baseline persisted: $BOT_REVIEW_BASELINE"
 fi
 ```
 
