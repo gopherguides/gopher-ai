@@ -65,8 +65,8 @@ Store `RESOLVED_PR` for use in loop initialization and throughout the workflow.
 
 ## Loop Initialization
 
-Initialize persistent loop with PR-specific name:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE"`
+Initialize persistent loop with PR-specific name and `fixing` phase (so stop-hook re-entry during the fix cycle knows a cycle is in progress):
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE" "" "fixing"`
 
 ## Re-entry Check
 
@@ -91,7 +91,12 @@ if [ -f "$LOOP_STATE_FILE" ]; then
 fi
 if [ -z "$BOT_REVIEW_BASELINE" ]; then
   BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  echo "Bot review baseline (fallback, not persisted): $BOT_REVIEW_BASELINE"
+  echo "Bot review baseline (fallback): $BOT_REVIEW_BASELINE"
+  # Persist the fallback so future re-entries don't keep advancing the baseline
+  if [ -f "$LOOP_STATE_FILE" ]; then
+    sed -i '' "/^phase:/a\\
+bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^phase:/a bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE"
+  fi
 else
   echo "Bot review baseline (restored): $BOT_REVIEW_BASELINE"
 fi
