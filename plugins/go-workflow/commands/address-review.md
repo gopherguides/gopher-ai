@@ -802,9 +802,22 @@ If any bot hasn't approved yet:
 
 After the quiet period ends and new unresolved comments/threads exist:
 
+**First, clear the `watching` phase** so stop-hook re-entry runs the fix cycle instead of skipping to Step 12:
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${ARGUMENTS:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+if [ -f "$LOOP_STATE_FILE" ]; then
+  sed -i '' "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE"
+  echo "Phase reset to: fixing (new bot feedback detected)"
+fi
+```
+
+Then:
+
 1. Re-fetch all review feedback (Step 2) but **only address NEW unresolved comments** from bots. Already-resolved threads stay resolved.
 2. Loop back through Steps 2-11 for the new feedback only.
-3. After completing the fix cycle, return to Step 12a to re-check approval status.
+3. After completing the fix cycle, return to Step 12a to re-check approval status (the Phase Transition section will set phase back to `watching`).
 
 ### 12d. No new comments but bot hasn't approved — re-trigger
 

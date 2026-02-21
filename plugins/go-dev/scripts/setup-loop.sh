@@ -27,15 +27,15 @@ STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
 # Create .claude directory if it doesn't exist
 mkdir -p .claude
 
-# Check for existing loop — preserve phase if re-initializing
-EXISTING_PHASE=""
+# Check for existing loop
 if [ -f "$STATE_FILE" ]; then
-  EXISTING_PHASE=$(grep '^phase:' "$STATE_FILE" | sed 's/phase: *//' || true)
-  echo "Warning: Loop '$LOOP_NAME' already active. Resetting (preserving phase: ${EXISTING_PHASE:-<none>})..."
+  echo "Warning: Loop '$LOOP_NAME' already active. Resetting..."
 fi
 
-# Use existing phase if no initial phase provided and state file had one
-PHASE="${INITIAL_PHASE:-$EXISTING_PHASE}"
+# Only use phase if explicitly passed as 4th arg
+# Do NOT auto-preserve from existing state file — this prevents stale phase
+# from a prior run (e.g., address-review-auto) leaking into a fresh invocation
+PHASE="${INITIAL_PHASE:-}"
 
 # Create state file with YAML frontmatter
 cat > "$STATE_FILE" << EOF
