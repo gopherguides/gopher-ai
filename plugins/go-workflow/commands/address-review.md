@@ -371,6 +371,10 @@ phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:
   fi
   echo "Phase set to: watching (no feedback path)"
 fi
+
+# Capture baseline now since there's no Step 6 push in this path
+BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "Bot review baseline captured: $BOT_REVIEW_BASELINE"
 ```
 
 ### If only pending reviews (no threads):
@@ -452,6 +456,15 @@ git commit -m "address review comments
 - [brief summary of each fix]"
 git push
 ```
+
+**CRITICAL: Capture the bot review baseline timestamp IMMEDIATELY after pushing.** This is the reference point for detecting post-push bot reviews. Capturing it now (right after push) ensures that bots reviewing during CI/Steps 7-11 are correctly detected as post-push reviews.
+
+```bash
+BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "Bot review baseline captured: $BOT_REVIEW_BASELINE"
+```
+
+Store this value and use it in all Step 12a bot checks. Do NOT recompute it later.
 
 ---
 
@@ -682,14 +695,14 @@ phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:
 fi
 ```
 
-**CRITICAL: Capture the bot review baseline timestamp ONCE here, before entering Step 12.** This timestamp is used to detect post-push bot reviews. Capturing it once prevents the baseline from drifting on each poll iteration.
+**Note:** `BOT_REVIEW_BASELINE` should already be set from Step 6 (right after the push). If for some reason it wasn't captured earlier (e.g., re-entry after context loss), capture it now as a fallback, but this is less accurate since bots may have already reviewed during Steps 7-11.
 
 ```bash
-BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "Bot review baseline captured: $BOT_REVIEW_BASELINE"
+if [ -z "$BOT_REVIEW_BASELINE" ]; then
+  BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  echo "Bot review baseline captured (fallback): $BOT_REVIEW_BASELINE"
+fi
 ```
-
-Store this value and use it in all Step 12a bot checks. Do NOT recompute it on each poll iteration.
 
 ---
 
