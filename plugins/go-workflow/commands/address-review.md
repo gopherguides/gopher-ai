@@ -82,9 +82,25 @@ fi
 echo "Current phase: ${CURRENT_PHASE:-<none>}"
 ```
 
-**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `true`:** The fix cycle (Steps 1-11) already completed in a previous iteration. Skip directly to Step 12a to check bot approval status. Do NOT re-run the fix cycle.
+**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `true`:** The fix cycle (Steps 1-11) already completed in a previous iteration. Capture `BOT_REVIEW_BASELINE` (needed for Step 12a timestamp checks) then skip directly to Step 12a:
 
-**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `false`:** Clear the stale phase and continue with the full fix cycle. (`--no-watch` mode should not inherit watching phase from a prior run.)
+```bash
+BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "Bot review baseline (re-entry): $BOT_REVIEW_BASELINE"
+```
+
+Do NOT re-run the fix cycle.
+
+**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `false`:** Clear the stale phase explicitly so stop-hook doesn't route to Step 12:
+
+```bash
+if [ -f "$LOOP_STATE_FILE" ]; then
+  sed -i '' "s/^phase: .*/phase: /" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: /" "$LOOP_STATE_FILE"
+  echo "Phase cleared (--no-watch mode)"
+fi
+```
+
+Continue with the full fix cycle. (`--no-watch` mode should not inherit watching phase from a prior run.)
 
 **Otherwise:** Continue normally with the full flow below.
 
