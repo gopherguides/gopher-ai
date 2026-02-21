@@ -340,9 +340,25 @@ Build a list of unique reviewer usernames from both groups (only reviewers who a
 
 If there are no unresolved threads AND no pending reviews:
 
-- **If `WATCH_MODE` is `true` AND bots were detected:** The fix cycle is done but bots haven't re-reviewed yet. Skip to Step 12 (do NOT output COMPLETE).
+- **If `WATCH_MODE` is `true` AND bots were detected:** The fix cycle is done but bots haven't re-reviewed yet. **First set `phase: watching`** (using the same code from the Phase Transition section), then skip to Step 12 (do NOT output COMPLETE).
 - **If `WATCH_MODE` is `true` AND no bots detected:** No feedback and nothing to watch for → output `<done>COMPLETE</done>`.
 - **If `WATCH_MODE` is `false`:** No feedback to address → output `<done>COMPLETE</done>`.
+
+**Phase set code for "no feedback" path:**
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${ARGUMENTS:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+if [ -f "$LOOP_STATE_FILE" ]; then
+  if grep -q '^phase:' "$LOOP_STATE_FILE"; then
+    sed -i '' "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE"
+  else
+    sed -i '' "/^completion_promise:/a\\
+phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:/a phase: watching" "$LOOP_STATE_FILE"
+  fi
+  echo "Phase set to: watching (no feedback path)"
+fi
+```
 
 ### If only pending reviews (no threads):
 
