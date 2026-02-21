@@ -739,11 +739,12 @@ If the Greptile check shows `pass` AND no new inline comments were posted since 
 **Copilot (`copilot-pull-request-review[bot]`):** Timestamp-based check — verify the bot posted a NEW review AFTER the last push:
 
 ```bash
-# Get the PR's head commit timestamp from GitHub API (reflects when GitHub
-# received the push, not local commit date which can be preserved from rebases)
-HEAD_SHA=$(gh pr view "$PR_NUM" --json headRefOid --jq '.headRefOid')
-LAST_PUSH=$(gh api "repos/$OWNER/$REPO/commits/$HEAD_SHA" --jq '.commit.committer.date')
-echo "Push baseline timestamp: $LAST_PUSH"
+# Use current UTC time as the baseline. Since we just pushed (Step 6) and
+# completed CI/replies/re-review requests, any bot review after NOW is a
+# re-review of our latest changes. This is more reliable than commit dates
+# which can be older due to rebases/cherry-picks.
+LAST_PUSH=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "Bot review baseline: $LAST_PUSH"
 
 COPILOT_STATUS=$(gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
