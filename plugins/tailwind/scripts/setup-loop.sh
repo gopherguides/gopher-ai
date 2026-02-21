@@ -34,9 +34,10 @@ if [ -f "$STATE_FILE" ]; then
   echo "Warning: Loop '$LOOP_NAME' already active. Resetting (preserving phase: ${EXISTING_PHASE:-<none>})..."
 fi
 
-# Use INITIAL_PHASE if provided, otherwise preserve existing phase from state file
+# Preserve existing phase from state file, fall back to INITIAL_PHASE for fresh runs
 # This allows re-entry to maintain phase context (e.g., watching) across stop-hook restarts
-PHASE="${INITIAL_PHASE:-$EXISTING_PHASE}"
+# while INITIAL_PHASE provides a default for first-time initialization
+PHASE="${EXISTING_PHASE:-$INITIAL_PHASE}"
 
 # Create state file with YAML frontmatter
 cat > "$STATE_FILE" << EOF

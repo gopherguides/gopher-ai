@@ -846,11 +846,13 @@ Interpret the result:
 
 Note: Copilot cannot be re-triggered via comment (see 12d).
 
-**Claude (`claude[bot]`):** Same timestamp-based check as Copilot but for `claude[bot]`:
+**Claude (`claude[bot]`):** Same timestamp-based check as Copilot but for `claude[bot]`, with silent approval handling:
 - Use `BOT_REVIEW_BASELINE` captured in Phase Transition (do NOT recompute)
 - Check if `claude[bot]` posted a NEW review AFTER that baseline
 - If post-push review exists with 0 new unresolved threads → done
-- If no post-push review → hasn't re-reviewed yet (keep waiting)
+- If post-push review exists with unresolved threads → has new issues (not done)
+- If no post-push review AND no unresolved Claude threads → **silent approval** (Claude doesn't always post a review when it finds no issues). Consider done after a reasonable wait (2+ polling cycles with no new Claude activity).
+- If no post-push review AND unresolved Claude threads exist from before baseline → those are stale (already resolved), consider done
 
 **If ALL detected bots are done → output `<done>COMPLETE</done>` and stop.**
 
