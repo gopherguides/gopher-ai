@@ -43,6 +43,7 @@ Initialize persistent loop to ensure work continues until complete:
 - Current branch: !`git branch --show-current 2>&1 || echo "unknown"`
 - Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
 - PR number: !`echo "${ARGUMENTS:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"`
+- Rebase status: !`PR_NUM="${ARGUMENTS:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"; BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName' 2>/dev/null); BASE_REMOTE=$(git remote | head -1); git fetch "$BASE_REMOTE" "$BASE_BRANCH" 2>/dev/null; BEHIND=$(git rev-list --count "HEAD..${BASE_REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo "unknown"); echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: ${BEHIND:-0}"`
 
 ---
 
@@ -71,9 +72,19 @@ echo "Working on PR #$PR_NUM"
 
 ---
 
+## REBASE GATE (Mandatory)
+
+**Check the "Rebase status" value from the Context section above.**
+
+- If it shows "Commits behind: 0" → Skip to Step 3
+- If it shows commits behind > 0 → You MUST complete Step 2 (rebase) before proceeding
+- If it shows "unknown" → Run the check manually per Step 2b
+
+**DO NOT proceed to Step 3 without confirming rebase status.**
+
 ## Step 2: Check for Rebase
 
-**Always check if the PR branch needs rebasing before addressing review comments.** Addressing comments on a stale branch wastes effort — files may have changed, conflicts may exist, and CI will run against outdated code.
+**The rebase status from Context above shows how many commits behind you are.** If behind > 0, you MUST rebase before proceeding. Do NOT skip this step.
 
 ### 2a. Ensure we're on the PR branch
 
