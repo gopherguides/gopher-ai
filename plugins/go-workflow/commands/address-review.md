@@ -39,10 +39,10 @@ Initialize persistent loop to ensure work continues until complete:
 
 ## Context
 
-- PR details: !`PR_NUM="${ARGUMENTS:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"; gh pr view "$PR_NUM" --json title,state,body,headRefName,baseRefName 2>/dev/null || echo "PR not found"`
-- Current branch: !`git branch --show-current`
+- PR details: !`PR_NUM="${ARGUMENTS:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"; gh pr view "$PR_NUM" --json title,state,body,headRefName,baseRefName 2>/dev/null || echo "PR not found"`
+- Current branch: !`git branch --show-current 2>&1 || echo "unknown"`
 - Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
-- PR number: !`echo "${ARGUMENTS:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"`
+- PR number: !`echo "${ARGUMENTS:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"`
 
 ---
 

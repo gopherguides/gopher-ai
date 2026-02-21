@@ -51,10 +51,10 @@ Initialize persistent loop to ensure work continues until complete:
 ## Context
 
 - Issue details: !`gh issue view "$ARGUMENTS" --json title,state,body,labels,comments 2>/dev/null || echo "Issue not found"`
-- Current branch: !`git branch --show-current`
-- Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
-- Repository name: !`basename $(git rev-parse --show-toplevel)`
-- Existing worktrees: !`git worktree list`
+- Current branch: !`git branch --show-current 2>&1 || echo "unknown"`
+- Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
+- Repository name: !`basename \`git rev-parse --show-toplevel 2>/dev/null\` 2>/dev/null || echo "unknown"`
+- Existing worktrees: !`git worktree list 2>&1 || echo "No worktrees found"`
 
 ---
 

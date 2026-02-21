@@ -8,11 +8,11 @@ model: haiku
 
 ## Context
 
-- Current git status: !`git status`
-- Current git diff (staged and unstaged changes): !`git diff HEAD`
-- Current branch: !`git branch --show-current`
+- Current git status: !`git status 2>&1 || echo "Unable to get git status"`
+- Current git diff (staged and unstaged changes): !`git diff HEAD 2>&1 || echo "No diff available (may have no commits)"`
+- Current branch: !`git branch --show-current 2>&1 || echo "unknown"`
 - Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
-- Recent commits (for style matching): !`git log --oneline -10`
+- Recent commits (for style matching): !`git log --oneline -10 2>&1 || echo "No commits in history"`
 
 ## Branch Protection
 

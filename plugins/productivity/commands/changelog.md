@@ -8,8 +8,8 @@ allowed-tools: ["Bash(git:*)", "Read", "Glob", "Grep"]
 ## Context
 
 - Latest tag: !`git describe --tags --abbrev=0 2>/dev/null || echo "No tags found"`
-- Commits since last tag: !`git log $(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD~20")..HEAD --format="%h %s" 2>/dev/null | head -15`
-- Repository: !`basename $(git rev-parse --show-toplevel)`
+- Commits since last tag: !`TAG=\`git describe --tags --abbrev=0 2>/dev/null || echo "HEAD~20"\`; git log "$TAG"..HEAD --format="%h %s" 2>/dev/null | head -15 || echo "No commits found"`
+- Repository: !`basename \`git rev-parse --show-toplevel 2>/dev/null\` 2>/dev/null || echo "unknown"`
 
 **If `$ARGUMENTS` is empty or not provided:**
 

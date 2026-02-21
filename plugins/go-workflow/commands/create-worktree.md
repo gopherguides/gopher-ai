@@ -46,10 +46,10 @@ Clear any stale worktree state so the pre-tool-use hook doesn't block setup comm
 
 ## Context
 
-- Current directory: !`pwd`
-- Repository name: !`basename $(git rev-parse --show-toplevel)`
-- Default branch: !`git remote show origin | grep 'HEAD branch' | sed 's/.*: //'`
-- Existing worktrees: !`git worktree list`
+- Current directory: !`pwd 2>&1 || echo "unknown"`
+- Repository name: !`basename \`git rev-parse --show-toplevel 2>/dev/null\` 2>/dev/null || echo "unknown"`
+- Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
+- Existing worktrees: !`git worktree list 2>&1 || echo "No worktrees found"`
 
 ## Steps
 

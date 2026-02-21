@@ -6,10 +6,10 @@ allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(jq:*)", "Read", "Edit", "AskU
 
 ## Context
 
-- Repository: !`basename $(git rev-parse --show-toplevel)`
+- Repository: !`basename \`git rev-parse --show-toplevel 2>/dev/null\` 2>/dev/null || echo "unknown"`
 - Current version: !`jq -r '.plugins[0].version' .claude-plugin/marketplace.json 2>/dev/null || echo "unknown"`
 - Latest tag: !`git describe --tags --abbrev=0 2>/dev/null || echo "No tags found"`
-- Commits since last tag: !`git log $(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD --oneline 2>/dev/null | wc -l | tr -d ' '`
+- Commits since last tag: !`TAG=\`git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD\`; git log "$TAG"..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ' || echo "0"`
 
 ## Instructions
 
