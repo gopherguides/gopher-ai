@@ -1,20 +1,22 @@
 #!/bin/bash
 # Initialize a persistent loop for any command
-# Usage: setup-loop.sh <loop-name> <completion-promise> [max-iterations]
+# Usage: setup-loop.sh <loop-name> <completion-promise> [max-iterations] [initial-phase]
 #
 # Example:
 #   setup-loop.sh "start-issue-123" "COMPLETE"
 #   setup-loop.sh "create-project" "DONE" 50
+#   setup-loop.sh "address-review-42" "COMPLETE" "" "fixing"
 
 set -euo pipefail
 
 LOOP_NAME="${1:-}"
 COMPLETION_PROMISE="${2:-COMPLETE}"
 MAX_ITERATIONS="${3:-}"  # Optional, defaults to unlimited
+INITIAL_PHASE="${4:-}"   # Optional, defaults to empty
 
 if [ -z "$LOOP_NAME" ]; then
   echo "Error: loop-name is required"
-  echo "Usage: setup-loop.sh <loop-name> <completion-promise> [max-iterations]"
+  echo "Usage: setup-loop.sh <loop-name> <completion-promise> [max-iterations] [initial-phase]"
   exit 1
 fi
 
@@ -25,10 +27,15 @@ STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
 # Create .claude directory if it doesn't exist
 mkdir -p .claude
 
-# Check for existing loop
+# Check for existing loop — preserve phase if re-initializing
+EXISTING_PHASE=""
 if [ -f "$STATE_FILE" ]; then
-  echo "Warning: Loop '$LOOP_NAME' already active. Resetting..."
+  EXISTING_PHASE=$(grep '^phase:' "$STATE_FILE" | sed 's/phase: *//' || true)
+  echo "Warning: Loop '$LOOP_NAME' already active. Resetting (preserving phase: ${EXISTING_PHASE:-<none>})..."
 fi
+
+# Use existing phase if no initial phase provided and state file had one
+PHASE="${INITIAL_PHASE:-$EXISTING_PHASE}"
 
 # Create state file with YAML frontmatter
 cat > "$STATE_FILE" << EOF
@@ -37,6 +44,7 @@ loop_name: $LOOP_NAME
 iteration: 1
 max_iterations: $MAX_ITERATIONS
 completion_promise: $COMPLETION_PROMISE
+phase: $PHASE
 started_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 ---
 

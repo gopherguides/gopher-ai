@@ -57,6 +57,24 @@ Validate input is numeric (using `PR_ARG` which has `--no-watch` stripped):
 Initialize persistent loop to ensure work continues until complete:
 !`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${ARGUMENTS:-auto}" "COMPLETE"`
 
+## Re-entry Check
+
+Before starting the fix cycle, check if we're resuming from a previous watching phase:
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${ARGUMENTS:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+CURRENT_PHASE=""
+if [ -f "$LOOP_STATE_FILE" ]; then
+  CURRENT_PHASE=$(grep '^phase:' "$LOOP_STATE_FILE" | sed 's/phase: *//' || true)
+fi
+echo "Current phase: ${CURRENT_PHASE:-<none>}"
+```
+
+**If `CURRENT_PHASE` is `watching`:** The fix cycle (Steps 1-11) already completed in a previous iteration. Skip directly to Step 12a to check bot approval status. Do NOT re-run the fix cycle.
+
+**Otherwise:** Continue normally with the full flow below.
+
 ## Bot Registry
 
 Reference table of known review bots. Used ONLY for matching against bots actually found on the PR — never for proactively contacting bots.
@@ -322,9 +340,9 @@ Build a list of unique reviewer usernames from both groups (only reviewers who a
 
 If there are no unresolved threads AND no pending reviews:
 
-```
-<done>COMPLETE</done>
-```
+- **If `WATCH_MODE` is `true` AND bots were detected:** The fix cycle is done but bots haven't re-reviewed yet. Skip to Step 12 (do NOT output COMPLETE).
+- **If `WATCH_MODE` is `true` AND no bots detected:** No feedback and nothing to watch for → output `<done>COMPLETE</done>`.
+- **If `WATCH_MODE` is `false`:** No feedback to address → output `<done>COMPLETE</done>`.
 
 ### If only pending reviews (no threads):
 
@@ -617,6 +635,26 @@ gh pr checks "$PR_NUM"
 
 ---
 
+## Phase Transition
+
+Before entering the watch loop, update the loop state phase so that any stop-hook re-entry resumes at Step 12 instead of restarting the fix cycle:
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${ARGUMENTS:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+if [ -f "$LOOP_STATE_FILE" ]; then
+  if grep -q '^phase:' "$LOOP_STATE_FILE"; then
+    sed -i '' "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE"
+  else
+    sed -i '' "/^completion_promise:/a\\
+phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:/a phase: watching" "$LOOP_STATE_FILE"
+  fi
+  echo "Phase set to: watching"
+fi
+```
+
+---
+
 ## Step 12: Watch for Bot Re-review (default, skipped with --no-watch)
 
 **Skip this entire step if `WATCH_MODE` is `false` or no review bots were detected in the Bot Discovery step.**
@@ -669,19 +707,29 @@ gh pr checks "$PR_NUM" --json name,state | jq '.[] | select(.name | test("grepti
 
 If the Greptile check shows `pass` AND no new inline comments were posted since last push → done.
 
-**Copilot (`copilot-pull-request-review[bot]`):** Check latest review for inline comments:
+**Copilot (`copilot-pull-request-review[bot]`):** Timestamp-based check — verify the bot posted a NEW review AFTER the last push:
 
 ```bash
-gh api graphql -f query='
+LAST_PUSH=$(gh api "repos/$OWNER/$REPO/pulls/$PR_NUM/commits" --jq 'last | .commit.committer.date')
+echo "Last push timestamp: $LAST_PUSH"
+
+COPILOT_STATUS=$(gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
+        reviews(last: 100) {
+          nodes {
+            author { login }
+            createdAt
+          }
+        }
         reviewThreads(first: 100) {
           nodes {
             isResolved
             comments(first: 1) {
               nodes {
                 author { login }
+                createdAt
               }
             }
           }
@@ -689,12 +737,26 @@ gh api graphql -f query='
       }
     }
   }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.comments.nodes[0].author.login == "copilot-pull-request-review[bot]")] | length'
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq --arg push "$LAST_PUSH" --arg bot "copilot-pull-request-review[bot]" '
+  {
+    has_post_push_review: ([.data.repository.pullRequest.reviews.nodes[] | select(.author.login == $bot and .createdAt > $push)] | length > 0),
+    unresolved_threads: [.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.comments.nodes[0].author.login == $bot and .comments.nodes[0].createdAt > $push)] | length
+  }
+')
+echo "Copilot status: $COPILOT_STATUS"
 ```
 
-If unresolved thread count is 0 → done. Note: Copilot cannot be re-triggered via comment (see 12d).
+Interpret the result:
+- `has_post_push_review: true` AND `unresolved_threads: 0` → bot re-reviewed and approved (done)
+- `has_post_push_review: true` AND `unresolved_threads > 0` → bot re-reviewed and found new issues (not done)
+- `has_post_push_review: false` → bot hasn't re-reviewed yet (not done, keep waiting)
 
-**Claude (`claude[bot]`):** Same thread check as Copilot but for `claude[bot]`. If no unresolved threads → done.
+Note: Copilot cannot be re-triggered via comment (see 12d).
+
+**Claude (`claude[bot]`):** Same timestamp-based check as Copilot but for `claude[bot]`:
+- Get last push time, check if `claude[bot]` posted a NEW review AFTER that push
+- If post-push review exists with 0 new unresolved threads → done
+- If no post-push review → hasn't re-reviewed yet (keep waiting)
 
 **If ALL detected bots are done → output `<done>COMPLETE</done>` and stop.**
 
