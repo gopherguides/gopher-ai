@@ -65,8 +65,8 @@ Store `RESOLVED_PR` for use in loop initialization and throughout the workflow.
 
 ## Loop Initialization
 
-Initialize persistent loop with PR-specific name and `fixing` phase (so stop-hook re-entry during the fix cycle knows a cycle is in progress):
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE" "" "fixing"`
+Initialize persistent loop with PR-specific name (no initial phase — fresh runs start neutral):
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE"`
 
 ## Re-entry Check
 
@@ -413,6 +413,16 @@ Address the feedback, but note to the user:
 ---
 
 ## Step 4: Address Each Comment
+
+**Set phase to `fixing` now that the fix cycle is actually starting:**
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+if [ -f "$LOOP_STATE_FILE" ]; then
+  sed -i '' "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE"
+fi
+```
 
 For each unresolved review comment:
 

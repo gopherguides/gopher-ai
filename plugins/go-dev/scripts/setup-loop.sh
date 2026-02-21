@@ -27,11 +27,13 @@ STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
 # Create .claude directory if it doesn't exist
 mkdir -p .claude
 
-# Check for existing loop — preserve phase if re-initializing
+# Check for existing loop — preserve phase and bot_review_baseline if re-initializing
 EXISTING_PHASE=""
+EXISTING_BASELINE=""
 if [ -f "$STATE_FILE" ]; then
   EXISTING_PHASE=$(grep '^phase:' "$STATE_FILE" | sed 's/phase: *//' || true)
-  echo "Warning: Loop '$LOOP_NAME' already active. Resetting (preserving phase: ${EXISTING_PHASE:-<none>})..."
+  EXISTING_BASELINE=$(grep '^bot_review_baseline:' "$STATE_FILE" | sed 's/bot_review_baseline: *//' || true)
+  echo "Warning: Loop '$LOOP_NAME' already active. Resetting (preserving phase: ${EXISTING_PHASE:-<none>}, baseline: ${EXISTING_BASELINE:-<none>})..."
 fi
 
 # Preserve existing phase from state file, fall back to INITIAL_PHASE for fresh runs
@@ -47,6 +49,7 @@ iteration: 1
 max_iterations: $MAX_ITERATIONS
 completion_promise: $COMPLETION_PROMISE
 phase: $PHASE
+bot_review_baseline: $EXISTING_BASELINE
 started_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 ---
 
