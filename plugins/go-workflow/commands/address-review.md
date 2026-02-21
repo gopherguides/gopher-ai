@@ -52,17 +52,28 @@ Store the parsed values:
 Validate input is numeric (using `PR_ARG` which has `--no-watch` stripped):
 !if [ -n "$PR_ARG" ] && ! echo "$PR_ARG" | grep -qE '^[0-9]+$'; then echo "Error: PR number must be numeric"; exit 1; fi
 
+## Resolve PR Number
+
+Always resolve the PR number BEFORE loop initialization to ensure the loop state is PR-specific (not `address-review-auto` which could leak phase across different PRs):
+
+```bash
+RESOLVED_PR="${PR_ARG:-$(gh pr view --json number --jq '.number' 2>/dev/null || echo 'auto')}"
+echo "Resolved PR: $RESOLVED_PR"
+```
+
+Store `RESOLVED_PR` for use in loop initialization and throughout the workflow.
+
 ## Loop Initialization
 
-Initialize persistent loop to ensure work continues until complete:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${ARGUMENTS:-auto}" "COMPLETE"`
+Initialize persistent loop with PR-specific name:
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE"`
 
 ## Re-entry Check
 
 Before starting the fix cycle, check if we're resuming from a previous watching phase:
 
 ```bash
-SAFE_LOOP_NAME=$(echo "address-review-${ARGUMENTS:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
 LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
 CURRENT_PHASE=""
 if [ -f "$LOOP_STATE_FILE" ]; then
@@ -347,7 +358,7 @@ If there are no unresolved threads AND no pending reviews:
 **Phase set code for "no feedback" path:**
 
 ```bash
-SAFE_LOOP_NAME=$(echo "address-review-${ARGUMENTS:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
 LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
 if [ -f "$LOOP_STATE_FILE" ]; then
   if grep -q '^phase:' "$LOOP_STATE_FILE"; then
@@ -656,7 +667,7 @@ gh pr checks "$PR_NUM"
 Before entering the watch loop, update the loop state phase so that any stop-hook re-entry resumes at Step 12 instead of restarting the fix cycle:
 
 ```bash
-SAFE_LOOP_NAME=$(echo "address-review-${ARGUMENTS:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
 LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
 if [ -f "$LOOP_STATE_FILE" ]; then
   if grep -q '^phase:' "$LOOP_STATE_FILE"; then
@@ -726,8 +737,9 @@ If the Greptile check shows `pass` AND no new inline comments were posted since 
 **Copilot (`copilot-pull-request-review[bot]`):** Timestamp-based check — verify the bot posted a NEW review AFTER the last push:
 
 ```bash
-# Get last push timestamp from local git (reliable, no pagination issues)
-LAST_PUSH=$(git log -1 --format=%cI HEAD)
+# Get last push timestamp in UTC (required for comparison with GitHub API timestamps)
+# GitHub returns timestamps in Z format, so we must normalize to UTC
+LAST_PUSH=$(TZ=UTC git log -1 --format=%cd --date=format:'%Y-%m-%dT%H:%M:%SZ' HEAD)
 echo "Last push timestamp: $LAST_PUSH"
 
 COPILOT_STATUS=$(gh api graphql -f query='
@@ -806,7 +818,7 @@ After the quiet period ends and new unresolved comments/threads exist:
 **First, clear the `watching` phase** so stop-hook re-entry runs the fix cycle instead of skipping to Step 12:
 
 ```bash
-SAFE_LOOP_NAME=$(echo "address-review-${ARGUMENTS:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
 LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
 if [ -f "$LOOP_STATE_FILE" ]; then
   sed -i '' "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE"
