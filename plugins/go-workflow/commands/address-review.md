@@ -146,7 +146,7 @@ Match the returned authors against the bot registry table above. For each match,
 Display the discovered bots:
 - If bots found: `"Monitoring reviews from: codex, coderabbitai"` (list only matched bots)
 - If no bots found: `"No review bots detected on this PR. Running one fix cycle."`
-  - In this case, treat as if `--no-watch` was passed (one fix cycle, no watch loop)
+  - In this case, complete the full fix cycle including CI verification (Steps 1-11) but skip Step 12 (no bot re-review polling needed)
 
 ---
 
@@ -745,7 +745,7 @@ All conditions from `--no-watch` above, PLUS:
 10. All detected review bots have approved (per their tier-specific signal from Step 12a):
     - Tier 1 bots: latest review state is `APPROVED`
     - Tier 2 bots: no unresolved threads + no new comments since last push
-11. If no review bots were detected, watch mode behaves identically to `--no-watch` (single fix cycle)
+11. If no review bots were detected, watch mode still completes the full fix cycle including CI verification (Steps 1-11) but skips Step 12 (no bot re-review polling needed)
 
 **Note:** Pending reviews (CHANGES_REQUESTED) cannot be auto-resolved. Do NOT request review from bots or services that never reviewed this PR.
 
