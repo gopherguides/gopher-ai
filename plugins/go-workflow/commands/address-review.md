@@ -43,73 +43,35 @@ Initialize persistent loop to ensure work continues until complete:
 - Current branch: !`git branch --show-current 2>&1 || echo "unknown"`
 - Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
 - PR number: !`echo "${ARGUMENTS:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"`
-- Rebase status: !`PR_NUM="${ARGUMENTS:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"; BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName' 2>/dev/null); BASE_REMOTE=$(git remote | head -1); git fetch "$BASE_REMOTE" "$BASE_BRANCH" 2>/dev/null; BEHIND=$(git rev-list --count "HEAD..${BASE_REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo "unknown"); echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: ${BEHIND:-0}"`
 
 ---
 
-## Branch Protection
+## Step 1: Checkout PR Branch and Rebase
 
-**CRITICAL:** Verify you are NOT on `main`, `master`, or the default branch.
+**This is the FIRST thing you must do. Do NOT skip ahead to fetching review comments.**
 
-If the current branch is `main`, `master`, or matches the default branch:
-1. **STOP** - Do not make changes on the main branch
-2. **Check out the PR branch first**:
-   ```bash
-   gh pr checkout "$PR_NUM"
-   ```
-3. Then continue with the workflow
-
----
-
-## Step 1: Get PR Number
-
-Set PR_NUM for use throughout:
+### 1a. Get PR number and checkout
 
 ```bash
 PR_NUM="${ARGUMENTS:-$(gh pr view --json number --jq '.number')}"
 echo "Working on PR #$PR_NUM"
-```
-
----
-
-## REBASE GATE (Mandatory)
-
-**Check the "Rebase status" value from the Context section above.**
-
-- If it shows "Commits behind: 0" → Skip to Step 3
-- If it shows commits behind > 0 → You MUST complete Step 2 (rebase) before proceeding
-- If it shows "unknown" → Run the check manually per Step 2b
-
-**DO NOT proceed to Step 3 without confirming rebase status.**
-
-## Step 2: Check for Rebase
-
-**The rebase status from Context above shows how many commits behind you are.** If behind > 0, you MUST rebase before proceeding. Do NOT skip this step.
-
-### 2a. Ensure we're on the PR branch
-
-Always run `gh pr checkout` to guarantee we're on the correct branch. This is idempotent (no-op if already on the right branch) and handles same-repo PRs, fork PRs, and branch tracking automatically:
-
-```bash
 gh pr checkout "$PR_NUM"
 ```
 
-### 2b. Check if behind and rebase if needed
+This is idempotent (no-op if already on the right branch) and handles same-repo PRs, fork PRs, and branch tracking automatically. It also ensures you are NOT on `main` or `master`.
 
-First, identify the remote that points to the PR's base repository by matching the `owner/repo` path:
+### 1b. Check if behind base branch and rebase
+
+Identify the remote that points to the PR's base repository by matching the `owner/repo` path:
 
 ```bash
 BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
 
-# Extract owner/repo from gh repo view (always returns https://github.com/owner/repo)
 BASE_OWNER_REPO=$(gh repo view --json owner,name --jq '"\(.owner.login)/\(.name)"')
 
-# Find a remote that points to the same owner/repo
-# Handles: https://, git@host:, ssh://git@host/ formats and .git suffix
 BASE_REMOTE=""
 for remote in $(git remote); do
   REMOTE_URL=$(git remote get-url "$remote")
-  # Extract owner/repo from any URL format
   REMOTE_OWNER_REPO=$(echo "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
   if [ "$REMOTE_OWNER_REPO" = "$BASE_OWNER_REPO" ]; then
     BASE_REMOTE="$remote"
@@ -128,7 +90,7 @@ BEHIND=$(git rev-list --count "HEAD..${BASE_REMOTE}/${BASE_BRANCH}")
 echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
 ```
 
-**If `$BEHIND` is 0:** No rebase needed, skip to Step 3.
+**If `$BEHIND` is 0:** No rebase needed, proceed to Step 2.
 
 **If `$BEHIND` is greater than 0:**
 
@@ -151,7 +113,6 @@ echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
 
 4. Force-push the rebased branch to the PR's head branch:
    ```bash
-   # Get the PR's actual head branch name (may differ from local branch name)
    PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
    BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote")
    git push --force-with-lease "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
@@ -160,9 +121,9 @@ echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
 
 5. Inform the user of the rebase.
 
-### 2c. Wait for CI after rebase
+### 1c. Wait for CI after rebase
 
-**Only run this if a rebase was performed in 2b.**
+**Only run this if a rebase was performed in 1b.**
 
 Wait for CI checks to pass (handles both GitHub Actions and external CI providers):
 
@@ -176,21 +137,21 @@ for i in 1 2 3 4 5; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
 gh pr checks "$PR_NUM"
 ```
 
-- If all checks show `pass`: Proceed to Step 3.
+- If all checks show `pass`: Proceed to Step 2.
 - If any checks show `fail`: Analyze the failure, fix, commit, push, and re-watch until green.
 - If "no checks reported" after 5 retries: The repo may not have CI configured. Proceed with caution, but note this to the user.
 
-**Do not proceed to Step 3 until all CI checks pass (or confirmed no CI is configured).**
+**Do not proceed to Step 2 until all CI checks pass (or confirmed no CI is configured).**
 
 ---
 
-## Step 3: Fetch All Review Feedback
+## Step 2: Fetch All Review Feedback
 
 GitHub has two types of review feedback:
 1. **Review threads** (line-specific comments) - CAN be auto-resolved via GraphQL
 2. **Review comments** (general feedback from CHANGES_REQUESTED reviews) - CANNOT be auto-resolved, only the reviewer can approve
 
-### 3a. Fetch review threads (resolvable)
+### 2a. Fetch review threads (resolvable)
 
 ```bash
 OWNER=$(gh repo view --json owner --jq '.owner.login')
@@ -221,7 +182,7 @@ gh api graphql -f query='
 ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM"
 ```
 
-### 3b. Fetch pending reviews (not auto-resolvable)
+### 2b. Fetch pending reviews (not auto-resolvable)
 
 ```bash
 gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES_REQUESTED")'
@@ -229,7 +190,7 @@ gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES
 
 ---
 
-## Step 4: Display and Categorize Comments
+## Step 3: Display and Categorize Comments
 
 ### Categorize feedback into two groups:
 
@@ -237,17 +198,17 @@ gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES
 - Thread ID (needed for resolution later)
 - File path and line number
 - Comment body
-- Author username (track for re-review in Step 11)
+- Author username (track for re-review in Step 10)
 - These CAN be auto-resolved after fixing
 
 **Group B - Pending reviews** (from `reviews` with `state: CHANGES_REQUESTED`):
 - Review body/comments
-- Author username (track for re-review in Step 11)
+- Author username (track for re-review in Step 10)
 - These CANNOT be auto-resolved - the reviewer must approve
 
 ### Track unique reviewers
 
-Build a list of unique reviewer usernames from both groups (only reviewers who actually left feedback on THIS PR). This list drives Step 11 — only these reviewers will be contacted for re-review.
+Build a list of unique reviewer usernames from both groups (only reviewers who actually left feedback on THIS PR). This list drives Step 10 — only these reviewers will be contacted for re-review.
 
 ### If no feedback found:
 
@@ -264,11 +225,11 @@ Address the feedback, but note to the user:
 
 ---
 
-## Step 5: Address Each Comment
+## Step 4: Address Each Comment
 
 For each unresolved review comment:
 
-### 5a. Understand the Request
+### 4a. Understand the Request
 
 Read the comment carefully. Determine what change is being requested:
 - Code style fix?
@@ -277,7 +238,7 @@ Read the comment carefully. Determine what change is being requested:
 - Test addition?
 - Refactoring?
 
-### 5b. Locate the Code
+### 4b. Locate the Code
 
 Use the file path and line number from the thread to find the relevant code:
 
@@ -285,14 +246,14 @@ Use the file path and line number from the thread to find the relevant code:
 # Read the file around the commented line
 ```
 
-### 5c. Make the Fix
+### 4c. Make the Fix
 
 Edit the code to address the feedback. Follow these principles:
 - Make the **minimal change** that addresses the comment
 - Follow existing code patterns
 - Don't introduce unrelated changes
 
-### 5d. Validate Fix Against Feedback
+### 4d. Validate Fix Against Feedback
 
 After making each fix, verify it actually addresses what the reviewer asked for:
 
@@ -303,7 +264,7 @@ After making each fix, verify it actually addresses what the reviewer asked for:
 
 If the fix doesn't match the reviewer's intent, revise before moving to the next comment.
 
-### 5e. Track the Fix
+### 4e. Track the Fix
 
 Keep a mental note of:
 - Thread ID
@@ -312,7 +273,7 @@ Keep a mental note of:
 
 ---
 
-## Step 6: Verify Fixes Locally
+## Step 5: Verify Fixes Locally
 
 Before committing, run the full verification checklist. **All must pass before proceeding:**
 
@@ -325,7 +286,7 @@ If any step fails, fix the issue and re-run until all green. This catches proble
 
 ---
 
-## Step 7: Commit and Push All Fixes
+## Step 6: Commit and Push All Fixes
 
 After verification passes, bundle changes into a single commit:
 
@@ -339,7 +300,7 @@ git push
 
 ---
 
-## Step 8: Watch CI
+## Step 7: Watch CI
 
 After pushing, watch CI and fix any failures:
 
@@ -386,11 +347,11 @@ Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. 
    gh pr checks "$PR_NUM" --watch
    ```
 
-**Do not proceed to Step 9 until all CI checks pass.**
+**Do not proceed to Step 8 until all CI checks pass.**
 
 ---
 
-## Step 9: Reply to Each Comment
+## Step 8: Reply to Each Comment
 
 For each addressed comment, post a reply explaining the fix:
 
@@ -405,13 +366,13 @@ gh pr comment "$PR_NUM" --body "Fixed in latest commit: [brief explanation of wh
 
 ---
 
-## Step 10: Resolve Review Threads (Group A only)
+## Step 9: Resolve Review Threads (Group A only)
 
 **CRITICAL:** Only resolve threads after CI passes and fixes are pushed.
 
 **This only applies to line-specific review threads (Group A).** Pending reviews (Group B) cannot be auto-resolved.
 
-For each thread ID collected in Step 4 (Group A), resolve it via GraphQL:
+For each thread ID collected in Step 3 (Group A), resolve it via GraphQL:
 
 ```bash
 gh api graphql -f query='
@@ -427,15 +388,15 @@ gh api graphql -f query='
 
 ---
 
-## Step 11: Request Re-review From Actual Reviewers Only
+## Step 10: Request Re-review From Actual Reviewers Only
 
-**CRITICAL: Only request re-review from reviewers who actually left feedback on this PR (collected in Step 4). Do NOT request review from bots or services that never reviewed this PR. If a bot like codex, coderabbitai, or greptileai is not in the reviewer list from Step 4, do NOT contact them.**
+**CRITICAL: Only request re-review from reviewers who actually left feedback on this PR (collected in Step 3). Do NOT request review from bots or services that never reviewed this PR. If a bot like codex, coderabbitai, or greptileai is not in the reviewer list from Step 3, do NOT contact them.**
 
-### 11a. Check the reviewer list from Step 4
+### 10a. Check the reviewer list from Step 3
 
-Look at the unique reviewers you collected in Step 4. If the list is empty (no reviewers left feedback), skip this entire step.
+Look at the unique reviewers you collected in Step 3. If the list is empty (no reviewers left feedback), skip this entire step.
 
-### 11b. Check for bot re-review opt-out
+### 10b. Check for bot re-review opt-out
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -446,9 +407,9 @@ fi
 
 **If `DISABLE_BOT_REREVIEW=true` is found:** Skip bot re-reviews. Only request re-review from human reviewers.
 
-### 11c. Request re-review from bot reviewers who left feedback
+### 10c. Request re-review from bot reviewers who left feedback
 
-**Only do this for bots that appear in your Step 4 reviewer list.** If none of these bots reviewed the PR, skip this sub-step entirely.
+**Only do this for bots that appear in your Step 3 reviewer list.** If none of these bots reviewed the PR, skip this sub-step entirely.
 
 Known bot re-review triggers (use ONLY if the bot is in your reviewer list):
 - `codex` or `chatgpt-codex-connector` → `gh pr comment "$PR_NUM" --body "@codex review"`
@@ -457,21 +418,21 @@ Known bot re-review triggers (use ONLY if the bot is in your reviewer list):
 
 Ignore CI/dependency bots (`github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`) — they don't do re-reviews.
 
-### 11d. Request re-review from human reviewers who left feedback
+### 10d. Request re-review from human reviewers who left feedback
 
-For human reviewers from your Step 4 list who left CHANGES_REQUESTED:
+For human reviewers from your Step 3 list who left CHANGES_REQUESTED:
 
 ```bash
 gh pr edit "$PR_NUM" --add-reviewer "REVIEWER_USERNAME"
 ```
 
-### 11e. Inform the user
+### 10e. Inform the user
 
 After requesting re-reviews, list who was contacted and why. If no re-reviews were requested, say so.
 
 ---
 
-## Step 12: Verify Completion
+## Step 11: Verify Completion
 
 Confirm all resolvable threads are resolved:
 
@@ -516,7 +477,7 @@ gh pr checks "$PR_NUM"
 6. CI checks pass (`gh pr checks` shows all green)
 7. Replies have been posted to each comment
 8. All resolvable review threads (Group A) are resolved via GraphQL
-9. Re-review requested from reviewers who actually left feedback on this PR (from Step 4 list only):
+9. Re-review requested from reviewers who actually left feedback on this PR (from Step 3 list only):
    - Bot reviewers that left feedback: via `@bot review` comment (one per bot)
    - Human reviewers that left feedback: via `gh pr edit --add-reviewer`
    - If no bots reviewed, no bot re-review comments were posted
