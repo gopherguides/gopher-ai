@@ -60,7 +60,7 @@ Before asking any questions, silently detect PR context using multiple strategie
 **Strategy 1 — Current branch (works when branch name matches a PR):**
 
 ```bash
-PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
+PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences,comments,reviews --jq '.' 2>/dev/null`
 ```
 
 **Strategy 2 — Match HEAD commit against open PRs via GitHub search (handles worktrees):**
@@ -104,7 +104,7 @@ ISSUE_NUMS=`echo "$PR_JSON" | jq -r '.closingIssuesReferences[].number' 2>/dev/n
 
 # Fetch each linked issue
 for NUM in $ISSUE_NUMS; do
-  gh issue view "$NUM" --json number,title,body,labels,comments
+  gh issue view "$NUM" --json number,title,body,labels,comments --jq '.'
 done
 
 # Fetch inline review comments
@@ -191,11 +191,11 @@ After processing answers from R2, check if any selections require additional inp
 - **"Provide PR number"** was selected → ask: "Enter the PR number"
   - Validate input is numeric: `echo "$NUM" | grep -qE '^[0-9]+$'`
   - If invalid, show error and ask again
-  - Fetch PR: `gh pr view "$NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews`
+  - Fetch PR: `gh pr view "$NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews --jq '.'`
   - Fetch linked issues and inline review comments as in R1
 - **"Provide issue number"** was selected → ask: "Enter the issue number"
   - Validate input is numeric
-  - Fetch issue: `gh issue view "$NUM" --json number,title,body,labels,comments`
+  - Fetch issue: `gh issue view "$NUM" --json number,title,body,labels,comments --jq '.'`
   - Skip PR-specific data (no reviews to fetch)
 - **"Multi-pass (custom)"** was selected → ask: "How many passes? (2-5)"
   - Validate numeric, clamp to range

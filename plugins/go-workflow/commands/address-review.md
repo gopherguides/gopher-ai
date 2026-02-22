@@ -52,10 +52,70 @@ Store the parsed values:
 Validate input is numeric (using `PR_ARG` which has `--no-watch` stripped):
 !if [ -n "$PR_ARG" ] && ! echo "$PR_ARG" | grep -qE '^[0-9]+$'; then echo "Error: PR number must be numeric"; exit 1; fi
 
+## Resolve PR Number
+
+Always resolve the PR number BEFORE loop initialization to ensure the loop state is PR-specific (not `address-review-auto` which could leak phase across different PRs):
+
+```bash
+RESOLVED_PR="${PR_ARG:-$(gh pr view --json number --jq '.number' 2>/dev/null || echo 'auto')}"
+echo "Resolved PR: $RESOLVED_PR"
+```
+
+Store `RESOLVED_PR` for use in loop initialization and throughout the workflow.
+
 ## Loop Initialization
 
-Initialize persistent loop to ensure work continues until complete:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${ARGUMENTS:-auto}" "COMPLETE"`
+Initialize persistent loop with PR-specific name (no initial phase — fresh runs start neutral):
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE"`
+
+## Re-entry Check
+
+Before starting the fix cycle, check if we're resuming from a previous watching phase:
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+CURRENT_PHASE=""
+if [ -f "$LOOP_STATE_FILE" ]; then
+  CURRENT_PHASE=$(grep '^phase:' "$LOOP_STATE_FILE" | sed 's/phase: *//' || true)
+fi
+echo "Current phase: ${CURRENT_PHASE:-<none>}"
+```
+
+**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `true`:** The fix cycle (Steps 1-11) already completed in a previous iteration. Restore `BOT_REVIEW_BASELINE` from the state file (persisted during Phase Transition) so timestamp checks use the original post-push baseline, not the current time:
+
+```bash
+BOT_REVIEW_BASELINE=""
+if [ -f "$LOOP_STATE_FILE" ]; then
+  BOT_REVIEW_BASELINE=$(grep '^bot_review_baseline:' "$LOOP_STATE_FILE" | sed 's/bot_review_baseline: *//' || true)
+fi
+if [ -z "$BOT_REVIEW_BASELINE" ]; then
+  BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  echo "Bot review baseline (fallback): $BOT_REVIEW_BASELINE"
+  # Persist the fallback so future re-entries don't keep advancing the baseline
+  if [ -f "$LOOP_STATE_FILE" ]; then
+    sed -i '' "/^phase:/a\\
+bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^phase:/a bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE"
+  fi
+else
+  echo "Bot review baseline (restored): $BOT_REVIEW_BASELINE"
+fi
+```
+
+Do NOT re-run the fix cycle.
+
+**If `CURRENT_PHASE` is `watching` AND `WATCH_MODE` is `false`:** Clear the stale phase explicitly so stop-hook doesn't route to Step 12:
+
+```bash
+if [ -f "$LOOP_STATE_FILE" ]; then
+  sed -i '' "s/^phase: .*/phase: /" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: /" "$LOOP_STATE_FILE"
+  echo "Phase cleared (--no-watch mode)"
+fi
+```
+
+Continue with the full fix cycle. (`--no-watch` mode should not inherit watching phase from a prior run.)
+
+**Otherwise:** Continue normally with the full flow below.
 
 ## Bot Registry
 
@@ -81,7 +141,7 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 
 ## Context
 
-- PR details: !`PR_NUM="${PR_ARG:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"; gh pr view "$PR_NUM" --json title,state,body,headRefName,baseRefName 2>/dev/null || echo "PR not found"`
+- PR details: !`PR_NUM="${PR_ARG:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"; gh pr view "$PR_NUM" --json title,state,body,headRefName,baseRefName --jq '.' 2>/dev/null || echo "PR not found"`
 - Current branch: !`git branch --show-current 2>&1 || echo "unknown"`
 - Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
 - PR number: !`echo "${PR_ARG:-\`gh pr view --json number --jq '.number' 2>/dev/null\`}"`
@@ -322,9 +382,28 @@ Build a list of unique reviewer usernames from both groups (only reviewers who a
 
 If there are no unresolved threads AND no pending reviews:
 
+- **If `CURRENT_PHASE` is `fixing` AND `WATCH_MODE` is `true` AND bots were detected:** A fix cycle ran (we pushed changes) but bots haven't re-reviewed yet. Set phase to `watching` and skip to Step 12.
+- **If `CURRENT_PHASE` is empty/unset (fresh run):** The PR is already clean — no fixes were needed and no push occurred. Bots have nothing new to review. Output `<done>COMPLETE</done>`.
+- **If `WATCH_MODE` is `true` AND no bots detected:** No feedback and nothing to watch for → output `<done>COMPLETE</done>`.
+- **If `WATCH_MODE` is `false`:** No feedback to address → output `<done>COMPLETE</done>`.
+
+**Phase set code for post-fix-cycle "no feedback" path (only when `CURRENT_PHASE` is `fixing`):**
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+if [ -f "$LOOP_STATE_FILE" ]; then
+  if grep -q '^phase:' "$LOOP_STATE_FILE"; then
+    sed -i '' "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE"
+  else
+    sed -i '' "/^completion_promise:/a\\
+phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:/a phase: watching" "$LOOP_STATE_FILE"
+  fi
+  echo "Phase set to: watching (post-fix-cycle path)"
+fi
 ```
-<done>COMPLETE</done>
-```
+
+Note: `BOT_REVIEW_BASELINE` should already be set from Step 6 in this path since a fix cycle ran.
 
 ### If only pending reviews (no threads):
 
@@ -334,6 +413,16 @@ Address the feedback, but note to the user:
 ---
 
 ## Step 4: Address Each Comment
+
+**Set phase to `fixing` now that the fix cycle is actually starting:**
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+if [ -f "$LOOP_STATE_FILE" ]; then
+  sed -i '' "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE"
+fi
+```
 
 For each unresolved review comment:
 
@@ -405,6 +494,15 @@ git commit -m "address review comments
 - [brief summary of each fix]"
 git push
 ```
+
+**CRITICAL: Capture the bot review baseline timestamp IMMEDIATELY after pushing.** This is the reference point for detecting post-push bot reviews. Capturing it now (right after push) ensures that bots reviewing during CI/Steps 7-11 are correctly detected as post-push reviews.
+
+```bash
+BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "Bot review baseline captured: $BOT_REVIEW_BASELINE"
+```
+
+Store this value and use it in all Step 12a bot checks. Do NOT recompute it later.
 
 ---
 
@@ -617,6 +715,48 @@ gh pr checks "$PR_NUM"
 
 ---
 
+## Phase Transition
+
+Before entering the watch loop, update the loop state phase so that any stop-hook re-entry resumes at Step 12 instead of restarting the fix cycle:
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+if [ -f "$LOOP_STATE_FILE" ]; then
+  if grep -q '^phase:' "$LOOP_STATE_FILE"; then
+    sed -i '' "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE"
+  else
+    sed -i '' "/^completion_promise:/a\\
+phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:/a phase: watching" "$LOOP_STATE_FILE"
+  fi
+  echo "Phase set to: watching"
+fi
+```
+
+**Note:** `BOT_REVIEW_BASELINE` should already be set from Step 6 (right after the push). If for some reason it wasn't captured earlier (e.g., re-entry after context loss), capture it now as a fallback.
+
+**CRITICAL: Persist the baseline in the state file** so it survives context-loss re-entry:
+
+```bash
+if [ -z "$BOT_REVIEW_BASELINE" ]; then
+  BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  echo "Bot review baseline captured (fallback): $BOT_REVIEW_BASELINE"
+fi
+
+# Persist baseline in state file for re-entry
+if [ -f "$LOOP_STATE_FILE" ]; then
+  if grep -q '^bot_review_baseline:' "$LOOP_STATE_FILE"; then
+    sed -i '' "s/^bot_review_baseline: .*/bot_review_baseline: $BOT_REVIEW_BASELINE/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^bot_review_baseline: .*/bot_review_baseline: $BOT_REVIEW_BASELINE/" "$LOOP_STATE_FILE"
+  else
+    sed -i '' "/^phase:/a\\
+bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^phase:/a bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE"
+  fi
+  echo "Bot review baseline persisted: $BOT_REVIEW_BASELINE"
+fi
+```
+
+---
+
 ## Step 12: Watch for Bot Re-review (default, skipped with --no-watch)
 
 **Skip this entire step if `WATCH_MODE` is `false` or no review bots were detected in the Bot Discovery step.**
@@ -669,19 +809,30 @@ gh pr checks "$PR_NUM" --json name,state | jq '.[] | select(.name | test("grepti
 
 If the Greptile check shows `pass` AND no new inline comments were posted since last push → done.
 
-**Copilot (`copilot-pull-request-review[bot]`):** Check latest review for inline comments:
+**Copilot (`copilot-pull-request-review[bot]`):** Timestamp-based check — verify the bot posted a NEW review AFTER the baseline captured in Phase Transition:
 
 ```bash
-gh api graphql -f query='
+# Use BOT_REVIEW_BASELINE captured in Phase Transition (do NOT recompute here).
+# This ensures the baseline stays fixed across polling iterations.
+echo "Using bot review baseline: $BOT_REVIEW_BASELINE"
+
+COPILOT_STATUS=$(gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
+        reviews(last: 100) {
+          nodes {
+            author { login }
+            createdAt
+          }
+        }
         reviewThreads(first: 100) {
           nodes {
             isResolved
             comments(first: 1) {
               nodes {
                 author { login }
+                createdAt
               }
             }
           }
@@ -689,12 +840,29 @@ gh api graphql -f query='
       }
     }
   }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.comments.nodes[0].author.login == "copilot-pull-request-review[bot]")] | length'
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq --arg push "$BOT_REVIEW_BASELINE" --arg bot "copilot-pull-request-review[bot]" '
+  {
+    has_post_push_review: ([.data.repository.pullRequest.reviews.nodes[] | select(.author.login == $bot and .createdAt > $push)] | length > 0),
+    unresolved_threads: [.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.comments.nodes[0].author.login == $bot and .comments.nodes[0].createdAt > $push)] | length
+  }
+')
+echo "Copilot status: $COPILOT_STATUS"
 ```
 
-If unresolved thread count is 0 → done. Note: Copilot cannot be re-triggered via comment (see 12d).
+Interpret the result:
+- `has_post_push_review: true` AND `unresolved_threads: 0` → bot re-reviewed and approved (done)
+- `has_post_push_review: true` AND `unresolved_threads > 0` → bot re-reviewed and found new issues (not done)
+- `has_post_push_review: false` → bot hasn't re-reviewed yet (not done, keep waiting)
 
-**Claude (`claude[bot]`):** Same thread check as Copilot but for `claude[bot]`. If no unresolved threads → done.
+Note: Copilot cannot be re-triggered via comment (see 12d).
+
+**Claude (`claude[bot]`):** Same timestamp-based check as Copilot but for `claude[bot]`, with silent approval handling:
+- Use `BOT_REVIEW_BASELINE` captured in Phase Transition (do NOT recompute)
+- Check if `claude[bot]` posted a NEW review AFTER that baseline
+- If post-push review exists with 0 new unresolved threads → done
+- If post-push review exists with unresolved threads → has new issues (not done)
+- If no post-push review AND no unresolved Claude threads → **silent approval** (Claude doesn't always post a review when it finds no issues). Consider done after a reasonable wait (2+ polling cycles with no new Claude activity).
+- If no post-push review AND unresolved Claude threads exist from before baseline → those are stale (already resolved), consider done
 
 **If ALL detected bots are done → output `<done>COMPLETE</done>` and stop.**
 
@@ -724,9 +892,22 @@ If any bot hasn't approved yet:
 
 After the quiet period ends and new unresolved comments/threads exist:
 
+**First, clear the `watching` phase** so stop-hook re-entry runs the fix cycle instead of skipping to Step 12:
+
+```bash
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+if [ -f "$LOOP_STATE_FILE" ]; then
+  sed -i '' "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE"
+  echo "Phase reset to: fixing (new bot feedback detected)"
+fi
+```
+
+Then:
+
 1. Re-fetch all review feedback (Step 2) but **only address NEW unresolved comments** from bots. Already-resolved threads stay resolved.
 2. Loop back through Steps 2-11 for the new feedback only.
-3. After completing the fix cycle, return to Step 12a to re-check approval status.
+3. After completing the fix cycle, return to Step 12a to re-check approval status (the Phase Transition section will set phase back to `watching`).
 
 ### 12d. No new comments but bot hasn't approved — re-trigger
 

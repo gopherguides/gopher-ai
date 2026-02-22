@@ -90,7 +90,16 @@ increment_iteration "$STATE_FILE"
 NEW_ITERATION=$((ITERATION + 1))
 
 # Build system message with iteration info and guidance
-SYSTEM_MSG="Iteration $NEW_ITERATION of loop '$LOOP_NAME'. Continue working on the task."
+SYSTEM_MSG="Iteration $NEW_ITERATION of loop '$LOOP_NAME'."
+
+# Phase-aware re-feed: use targeted message for watching phase
+if [ "$PHASE" = "watching" ]; then
+  REASON="Resume Step 12: Check bot approval status, poll if needed. Do NOT re-run Steps 1-11."
+  SYSTEM_MSG="$SYSTEM_MSG RESUME AT STEP 12a: The fix cycle (Steps 1-11) is already complete. Check bot approval status and poll for re-reviews. Do NOT restart the fix cycle."
+else
+  REASON="$ORIGINAL_PROMPT"
+  SYSTEM_MSG="$SYSTEM_MSG Continue working on the task."
+fi
 
 # Add guidance after many iterations
 if [ "$NEW_ITERATION" -ge 15 ]; then
@@ -102,5 +111,5 @@ SYSTEM_MSG="$SYSTEM_MSG Output <done>$COMPLETION_PROMISE</done> ONLY when ALL co
 # Block exit and re-feed prompt
 # Note: Using printf to handle special characters in prompt
 printf '{"decision": "block", "reason": "%s", "systemMessage": "%s"}\n' \
-  "$(echo "$ORIGINAL_PROMPT" | sed 's/"/\\"/g' | tr '\n' ' ')" \
+  "$(echo "$REASON" | sed 's/"/\\"/g' | tr '\n' ' ')" \
   "$(echo "$SYSTEM_MSG" | sed 's/"/\\"/g')"
