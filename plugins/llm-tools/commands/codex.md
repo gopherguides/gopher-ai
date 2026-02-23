@@ -92,8 +92,9 @@ for f in $(find . -name '*_test.go' -type f 2>/dev/null); do
   md5sum "$f" 2>/dev/null || md5 -r "$f" 2>/dev/null
 done | sort > "$TEST_CURRENT"
 
-# Find lines that differ (new files or modified content)
-CHANGED_TESTS=$(comm -3 "$TEST_BASELINE" "$TEST_CURRENT" | awk '{print $NF}' | sort -u)
+# Find lines only in current (new or modified files), excluding deletions
+# comm -13 shows lines in file2 not in file1 (new/changed hashes)
+CHANGED_TESTS=$(comm -13 "$TEST_BASELINE" "$TEST_CURRENT" | awk '{print $NF}' | sort -u)
 rm -f "$TEST_BASELINE" "$TEST_CURRENT"
 
 if [ -n "$CHANGED_TESTS" ]; then

@@ -469,7 +469,7 @@ Keep a mental note of:
 - What was fixed
 - Brief explanation for the reply
 - Testability: `testable` or `not-testable` (from 4a assessment)
-- If testable: the affected function/method name and package
+- If testable: the source file path, affected function/method name, and package
 
 ---
 
