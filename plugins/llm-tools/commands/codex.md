@@ -44,8 +44,11 @@ Run a task using OpenAI Codex CLI with the prompt: $ARGUMENTS
 
 ## 1. Detect Review Mode
 
-Check if the prompt contains "review" (case-insensitive). If yes, route to **Review Flow**.
-Otherwise, continue with **Exec Flow**.
+Check if the prompt contains "review" (case-insensitive). Then determine routing:
+
+- If the prompt is **fix-oriented** (contains action words like "fix", "address", "resolve", "update" alongside "review" — e.g., "fix review comment", "address review feedback"), route to **Exec Flow**. These prompts need to modify files, which Review Flow cannot do.
+- If the prompt is **review-oriented** (e.g., "review the auth changes", "review this PR"), route to **Review Flow**.
+- Otherwise, continue with **Exec Flow**.
 
 ## 2. Review Fix Detection (applies to both flows)
 
@@ -56,10 +59,11 @@ Before running Codex in either flow, detect if the prompt is addressing review f
 ```bash
 # Record current test file content hashes for comparison after Codex completes
 # This detects both new files AND modifications to existing test files
+# Uses find -exec for safe handling of paths with spaces
 TEST_BASELINE=$(mktemp)
-for f in $(find . -name '*_test.go' -type f 2>/dev/null); do
-  md5sum "$f" 2>/dev/null || md5 -r "$f" 2>/dev/null
-done | sort > "$TEST_BASELINE"
+find . -name '*_test.go' -type f -exec sh -c '
+  for f; do md5sum "$f" 2>/dev/null || md5 -r "$f" 2>/dev/null; done
+' _ {} + | sort > "$TEST_BASELINE"
 ```
 
 **For flows using stdin mode** (Exec Flow, Review Flow with PR/issue context): Append these instructions to the Codex prompt:
@@ -87,10 +91,11 @@ After Codex completes (either flow), check if any `_test.go` files were created 
 
 ```bash
 # Compare current content hashes against pre-run baseline
+# Uses find -exec for safe handling of paths with spaces
 TEST_CURRENT=$(mktemp)
-for f in $(find . -name '*_test.go' -type f 2>/dev/null); do
-  md5sum "$f" 2>/dev/null || md5 -r "$f" 2>/dev/null
-done | sort > "$TEST_CURRENT"
+find . -name '*_test.go' -type f -exec sh -c '
+  for f; do md5sum "$f" 2>/dev/null || md5 -r "$f" 2>/dev/null; done
+' _ {} + | sort > "$TEST_CURRENT"
 
 # Find lines only in current (new or modified files), excluding deletions
 # comm -13 shows lines in file2 not in file1 (new/changed hashes)
