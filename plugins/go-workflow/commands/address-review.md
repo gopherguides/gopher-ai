@@ -119,7 +119,7 @@ Continue with the full fix cycle. (`--no-watch` mode should not inherit watching
 
 ## Bot Registry
 
-Reference table of known review bots. Used ONLY for matching against bots actually found on the PR — never for proactively contacting bots.
+Reference table of known review bots. Used ONLY for matching against bots actually found on the PR — never for proactively contacting bots. **CRITICAL: Most PRs have ZERO bots. If Bot Discovery found no bots, ignore this entire table. Never trigger a bot that has not already reviewed this PR.**
 
 | Login | Approval Signal | Has Issues Signal | Re-review Trigger |
 |---|---|---|---|
@@ -655,6 +655,8 @@ fi
 
 ### 10c. Request re-review from bot reviewers (data-driven lookup)
 
+**FORBIDDEN: Do NOT post trigger commands for bots that are not in the Step 3 reviewer list. If a bot never reviewed this PR, triggering it posts spam on the repository. This applies especially to `@codex review` — never post this unless `chatgpt-codex-connector[bot]` actually appears in the reviewer list.**
+
 **For each reviewer in the actual reviewer list from 10a:**
 
 1. Check if the login matches any entry in the Bot Registry table (from the "Bot Registry" section above)
@@ -761,108 +763,20 @@ fi
 
 **Skip this entire step if `WATCH_MODE` is `false` or no review bots were detected in the Bot Discovery step.**
 
-### 12a. Check if all bots have approved
+**NEVER check for, trigger, or mention a bot that was NOT found in the Bot Discovery step. If Bot Discovery found zero bots, you MUST skip this entire step. Running bot-specific checks for bots not on the PR is a critical error that posts unwanted comments on other people's repositories.**
 
-For each bot discovered in the Bot Discovery step, check approval using the bot-specific detection logic from the Bot Registry:
+### 12a. Check if all detected bots have approved
 
-**CodeRabbit (`coderabbitai[bot]`):** Query latest review state:
+**ONLY check bots that were discovered in the Bot Discovery step above. If no bots were discovered, skip Step 12 entirely.**
 
-```bash
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
+For each bot from your Bot Discovery results, use the approval detection logic from the Bot Registry table to determine if it has approved. The detection approaches by bot type:
 
-gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        reviews(last: 100) {
-          nodes {
-            author { login }
-            state
-          }
-        }
-      }
-    }
-  }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq -r '
-  [.data.repository.pullRequest.reviews.nodes[] | select(.author.login == "coderabbitai[bot]")] | last | .state
-'
-```
+- Bots with formal review states (e.g., CodeRabbit): Query latest review state
+- Bots with issue comment signals (e.g., Codex): Check latest issue comment body
+- Bots with status checks (e.g., Greptile): Check `gh pr checks`
+- Bots with timestamp-based detection (e.g., Copilot, Claude): Compare against BOT_REVIEW_BASELINE
 
-If result is `APPROVED` → done. If `CHANGES_REQUESTED` → still has issues.
-
-**Codex (`chatgpt-codex-connector[bot]`):** Check for the "all clear" issue comment:
-
-```bash
-gh api "repos/$OWNER/$REPO/issues/$PR_NUM/comments" --jq '
-  [.[] | select(.user.login == "chatgpt-codex-connector[bot]")] | last | .body
-'
-```
-
-If the latest comment body contains `"Didn't find any major issues"` → done. If the bot posted `COMMENTED` reviews with P1/P2 inline comments after the last push → still has issues. Also check: if the `@codex review` trigger comment has a 👀 (eyes) reaction but no 👍 (thumbs up) yet, the bot is still processing.
-
-**Greptile (`greptileai`):** Check status check result:
-
-```bash
-gh pr checks "$PR_NUM" --json name,state | jq '.[] | select(.name | test("greptile"; "i"))'
-```
-
-If the Greptile check shows `pass` AND no new inline comments were posted since last push → done.
-
-**Copilot (`copilot-pull-request-review[bot]`):** Timestamp-based check — verify the bot posted a NEW review AFTER the baseline captured in Phase Transition:
-
-```bash
-# Use BOT_REVIEW_BASELINE captured in Phase Transition (do NOT recompute here).
-# This ensures the baseline stays fixed across polling iterations.
-echo "Using bot review baseline: $BOT_REVIEW_BASELINE"
-
-COPILOT_STATUS=$(gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        reviews(last: 100) {
-          nodes {
-            author { login }
-            createdAt
-          }
-        }
-        reviewThreads(first: 100) {
-          nodes {
-            isResolved
-            comments(first: 1) {
-              nodes {
-                author { login }
-                createdAt
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq --arg push "$BOT_REVIEW_BASELINE" --arg bot "copilot-pull-request-review[bot]" '
-  {
-    has_post_push_review: ([.data.repository.pullRequest.reviews.nodes[] | select(.author.login == $bot and .createdAt > $push)] | length > 0),
-    unresolved_threads: [.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.comments.nodes[0].author.login == $bot and .comments.nodes[0].createdAt > $push)] | length
-  }
-')
-echo "Copilot status: $COPILOT_STATUS"
-```
-
-Interpret the result:
-- `has_post_push_review: true` AND `unresolved_threads: 0` → bot re-reviewed and approved (done)
-- `has_post_push_review: true` AND `unresolved_threads > 0` → bot re-reviewed and found new issues (not done)
-- `has_post_push_review: false` → bot hasn't re-reviewed yet (not done, keep waiting)
-
-Note: Copilot cannot be re-triggered via comment (see 12d).
-
-**Claude (`claude[bot]`):** Same timestamp-based check as Copilot but for `claude[bot]`, with silent approval handling:
-- Use `BOT_REVIEW_BASELINE` captured in Phase Transition (do NOT recompute)
-- Check if `claude[bot]` posted a NEW review AFTER that baseline
-- If post-push review exists with 0 new unresolved threads → done
-- If post-push review exists with unresolved threads → has new issues (not done)
-- If no post-push review AND no unresolved Claude threads → **silent approval** (Claude doesn't always post a review when it finds no issues). Consider done after a reasonable wait (2+ polling cycles with no new Claude activity).
-- If no post-push review AND unresolved Claude threads exist from before baseline → those are stale (already resolved), consider done
+**Do NOT run checks for bots that were not in your Bot Discovery results.**
 
 **If ALL detected bots are done → output `<done>COMPLETE</done>` and stop.**
 
