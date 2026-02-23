@@ -512,7 +512,7 @@ For each testable fix, check if a test file already exists:
 
 ```bash
 # For a file like pkg/auth/validate.go, check for pkg/auth/validate_test.go
-ls "${FILE%.*}_test.go" 2>/dev/null || ls "$(dirname "$FILE")/*_test.go" 2>/dev/null
+ls "${FILE%.*}_test.go" 2>/dev/null || ls "$(dirname "$FILE")"/*_test.go 2>/dev/null
 ```
 
 If a test file exists, look for existing table-driven tests for the affected function:

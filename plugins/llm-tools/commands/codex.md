@@ -475,10 +475,11 @@ For every testable fix you make, write a corresponding test. A fix is testable i
 After Codex completes, check if `_test.go` files were created or modified:
 
 ```bash
-git diff --name-only HEAD | grep '_test.go$'
+# Check both tracked changes and untracked new files
+{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '_test.go$'
 ```
 
-If no test files were changed AND the fix modified testable behavior, Claude generates the missing tests following the same guidelines above.
+If no test files were changed or created AND the fix modified testable behavior, Claude generates the missing tests following the same guidelines above.
 
 ### 1. Select Model
 
