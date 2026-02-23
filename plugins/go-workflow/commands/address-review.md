@@ -515,11 +515,11 @@ For each testable fix, check if a test file already exists:
 ls "${FILE%.*}_test.go" 2>/dev/null || ls "$(dirname "$FILE")"/*_test.go 2>/dev/null
 ```
 
-If a test file exists, look for existing table-driven tests for the affected function:
+If a test file exists, look for existing table-driven tests for the affected function across ALL `*_test.go` files in the package (tests may be split across multiple files):
 
 ```bash
-# Search for existing test tables targeting the function
-grep -n "func Test.*${FUNCTION_NAME}" "${FILE%.*}_test.go" 2>/dev/null
+# Search all package test files for existing tests targeting the function
+grep -n "func Test.*${FUNCTION_NAME}" "$(dirname "$FILE")"/*_test.go 2>/dev/null
 ```
 
 ### 4.5c. Detect Testing Patterns

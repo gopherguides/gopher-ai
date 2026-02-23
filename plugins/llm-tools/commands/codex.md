@@ -54,9 +54,12 @@ Before running Codex in either flow, detect if the prompt is addressing review f
 **Capture baseline before running Codex:**
 
 ```bash
-# Record current test file state for comparison after Codex completes
+# Record current test file content hashes for comparison after Codex completes
+# This detects both new files AND modifications to existing test files
 TEST_BASELINE=$(mktemp)
-{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '_test.go$' | sort > "$TEST_BASELINE"
+for f in $(find . -name '*_test.go' -type f 2>/dev/null); do
+  md5sum "$f" 2>/dev/null || md5 -r "$f" 2>/dev/null
+done | sort > "$TEST_BASELINE"
 ```
 
 **For flows using stdin mode** (Exec Flow, Review Flow with PR/issue context): Append these instructions to the Codex prompt:
@@ -80,23 +83,27 @@ For every testable fix you make, write a corresponding test. A fix is testable i
 
 ### Review Fix Fallback (after either flow completes)
 
-After Codex completes (either flow), check if NEW `_test.go` files were created or modified since the baseline:
+After Codex completes (either flow), check if any `_test.go` files were created or modified since the baseline by comparing content hashes:
 
 ```bash
-# Compare current state against pre-run baseline
+# Compare current content hashes against pre-run baseline
 TEST_CURRENT=$(mktemp)
-{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '_test.go$' | sort > "$TEST_CURRENT"
-NEW_TESTS=$(comm -13 "$TEST_BASELINE" "$TEST_CURRENT")
+for f in $(find . -name '*_test.go' -type f 2>/dev/null); do
+  md5sum "$f" 2>/dev/null || md5 -r "$f" 2>/dev/null
+done | sort > "$TEST_CURRENT"
+
+# Find lines that differ (new files or modified content)
+CHANGED_TESTS=$(comm -3 "$TEST_BASELINE" "$TEST_CURRENT" | awk '{print $NF}' | sort -u)
 rm -f "$TEST_BASELINE" "$TEST_CURRENT"
 
-if [ -n "$NEW_TESTS" ]; then
-  echo "Test files changed by Codex: $NEW_TESTS"
+if [ -n "$CHANGED_TESTS" ]; then
+  echo "Test files created or modified by Codex: $CHANGED_TESTS"
 else
-  echo "No new test files from Codex"
+  echo "No test file changes from Codex"
 fi
 ```
 
-If no NEW test files were changed or created by this Codex run AND the fix modified testable behavior, Claude generates the missing tests following the same guidelines above.
+If no test files were created or modified by this Codex run AND the fix modified testable behavior, Claude generates the missing tests following the same guidelines above.
 
 ---
 
