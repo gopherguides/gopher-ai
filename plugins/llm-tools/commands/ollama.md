@@ -187,6 +187,25 @@ After execution completes:
 - Ask if they want a follow-up question
 - Offer to try a different model or compare with `/codex` or `/gemini`
 
+## Review Fix Detection
+
+Before running Ollama, detect if the prompt is addressing review feedback (e.g., contains phrases like "fix review comment", "address feedback", "fix the issue from review", or originates from an `/address-review` context). If a review-fix prompt is detected:
+
+Append to the Ollama prompt:
+
+```text
+
+---
+
+For every testable fix, write a corresponding test. A fix is testable if it changes observable behavior (return values, errors, side effects, HTTP responses). Skip tests for cosmetic changes (comments, formatting, renames, log changes). Add cases to existing table-driven tests when possible, or create new table-driven tests following the package's conventions.
+```
+
+**Note:** Local models commonly skip test generation or produce incomplete tests. The fallback below is especially important for Ollama.
+
+### Review Fix Fallback
+
+After Ollama completes, check if its response includes test code (look for `func Test` or `_test.go` content). If the response contains a fix but no tests for testable changes, Claude generates the missing tests using the same guidelines.
+
 ## Error Handling
 
 - If model loading fails (OOM), suggest a smaller model
