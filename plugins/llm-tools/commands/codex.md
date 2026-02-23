@@ -51,7 +51,15 @@ Otherwise, continue with **Exec Flow**.
 
 Before running Codex in either flow, detect if the prompt is addressing review feedback (e.g., contains phrases like "fix review comment", "address feedback", "fix the issue from review", or the prompt originates from an `/address-review` context). If a review-fix prompt is detected:
 
-Append these instructions to the Codex prompt (whether using `codex review` or `codex exec`):
+**Capture baseline before running Codex:**
+
+```bash
+# Record current test file state for comparison after Codex completes
+TEST_BASELINE=$(mktemp)
+{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '_test.go$' | sort > "$TEST_BASELINE"
+```
+
+**For flows using stdin mode** (Exec Flow, Review Flow with PR/issue context): Append these instructions to the Codex prompt:
 
 ```text
 
@@ -68,16 +76,27 @@ For every testable fix you make, write a corresponding test. A fix is testable i
 - Verify all new tests pass
 ```
 
+**For Review Flow without PR/issue context** (uses native `codex review --uncommitted/--base/--commit`): These commands don't support custom prompt injection. The fallback mechanism below is the primary way to ensure test coverage for this path.
+
 ### Review Fix Fallback (after either flow completes)
 
-After Codex completes (either flow), check if `_test.go` files were created or modified:
+After Codex completes (either flow), check if NEW `_test.go` files were created or modified since the baseline:
 
 ```bash
-# Check both tracked changes and untracked new files
-{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '_test.go$'
+# Compare current state against pre-run baseline
+TEST_CURRENT=$(mktemp)
+{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '_test.go$' | sort > "$TEST_CURRENT"
+NEW_TESTS=$(comm -13 "$TEST_BASELINE" "$TEST_CURRENT")
+rm -f "$TEST_BASELINE" "$TEST_CURRENT"
+
+if [ -n "$NEW_TESTS" ]; then
+  echo "Test files changed by Codex: $NEW_TESTS"
+else
+  echo "No new test files from Codex"
+fi
 ```
 
-If no test files were changed or created AND the fix modified testable behavior, Claude generates the missing tests following the same guidelines above.
+If no NEW test files were changed or created by this Codex run AND the fix modified testable behavior, Claude generates the missing tests following the same guidelines above.
 
 ---
 
