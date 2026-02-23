@@ -94,7 +94,20 @@ Default: `No`
 - Generate summary of current Claude session (~100 words)
 - Include goal, decisions made, files discussed
 
-## 4. Run Gemini
+## 4. Review Fix Detection
+
+Before running Gemini, detect if the prompt is addressing review feedback (e.g., contains phrases like "fix review comment", "address feedback", "fix the issue from review", or originates from an `/address-review` context). If a review-fix prompt is detected:
+
+Append to the Gemini prompt:
+
+```text
+
+---
+
+For every testable fix, write a corresponding test. A fix is testable if it changes observable behavior (return values, errors, side effects, HTTP responses). Skip tests for cosmetic changes (comments, formatting, renames, log changes). Add cases to existing table-driven tests when possible, or create new table-driven tests following the package's conventions.
+```
+
+## 5. Run Gemini
 
 **Without context:**
 
@@ -131,13 +144,17 @@ EOF
 )" -m <model>
 ```
 
-## 5. Report Results
+## 6. Report Results
 
 After execution completes:
 
 - Display the response to the user
 - Ask if they want a follow-up question or different perspective
 - Offer to try `/codex` or `/ollama` for comparison
+
+### Review Fix Fallback
+
+After Gemini completes, check if its response includes test code (look for `func Test` or `_test.go` content). If the response contains a fix but no tests for testable changes, Claude generates the missing tests using the same guidelines.
 
 ## Error Handling
 

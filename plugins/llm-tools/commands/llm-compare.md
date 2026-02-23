@@ -81,6 +81,19 @@ Default: `No`
 
 If context is selected, gather it once and use for all LLMs.
 
+## Review Fix Detection
+
+Before running the LLMs, detect if the prompt is addressing review feedback (e.g., contains phrases like "fix review comment", "address feedback", "fix the issue from review", or originates from an `/address-review` context). If a review-fix prompt is detected:
+
+Append to **ALL** LLM prompts:
+
+```text
+
+---
+
+For every testable fix, write a corresponding test. A fix is testable if it changes observable behavior (return values, errors, side effects, HTTP responses). Skip tests for cosmetic changes (comments, formatting, renames, log changes). Add cases to existing table-driven tests when possible, or create new table-driven tests following the package's conventions.
+```
+
 ## 4. Run LLMs
 
 Execute each LLM. Where possible, run in parallel for speed.
@@ -138,11 +151,21 @@ Present results in a structured format:
 ### Synthesis
 [Your analysis as Claude combining insights from all responses]
 
+### Test Coverage
+(Only included when review fix detection is active)
+- Which LLMs included tests with their fix
+- Quality comparison of generated tests (coverage, edge cases, conventions)
+- If no LLM produced tests: "No LLM generated tests — Claude will generate them as fallback"
+
 ### Recommendation
 Based on the comparison:
 - If models agree: "All models align on [approach]. This consensus suggests [conclusion]."
 - If models disagree: "Models differ on [aspect]. Consider [factors] when deciding."
 ```
+
+### Review Fix Fallback
+
+After generating the comparison report, if the review fix detection was active: check if ANY LLM produced test code (look for `func Test` or `_test.go` content in their responses). If no LLM produced tests for testable changes, Claude generates the missing tests using the same guidelines.
 
 ## 6. Follow-up Options
 

@@ -44,8 +44,72 @@ Run a task using OpenAI Codex CLI with the prompt: $ARGUMENTS
 
 ## 1. Detect Review Mode
 
-Check if the prompt contains "review" (case-insensitive). If yes, route to **Review Flow**.
-Otherwise, continue with **Exec Flow**.
+Check if the prompt contains "review" (case-insensitive). Then determine routing:
+
+- If the prompt is **fix-oriented** (contains action words like "fix", "address", "resolve", "update" alongside "review" — e.g., "fix review comment", "address review feedback"), route to **Exec Flow**. These prompts need to modify files, which Review Flow cannot do.
+- If the prompt is **review-oriented** (e.g., "review the auth changes", "review this PR"), route to **Review Flow**.
+- Otherwise, continue with **Exec Flow**.
+
+## 2. Review Fix Detection (applies to both flows)
+
+Before running Codex in either flow, detect if the prompt is addressing review feedback (e.g., contains phrases like "fix review comment", "address feedback", "fix the issue from review", or the prompt originates from an `/address-review` context). If a review-fix prompt is detected:
+
+**Capture baseline before running Codex:**
+
+```bash
+# Record current test file content hashes for comparison after Codex completes
+# This detects both new files AND modifications to existing test files
+# Uses find -exec for safe handling of paths with spaces
+TEST_BASELINE=$(mktemp)
+find . -name '*_test.go' -type f -exec sh -c '
+  for f; do md5sum "$f" 2>/dev/null || md5 -r "$f" 2>/dev/null; done
+' _ {} + | sort > "$TEST_BASELINE"
+```
+
+**For flows using stdin mode** (Exec Flow, Review Flow with PR/issue context): Append these instructions to the Codex prompt:
+
+```text
+
+---
+
+## Test Generation Requirement
+
+For every testable fix you make, write a corresponding test. A fix is testable if it changes observable behavior (return values, errors, side effects, HTTP responses). Skip tests for cosmetic changes (comments, formatting, renames, log changes).
+
+- Check for existing `_test.go` files and table-driven tests for affected functions
+- If a table-driven test exists, add a new case covering the fixed behavior
+- If no test exists, create a new table-driven test
+- Follow the existing test conventions in the package (testify vs stdlib, naming patterns)
+- Verify all new tests pass
+```
+
+**For Review Flow without PR/issue context** (uses native `codex review --uncommitted/--base/--commit`): These commands don't support custom prompt injection. The fallback mechanism below is the primary way to ensure test coverage for this path.
+
+### Review Fix Fallback (after either flow completes)
+
+After Codex completes (either flow), check if any `_test.go` files were created or modified since the baseline by comparing content hashes:
+
+```bash
+# Compare current content hashes against pre-run baseline
+# Uses find -exec for safe handling of paths with spaces
+TEST_CURRENT=$(mktemp)
+find . -name '*_test.go' -type f -exec sh -c '
+  for f; do md5sum "$f" 2>/dev/null || md5 -r "$f" 2>/dev/null; done
+' _ {} + | sort > "$TEST_CURRENT"
+
+# Find lines only in current (new or modified files), excluding deletions
+# comm -13 shows lines in file2 not in file1 (new/changed hashes)
+CHANGED_TESTS=$(comm -13 "$TEST_BASELINE" "$TEST_CURRENT" | awk '{print $NF}' | sort -u)
+rm -f "$TEST_BASELINE" "$TEST_CURRENT"
+
+if [ -n "$CHANGED_TESTS" ]; then
+  echo "Test files created or modified by Codex: $CHANGED_TESTS"
+else
+  echo "No test file changes from Codex"
+fi
+```
+
+If no test files were created or modified by this Codex run AND the fix modified testable behavior, Claude generates the missing tests following the same guidelines above.
 
 ---
 
