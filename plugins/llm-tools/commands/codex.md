@@ -47,6 +47,38 @@ Run a task using OpenAI Codex CLI with the prompt: $ARGUMENTS
 Check if the prompt contains "review" (case-insensitive). If yes, route to **Review Flow**.
 Otherwise, continue with **Exec Flow**.
 
+## 2. Review Fix Detection (applies to both flows)
+
+Before running Codex in either flow, detect if the prompt is addressing review feedback (e.g., contains phrases like "fix review comment", "address feedback", "fix the issue from review", or the prompt originates from an `/address-review` context). If a review-fix prompt is detected:
+
+Append these instructions to the Codex prompt (whether using `codex review` or `codex exec`):
+
+```text
+
+---
+
+## Test Generation Requirement
+
+For every testable fix you make, write a corresponding test. A fix is testable if it changes observable behavior (return values, errors, side effects, HTTP responses). Skip tests for cosmetic changes (comments, formatting, renames, log changes).
+
+- Check for existing `_test.go` files and table-driven tests for affected functions
+- If a table-driven test exists, add a new case covering the fixed behavior
+- If no test exists, create a new table-driven test
+- Follow the existing test conventions in the package (testify vs stdlib, naming patterns)
+- Verify all new tests pass
+```
+
+### Review Fix Fallback (after either flow completes)
+
+After Codex completes (either flow), check if `_test.go` files were created or modified:
+
+```bash
+# Check both tracked changes and untracked new files
+{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '_test.go$'
+```
+
+If no test files were changed or created AND the fix modified testable behavior, Claude generates the missing tests following the same guidelines above.
+
 ---
 
 ## Review Flow
@@ -448,38 +480,6 @@ For follow-ups, use: `codex resume --last`
 ## Exec Flow
 
 Use this flow for non-review tasks.
-
-### Review Fix Detection
-
-Before running Codex, detect if the prompt is addressing review feedback (e.g., contains phrases like "fix review comment", "address feedback", "fix the issue from review", or the prompt originates from an `/address-review` context). If a review-fix prompt is detected:
-
-Append these instructions to the Codex prompt:
-
-```text
-
----
-
-## Test Generation Requirement
-
-For every testable fix you make, write a corresponding test. A fix is testable if it changes observable behavior (return values, errors, side effects, HTTP responses). Skip tests for cosmetic changes (comments, formatting, renames, log changes).
-
-- Check for existing `_test.go` files and table-driven tests for affected functions
-- If a table-driven test exists, add a new case covering the fixed behavior
-- If no test exists, create a new table-driven test
-- Follow the existing test conventions in the package (testify vs stdlib, naming patterns)
-- Verify all new tests pass
-```
-
-### Review Fix Fallback
-
-After Codex completes, check if `_test.go` files were created or modified:
-
-```bash
-# Check both tracked changes and untracked new files
-{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | grep '_test.go$'
-```
-
-If no test files were changed or created AND the fix modified testable behavior, Claude generates the missing tests following the same guidelines above.
 
 ### 1. Select Model
 
