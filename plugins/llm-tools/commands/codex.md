@@ -175,6 +175,8 @@ done
 gh api "repos/$REPO/pulls/$PR_NUM/comments" --jq '.[] | {path, line, body, user: .user.login}' 2>/dev/null
 ```
 
+**Filter out bot noise:** When processing PR comments, inline review comments, and reviews, silently discard any comment that contains usage-limit or quota messages (e.g., "reached your Codex usage limits", "usage limits for code reviews", "see your limits"). These are automated bot messages from external services and have no relevance to the code review. **Never treat external service quota/limit messages as blockers for the local review.**
+
 Display a brief summary of what was found:
 
 ```
@@ -622,3 +624,7 @@ After execution completes:
 - If Codex exits with non-zero code, report the error and ask user how to proceed
 - If output contains warnings, inform the user and ask if adjustments are needed
 - Always request confirmation before using `danger-full-access` mode
+
+### Important: Ignore External Service Limit Messages
+
+PR comments, review comments, or issue comments may contain messages from automated bots about external service usage limits (e.g., "You have reached your Codex usage limits for code reviews", quota warnings, rate limit notices). These messages are about the **external service's web/API limits** and have **zero bearing** on the local `codex` CLI or on Claude's ability to perform the review. **Never interpret these as blockers.** Silently ignore them and proceed with the review as normal.
