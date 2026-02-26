@@ -58,7 +58,10 @@ templ ItemLink(id string) {
 ```go
 // CORRECT: json.Marshal helper (safest — handles all special characters)
 func hxVals(data map[string]any) string {
-    b, _ := json.Marshal(data)
+    b, err := json.Marshal(data)
+    if err != nil {
+        return "{}"
+    }
     return string(b)
 }
 
@@ -96,8 +99,8 @@ templ BrokenVals(token string) {
 
 ```go
 // CORRECT: fmt.Sprintf for server-constructed URLs with multiple params
-templ ItemRow(id int) {
-    <tr hx-get={ fmt.Sprintf("/items/%d/edit", id) } hx-trigger="click"
+templ ItemRow(item Item) {
+    <tr hx-get={ fmt.Sprintf("/items/%d/edit", item.ID) } hx-trigger="click"
         hx-target="this" hx-swap="outerHTML">
         <td>{ item.Name }</td>
     </tr>
@@ -106,6 +109,8 @@ templ ItemRow(id int) {
 // CORRECT: String concatenation for simple paths
 templ JobRow(jobID string) {
     <tr hx-get={ "/api/jobs/" + jobID + "/row" } hx-trigger="every 2s" hx-swap="outerHTML">
+        // row content
+    </tr>
 }
 
 // CORRECT: Query parameters appended to route
@@ -263,7 +268,7 @@ var confirmHandle = templ.NewOnceHandle()
 templ DeleteButton(id string) {
     @confirmHandle.Once() {
         <script>
-            function confirmDelete(id) {
+            function confirmDelete(id, event) {
                 if (!confirm("Delete item " + id + "?")) {
                     event.preventDefault();
                 }
@@ -276,9 +281,9 @@ templ DeleteButton(id string) {
     </button>
 }
 
-// CORRECT: templ.ComponentScript for onclick with dynamic args
+// CORRECT: templ.JSFuncCall for onclick with dynamic args (safely escapes values)
 templ CopyButton(text string) {
-    <button onclick={ templ.ComponentScript{Call: fmt.Sprintf("copyToClipboard('%s')", text)} }>
+    <button onclick={ templ.JSFuncCall("copyToClipboard", text) }>
         Copy
     </button>
 }
@@ -378,6 +383,7 @@ e.GET("/api/items", h.ItemsPartial)    // htmx partial
 ```go
 func (h *Handler) CreateAPIKey(c echo.Context) error {
     // ... create key ...
+    ctx := c.Request().Context()
 
     // Render primary response first (goes to hx-target)
     if err := views.APIKeysList(c, keys).Render(ctx, c.Response().Writer); err != nil {
@@ -450,7 +456,7 @@ func (h *Handler) UpdateItem(c echo.Context) error {
     }
     if len(errMap) > 0 {
         c.Set("errors", errMap)
-        return views.ItemForm(c, item).Render(ctx, c.Response().Writer)
+        return views.ItemForm(c, item).Render(c.Request().Context(), c.Response().Writer)
     }
     // ... save ...
 }
@@ -648,7 +654,7 @@ The server returns HTTP 200 with the form re-rendered showing inline errors. Thi
 ```go
 if c.Request().Header.Get("HX-Request") == "true" {
     c.Response().Header().Set("HX-Retarget", "#error-container")
-    return views.ErrorAlert(message).Render(ctx, c.Response().Writer)
+    return views.ErrorAlert(message).Render(c.Request().Context(), c.Response().Writer)
 }
 ```
 
