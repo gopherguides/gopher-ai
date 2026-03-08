@@ -64,21 +64,19 @@ if [ -n "$MAX_ITERATIONS" ] && [[ "$MAX_ITERATIONS" =~ ^[0-9]+$ ]]; then
   fi
 fi
 
-# Check for completion promise in transcript using proper JSON parsing
+# Check for completion promise in transcript
 if [ -n "$COMPLETION_PROMISE" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-  # Get the last assistant message from the transcript
-  LAST_ASSISTANT=$(grep '"role":"assistant"' "$TRANSCRIPT_PATH" 2>/dev/null | tail -1 || true)
+  LAST_LINES=$(grep '"role":"assistant"' "$TRANSCRIPT_PATH" 2>/dev/null | tail -n 100 || true)
 
-  if [ -n "$LAST_ASSISTANT" ]; then
-    # Extract text content from the message using jq
-    MESSAGE_TEXT=$(echo "$LAST_ASSISTANT" | jq -r '
-      .message.content[]? |
-      select(.type == "text") |
-      .text // empty
-    ' 2>/dev/null | tr '\n' ' ' || true)
+  if [ -n "$LAST_LINES" ]; then
+    set +e
+    LAST_OUTPUT=$(echo "$LAST_LINES" | jq -rs '
+      map(.message.content[]? | select(.type == "text") | .text) | last // ""
+    ' 2>&1)
+    JQ_EXIT=$?
+    set -e
 
-    # Check if the completion promise (wrapped in <done>...</done>) appears in the text
-    if echo "$MESSAGE_TEXT" | grep -q "<done>$COMPLETION_PROMISE</done>"; then
+    if [ $JQ_EXIT -eq 0 ] && echo "$LAST_OUTPUT" | grep -q "<done>$COMPLETION_PROMISE</done>"; then
       cleanup_loop "$STATE_FILE"
       exit 0
     fi
@@ -109,7 +107,5 @@ fi
 SYSTEM_MSG="$SYSTEM_MSG Output <done>$COMPLETION_PROMISE</done> ONLY when ALL completion criteria are met."
 
 # Block exit and re-feed prompt
-# Note: Using printf to handle special characters in prompt
-printf '{"decision": "block", "reason": "%s", "systemMessage": "%s"}\n' \
-  "$(echo "$REASON" | sed 's/"/\\"/g' | tr '\n' ' ')" \
-  "$(echo "$SYSTEM_MSG" | sed 's/"/\\"/g')"
+jq -n --arg reason "$REASON" --arg msg "$SYSTEM_MSG" \
+  '{"decision": "block", "reason": $reason, "systemMessage": $msg}'
