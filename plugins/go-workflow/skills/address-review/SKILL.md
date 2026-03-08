@@ -395,7 +395,7 @@ If "no checks reported" — retry up to 3 times with 10s delays:
 for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
 ```
 
-If CI fails: analyze, fix, commit, push, re-watch. **Do not proceed until CI is green.**
+If still no checks after retries, verify CI workflow files exist (`find .github/workflows -name '*.yml' -o -name '*.yaml'`). If no workflow files exist, proceed — repo has no CI. If CI fails: analyze, fix, commit, push, re-watch. **Do not proceed until CI is green (or confirmed no CI configured).**
 
 ---
 
