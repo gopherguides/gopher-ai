@@ -1,9 +1,13 @@
 ---
 name: go-best-practices
 description: |
-  WHEN: User is writing Go code, asking about Go patterns, reviewing Go code, or asking
-  questions like "what's the best way to..." in Go projects
-  WHEN NOT: Non-Go languages, general questions unrelated to Go programming
+  WHEN: User is writing Go code, asking about Go patterns, reviewing Go code, asking
+  "what's the best way to...", "how should I structure...", "is this idiomatic?",
+  or any question about error handling, concurrency, interfaces, packages, testing patterns,
+  or code organization in Go. Also activate when user is debugging Go code, refactoring Go,
+  or working in a Go project (go.mod present) and asks general coding questions.
+  Trigger this skill liberally for ANY Go-related development work.
+  WHEN NOT: Non-Go languages, questions entirely unrelated to programming
 ---
 
 # Go Best Practices Skill

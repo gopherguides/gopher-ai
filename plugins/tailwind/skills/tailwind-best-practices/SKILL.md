@@ -2,10 +2,13 @@
 name: tailwind-best-practices
 description: |
   WHEN: User is writing HTML/templates with Tailwind CSS classes, styling components,
-  configuring Tailwind themes, asking about Tailwind utilities or patterns, or working
-  with any project that uses Tailwind CSS
-  WHEN NOT: Non-Tailwind CSS questions, general HTML/CSS without Tailwind context,
-  questions about other CSS frameworks (Bootstrap, etc.)
+  configuring Tailwind themes, asking about utilities or patterns, or working with any
+  project that uses Tailwind CSS. Also trigger when user mentions "responsive design",
+  "dark mode", "custom colors", "spacing", "flex/grid layout" in a Tailwind project,
+  asks about v4 migration, @theme vs @apply, or is editing CSS/HTML files in a project
+  with tailwind in its dependencies. Activate whenever tailwind.config.* or @tailwind
+  directives are present.
+  WHEN NOT: Projects not using Tailwind, questions about Bootstrap/Bulma/other CSS frameworks
 ---
 
 <!-- cache:start -->

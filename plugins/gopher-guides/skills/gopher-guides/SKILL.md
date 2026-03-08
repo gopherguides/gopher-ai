@@ -1,9 +1,14 @@
 ---
 name: gopher-guides
 description: |
-  WHEN: User asks about Go best practices, idiomatic patterns, or how to properly implement
-  something in Go. Also when reviewing Go code or asking "what's the right way to..."
-  WHEN NOT: Questions unrelated to Go programming or general coding questions
+  WHEN: User asks about Go best practices, idiomatic patterns, how to properly implement
+  something in Go, or wants authoritative training material. Trigger when reviewing Go code,
+  asking "what's the right way to...", "is this correct Go?", "how do professionals do this?",
+  or requesting Go training/learning resources. Also activate when user needs Go code review
+  feedback, wants to understand Go conventions, or is learning Go. This skill provides
+  official Gopher Guides training materials via API — use it whenever professional Go
+  guidance would improve the answer.
+  WHEN NOT: Questions entirely unrelated to Go programming
 ---
 
 # Gopher Guides Professional Training
