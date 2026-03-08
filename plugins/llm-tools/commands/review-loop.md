@@ -19,6 +19,15 @@ Parse `$ARGUMENTS` to extract:
 
 Store as `LLM_CHOICE`, `MAX_PASSES`, and `SCOPE_HINT`.
 
+**Persist arguments to state file** for re-entry recovery. After parsing, append these fields to `.claude/review-loop.loop.local.md` if they don't already exist:
+
+```yaml
+args: <raw $ARGUMENTS string>
+pass: 0
+```
+
+This ensures stop-hook re-entry can restore the original configuration.
+
 ## 2. Prerequisite Check
 
 Verify the selected LLM CLI is installed. Fail fast with install instructions if not found.
@@ -54,12 +63,11 @@ if [ -f "$STATE_FILE" ]; then
 fi
 ```
 
-If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Runtime state (scope, model, pass count) is lost on re-entry because `setup-loop.sh` only preserves `phase`. On re-entry:
+If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from the persisted fields in the state file:
 
-1. Re-read `ORIGINAL_PROMPT` from the state file to recover the `$ARGUMENTS` (contains `--llm`, `--max-passes`, scope hint)
-2. Re-parse those arguments to restore `LLM_CHOICE`, `MAX_PASSES`, `SCOPE_HINT`
+1. Read `args:` field from the state file and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `SCOPE_HINT`
+2. Read `pass:` field from the state file to restore the current pass count
 3. For `REVIEW_SCOPE`, `BASE_BRANCH`, and `MODEL`: infer defaults (`changes vs main`, default model for the LLM) rather than re-asking the user. The stop-hook reason message provides enough context to continue.
-4. For `PASS`: check git log for previous `"fix: address <llm> review findings (pass N)"` commits to infer current pass number.
 
 Then skip to the corresponding phase:
 
@@ -156,18 +164,19 @@ If "Custom" model was selected, ask for the model name.
 
 Store all selections: `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`.
 
-Initialize pass counter: `PASS=0`.
+The `pass:` field in the state file was initialized to 0 in Step 1.
 
 ## 5. Review Phase
 
-Set phase to `reviewing`:
+Set phase to `reviewing` and increment the `pass:` field in the state file:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
 set_loop_phase ".claude/review-loop.loop.local.md" "reviewing"
+# Increment pass counter in state file (read current value, increment, write back)
 ```
 
-Increment pass counter: `PASS=$((PASS + 1))`
+Read the updated `pass:` value from the state file into `PASS` for use in this pass.
 
 ### 5a. Generate Diff
 
