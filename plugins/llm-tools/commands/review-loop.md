@@ -54,7 +54,14 @@ if [ -f "$STATE_FILE" ]; then
 fi
 ```
 
-If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Skip to the corresponding phase:
+If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Runtime state (scope, model, pass count) is lost on re-entry because `setup-loop.sh` only preserves `phase`. On re-entry:
+
+1. Re-read `ORIGINAL_PROMPT` from the state file to recover the `$ARGUMENTS` (contains `--llm`, `--max-passes`, scope hint)
+2. Re-parse those arguments to restore `LLM_CHOICE`, `MAX_PASSES`, `SCOPE_HINT`
+3. For `REVIEW_SCOPE`, `BASE_BRANCH`, and `MODEL`: infer defaults (`changes vs main`, default model for the LLM) rather than re-asking the user. The stop-hook reason message provides enough context to continue.
+4. For `PASS`: check git log for previous `"fix: address <llm> review findings (pass N)"` commits to infer current pass number.
+
+Then skip to the corresponding phase:
 
 - `reviewing` → go to Step 5
 - `fixing` → go to Step 7
@@ -144,7 +151,7 @@ Show model options based on `LLM_CHOICE`:
 ### 4c. Conditional Follow-Up
 
 If "Changes vs branch" was selected, ask for the base branch (default: `main`).
-If "Specific files" was selected, ask for the file paths.
+If "Specific files" was selected, ask for the base branch (default: `main`) AND the file paths.
 If "Custom" model was selected, ask for the model name.
 
 Store all selections: `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`.
@@ -197,8 +204,9 @@ EOF
 
 **Gemini:**
 
+Use the `DIFF` generated in Step 5a (scope-aware), not a hardcoded branch diff.
+
 ```bash
-DIFF=$(git diff ${BASE_BRANCH}...HEAD)
 gemini -m "$MODEL" <<EOF
 Review the following code changes for bugs, security issues, performance problems, and best practice violations.
 
@@ -215,8 +223,9 @@ EOF
 
 **Ollama:**
 
+Use the `DIFF` generated in Step 5a (scope-aware), not a hardcoded branch diff.
+
 ```bash
-DIFF=$(git diff ${BASE_BRANCH}...HEAD)
 ollama run "$MODEL" <<EOF
 Review the following code changes for bugs, security issues, performance problems, and best practice violations.
 
