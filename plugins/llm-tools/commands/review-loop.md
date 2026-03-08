@@ -34,7 +34,13 @@ elif [ "$LLM_CHOICE" = "ollama" ]; then
 fi
 ```
 
-If the check fails, report the error and stop. Do NOT continue the loop.
+If the check fails, report the error, clean up the loop state file to prevent stale re-entry, and stop:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "review-loop"
+```
+
+Do NOT continue the loop. Output `<done>REVIEW_CLEAN</done>` to signal completion.
 
 ## 3. Re-entry Check
 
@@ -275,15 +281,15 @@ Auto-detect project type and run appropriate verification:
 ```bash
 go build ./...
 go test ./...
-golangci-lint run 2>/dev/null || true
+golangci-lint run 2>/dev/null || true  # optional: may not be installed
 ```
 
 **Node/TypeScript** (package.json exists):
 
 ```bash
-npm run build 2>/dev/null || true
-npm test 2>/dev/null || true
-npm run lint 2>/dev/null || true
+npm run build  # fail if build breaks
+npm test       # fail if tests break
+npm run lint 2>/dev/null || true  # optional: lint script may not exist
 ```
 
 **Rust** (Cargo.toml exists):
@@ -291,14 +297,14 @@ npm run lint 2>/dev/null || true
 ```bash
 cargo build
 cargo test
-cargo clippy 2>/dev/null || true
+cargo clippy 2>/dev/null || true  # optional: may not be installed
 ```
 
 **Python** (pyproject.toml or setup.py exists):
 
 ```bash
-pytest 2>/dev/null || python -m pytest 2>/dev/null || true
-ruff check . 2>/dev/null || flake8 . 2>/dev/null || true
+pytest 2>/dev/null || python -m pytest  # fail if tests break
+ruff check . 2>/dev/null || flake8 . 2>/dev/null || true  # optional: linter may not be installed
 ```
 
 **Fallback:** If no project type detected, ask the user what verify command to run.
@@ -311,12 +317,14 @@ If any verification fails:
 
 ## 9. Commit Fixes
 
-Stage and commit all changes from this pass:
+Stage only the files that were fixed in this pass and commit. Do NOT use `git add -A` as it may sweep in unrelated working-tree changes:
 
 ```bash
-git add -A
+git add <list of files modified during fix phase>
 git commit -m "fix: address $LLM_CHOICE review findings (pass $PASS)"
 ```
+
+Track which files were edited during the fix phase (Step 7) and only stage those specific files.
 
 Display summary for this pass:
 - Findings reported by LLM
