@@ -90,10 +90,19 @@ NEW_ITERATION=$((ITERATION + 1))
 # Build system message with iteration info and guidance
 SYSTEM_MSG="Iteration $NEW_ITERATION of loop '$LOOP_NAME'."
 
-# Phase-aware re-feed: use targeted message for watching phase
+# Phase-aware re-feed: use targeted message based on current phase
 if [ "$PHASE" = "watching" ]; then
   REASON="Resume Step 12: Check bot approval status, poll if needed. Do NOT re-run Steps 1-11."
   SYSTEM_MSG="$SYSTEM_MSG RESUME AT STEP 12a: The fix cycle (Steps 1-11) is already complete. Check bot approval status and poll for re-reviews. Do NOT restart the fix cycle."
+elif [ "$PHASE" = "reviewing" ]; then
+  REASON="Continue the review loop: run the next LLM review pass and address findings."
+  SYSTEM_MSG="$SYSTEM_MSG Resume the review-fix-verify cycle. Run the next review pass."
+elif [ "$PHASE" = "fixing" ]; then
+  REASON="Continue fixing: address remaining review findings, then verify."
+  SYSTEM_MSG="$SYSTEM_MSG Continue addressing review findings."
+elif [ "$PHASE" = "verifying" ]; then
+  REASON="Continue verification: run build, test, and lint on fixes."
+  SYSTEM_MSG="$SYSTEM_MSG Verify fixes pass build, test, and lint."
 else
   REASON="$ORIGINAL_PROMPT"
   SYSTEM_MSG="$SYSTEM_MSG Continue working on the task."

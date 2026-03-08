@@ -22,6 +22,7 @@ Or install via marketplace:
 | `/ollama <prompt>` | Use local models (data stays on your machine) |
 | `/llm-compare <prompt>` | Compare responses from multiple LLMs |
 | `/convert <from> <to>` | Convert between formats (JSON→TS, SQL→Prisma, etc.) |
+| `/review-loop [options]` | Iterative LLM review loop: review, fix, verify, repeat until clean |
 
 ## Skills (Auto-invoked)
 
