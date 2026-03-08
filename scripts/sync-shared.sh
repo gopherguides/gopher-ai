@@ -14,7 +14,7 @@ SHARED_DIR="$ROOT_DIR/shared"
 PLUGINS_DIR="$ROOT_DIR/plugins"
 
 # Plugins that use the shared loop infrastructure
-LOOP_PLUGINS=("go-workflow" "go-web" "go-dev" "tailwind")
+LOOP_PLUGINS=("go-workflow" "go-web" "go-dev" "tailwind" "llm-tools")
 
 # Only go-workflow has the stop hook (owns persistent loop management)
 HOOK_PLUGIN="go-workflow"
