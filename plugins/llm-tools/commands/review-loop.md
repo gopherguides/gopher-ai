@@ -65,9 +65,9 @@ fi
 
 If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from the persisted fields in the state file:
 
-1. Read `args:` field from the state file and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `SCOPE_HINT`
-2. Read `pass:` field from the state file to restore the current pass count
-3. For `REVIEW_SCOPE`, `BASE_BRANCH`, and `MODEL`: infer defaults (`changes vs main`, default model for the LLM) rather than re-asking the user. The stop-hook reason message provides enough context to continue.
+1. Read `args:` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `SCOPE_HINT`
+2. Read `pass:` field to restore the current pass count
+3. Read `scope:`, `base_branch:`, `model:`, `file_paths:` fields to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`
 
 Then skip to the corresponding phase:
 
@@ -163,6 +163,15 @@ If "Specific files" was selected, ask for the base branch (default: `main`) AND 
 If "Custom" model was selected, ask for the model name.
 
 Store all selections: `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`.
+
+**Persist scope/model to state file** for re-entry recovery. Append these fields to `.claude/review-loop.loop.local.md`:
+
+```yaml
+scope: <REVIEW_SCOPE>
+base_branch: <BASE_BRANCH>
+model: <MODEL>
+file_paths: <FILE_PATHS or empty>
+```
 
 The `pass:` field in the state file was initialized to 0 in Step 1.
 
@@ -335,14 +344,23 @@ If any verification fails:
 
 ## 9. Commit Fixes
 
-Stage only the files that were fixed in this pass and commit. Do NOT use `git add -A` as it may sweep in unrelated working-tree changes:
+Stage only the files that were fixed in this pass. Do NOT use `git add -A` as it may sweep in unrelated working-tree changes:
 
 ```bash
 git add <list of files modified during fix phase>
-git commit -m "fix: address $LLM_CHOICE review findings (pass $PASS)"
 ```
 
 Track which files were edited during the fix phase (Step 7) and only stage those specific files.
+
+**Only commit if there are staged changes.** Passes can legitimately have zero fixable findings (all skipped/invalid), so check before committing:
+
+```bash
+if ! git diff --cached --quiet; then
+  git commit -m "fix: address $LLM_CHOICE review findings (pass $PASS)"
+else
+  echo "No changes to commit for this pass"
+fi
+```
 
 Display summary for this pass:
 - Findings reported by LLM
