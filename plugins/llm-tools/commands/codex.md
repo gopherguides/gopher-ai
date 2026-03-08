@@ -29,9 +29,9 @@ This command delegates tasks to OpenAI Codex CLI for autonomous execution.
 
 | Model | Best For |
 |-------|----------|
-| `gpt-5.3-codex` | Newest frontier model, best overall (default) |
-| `gpt-5.2-codex` | Previous generation frontier model |
-| `gpt-5.1-codex-max` | Complex, long-running tasks (can run 24+ hours) |
+| `gpt-5.4` | Latest frontier model, best overall (default) |
+| `gpt-5.4-pro` | Maximum performance on complex tasks |
+| `gpt-5.3-codex` | Previous generation frontier model |
 | `gpt-5.1-codex-mini` | Simple tasks, cost-efficient |
 
 Ask the user: "What would you like Codex to do?"
@@ -233,9 +233,9 @@ Ask all review configuration questions in a **single `AskUserQuestion` call** wi
 
 | Option | Description |
 |--------|-------------|
-| gpt-5.3-codex (Recommended) | Newest frontier model, best overall |
-| gpt-5.2-codex | Previous generation frontier model |
-| gpt-5.1-codex-max | Complex, long-running tasks (can run 24+ hours) |
+| gpt-5.4 (Recommended) | Latest frontier model, best overall |
+| gpt-5.4-pro | Maximum performance on complex tasks |
+| gpt-5.3-codex | Previous generation frontier model |
 | gpt-5.1-codex-mini | Simple tasks, cost-efficient |
 
 **Question 4 — "Review depth?"**
@@ -521,12 +521,12 @@ Ask the user which model to use:
 
 | Model | Best For |
 |-------|----------|
-| gpt-5.3-codex | Newest frontier model, best overall |
-| gpt-5.2-codex | Previous generation frontier model |
-| gpt-5.1-codex-max | Complex, long-running tasks (can run 24+ hours) |
+| gpt-5.4 | Latest frontier model, best overall |
+| gpt-5.4-pro | Maximum performance on complex tasks |
+| gpt-5.3-codex | Previous generation frontier model |
 | gpt-5.1-codex-mini | Simple tasks, cost-efficient |
 
-Default: `gpt-5.3-codex`
+Default: `gpt-5.4`
 
 ### 2. Include Session Context (Optional)
 
