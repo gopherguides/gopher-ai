@@ -2,9 +2,12 @@
 name: htmx
 description: |
   WHEN: User is building web apps with htmx, writing hx-* attributes, handling htmx events,
-  using htmx with Go templ templates, debugging htmx requests/swaps, or asking about htmx
-  patterns including OOB swaps, SSE, WebSockets, extensions, or JavaScript integration
-  WHEN NOT: Non-htmx projects, pure client-side SPA frameworks (React/Vue/Svelte)
+  using htmx with Go templ templates, debugging htmx requests/swaps, asking about htmx
+  patterns including OOB swaps, SSE, WebSockets, extensions, or JavaScript integration.
+  Also trigger when user mentions "partial page updates", "swap", "boost", "trigger",
+  "hx-get/post/put/delete", server-sent events in web context, or is building hypermedia-driven
+  apps. Activate whenever htmx is in the project dependencies or HTML templates contain hx-* attrs.
+  WHEN NOT: Pure client-side SPA frameworks (React/Vue/Svelte) without htmx
 ---
 
 <!-- cache:start -->

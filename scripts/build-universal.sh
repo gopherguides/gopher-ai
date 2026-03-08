@@ -26,7 +26,7 @@ build_codex() {
             skill_name=$(basename "$skill_dir")
             echo "  - Copying skill: $skill_name"
             mkdir -p "$codex_dir/skills/$skill_name"
-            cp "${skill_dir}SKILL.md" "$codex_dir/skills/$skill_name/"
+            cp "${skill_dir}"*.md "$codex_dir/skills/$skill_name/"
         fi
     done
 
@@ -107,7 +107,7 @@ build_gemini() {
                 if [[ -f "${skill_dir}SKILL.md" ]]; then
                     skill_name=$(basename "$skill_dir")
                     mkdir -p "$ext_dir/skills/$skill_name"
-                    cp "${skill_dir}SKILL.md" "$ext_dir/skills/$skill_name/"
+                    cp "${skill_dir}"*.md "$ext_dir/skills/$skill_name/"
                 fi
             done
         fi

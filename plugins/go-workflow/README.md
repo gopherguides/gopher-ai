@@ -18,7 +18,7 @@ Or install via marketplace:
 | Command | Description |
 |---------|-------------|
 | `/start-issue <number>` | Start working on a GitHub issue (auto-detects bug vs feature) |
-| `/address-review [PR]` | Address PR review comments, make fixes, reply, and resolve |
+| `/address-review [PR]` | Address PR review comments, fix, and loop until bots approve (skill) |
 | `/create-worktree <number>` | Create a new git worktree for isolated issue work |
 | `/commit` | Create a git commit with auto-generated message |
 | `/remove-worktree` | Interactively select and remove a git worktree |
