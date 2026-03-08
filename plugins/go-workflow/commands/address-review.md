@@ -124,6 +124,7 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 | Login | Approval Signal | Has Issues Signal | Re-review Trigger |
 |---|---|---|---|
 | `coderabbitai[bot]` | Formal `APPROVED` review state (requires `request_changes_workflow` in `.coderabbit.yaml`) | `CHANGES_REQUESTED` review with inline comments | `@coderabbitai full review` |
+| `chatgpt-codex-connector[bot]` (mention as `@codex`) | Issue comment: `"Codex Review: Didn't find any major issues."` + 👍 reaction on trigger comment | `COMMENTED` review with inline P1/P2 badge comments | `@codex review` |
 | `greptileai` | Greptile status check passes + no inline comments posted | Inline comments on specific file changes | `@greptileai` |
 | `copilot-pull-request-review[bot]` | `COMMENTED` review with no inline file comments ("did not comment on any files") | `COMMENTED` review with inline suggestions | Re-request review button in PR sidebar _(no `@` mention trigger)_ |
 | `claude[bot]` | `COMMENTED` review or issue comment: `"No issues found."` (or silent) | `COMMENTED` review with inline comments scored by confidence | `@claude` |
@@ -131,6 +132,7 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 **How each bot signals it's done (detection logic):**
 
 - **CodeRabbit**: Only bot that uses formal GitHub review states. Query latest review from `coderabbitai[bot]` — if `state == "APPROVED"` → done. This is the most reliable signal.
+- **Codex**: Look for an issue comment from `chatgpt-codex-connector[bot]` containing `"Didn't find any major issues"`. Also reacts with 👍 on the `@codex review` trigger comment. If the bot posted `COMMENTED` reviews with P1/P2 inline comments, it still has issues. Eyes emoji (👀) on trigger comment means processing started (not done yet).
 - **Greptile**: Uses a **status check** (not review states). Check `gh pr checks` for a Greptile check — if it passes and no new inline comments were posted, Greptile is satisfied.
 - **Copilot**: Always posts `COMMENTED` reviews (never `APPROVED` or `CHANGES_REQUESTED`). If its review body says it "did not comment on any files" or has no inline comments → no issues found. Cannot be re-triggered via comment — must use the re-request review button in the GitHub PR sidebar.
 - **Claude**: Posts `COMMENTED` reviews. If no inline comments above confidence threshold → "No issues found" or no review posted at all. Re-trigger via `@claude` mention.
@@ -206,7 +208,7 @@ Match the returned authors against the bot registry table above. For each match,
 - Its re-review trigger command (if any)
 
 Display the discovered bots:
-- If bots found: `"Monitoring reviews from: coderabbitai, copilot"` (list only matched bots)
+- If bots found: `"Monitoring reviews from: codex, coderabbitai"` (list only matched bots)
 - If no bots found: `"No review bots detected on this PR. Running one fix cycle."`
   - In this case, complete the full fix cycle including CI verification (Steps 1-11) but skip Step 12 (no bot re-review polling needed)
 
@@ -746,7 +748,7 @@ fi
 
 ### 10c. Request re-review from bot reviewers (data-driven lookup)
 
-**FORBIDDEN: Do NOT post trigger commands for bots that are not in the Step 3 reviewer list. If a bot never reviewed this PR, triggering it posts spam on the repository.**
+**FORBIDDEN: Do NOT post trigger commands for bots that are not in the Step 3 reviewer list. If a bot never reviewed this PR, triggering it posts spam on the repository. This applies especially to `@codex review` — never post this unless `chatgpt-codex-connector[bot]` actually appears in the reviewer list.**
 
 **For each reviewer in the actual reviewer list from 10a:**
 
@@ -863,7 +865,7 @@ fi
 For each bot from your Bot Discovery results, use the approval detection logic from the Bot Registry table to determine if it has approved. The detection approaches by bot type:
 
 - Bots with formal review states (e.g., CodeRabbit): Query latest review state
-- Bots with issue comment signals: Check latest issue comment body
+- Bots with issue comment signals (e.g., Codex): Check latest issue comment body
 - Bots with status checks (e.g., Greptile): Check `gh pr checks`
 - Bots with timestamp-based detection (e.g., Copilot, Claude): Compare against BOT_REVIEW_BASELINE
 
@@ -952,7 +954,11 @@ If a bot's quiet period ended with no new comments but it still hasn't approved:
 
 All conditions from `--no-watch` above, PLUS:
 
-10. All detected review bots have signaled approval per their Bot Registry entry
+10. All detected review bots have signaled approval (per their bot-specific detection from Step 12a):
+    - CodeRabbit: latest review state is `APPROVED`
+    - Codex: latest issue comment contains "Didn't find any major issues"
+    - Greptile: status check passes with no new inline comments
+    - Copilot/Claude: no unresolved threads from the bot
 11. If no review bots were detected, watch mode still completes the full fix cycle including CI verification (Steps 1-11) but skips Step 12 (no bot re-review polling needed)
 
 **Note:** Pending reviews (CHANGES_REQUESTED) cannot be auto-resolved. Do NOT request review from bots or services that never reviewed this PR.
