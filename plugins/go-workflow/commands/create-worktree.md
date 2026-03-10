@@ -2,7 +2,6 @@
 argument-hint: "<issue-or-pr-number>"
 description: "Create a new git worktree for a GitHub issue or PR"
 allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(pwd:*)", "Bash(echo:*)", "Bash(cp:*)", "Bash(basename:*)", "Bash(for:*)", "Bash(if:*)", "Bash(*worktree-state*)", "Read", "AskUserQuestion"]
-model: haiku
 ---
 
 # Create Worktree for Issue or PR

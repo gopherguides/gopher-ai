@@ -1,7 +1,6 @@
 ---
 description: "Interactively select and remove a git worktree"
 allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(cd:*)", "Bash(grep:*)", "Bash(cat:*)", "Bash(*worktree-state*)", "Read", "AskUserQuestion"]
-model: haiku
 ---
 
 # Remove Worktree

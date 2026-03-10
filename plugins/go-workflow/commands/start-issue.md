@@ -1,7 +1,6 @@
 ---
 argument-hint: "<issue-number>"
 description: "Start working on a GitHub issue (auto-detects bug vs feature)"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "EnterPlanMode"]
 ---
 

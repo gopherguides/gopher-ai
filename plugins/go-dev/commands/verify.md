@@ -1,7 +1,6 @@
 ---
 argument-hint: "[path]"
 description: "Run full pre-push verification: build, test, lint, vet, dev-server checks"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 

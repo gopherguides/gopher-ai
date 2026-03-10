@@ -1,7 +1,6 @@
 ---
 argument-hint: "[weeks-back]"
 description: "Generate weekly work summary from git activity"
-model: haiku
 allowed-tools: ["Bash(git:*)", "Bash(date:*)", "Bash(find:*)", "Read", "Glob", "Grep"]
 ---
 

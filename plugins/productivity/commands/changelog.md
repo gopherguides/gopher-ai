@@ -1,7 +1,6 @@
 ---
 argument-hint: "[tag|version]"
 description: "Generate changelog from commits since last release"
-model: haiku
 allowed-tools: ["Bash(git:*)", "Read", "Glob", "Grep"]
 ---
 

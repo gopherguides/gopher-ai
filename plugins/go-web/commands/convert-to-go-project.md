@@ -1,7 +1,6 @@
 ---
 argument-hint: "[target-directory]"
 description: "Convert an existing project to the Go + Templ + HTMX + Tailwind stack"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 

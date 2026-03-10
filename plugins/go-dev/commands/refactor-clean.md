@@ -1,7 +1,6 @@
 ---
 argument-hint: "[path] [--dry-run]"
 description: "Find and remove dead Go code, orphaned tests, and complexity issues"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 
