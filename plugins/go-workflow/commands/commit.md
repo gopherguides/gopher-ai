@@ -1,7 +1,6 @@
 ---
 description: "Create a git commit with auto-generated message"
 allowed-tools: ["Bash(git add:*)", "Bash(git status:*)", "Bash(git commit:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git branch:*)", "Bash(git checkout:*)", "Bash(git remote:*)", "AskUserQuestion"]
-model: haiku
 ---
 
 # Create Git Commit

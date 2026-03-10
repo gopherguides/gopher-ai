@@ -1,7 +1,6 @@
 ---
 argument-hint: "[hours|days]"
 description: "Generate standup notes from recent git activity"
-model: haiku
 allowed-tools: ["Bash(git:*)", "Bash(date:*)", "Read", "Glob", "Grep"]
 ---
 

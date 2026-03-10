@@ -10,7 +10,6 @@ description: |
   NOT for: creating new PRs, performing your own code review, general coding tasks, or
   closing/managing PRs without review context.
 argument-hint: "[PR-number] [--no-watch]"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion"]
 ---
 

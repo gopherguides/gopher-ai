@@ -1,7 +1,6 @@
 ---
 argument-hint: "[path] [--fix]"
 description: "Audit Tailwind CSS usage for best practices and consistency"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities", "mcp__tailwindcss__convert_css_to_tailwind"]
 ---
 

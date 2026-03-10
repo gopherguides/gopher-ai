@@ -1,7 +1,6 @@
 ---
 argument-hint: "[log-path]"
 description: "Auto-detect build system, parse errors, and fix until clean"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 

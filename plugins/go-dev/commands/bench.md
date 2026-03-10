@@ -1,7 +1,6 @@
 ---
 argument-hint: "<file|function|package>"
 description: "Generate and run Go benchmarks with profiling and optimization analysis"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Glob", "Grep", "AskUserQuestion"]
 ---
 

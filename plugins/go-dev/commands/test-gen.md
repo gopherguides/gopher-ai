@@ -1,7 +1,6 @@
 ---
 argument-hint: "<file|function>"
 description: "Generate comprehensive Go tests with table-driven patterns"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Write", "Glob", "Grep", "AskUserQuestion"]
 ---
 

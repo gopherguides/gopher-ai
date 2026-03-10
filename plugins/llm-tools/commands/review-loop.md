@@ -1,7 +1,6 @@
 ---
 argument-hint: "[--llm codex|gemini|ollama] [--max-passes <n>] [scope hint]"
 description: "Iterative LLM review loop: review, fix, verify, repeat until clean"
-model: claude-opus-4-6
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion"]
 ---
 

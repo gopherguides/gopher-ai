@@ -1,7 +1,6 @@
 ---
 description: "Batch cleanup of all completed issue worktrees"
 allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(echo:*)", "Bash(basename:*)", "Bash(grep:*)", "Bash(*worktree-state*)", "Read", "AskUserQuestion"]
-model: haiku
 ---
 
 # Prune Issue Worktrees
