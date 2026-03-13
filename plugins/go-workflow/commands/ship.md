@@ -6,7 +6,24 @@ allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestio
 
 # Ship PR
 
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50`
+## 0. State File Bootstrap
+
+Before calling setup-loop, check if a state file already exists with a non-empty phase (re-entry).
+If so, **skip** setup-loop to preserve custom fields (`args`, `pass`, `pr_number`, `base_branch`, `no_merge`, `llm`, `discovered_bots`).
+
+```bash
+STATE_FILE=".claude/ship.loop.local.md"
+if [ -f "$STATE_FILE" ]; then
+  EXISTING_PHASE=$(grep '^phase:' "$STATE_FILE" | sed 's/phase: *//' || true)
+  if [ -n "$EXISTING_PHASE" ]; then
+    echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop to preserve state."
+  fi
+fi
+```
+
+**Only call setup-loop on fresh starts** (no state file or empty phase):
+
+!`if [ ! -f ".claude/ship.loop.local.md" ] || [ -z "$(grep '^phase:' .claude/ship.loop.local.md 2>/dev/null | sed 's/phase: *//')" ]; then "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50; fi`
 
 ## 1. Parse Arguments
 
@@ -29,6 +46,7 @@ no_merge: <true|false>
 pr_number:
 base_branch:
 bot_review_baseline:
+discovered_bots:
 ```
 
 ## 2. Re-entry Check
@@ -46,7 +64,7 @@ fi
 If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from persisted fields:
 
 1. Read `args:` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`
-2. Read `pass:`, `pr_number:`, `base_branch:`, `bot_review_baseline:`, `llm:` fields
+2. Read `pass:`, `pr_number:`, `base_branch:`, `bot_review_baseline:`, `llm:`, `discovered_bots:` fields
 
 Then skip to the corresponding phase:
 
@@ -56,32 +74,39 @@ Then skip to the corresponding phase:
 - `pushing` → go to Step 9
 - `ci-watch` → go to Step 10
 - `watching` → go to Step 11
+- `addressing` → go to Step 12
 - `merging` → go to Step 13
 
 If `PHASE` is empty or unset, this is a fresh start. Continue to Step 3.
 
 ## 3. Detect Context
 
-### 3a. Auto-detect base branch
+### 3a. Auto-detect base branch and PR
 
 ```bash
-BASE_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main")
 CURRENT_BRANCH=$(git branch --show-current)
-echo "Base: $BASE_BRANCH, Current: $CURRENT_BRANCH"
+PR_JSON=$(gh pr view --json number,baseRefName --jq '.' 2>/dev/null || echo "")
+```
+
+**If a PR exists**, use the PR's base branch (handles PRs targeting non-default branches like release branches):
+
+```bash
+if [ -n "$PR_JSON" ]; then
+  PR_NUM=$(echo "$PR_JSON" | jq -r '.number')
+  BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.baseRefName')
+  echo "PR #$PR_NUM targets: $BASE_BRANCH"
+else
+  BASE_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main")
+  PR_NUM=""
+  echo "No PR found. Base: $BASE_BRANCH"
+fi
 ```
 
 **CRITICAL:** If `CURRENT_BRANCH` equals `BASE_BRANCH` (e.g., both are `main`), **STOP** — do not ship from the default branch. Inform the user and ask how to proceed.
 
-### 3b. Auto-detect PR
-
-```bash
-PR_NUM=$(gh pr view --json number --jq '.number' 2>/dev/null || echo "")
-echo "Existing PR: ${PR_NUM:-none}"
-```
-
 Store `BASE_BRANCH` and `PR_NUM` (if found) in state file.
 
-### 3c. Check for uncommitted changes
+### 3b. Check for uncommitted changes
 
 ```bash
 git status --porcelain
@@ -103,13 +128,13 @@ elif [ "$LLM_CHOICE" = "ollama" ]; then
 fi
 ```
 
-If the check fails, clean up the loop state file and stop:
+If the check fails, report the error, clean up the loop state file, and **stop without emitting the completion promise** (the PR was NOT shipped):
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
 ```
 
-Do NOT continue. Output `<done>SHIPPED</done>`.
+Do NOT output `<done>SHIPPED</done>`. Simply inform the user of the missing prerequisite and stop.
 
 ---
 
@@ -117,14 +142,25 @@ Do NOT continue. Output `<done>SHIPPED</done>`.
 
 ### Step 5: Review Phase
 
-Set phase to `reviewing` and increment the `pass:` field in the state file:
+Set phase to `reviewing` and **increment the `pass:` field** in the state file:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
 set_loop_phase ".claude/ship.loop.local.md" "reviewing"
 ```
 
-Read the updated `pass:` value into `PASS`.
+**Increment the pass counter** (read current value, add 1, write back using portable sed):
+
+```bash
+CURRENT_PASS=$(grep '^pass:' ".claude/ship.loop.local.md" | sed 's/pass: *//')
+NEW_PASS=$((CURRENT_PASS + 1))
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  sed -i '' "s/^pass: .*/pass: $NEW_PASS/" ".claude/ship.loop.local.md"
+else
+  sed -i "s/^pass: .*/pass: $NEW_PASS/" ".claude/ship.loop.local.md"
+fi
+PASS=$NEW_PASS
+```
 
 #### 5a. Generate Diff
 
@@ -283,8 +319,12 @@ set_loop_phase ".claude/ship.loop.local.md" "pushing"
 
 #### 9a. Push to remote
 
+Detect the correct remote and branch name from tracking config or PR metadata:
+
 ```bash
-git push -u origin "$(git branch --show-current)"
+BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote" 2>/dev/null || echo "origin")
+PR_HEAD_BRANCH=$(gh pr view --json headRefName --jq '.headRefName' 2>/dev/null || git branch --show-current)
+git push -u "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
 ```
 
 #### 9b. Ensure PR exists
@@ -336,19 +376,21 @@ Set phase to `ci-watch`:
 set_loop_phase ".claude/ship.loop.local.md" "ci-watch"
 ```
 
-Watch CI status with retry logic for "no checks reported":
+First, check if CI workflow files exist:
 
 ```bash
-for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
+HAS_WORKFLOWS=$(find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1)
 ```
 
-If still no checks after retries, verify CI workflow files exist:
+If no workflow files exist → proceed (repo has no CI). Skip to Step 11.
+
+**If workflows exist**, watch CI with extended retry to handle slow check registration:
 
 ```bash
-find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1 | grep -q . || echo "No workflow files found"
+for i in 1 2 3 4 5 6; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
 ```
 
-If no workflow files exist → proceed (repo has no CI).
+This waits up to 60 seconds for checks to appear (6 retries x 10s). If checks still haven't registered after all retries but workflow files exist, inform the user and ask whether to keep waiting or proceed.
 
 If CI fails:
 1. Analyze the failure: `gh pr checks "$PR_NUM" --json name,state,description`
@@ -374,6 +416,8 @@ set_loop_phase ".claude/ship.loop.local.md" "watching"
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/bot-registry.md` for the bot registry table.
 
+Query **all** author sources — formal reviews, review thread comments, AND top-level PR comments (issue comments) — since some bots (e.g., Claude) signal via ordinary PR comments:
+
 ```bash
 OWNER=$(gh repo view --json owner --jq '.owner.login')
 REPO=$(gh repo view --json name --jq '.name')
@@ -397,18 +441,40 @@ BOT_AUTHORS=$(gh api graphql -f query='
             }
           }
         }
+        comments(first: 100) {
+          nodes {
+            author { login }
+          }
+        }
       }
     }
   }
 ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq -r '
   [
     .data.repository.pullRequest.reviews.nodes[].author.login,
-    .data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].author.login
+    .data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].author.login,
+    .data.repository.pullRequest.comments.nodes[].author.login
   ] | unique | .[]
 ')
 ```
 
-Match authors against the bot registry. If no review bots detected → skip to Step 13 (merging).
+Match authors against the bot registry.
+
+**If no review bots detected yet:** This may be because async bots haven't posted their first review. If `BOT_REVIEW_BASELINE` was captured less than 2 minutes ago, wait and re-poll:
+
+```bash
+sleep 30
+# Re-run the bot discovery query above
+```
+
+Re-poll up to 3 times (total ~90s wait). If still no bots after retries → proceed to Step 13 (merging) — the repo genuinely has no review bots.
+
+**Persist discovered bots** to state file for re-entry recovery:
+
+```bash
+# Store as comma-separated list in state file
+# e.g., discovered_bots: chatgpt-codex-connector[bot],coderabbitai[bot]
+```
 
 #### 11b. Poll for bot approval
 
@@ -426,10 +492,10 @@ Follow Steps 12a-12d from watch-loop.md:
 
 ### Step 12: Address Feedback
 
-Set phase to `fixing`:
+Set phase to `addressing` (distinct from `fixing` to ensure correct re-entry routing):
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.md" "fixing"
+set_loop_phase ".claude/ship.loop.local.md" "addressing"
 ```
 
 **Key instruction:** Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow Steps 2-11 only:
@@ -478,9 +544,24 @@ set_loop_phase ".claude/ship.loop.local.md" "merging"
      }
    ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')
    ```
-3. Check for human `CHANGES_REQUESTED`:
+3. Check for **active** human `CHANGES_REQUESTED` (latest review per human reviewer, excluding bots):
    ```bash
-   gh pr view "$PR_NUM" --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED")] | length'
+   OWNER=$(gh repo view --json owner --jq '.owner.login')
+   REPO=$(gh repo view --json name --jq '.name')
+   BLOCKING_HUMANS=$(gh api graphql -f query='
+     query($owner: String!, $repo: String!, $pr: Int!) {
+       repository(owner: $owner, name: $repo) {
+         pullRequest(number: $pr) {
+           latestReviews(first: 50) {
+             nodes {
+               author { login }
+               state
+             }
+           }
+         }
+       }
+     }
+   ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.latestReviews.nodes[] | select(.state == "CHANGES_REQUESTED") | select(.author.login | test("\\[bot\\]$") | not)] | length')
    ```
 
 If there are unresolved threads or human `CHANGES_REQUESTED`, inform the user and ask how to proceed.
@@ -492,7 +573,7 @@ If `NO_MERGE` is `true`:
 - Output `<done>SHIPPED</done>`
 - Stop here
 
-#### 13c. Auto-detect merge strategy
+#### 13c. Auto-detect merge strategy and merge
 
 ```bash
 OWNER=$(gh repo view --json owner --jq '.owner.login')
@@ -500,13 +581,23 @@ REPO=$(gh repo view --json name --jq '.name')
 MERGE_SETTINGS=$(gh api "repos/$OWNER/$REPO" --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}' 2>/dev/null || echo '{}')
 ```
 
-Choose the first allowed method (prefer merge > squash > rebase). Fall back to `--merge` if API fails.
+Determine the merge flag based on what the repo allows (prefer merge > squash > rebase):
+
+```bash
+MERGE_FLAG="--merge"
+if echo "$MERGE_SETTINGS" | jq -e '.merge == true' >/dev/null 2>&1; then
+  MERGE_FLAG="--merge"
+elif echo "$MERGE_SETTINGS" | jq -e '.squash == true' >/dev/null 2>&1; then
+  MERGE_FLAG="--squash"
+elif echo "$MERGE_SETTINGS" | jq -e '.rebase == true' >/dev/null 2>&1; then
+  MERGE_FLAG="--rebase"
+fi
+```
 
 #### 13d. Merge the PR
 
 ```bash
-gh pr merge "$PR_NUM" --merge --delete-branch
-# (or --squash / --rebase based on 13c)
+gh pr merge "$PR_NUM" $MERGE_FLAG --delete-branch
 ```
 
 #### 13e. Display summary
@@ -520,6 +611,7 @@ gh pr merge "$PR_NUM" --merge --delete-branch
 - **Findings addressed:** <n>
 - **CI:** green
 - **Bot approvals:** <list or "none required">
+- **Merge strategy:** <merge|squash|rebase>
 - **Merged:** yes (or "skipped — --no-merge")
 ```
 
@@ -538,7 +630,7 @@ Step 10: ci-watch
     ↓
 Step 11: bot-watch (watching)
     ↓                ↓
-    ↓          Step 12: address-feedback (fixing)
+    ↓          Step 12: address-feedback (addressing)
     ↓                ↓
     ↓          → back to Step 10 (ci-watch)
     ↓
@@ -552,11 +644,12 @@ Step 13: merging
 | Phase at exit | Re-entry behavior |
 |---|---|
 | `reviewing` | Resume LLM review pass |
-| `fixing` | Continue fixing findings or review feedback |
+| `fixing` | Continue fixing LLM review findings |
 | `verifying` | Re-run verification |
 | `pushing` | Resume push and PR creation |
 | `ci-watch` | Resume CI monitoring |
 | `watching` | Resume bot approval polling |
+| `addressing` | Resume addressing bot review feedback (Steps 2-11 of address-review) |
 | `merging` | Resume merge attempt |
 
 ## Completion Criteria
