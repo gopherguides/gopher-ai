@@ -3,3 +3,6 @@
 
 # Build artifacts
 dist/
+
+# Loop debug logs
+.claude/loop-debug.log

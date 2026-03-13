@@ -74,10 +74,11 @@ Check if resuming from a previous watching phase:
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
 CURRENT_PHASE=""
 if [ -f "$LOOP_STATE_FILE" ]; then
-  CURRENT_PHASE=$(grep '^phase:' "$LOOP_STATE_FILE" | sed 's/phase: *//' || true)
+  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  CURRENT_PHASE=$(jq -r '.phase // empty' "$LOOP_STATE_FILE" 2>/dev/null || true)
 fi
 echo "Current phase: ${CURRENT_PHASE:-<none>}"
 ```
@@ -87,14 +88,13 @@ echo "Current phase: ${CURRENT_PHASE:-<none>}"
 ```bash
 BOT_REVIEW_BASELINE=""
 if [ -f "$LOOP_STATE_FILE" ]; then
-  BOT_REVIEW_BASELINE=$(grep '^bot_review_baseline:' "$LOOP_STATE_FILE" | sed 's/bot_review_baseline: *//' || true)
+  BOT_REVIEW_BASELINE=$(jq -r '.bot_review_baseline // empty' "$LOOP_STATE_FILE" 2>/dev/null || true)
 fi
 if [ -z "$BOT_REVIEW_BASELINE" ]; then
   BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   echo "Bot review baseline (fallback): $BOT_REVIEW_BASELINE"
   if [ -f "$LOOP_STATE_FILE" ]; then
-    sed -i '' "/^phase:/a\\
-bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^phase:/a bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE"
+    set_loop_field "$LOOP_STATE_FILE" "bot_review_baseline" "$BOT_REVIEW_BASELINE"
   fi
 else
   echo "Bot review baseline (restored): $BOT_REVIEW_BASELINE"
@@ -107,7 +107,7 @@ Do NOT re-run the fix cycle. Skip to watch loop (read `watch-loop.md`).
 
 ```bash
 if [ -f "$LOOP_STATE_FILE" ]; then
-  sed -i '' "s/^phase: .*/phase: /" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: /" "$LOOP_STATE_FILE"
+  set_loop_phase "$LOOP_STATE_FILE" ""
   echo "Phase cleared (--no-watch mode)"
 fi
 ```
@@ -290,14 +290,10 @@ gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES
 - **If `CURRENT_PHASE` is `fixing` AND `WATCH_MODE` is `true` AND bots detected:** Set phase to `watching`, skip to Step 12:
   ```bash
   SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-  LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+  LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
   if [ -f "$LOOP_STATE_FILE" ]; then
-    if grep -q '^phase:' "$LOOP_STATE_FILE"; then
-      sed -i '' "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE"
-    else
-      sed -i '' "/^completion_promise:/a\\
-  phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:/a phase: watching" "$LOOP_STATE_FILE"
-    fi
+    source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+    set_loop_phase "$LOOP_STATE_FILE" "watching"
     echo "Phase set to: watching (post-fix-cycle path)"
   fi
   ```
@@ -317,9 +313,10 @@ Address feedback, but note: "This PR has pending review feedback that cannot be 
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
 if [ -f "$LOOP_STATE_FILE" ]; then
-  sed -i '' "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE"
+  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  set_loop_phase "$LOOP_STATE_FILE" "fixing"
 fi
 ```
 

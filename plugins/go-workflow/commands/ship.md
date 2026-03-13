@@ -12,9 +12,9 @@ Before calling setup-loop, check if a state file already exists with a non-empty
 If so, **skip** setup-loop to preserve custom fields (`args`, `pass`, `pr_number`, `base_branch`, `no_merge`, `llm`, `discovered_bots`).
 
 ```bash
-STATE_FILE=".claude/ship.loop.local.md"
+STATE_FILE=".claude/ship.loop.local.json"
 if [ -f "$STATE_FILE" ]; then
-  EXISTING_PHASE=$(grep '^phase:' "$STATE_FILE" | sed 's/phase: *//' || true)
+  EXISTING_PHASE=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null || true)
   if [ -n "$EXISTING_PHASE" ]; then
     echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop to preserve state."
   fi
@@ -23,7 +23,7 @@ fi
 
 **Only call setup-loop on fresh starts** (no state file or empty phase):
 
-!`if [ ! -f ".claude/ship.loop.local.md" ] || [ -z "$(grep '^phase:' .claude/ship.loop.local.md 2>/dev/null | sed 's/phase: *//')" ]; then "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50; fi`
+!`if [ ! -f ".claude/ship.loop.local.json" ] || [ -z "$(jq -r '.phase // empty' .claude/ship.loop.local.json 2>/dev/null)" ]; then "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" '{"reviewing":"Resume LLM review pass.","fixing":"Continue fixing LLM review findings.","verifying":"Re-run verification: build, test, lint.","pushing":"Resume push and PR creation.","ci-watch":"Resume CI monitoring. Run gh pr checks and fix any failures.","bot-watching":"Resume bot approval polling (Step 11). Check discovered bots for approval status. If bots request changes, go to Step 12. If all approved, go to Step 13.","addressing":"Resume addressing bot review feedback (Steps 2-11 of address-review). After fixes, return to CI watch.","merging":"Verify CI green and bot approval, then merge the PR."}'; fi`
 
 ## 1. Parse Arguments
 
@@ -36,18 +36,16 @@ Parse `$ARGUMENTS` to extract:
 
 Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`.
 
-**Persist arguments to state file** for re-entry recovery. After parsing, append these fields to `.claude/ship.loop.local.md` if they don't already exist:
+**Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.claude/ship.loop.local.json` using `jq`:
 
-```yaml
-args: <raw $ARGUMENTS string>
-llm: <LLM_CHOICE>
-pass: 0
-no_merge: <true|false>
-pr_number:
-base_branch:
-bot_review_baseline:
-discovered_bots:
-has_ci:
+```bash
+STATE_FILE=".claude/ship.loop.local.json"
+TMP="$STATE_FILE.tmp"
+jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
+   --arg no_merge "$NO_MERGE" --arg pr_number "" --arg base_branch "" \
+   --arg bot_review_baseline "" --arg discovered_bots "" --arg has_ci "" \
+   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci}' \
+   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
 ## 2. Re-entry Check
@@ -56,16 +54,16 @@ Read the loop state file:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-STATE_FILE=".claude/ship.loop.local.md"
+STATE_FILE=".claude/ship.loop.local.json"
 if [ -f "$STATE_FILE" ]; then
   read_loop_state "$STATE_FILE"
 fi
 ```
 
-If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from persisted fields:
+If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from persisted fields using `jq`:
 
-1. Read `args:` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`
-2. Read `pass:`, `pr_number:`, `base_branch:`, `bot_review_baseline:`, `llm:`, `discovered_bots:`, `has_ci:` fields
+1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`
+2. Read `pass`, `pr_number`, `base_branch`, `bot_review_baseline`, `llm`, `discovered_bots`, `has_ci` fields via `jq -r '.field // empty' "$STATE_FILE"`
 
 Then skip to the corresponding phase:
 
@@ -147,8 +145,8 @@ Set phase to `reviewing`:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_phase ".claude/ship.loop.local.md" "reviewing"
-PASS=$(grep '^pass:' ".claude/ship.loop.local.md" | sed 's/pass: *//')
+set_loop_phase ".claude/ship.loop.local.json" "reviewing"
+PASS=$(jq -r '.pass // 0' ".claude/ship.loop.local.json")
 ```
 
 **Note:** The pass counter is incremented in Step 8 (after the review completes and findings are committed), not here. This prevents burning a pass number if the session exits during the review and re-enters.
@@ -218,7 +216,7 @@ Capture the output as `FINDINGS`.
 Set phase to `fixing`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.md" "fixing"
+set_loop_phase ".claude/ship.loop.local.json" "fixing"
 ```
 
 For each finding from Step 5c:
@@ -240,7 +238,7 @@ Track counts: `FIXED`, `SKIPPED` (with reasons).
 Set phase to `verifying`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.md" "verifying"
+set_loop_phase ".claude/ship.loop.local.json" "verifying"
 ```
 
 Auto-detect project type and run appropriate verification:
@@ -289,13 +287,10 @@ git add <list of files modified during fix phase>
 **Increment the pass counter** now that the review-fix-verify cycle is complete:
 
 ```bash
-CURRENT_PASS=$(grep '^pass:' ".claude/ship.loop.local.md" | sed 's/pass: *//')
+CURRENT_PASS=$(jq -r '.pass // 0' ".claude/ship.loop.local.json")
 NEW_PASS=$((CURRENT_PASS + 1))
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  sed -i '' "s/^pass: .*/pass: $NEW_PASS/" ".claude/ship.loop.local.md"
-else
-  sed -i "s/^pass: .*/pass: $NEW_PASS/" ".claude/ship.loop.local.md"
-fi
+TMP=".claude/ship.loop.local.json.tmp"
+jq --argjson p "$NEW_PASS" '.pass = $p' ".claude/ship.loop.local.json" > "$TMP" && mv "$TMP" ".claude/ship.loop.local.json"
 PASS=$NEW_PASS
 ```
 
@@ -321,7 +316,7 @@ Check if we should continue reviewing:
 Set phase to `pushing`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.md" "pushing"
+set_loop_phase ".claude/ship.loop.local.json" "pushing"
 ```
 
 #### 9a. Push to remote
@@ -380,7 +375,7 @@ Persist `bot_review_baseline` in state file.
 Set phase to `ci-watch`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.md" "ci-watch"
+set_loop_phase ".claude/ship.loop.local.json" "ci-watch"
 ```
 
 First, check if CI workflow files exist:
@@ -416,7 +411,7 @@ If CI fails:
 Set phase to `bot-watching` (distinct from address-review's `watching` phase to get ship-specific re-entry messages):
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.md" "bot-watching"
+set_loop_phase ".claude/ship.loop.local.json" "bot-watching"
 ```
 
 #### 11a. Discover review bots
@@ -505,7 +500,7 @@ Follow Steps 12a-12d from watch-loop.md:
 Set phase to `addressing` (distinct from `fixing` to ensure correct re-entry routing):
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.md" "addressing"
+set_loop_phase ".claude/ship.loop.local.json" "addressing"
 ```
 
 #### 12a. Fetch and rebase against base branch
@@ -548,7 +543,7 @@ Return to Step 10 (ci-watch) — set phase and re-watch CI before checking bot a
 Set phase to `merging`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.md" "merging"
+set_loop_phase ".claude/ship.loop.local.json" "merging"
 ```
 
 #### 13a. Final checks
