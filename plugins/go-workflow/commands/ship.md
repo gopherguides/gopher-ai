@@ -47,6 +47,7 @@ pr_number:
 base_branch:
 bot_review_baseline:
 discovered_bots:
+has_ci:
 ```
 
 ## 2. Re-entry Check
@@ -64,7 +65,7 @@ fi
 If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from persisted fields:
 
 1. Read `args:` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`
-2. Read `pass:`, `pr_number:`, `base_branch:`, `bot_review_baseline:`, `llm:`, `discovered_bots:` fields
+2. Read `pass:`, `pr_number:`, `base_branch:`, `bot_review_baseline:`, `llm:`, `discovered_bots:`, `has_ci:` fields
 
 Then skip to the corresponding phase:
 
@@ -73,7 +74,7 @@ Then skip to the corresponding phase:
 - `verifying` → go to Step 7
 - `pushing` → go to Step 9
 - `ci-watch` → go to Step 10
-- `watching` → go to Step 11
+- `bot-watching` → go to Step 11
 - `addressing` → go to Step 12
 - `merging` → go to Step 13
 
@@ -142,30 +143,23 @@ Do NOT output `<done>SHIPPED</done>`. Simply inform the user of the missing prer
 
 ### Step 5: Review Phase
 
-Set phase to `reviewing` and **increment the `pass:` field** in the state file:
+Set phase to `reviewing`:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
 set_loop_phase ".claude/ship.loop.local.md" "reviewing"
+PASS=$(grep '^pass:' ".claude/ship.loop.local.md" | sed 's/pass: *//')
 ```
 
-**Increment the pass counter** (read current value, add 1, write back using portable sed):
-
-```bash
-CURRENT_PASS=$(grep '^pass:' ".claude/ship.loop.local.md" | sed 's/pass: *//')
-NEW_PASS=$((CURRENT_PASS + 1))
-if [[ "$OSTYPE" == "darwin"* ]]; then
-  sed -i '' "s/^pass: .*/pass: $NEW_PASS/" ".claude/ship.loop.local.md"
-else
-  sed -i "s/^pass: .*/pass: $NEW_PASS/" ".claude/ship.loop.local.md"
-fi
-PASS=$NEW_PASS
-```
+**Note:** The pass counter is incremented in Step 8 (after the review completes and findings are committed), not here. This prevents burning a pass number if the session exits during the review and re-enters.
 
 #### 5a. Generate Diff
 
+Fetch the base branch to ensure the ref exists locally (handles cases where the base branch has never been checked out):
+
 ```bash
-DIFF=$(git diff "${BASE_BRANCH}...HEAD")
+git fetch origin "$BASE_BRANCH" 2>/dev/null || true
+DIFF=$(git diff "origin/${BASE_BRANCH}...HEAD")
 ```
 
 If the diff is empty, skip the review loop entirely — nothing to review. Proceed to Step 9 (pushing).
@@ -177,7 +171,7 @@ Execute review based on `LLM_CHOICE`:
 **Codex:**
 
 ```bash
-codex review --base "$BASE_BRANCH"
+codex review --base "origin/$BASE_BRANCH"
 ```
 
 **Gemini:**
@@ -284,12 +278,25 @@ ruff check . 2>/dev/null || flake8 . 2>/dev/null || true
 
 If any verification fails: analyze, fix, re-run until all pass.
 
-### Step 8: Commit and Loop Decision
+### Step 8: Commit, Increment Pass, and Loop Decision
 
 Stage only the files modified during the fix phase (do NOT use `git add -A`):
 
 ```bash
 git add <list of files modified during fix phase>
+```
+
+**Increment the pass counter** now that the review-fix-verify cycle is complete:
+
+```bash
+CURRENT_PASS=$(grep '^pass:' ".claude/ship.loop.local.md" | sed 's/pass: *//')
+NEW_PASS=$((CURRENT_PASS + 1))
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  sed -i '' "s/^pass: .*/pass: $NEW_PASS/" ".claude/ship.loop.local.md"
+else
+  sed -i "s/^pass: .*/pass: $NEW_PASS/" ".claude/ship.loop.local.md"
+fi
+PASS=$NEW_PASS
 ```
 
 Only commit if there are staged changes:
@@ -336,10 +343,10 @@ If `PR_NUM` is empty (no existing PR), create one:
 3. If not found, use default format: `## Summary` + `## Test Plan`
 4. Generate conventional commit title from commits: `<type>(<scope>): <subject>`
 5. Check branch name and commit messages for issue references
-6. Create PR:
+6. Create PR targeting the detected base branch:
 
 ```bash
-gh pr create --title "<title>" --body "$(cat <<'EOF'
+gh pr create --base "$BASE_BRANCH" --title "<title>" --body "$(cat <<'EOF'
 <filled-in template or default body>
 EOF
 )"
@@ -382,9 +389,9 @@ First, check if CI workflow files exist:
 HAS_WORKFLOWS=$(find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1)
 ```
 
-If no workflow files exist → proceed (repo has no CI). Skip to Step 11.
+If no workflow files exist → persist `has_ci: false` in state file and skip to Step 11.
 
-**If workflows exist**, watch CI with extended retry to handle slow check registration:
+**If workflows exist**, persist `has_ci: true` in state file and watch CI with extended retry to handle slow check registration:
 
 ```bash
 for i in 1 2 3 4 5 6; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
@@ -406,10 +413,10 @@ If CI fails:
 
 ### Step 11: Bot Discovery and Watch
 
-Set phase to `watching`:
+Set phase to `bot-watching` (distinct from address-review's `watching` phase to get ship-specific re-entry messages):
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.md" "watching"
+set_loop_phase ".claude/ship.loop.local.md" "bot-watching"
 ```
 
 #### 11a. Discover review bots
@@ -458,16 +465,19 @@ BOT_AUTHORS=$(gh api graphql -f query='
 ')
 ```
 
-Match authors against the bot registry.
-
-**If no review bots detected yet:** This may be because async bots haven't posted their first review. If `BOT_REVIEW_BASELINE` was captured less than 2 minutes ago, wait and re-poll:
+Also check PR status checks for bots that signal via commit statuses rather than reviews (e.g., Greptile):
 
 ```bash
-sleep 30
-# Re-run the bot discovery query above
+CHECK_BOTS=$(gh pr checks "$PR_NUM" --json name 2>/dev/null | jq -r '.[].name' 2>/dev/null || true)
 ```
 
-Re-poll up to 3 times (total ~90s wait). If still no bots after retries → proceed to Step 13 (merging) — the repo genuinely has no review bots.
+Match both `BOT_AUTHORS` and `CHECK_BOTS` against the bot registry.
+
+**If no review bots detected yet:** This may be because async bots haven't posted their first review. If `BOT_REVIEW_BASELINE` was captured less than 2 minutes ago, ask the user whether to wait or proceed:
+
+Use `AskUserQuestion`: "No review bots detected yet. The push was recent — bots may still be starting. Wait for bots to respond, or proceed to merge without bot review?"
+
+If the user chooses to wait, poll up to 3 times (30s apart). If still no bots after retries → proceed to Step 13 (merging).
 
 **Persist discovered bots** to state file for re-entry recovery:
 
@@ -498,20 +508,36 @@ Set phase to `addressing` (distinct from `fixing` to ensure correct re-entry rou
 set_loop_phase ".claude/ship.loop.local.md" "addressing"
 ```
 
-**Key instruction:** Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow Steps 2-11 only:
+#### 12a. Fetch and rebase against base branch
+
+Before applying fixes, ensure the branch is up to date with the base to avoid conflicts:
+
+```bash
+git fetch origin "$BASE_BRANCH"
+git rebase "origin/$BASE_BRANCH" || git rebase --abort
+```
+
+If the rebase fails (conflicts), abort and inform the user. Proceed with fixes without rebasing — the user can resolve conflicts manually.
+
+#### 12b. Apply address-review fixes
+
+Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow Steps 2-11 only:
 
 - **Skip Step 1** (loop init / PR checkout) — we're already on the branch, loop is managed by `/ship`
 - **Skip Step 12** (bot watch) — we handle that in Step 11 above
 - Do NOT create a second loop state file — all phases are managed under the `ship` loop
 
-After fixes are pushed:
+#### 12c. Capture baseline BEFORE push
 
-1. Re-capture `BOT_REVIEW_BASELINE`:
-   ```bash
-   BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-   ```
-   Persist in state file.
-2. Return to Step 10 (ci-watch) — set phase and re-watch CI before checking bot approval again.
+**CRITICAL:** Capture `BOT_REVIEW_BASELINE` before pushing, not after. This ensures we don't miss fast bot responses that arrive between the push and the timestamp capture:
+
+```bash
+BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+```
+
+Persist in state file. Then push the fixes.
+
+Return to Step 10 (ci-watch) — set phase and re-watch CI before checking bot approval again.
 
 ---
 
@@ -527,7 +553,7 @@ set_loop_phase ".claude/ship.loop.local.md" "merging"
 
 #### 13a. Final checks
 
-1. Verify CI is green: `gh pr checks "$PR_NUM"`
+1. Verify CI is green (skip if `has_ci` is `false` in state file — Step 10 already determined no CI exists): `gh pr checks "$PR_NUM"`
 2. Check for unresolved review threads:
    ```bash
    OWNER=$(gh repo view --json owner --jq '.owner.login')
@@ -628,7 +654,7 @@ Step 9: pushing
     ↓
 Step 10: ci-watch
     ↓
-Step 11: bot-watch (watching)
+Step 11: bot-watch (bot-watching)
     ↓                ↓
     ↓          Step 12: address-feedback (addressing)
     ↓                ↓
@@ -648,7 +674,7 @@ Step 13: merging
 | `verifying` | Re-run verification |
 | `pushing` | Resume push and PR creation |
 | `ci-watch` | Resume CI monitoring |
-| `watching` | Resume bot approval polling |
+| `bot-watching` | Resume bot approval polling |
 | `addressing` | Resume addressing bot review feedback (Steps 2-11 of address-review) |
 | `merging` | Resume merge attempt |
 
