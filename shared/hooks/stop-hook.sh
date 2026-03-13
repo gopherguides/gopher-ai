@@ -49,6 +49,26 @@ fi
 # Read state from file
 read_loop_state "$STATE_FILE"
 
+# Check if loop is stale (from a previous session)
+# Compare state file's started_at against the current transcript file's creation time.
+# If the transcript is newer than the loop, the loop is from a dead session.
+if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
+  STARTED_AT=$(grep '^started_at:' "$STATE_FILE" | sed 's/started_at: *//')
+  if [ -n "$STARTED_AT" ]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      TRANSCRIPT_BIRTH=$(stat -f %B "$TRANSCRIPT_PATH" 2>/dev/null || echo "0")
+      LOOP_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$STARTED_AT" +%s 2>/dev/null || echo "0")
+    else
+      TRANSCRIPT_BIRTH=$(stat -c %W "$TRANSCRIPT_PATH" 2>/dev/null || echo "0")
+      LOOP_EPOCH=$(date -d "$STARTED_AT" +%s 2>/dev/null || echo "0")
+    fi
+    if [ "$LOOP_EPOCH" -gt 0 ] && [ "$TRANSCRIPT_BIRTH" -gt 0 ] && [ "$TRANSCRIPT_BIRTH" -gt "$LOOP_EPOCH" ]; then
+      cleanup_loop "$STATE_FILE"
+      exit 0
+    fi
+  fi
+fi
+
 # Validate iteration is a number
 if ! [[ "$ITERATION" =~ ^[0-9]+$ ]]; then
   # Invalid state - cleanup and allow exit
