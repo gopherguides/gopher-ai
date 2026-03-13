@@ -123,6 +123,15 @@ elif [ "$PHASE" = "fixing" ]; then
 elif [ "$PHASE" = "verifying" ]; then
   REASON="Continue verification: run build, test, and lint on fixes."
   SYSTEM_MSG="$SYSTEM_MSG Verify fixes pass build, test, and lint."
+elif [ "$PHASE" = "pushing" ]; then
+  REASON="Resume: push changes and ensure PR exists."
+  SYSTEM_MSG="$SYSTEM_MSG Resume pushing changes to remote and PR creation/detection."
+elif [ "$PHASE" = "ci-watch" ]; then
+  REASON="Resume: watch CI status and fix failures."
+  SYSTEM_MSG="$SYSTEM_MSG Resume CI monitoring. Run gh pr checks and fix any failures."
+elif [ "$PHASE" = "merging" ]; then
+  REASON="Resume: merge the PR."
+  SYSTEM_MSG="$SYSTEM_MSG Verify CI green and bot approval, then merge the PR."
 else
   REASON="$ORIGINAL_PROMPT"
   SYSTEM_MSG="$SYSTEM_MSG Continue working on the task."
