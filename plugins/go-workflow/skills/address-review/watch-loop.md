@@ -6,14 +6,10 @@ Before entering the watch loop, update the loop state phase so that any stop-hoo
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
 if [ -f "$LOOP_STATE_FILE" ]; then
-  if grep -q '^phase:' "$LOOP_STATE_FILE"; then
-    sed -i '' "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: watching/" "$LOOP_STATE_FILE"
-  else
-    sed -i '' "/^completion_promise:/a\\
-phase: watching" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^completion_promise:/a phase: watching" "$LOOP_STATE_FILE"
-  fi
+  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  set_loop_phase "$LOOP_STATE_FILE" "watching"
   echo "Phase set to: watching"
 fi
 ```
@@ -29,12 +25,7 @@ if [ -z "$BOT_REVIEW_BASELINE" ]; then
 fi
 
 if [ -f "$LOOP_STATE_FILE" ]; then
-  if grep -q '^bot_review_baseline:' "$LOOP_STATE_FILE"; then
-    sed -i '' "s/^bot_review_baseline: .*/bot_review_baseline: $BOT_REVIEW_BASELINE/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^bot_review_baseline: .*/bot_review_baseline: $BOT_REVIEW_BASELINE/" "$LOOP_STATE_FILE"
-  else
-    sed -i '' "/^phase:/a\\
-bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "/^phase:/a bot_review_baseline: $BOT_REVIEW_BASELINE" "$LOOP_STATE_FILE"
-  fi
+  set_loop_field "$LOOP_STATE_FILE" "bot_review_baseline" "$BOT_REVIEW_BASELINE"
   echo "Bot review baseline persisted: $BOT_REVIEW_BASELINE"
 fi
 ```
@@ -92,9 +83,10 @@ After the quiet period ends and new unresolved comments/threads exist:
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.md"
+LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
 if [ -f "$LOOP_STATE_FILE" ]; then
-  sed -i '' "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE" 2>/dev/null || sed -i "s/^phase: .*/phase: fixing/" "$LOOP_STATE_FILE"
+  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  set_loop_phase "$LOOP_STATE_FILE" "fixing"
   echo "Phase reset to: fixing (new bot feedback detected)"
 fi
 ```

@@ -6,7 +6,7 @@ allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestio
 
 # Iterative LLM Review Loop
 
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "review-loop" "REVIEW_CLEAN" 25`
+!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "review-loop" "REVIEW_CLEAN" 25 "" '{"reviewing":"Resume the review-fix-verify cycle. Run the next review pass.","fixing":"Continue fixing: address remaining review findings, then verify.","verifying":"Continue verification: run build, test, and lint on fixes."}'`
 
 ## 1. Parse Arguments
 
@@ -18,11 +18,13 @@ Parse `$ARGUMENTS` to extract:
 
 Store as `LLM_CHOICE`, `MAX_PASSES`, and `SCOPE_HINT`.
 
-**Persist arguments to state file** for re-entry recovery. After parsing, append these fields to `.claude/review-loop.loop.local.md` if they don't already exist:
+**Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.claude/review-loop.loop.local.json` using `jq`:
 
-```yaml
-args: <raw $ARGUMENTS string>
-pass: 0
+```bash
+STATE_FILE=".claude/review-loop.loop.local.json"
+TMP="$STATE_FILE.tmp"
+jq --arg args "$ARGUMENTS" --argjson pass 0 \
+   '. + {args: $args, pass: $pass}' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
 This ensures stop-hook re-entry can restore the original configuration.
@@ -52,21 +54,21 @@ Do NOT continue the loop. Output `<done>REVIEW_CLEAN</done>` to signal completio
 
 ## 3. Re-entry Check
 
-Read the loop state file at `.claude/review-loop.loop.local.md`:
+Read the loop state file at `.claude/review-loop.loop.local.json`:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-STATE_FILE=".claude/review-loop.loop.local.md"
+STATE_FILE=".claude/review-loop.loop.local.json"
 if [ -f "$STATE_FILE" ]; then
   read_loop_state "$STATE_FILE"
 fi
 ```
 
-If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from the persisted fields in the state file:
+If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from the persisted fields using `jq`:
 
-1. Read `args:` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `SCOPE_HINT`
-2. Read `pass:` field to restore the current pass count
-3. Read `scope:`, `base_branch:`, `model:`, `file_paths:` fields to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`
+1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `SCOPE_HINT`
+2. Read `pass` field via `jq -r '.pass // 0' "$STATE_FILE"` to restore the current pass count
+3. Read `scope`, `base_branch`, `model`, `file_paths` fields via `jq -r '.field // empty' "$STATE_FILE"` to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`
 
 Then skip to the corresponding phase:
 
@@ -163,13 +165,15 @@ If "Custom" model was selected, ask for the model name.
 
 Store all selections: `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`.
 
-**Persist scope/model to state file** for re-entry recovery. Append these fields to `.claude/review-loop.loop.local.md`:
+**Persist scope/model to state file** for re-entry recovery. Merge these fields into `.claude/review-loop.loop.local.json`:
 
-```yaml
-scope: <REVIEW_SCOPE>
-base_branch: <BASE_BRANCH>
-model: <MODEL>
-file_paths: <FILE_PATHS or empty>
+```bash
+STATE_FILE=".claude/review-loop.loop.local.json"
+TMP="$STATE_FILE.tmp"
+jq --arg scope "$REVIEW_SCOPE" --arg base_branch "$BASE_BRANCH" \
+   --arg model "$MODEL" --arg file_paths "${FILE_PATHS:-}" \
+   '. + {scope: $scope, base_branch: $base_branch, model: $model, file_paths: $file_paths}' \
+   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
 The `pass:` field in the state file was initialized to 0 in Step 1.
@@ -180,7 +184,7 @@ Set phase to `reviewing` and increment the `pass:` field in the state file:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_phase ".claude/review-loop.loop.local.md" "reviewing"
+set_loop_phase ".claude/review-loop.loop.local.json" "reviewing"
 # Increment pass counter in state file (read current value, increment, write back)
 ```
 
@@ -275,7 +279,7 @@ After capturing the LLM review output:
 Set phase to `fixing`:
 
 ```bash
-set_loop_phase ".claude/review-loop.loop.local.md" "fixing"
+set_loop_phase ".claude/review-loop.loop.local.json" "fixing"
 ```
 
 For each finding from Step 6:
@@ -297,7 +301,7 @@ Track counts: `FIXED`, `SKIPPED` (with reasons).
 Set phase to `verifying`:
 
 ```bash
-set_loop_phase ".claude/review-loop.loop.local.md" "verifying"
+set_loop_phase ".claude/review-loop.loop.local.json" "verifying"
 ```
 
 Auto-detect project type and run appropriate verification:
