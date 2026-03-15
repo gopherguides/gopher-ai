@@ -50,7 +50,7 @@ Parse arguments:
 ## Loop Initialization
 
 Initialize persistent loop to ensure migration completes fully:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-migrate" "COMPLETE"`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-migrate" "COMPLETE"; fi`
 
 ## Step 1: Find v3 Configuration
 

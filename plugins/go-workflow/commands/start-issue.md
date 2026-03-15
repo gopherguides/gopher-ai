@@ -45,7 +45,7 @@ First, validate input is numeric (prevent command injection):
 ## Loop Initialization
 
 Initialize persistent loop to ensure work continues until complete:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ARGUMENTS" "COMPLETE" "" "" '{}'`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ARGUMENTS" "COMPLETE" "" "" '{}'; fi`
 
 ## Context
 

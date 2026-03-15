@@ -36,7 +36,7 @@ table-driven tests and includes edge cases, boundary conditions, and error scena
 ## Loop Initialization
 
 Initialize persistent loop to ensure tests are complete and passing:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "test-gen" "COMPLETE"`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "test-gen" "COMPLETE"; fi`
 
 ## Configuration
 

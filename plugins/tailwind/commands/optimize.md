@@ -41,7 +41,7 @@ Parse arguments:
 ## Loop Initialization
 
 Initialize persistent loop to ensure optimization analysis completes fully:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-optimize" "COMPLETE"`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-optimize" "COMPLETE"; fi`
 
 ## Step 1: Find CSS Files
 
