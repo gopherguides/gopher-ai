@@ -96,7 +96,18 @@ Ask or auto-generate a descriptive filename in the current directory (e.g., `her
 
 ## 3. Build Request JSON
 
-Use python3 to construct the request payload:
+**First, export the gathered values as environment variables** so the python3 script can read them:
+
+```bash
+export GEMINI_PROMPT="<the user's image description>"
+export GEMINI_MODEL="<selected model, e.g. gemini-3.1-flash-image-preview>"
+export GEMINI_ASPECT_RATIO="<selected ratio, e.g. 1:1>"
+export GEMINI_IMAGE_SIZE="<selected resolution, e.g. 1K>"
+export GEMINI_REF_IMAGE="<path to reference image, or empty>"
+export GEMINI_OUTPUT_PATH="<output file path>"
+```
+
+Then run the builder:
 
 ```bash
 python3 << 'PYEOF'
@@ -142,14 +153,20 @@ print(outfile)
 PYEOF
 ```
 
+Capture the printed path as `REQUEST_FILE`.
+
 ## 4. API Call
 
+Use the `REQUEST_FILE` path from Step 3 and the `GEMINI_MODEL` env var:
+
 ```bash
+RESPONSE_FILE="/tmp/gemini-image-response-$$.json"
 curl -s -X POST \
-  "https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=$GEMINI_API_KEY" \
+  "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=$GEMINI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d @${REQUEST_FILE} \
-  > /tmp/gemini-image-response-${PID}.json
+  -d @"${REQUEST_FILE}" \
+  > "$RESPONSE_FILE"
+export GEMINI_RESPONSE_FILE="$RESPONSE_FILE"
 ```
 
 Check for errors — handle 429 (rate limit, wait 30s and retry), 400/403 (show error, suggest fixes).
@@ -206,19 +223,25 @@ if output_path.lower().endswith(".png") and image_mime == "image/jpeg":
         img.save(output_path, "PNG")
         print(f"Converted JPEG→PNG and saved to {output_path}")
     except ImportError:
-        import subprocess
-        tmp_jpg = output_path + ".tmp.jpg"
-        with open(tmp_jpg, "wb") as f:
-            f.write(raw_bytes)
-        result = subprocess.run(["magick", tmp_jpg, output_path], capture_output=True)
-        os.remove(tmp_jpg)
-        if result.returncode == 0:
-            print(f"Converted JPEG→PNG (magick) and saved to {output_path}")
+        import subprocess, shutil
+        if shutil.which("magick"):
+            tmp_jpg = output_path + ".tmp.jpg"
+            with open(tmp_jpg, "wb") as f:
+                f.write(raw_bytes)
+            result = subprocess.run(["magick", tmp_jpg, output_path], capture_output=True)
+            os.remove(tmp_jpg)
+            if result.returncode == 0:
+                print(f"Converted JPEG→PNG (magick) and saved to {output_path}")
+            else:
+                output_path = output_path.rsplit(".", 1)[0] + ".jpg"
+                with open(output_path, "wb") as f:
+                    f.write(raw_bytes)
+                print(f"magick failed, saved as JPEG: {output_path}")
         else:
             output_path = output_path.rsplit(".", 1)[0] + ".jpg"
             with open(output_path, "wb") as f:
                 f.write(raw_bytes)
-            print(f"Could not convert to PNG, saved as JPEG: {output_path}")
+            print(f"No PNG converter available (install Pillow or ImageMagick), saved as JPEG: {output_path}")
 else:
     with open(output_path, "wb") as f:
         f.write(raw_bytes)
