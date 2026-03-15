@@ -86,6 +86,8 @@ Ask the user:
 
 Default: `1K`
 
+If user selects `512` with a model other than `gemini-3.1-flash-image-preview`, warn them and switch to `1K`.
+
 ### Reference Image (Optional)
 
 Ask if they want to include a reference image (path to file). Default: no.
@@ -260,12 +262,13 @@ PYEOF
 Write a `{name}_prompt.txt` alongside the image:
 
 ```bash
-cat > "${OUTPUT_DIR}/${IMAGE_NAME}_prompt.txt" << EOF
-Prompt: ${PROMPT}
-Model: ${MODEL}
-Aspect Ratio: ${ASPECT_RATIO}
-Resolution: ${IMAGE_SIZE}
-Reference Image: ${REF_IMAGE_PATH:-none}
+PROMPT_FILE="${GEMINI_OUTPUT_PATH%.*}_prompt.txt"
+cat > "$PROMPT_FILE" << EOF
+Prompt: ${GEMINI_PROMPT}
+Model: ${GEMINI_MODEL}
+Aspect Ratio: ${GEMINI_ASPECT_RATIO}
+Resolution: ${GEMINI_IMAGE_SIZE}
+Reference Image: ${GEMINI_REF_IMAGE:-none}
 Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 EOF
 ```

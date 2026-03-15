@@ -280,12 +280,13 @@ PYEOF
 Write a `{name}_prompt.txt` file alongside the image for reproducibility:
 
 ```bash
-cat > "${OUTPUT_DIR}/${IMAGE_NAME}_prompt.txt" << EOF
-Prompt: ${PROMPT}
-Model: ${MODEL}
-Aspect Ratio: ${ASPECT_RATIO}
-Resolution: ${IMAGE_SIZE}
-Reference Image: ${REF_IMAGE_PATH:-none}
+PROMPT_FILE="${GEMINI_OUTPUT_PATH%.*}_prompt.txt"
+cat > "$PROMPT_FILE" << EOF
+Prompt: ${GEMINI_PROMPT}
+Model: ${GEMINI_MODEL}
+Aspect Ratio: ${GEMINI_ASPECT_RATIO}
+Resolution: ${GEMINI_IMAGE_SIZE}
+Reference Image: ${GEMINI_REF_IMAGE:-none}
 Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 EOF
 ```
