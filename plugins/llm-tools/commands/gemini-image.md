@@ -114,13 +114,15 @@ Use python3 to construct the request payload. This handles base64 encoding of re
 
 **First, export the gathered values as environment variables** so the python3 script can read them:
 
+**Important:** Always single-quote user-provided values to prevent shell injection (quotes, backticks, `$` in prompts):
+
 ```bash
-export GEMINI_PROMPT="<the user's prompt from $ARGUMENTS>"
-export GEMINI_MODEL="<selected model, e.g. gemini-3.1-flash-image-preview>"
-export GEMINI_ASPECT_RATIO="<selected ratio, e.g. 1:1>"
-export GEMINI_IMAGE_SIZE="<selected resolution, e.g. 1K>"
-export GEMINI_REF_IMAGE="<path to reference image, or empty>"
-export GEMINI_OUTPUT_PATH="<output file path from Step 6>"
+export GEMINI_PROMPT='<the user'"'"'s prompt from $ARGUMENTS — single-quote wrapped>'
+export GEMINI_MODEL='<selected model, e.g. gemini-3.1-flash-image-preview>'
+export GEMINI_ASPECT_RATIO='<selected ratio, e.g. 1:1>'
+export GEMINI_IMAGE_SIZE='<selected resolution, e.g. 1K>'
+export GEMINI_REF_IMAGE='<path to reference image, or empty>'
+export GEMINI_OUTPUT_PATH='<output file path from Step 6>'
 ```
 
 Then run the builder:
@@ -177,13 +179,15 @@ Use the `REQUEST_FILE` path from Step 7 and the `GEMINI_MODEL` env var:
 
 ```bash
 RESPONSE_FILE="/tmp/gemini-image-response-$$.json"
-curl -s -X POST \
+HTTP_STATUS=$(curl -s -o "$RESPONSE_FILE" -w "%{http_code}" -X POST \
   "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=$GEMINI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d @"${REQUEST_FILE}" \
-  > "$RESPONSE_FILE"
+  -d @"${REQUEST_FILE}")
 export GEMINI_RESPONSE_FILE="$RESPONSE_FILE"
+echo "HTTP status: $HTTP_STATUS"
 ```
+
+If `HTTP_STATUS` is 429, wait 30 seconds and retry the curl command once. If 400 or 403, display the error from the response body and suggest fixes. Only proceed to Step 9 if status is 200.
 
 Check for errors in the response:
 - HTTP errors or empty response → show error, suggest simpler prompt
@@ -294,7 +298,7 @@ EOF
 ## 11. Cleanup and Report
 
 ```bash
-rm -f /tmp/gemini-image-request-*.json /tmp/gemini-image-response-*.json
+rm -f "${REQUEST_FILE}" "${RESPONSE_FILE}"
 ```
 
 Report to the user:

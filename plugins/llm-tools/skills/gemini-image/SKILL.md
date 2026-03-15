@@ -100,13 +100,15 @@ Ask or auto-generate a descriptive filename in the current directory (e.g., `her
 
 **First, export the gathered values as environment variables** so the python3 script can read them:
 
+**Important:** Always single-quote user-provided values to prevent shell injection (quotes, backticks, `$` in prompts):
+
 ```bash
-export GEMINI_PROMPT="<the user's image description>"
-export GEMINI_MODEL="<selected model, e.g. gemini-3.1-flash-image-preview>"
-export GEMINI_ASPECT_RATIO="<selected ratio, e.g. 1:1>"
-export GEMINI_IMAGE_SIZE="<selected resolution, e.g. 1K>"
-export GEMINI_REF_IMAGE="<path to reference image, or empty>"
-export GEMINI_OUTPUT_PATH="<output file path>"
+export GEMINI_PROMPT='<the user'"'"'s image description — single-quote wrapped>'
+export GEMINI_MODEL='<selected model, e.g. gemini-3.1-flash-image-preview>'
+export GEMINI_ASPECT_RATIO='<selected ratio, e.g. 1:1>'
+export GEMINI_IMAGE_SIZE='<selected resolution, e.g. 1K>'
+export GEMINI_REF_IMAGE='<path to reference image, or empty>'
+export GEMINI_OUTPUT_PATH='<output file path>'
 ```
 
 Then run the builder:
@@ -163,15 +165,15 @@ Use the `REQUEST_FILE` path from Step 3 and the `GEMINI_MODEL` env var:
 
 ```bash
 RESPONSE_FILE="/tmp/gemini-image-response-$$.json"
-curl -s -X POST \
+HTTP_STATUS=$(curl -s -o "$RESPONSE_FILE" -w "%{http_code}" -X POST \
   "https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=$GEMINI_API_KEY" \
   -H "Content-Type: application/json" \
-  -d @"${REQUEST_FILE}" \
-  > "$RESPONSE_FILE"
+  -d @"${REQUEST_FILE}")
 export GEMINI_RESPONSE_FILE="$RESPONSE_FILE"
+echo "HTTP status: $HTTP_STATUS"
 ```
 
-Check for errors — handle 429 (rate limit, wait 30s and retry), 400/403 (show error, suggest fixes).
+If `HTTP_STATUS` is 429, wait 30s and retry once. If 400/403, show the error and suggest fixes. Only proceed if 200.
 
 ## 5. Extract and Save Image
 
@@ -276,7 +278,7 @@ EOF
 ## 7. Cleanup and Report
 
 ```bash
-rm -f /tmp/gemini-image-request-*.json /tmp/gemini-image-response-*.json
+rm -f "${REQUEST_FILE}" "${RESPONSE_FILE}"
 ```
 
 Report:
