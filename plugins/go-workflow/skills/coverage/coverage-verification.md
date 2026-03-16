@@ -278,7 +278,8 @@ jq --arg cr "$AGGREGATE_COVERAGE" '.coverage_result = $cr' "$STATE_FILE" > "$TMP
 
 **Mode selection** (set by Step E.2 user choice):
 
-- **All uncovered functions mode** (option 1 or no-test-files path): Generate tests for every uncovered function in `CHANGED_SRC`, as listed in `UNCOVERED_FUNCS` from Step D.
+- **All uncovered functions mode** (option 1): Generate tests for every uncovered function in `CHANGED_SRC`, as listed in `UNCOVERED_FUNCS` from Step D.
+- **No-test-files path** (from Step E.2 "Generate initial tests"): `UNCOVERED_FUNCS` may be empty because Step D short-circuits when coverage data is missing. In this case, read each file in `CHANGED_SRC` directly and extract all exported function/method signatures as test targets.
 - **Changed functions only mode** (option 2, Go only): Restrict test generation to Go functions whose bodies were added or modified. Identify changed functions by mapping diff hunks to their enclosing function using committed, staged, unstaged, and untracked changes (matching Step B's file detection):
   ```bash
   # Combine committed + staged + unstaged diffs
@@ -297,7 +298,12 @@ $(git diff --no-index /dev/null "$uf" 2>/dev/null || true)"
   NEW_FUNCS=$(echo "$COMBINED_DIFF" | grep -E '^\+.*func ' | grep -v '^\+\+\+' | sed 's/^+//' | grep -oE 'func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | sed 's/^func //' | sort -u)
   CHANGED_FUNC_NAMES=$(printf '%s\n%s' "$CHANGED_FUNC_NAMES" "$NEW_FUNCS" | sort -u | grep -v '^$')
   ```
-  **Matching logic:** `UNCOVERED_FUNCS` from Step D uses `go tool cover -func` output which shows bare function names (e.g., `LoadConfig`) and method names without receiver types (e.g., `ServeHTTP`). Extract just the function/method name (last word) from both `CHANGED_FUNC_NAMES` and `UNCOVERED_FUNCS` for cross-referencing. Only generate tests for functions that appear in BOTH lists (changed AND uncovered). If no functions match (all changed functions are already covered), report this and return to calling command's next step.
+  **Matching logic:** Cross-reference per-file to avoid ambiguity (e.g., `Run` in `pkg/a/a.go` vs `pkg/b/b.go`). For each file in `CHANGED_SRC`:
+  1. Get the functions changed in that file from `COMBINED_DIFF` (hunk headers and added `func` lines scoped to that file)
+  2. Get the uncovered functions in that file from `UNCOVERED_FUNCS` (Step D stores entries as `file:func1, func2`)
+  3. Intersect the two lists — only generate tests for functions that are BOTH changed AND uncovered in the same file
+
+  If no functions match across any file (all changed functions are already covered), report this and return to calling command's next step.
 
 Generate tests appropriate for the detected project type. For each target uncovered function:
 
