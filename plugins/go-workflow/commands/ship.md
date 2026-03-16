@@ -615,13 +615,65 @@ elif echo "$MERGE_SETTINGS" | jq -e '.rebase == true' >/dev/null 2>&1; then
 fi
 ```
 
-#### 13d. Merge the PR
+#### 13d. Branch protection mergeability check
+
+**CRITICAL: Before attempting merge, verify that branch protection requirements are satisfied. NEVER bypass branch protection.**
+
+Query GitHub's mergeability status:
 
 ```bash
-gh pr merge "$PR_NUM" $MERGE_FLAG --delete-branch
+MERGE_STATE=$(gh api graphql -f query='
+  query($owner: String!, $repo: String!, $pr: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        mergeStateStatus
+        mergeable
+      }
+    }
+  }
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" --jq '.data.repository.pullRequest')
+
+MERGEABLE=$(echo "$MERGE_STATE" | jq -r '.mergeable')
+STATE_STATUS=$(echo "$MERGE_STATE" | jq -r '.mergeStateStatus')
+
+# Check if repo uses a merge queue (URL-encode branch name for slash-containing branches)
+ENCODED_BRANCH=$(printf '%s' "$BASE_BRANCH" | jq -sRr @uri)
+HAS_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/rules/branches/$ENCODED_BRANCH" 2>/dev/null | jq '[.[] | select(.type == "merge_queue")] | length > 0' 2>/dev/null || echo "false")
 ```
 
-#### 13e. Display summary
+GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Poll when `UNKNOWN`, hard-block only on clear failures:**
+
+- If `MERGEABLE` is `UNKNOWN` or `STATE_STATUS` is `UNKNOWN`: retry up to 6 times (5s apart). If still `UNKNOWN` after retries, ask the user via `AskUserQuestion` whether to proceed or wait.
+- If `MERGEABLE` is `CONFLICTING`:
+  - **STOP** — display "PR has merge conflicts. Resolve conflicts before merging."
+  - Clean up loop state and stop without `<done>SHIPPED</done>`
+- If `STATE_STATUS` is `BLOCKED`:
+  - **If the repo uses a merge queue** (`HAS_MERGE_QUEUE` is true): proceed to merge — `gh pr merge` will enqueue the PR correctly.
+  - **If no merge queue**: **STOP immediately** — do NOT attempt merge. Display: "Branch protection requirements not met (status: BLOCKED). Cannot merge." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user what is blocking and stop.
+- If `MERGEABLE` is `MERGEABLE` and `STATE_STATUS` is not `BLOCKED`: proceed to merge
+
+#### 13e. Merge the PR
+
+**CRITICAL: NEVER use `--admin` flag. NEVER use any flag or method that bypasses branch protection. If the merge fails due to branch protection, STOP and inform the user — do NOT retry with elevated privileges.**
+
+For merge-queue repos, omit the merge strategy flag — `gh pr merge` will enqueue the PR automatically:
+
+```bash
+if [ "$HAS_MERGE_QUEUE" = "true" ]; then
+  gh pr merge "$PR_NUM" --delete-branch
+else
+  gh pr merge "$PR_NUM" $MERGE_FLAG --delete-branch
+fi
+```
+
+If the merge command fails (non-zero exit code):
+- Do NOT retry with `--admin` or any other bypass flag
+- Display the error output to the user
+- Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`
+- Do NOT output `<done>SHIPPED</done>`
+- Stop and let the user resolve the blocking issue
+
+#### 13f. Display summary
 
 ```
 ## Ship Complete
