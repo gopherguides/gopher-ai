@@ -1,5 +1,5 @@
 ---
-argument-hint: "<issue-number>"
+argument-hint: "<issue-number> [--skip-coverage] [--coverage-threshold <n>]"
 description: "Start working on a GitHub issue (auto-detects bug vs feature)"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "EnterPlanMode"]
 ---
@@ -12,9 +12,13 @@ Display usage information and ask for input:
 
 This command starts work on a GitHub issue, automatically detecting whether it's a bug fix or new feature and following the appropriate workflow.
 
-**Usage:** `/start-issue <issue-number>`
+**Usage:** `/start-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>]`
 
-**Example:** `/start-issue 123`
+**Example:** `/start-issue 123` or `/start-issue 123 --coverage-threshold 80`
+
+**Options:**
+- `--skip-coverage`: Skip coverage verification after implementation
+- `--coverage-threshold <n>`: Override default 60% coverage threshold
 
 **Workflow:**
 
@@ -22,8 +26,8 @@ This command starts work on a GitHub issue, automatically detecting whether it's
 2. Optionally create a git worktree for isolated work
 3. Auto-detect issue type (bug vs feature)
 4. Create `fix/` or `feat/` branch (or use worktree branch)
-5. For bugs: Check duplicates → TDD red-green → verify → security review
-6. For features: Plan approach → TDD red-green → verify → security review
+5. For bugs: Check duplicates → TDD red-green → verify → **coverage check** → security review
+6. For features: Plan approach → TDD red-green → verify → **coverage check** → security review
 7. Commit, push, and create PR
 
 Ask the user: "What issue number would you like to work on?"
@@ -39,8 +43,17 @@ Clear any leftover worktree state from a prior session. This prevents the pre-to
 
 ## Security Validation
 
-First, validate input is numeric (prevent command injection):
-!if ! echo "$ARGUMENTS" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric"; exit 1; fi
+Strip optional flags and validate the issue number is numeric (prevent command injection):
+!ISSUE_NUM=`echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g' | tr -d ' '`; if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric. Usage: /start-issue <number> [--skip-coverage] [--coverage-threshold <n>]"; exit 1; fi
+
+## Parse Optional Flags
+
+Parse `$ARGUMENTS` to extract optional flags:
+
+- `--skip-coverage`: Skip coverage verification after implementation (default: false)
+- `--coverage-threshold <n>`: Override default 60% threshold for changed-file coverage
+
+The issue number is the remaining numeric value after stripping flags. Store flags as `SKIP_COVERAGE` (true/false) and `COVERAGE_THRESHOLD` (default: 60). These will be used in the coverage verification step after TDD implementation.
 
 ## Loop Initialization
 
@@ -365,6 +378,19 @@ Run the full verification checklist. **All must pass before proceeding:**
 
 If any step fails, fix the issue and re-run until all green.
 
+### 6.5. Coverage Verification
+
+Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow Steps A through F with these parameters:
+
+| Variable | Value |
+|----------|-------|
+| `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (from context above) |
+| `STATE_FILE` | `.claude/start-issue-$ARGUMENTS.loop.local.json` |
+| `SKIP_COVERAGE` | from parsed flags (default: `false`) |
+| `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
+
+After coverage verification completes (or is skipped), continue to Step 7.
+
 ### 7. Security Review
 
 Before submitting, scan for security issues in changed files:
@@ -523,6 +549,19 @@ Run the full verification checklist. **All must pass before proceeding:**
 
 If any step fails, fix the issue and re-run until all green.
 
+### 7.5. Coverage Verification
+
+Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow Steps A through F with these parameters:
+
+| Variable | Value |
+|----------|-------|
+| `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (from context above) |
+| `STATE_FILE` | `.claude/start-issue-$ARGUMENTS.loop.local.json` |
+| `SKIP_COVERAGE` | from parsed flags (default: `false`) |
+| `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
+
+After coverage verification completes (or is skipped), continue to Step 8.
+
 ### 8. Security Review
 
 Before submitting, scan for security issues in changed files:
@@ -602,11 +641,12 @@ After creating the PR, watch CI and fix any failures:
 
 1. Code changes are implemented and address the issue
 2. Tests are written and ALL PASS (`go test ./...` or equivalent)
-3. Linting passes (`golangci-lint run` or equivalent)
-4. Changes are committed with a proper commit message
-5. Changes are pushed to the remote branch
-6. PR is created and the PR URL is displayed
-7. CI checks pass (`gh pr checks` shows all green)
+3. Coverage verified or skipped (per `--skip-coverage` flag)
+4. Linting passes (`golangci-lint run` or equivalent)
+5. Changes are committed with a proper commit message
+6. Changes are pushed to the remote branch
+7. PR is created and the PR URL is displayed
+8. CI checks pass (`gh pr checks` shows all green)
 
 **When ALL criteria are met, output exactly:**
 
