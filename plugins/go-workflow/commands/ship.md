@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--llm codex|gemini|ollama] [--passes <n>] [--no-merge] [--skip-coverage] [--coverage-threshold <n>]"
 description: "Ship a PR: LLM review, coverage gate, e2e tests, push, CI watch, bot approval, merge"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion"]
+allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page"]
 ---
 
 # Ship PR
@@ -213,7 +213,7 @@ Capture the output as `FINDINGS`.
 
 #### 5c. Parse Findings
 
-- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → skip to Step 9 (pushing)
+- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → skip to Step 7.5 (coverage verification) to ensure changed code has adequate test coverage before pushing
 - Otherwise: extract structured findings and display with pass number
 - **Filter bot noise:** Silently discard findings containing usage-limit or quota messages
 - **De-duplicate across passes:** If a finding from a previous pass appears again (same file, same line, same issue), skip it
@@ -405,17 +405,44 @@ Parse the coverage output and compute per-file coverage for changed files only:
 2. Identify specific uncovered functions/methods in changed files
 3. Calculate the aggregate coverage percentage across all changed source files
 
-For Go, parse `go tool cover -func` output — the last line gives the total, but we need per-file. Filter lines matching changed files and compute:
+For Go, parse `go tool cover -func` output. Each line has the format: `file:line:\tfunctionName\tcoverage%`. Filter to changed files and compute per-file and aggregate coverage:
 
 ```bash
-# Extract coverage for changed files only
-TOTAL_STMTS=0
-COVERED_STMTS=0
+# Extract per-function coverage for changed files and compute aggregate
+# go tool cover -func output format: "file.go:line:  funcName  75.0%"
+COVERAGE_FUNC=$(go tool cover -func=.claude/coverage.out 2>/dev/null)
+AGGREGATE_COVERAGE=""
+FILE_REPORT=""
+UNCOVERED_FUNCS=""
+
 for f in $CHANGED_SRC; do
-  FILE_COV=$(grep "^${f}:" .claude/coverage.out 2>/dev/null | awk '{stmts+=$2; covered+=$3} END {if(stmts>0) printf "%.1f", (covered/stmts)*100; else print "N/A"}')
-  echo "$f: ${FILE_COV}%"
+  # Extract all function lines for this file (exclude the total line)
+  FILE_LINES=$(echo "$COVERAGE_FUNC" | grep "^${f}:" | grep -v "^total:")
+  if [ -z "$FILE_LINES" ]; then
+    FILE_REPORT="${FILE_REPORT}\n| ${f} | N/A (no statements) | — |"
+    continue
+  fi
+  # Compute file-level coverage: average of function coverages
+  FILE_COV=$(echo "$FILE_LINES" | awk '{gsub(/%/,"",$NF); sum+=$NF; n++} END {if(n>0) printf "%.1f", sum/n; else print "0.0"}')
+  # Identify uncovered functions (0.0%)
+  UNCOV=$(echo "$FILE_LINES" | awk '$NF == "0.0%" {print $2}' | paste -sd ", " -)
+  UNCOV_DISPLAY="${UNCOV:-—}"
+  FILE_REPORT="${FILE_REPORT}\n| ${f} | ${FILE_COV}% | ${UNCOV_DISPLAY} |"
+  # Track uncovered for test generation
+  if [ -n "$UNCOV" ]; then
+    UNCOVERED_FUNCS="${UNCOVERED_FUNCS}\n${f}:${UNCOV}"
+  fi
 done
+
+# Compute aggregate: average across all changed file coverages
+AGGREGATE_COVERAGE=$(echo "$COVERAGE_FUNC" | grep -E "^($(echo $CHANGED_SRC | tr ' ' '|')):" | grep -v "^total:" | awk '{gsub(/%/,"",$NF); sum+=$NF; n++} END {if(n>0) printf "%.1f", sum/n; else print "0.0"}')
 ```
+
+For **Node/TypeScript**, parse JSON coverage summary — extract `lines.pct` for each changed file from the JSON output.
+
+For **Rust**, parse the JSON output from llvm-cov or tarpaulin — extract per-file line coverage.
+
+For **Python**, parse `coverage.json` — extract `files.<path>.summary.percent_covered` for each changed file.
 
 #### 7.5e. Coverage Gate Decision
 
@@ -452,31 +479,46 @@ jq --arg cr "$AGGREGATE_COVERAGE" '.coverage_result = $cr' ".claude/ship.loop.lo
 
 #### 7.5f. Test Generation for Uncovered Code
 
-For each uncovered function in changed files:
+Generate tests appropriate for the detected project type. For each uncovered function in changed files:
 
 1. **Read the source file** and understand the function signature, parameters, return types, and dependencies
-2. **Check for existing test files** — follow the patterns from `${CLAUDE_PLUGIN_ROOT}/skills/address-review/test-generation.md` Steps 4.5b-4.5c:
-   ```bash
-   ls "${FILE%.*}_test.go" 2>/dev/null || ls "$(dirname "$FILE")"/*_test.go 2>/dev/null
-   ```
-3. **Detect testing conventions** — examine existing test files in the same package for:
-   - Test framework (stdlib `testing` or `testify`)
-   - Table-driven patterns (`tests := []struct` or `tt := []struct`)
-   - Naming conventions (`Test_functionName` vs `TestFunctionName`)
-   - Helper patterns, fixtures, `testdata/` usage
-4. **Generate table-driven tests** following detected conventions:
-   - Include happy path, edge cases (nil/empty/boundary), and error scenarios
-   - If existing table-driven test exists for the function, add new cases to it
-   - If no test exists, create a new table-driven test function
-   - Follow patterns from `test-gen.md`: use `t.Run()`, `t.Parallel()` where appropriate, realistic test data
-5. **Run new tests** to confirm they pass:
-   ```bash
-   go test ./path/to/package/... -run "TestFunctionName" -v
-   ```
-6. **Re-run coverage** to verify improvement:
-   ```bash
-   go test -coverprofile=.claude/coverage.out ./... 2>/dev/null || true
-   ```
+
+2. **Check for existing test files** and **detect testing conventions** per language:
+
+**Go:**
+- Check for existing test files following patterns from `${CLAUDE_PLUGIN_ROOT}/skills/address-review/test-generation.md` Steps 4.5b-4.5c:
+  ```bash
+  ls "${FILE%.*}_test.go" 2>/dev/null || ls "$(dirname "$FILE")"/*_test.go 2>/dev/null
+  ```
+- Detect: stdlib `testing` vs `testify`, table-driven patterns (`tests := []struct`), naming conventions
+- Generate table-driven tests with `t.Run()`, `t.Parallel()`, following `test-gen.md` patterns
+- Verify: `go test ./path/to/package/... -run "TestFunctionName" -v`
+- Re-run coverage: `go test -coverprofile=.claude/coverage.out ./... 2>/dev/null || true`
+
+**Node/TypeScript:**
+- Check for existing test files: `*.test.ts`, `*.spec.ts`, `__tests__/*.ts`
+- Detect: vitest vs jest vs mocha, describe/it patterns, assertion style
+- Generate tests following detected conventions (describe blocks, beforeEach setup)
+- Verify: `npx vitest run <test-file>` or `npx jest <test-file>`
+
+**Rust:**
+- Check for existing `#[cfg(test)]` modules in the same file or `tests/` directory
+- Detect: built-in `#[test]` vs `rstest` vs `proptest`
+- Generate test functions with `#[test]` attribute, `assert_eq!` / `assert!` macros
+- Verify: `cargo test <test-name>`
+
+**Python:**
+- Check for existing test files: `test_*.py`, `*_test.py` in the same or `tests/` directory
+- Detect: pytest vs unittest, fixture patterns, parametrize decorators
+- Generate pytest functions with `@pytest.mark.parametrize` for multiple cases
+- Verify: `pytest <test-file> -v`
+
+3. **Include test scenarios** for all languages:
+   - Happy path with typical inputs
+   - Edge cases (nil/empty/boundary values)
+   - Error scenarios (invalid input, expected failures)
+   - If existing table/parametrized tests exist for the function, add new cases to them
+   - If no test exists, create a new test following project conventions
 
 Track the number of tests generated and persist in state file:
 
