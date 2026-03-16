@@ -41,28 +41,27 @@ Ask the user: "What issue number would you like to work on?"
 Clear any leftover worktree state from a prior session. This prevents the pre-tool-use hook from blocking commands in a fresh `/start-issue` invocation:
 !`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
 
-## Security Validation
+## Security Validation & Flag Parsing
 
-Strip optional flags and validate the issue number is numeric (prevent command injection):
-!ISSUE_NUM=`echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g' | tr -d ' '`; if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric. Usage: /start-issue <number> [--skip-coverage] [--coverage-threshold <n>]"; exit 1; fi
+Strip optional flags and extract the issue number:
+!ISSUE_NUM=`echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g' | tr -d ' '`; HAS_SKIP=`echo "$ARGUMENTS" | grep -q '\-\-skip-coverage' && echo "true" || echo "false"`; COV_THRESH=`echo "$ARGUMENTS" | grep -oE '\-\-coverage-threshold [0-9]+' | awk '{print $2}'`; if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric. Usage: /start-issue <number> [--skip-coverage] [--coverage-threshold <n>]"; exit 1; fi; echo "Issue: $ISSUE_NUM | skip-coverage: $HAS_SKIP | coverage-threshold: ${COV_THRESH:-60}"
 
-## Parse Optional Flags
+The output above shows the parsed issue number and flag values.
 
-Parse `$ARGUMENTS` to extract optional flags:
+**CRITICAL: From this point forward, use `$ISSUE_NUM` (the numeric issue number shown above) everywhere you would use `$ARGUMENTS`.** The raw `$ARGUMENTS` may contain flags and MUST NOT be passed to `gh issue view`, branch names, worktree names, or state file paths.
 
-- `--skip-coverage`: Skip coverage verification after implementation (default: false)
-- `--coverage-threshold <n>`: Override default 60% threshold for changed-file coverage
-
-The issue number is the remaining numeric value after stripping flags. Store flags as `SKIP_COVERAGE` (true/false) and `COVERAGE_THRESHOLD` (default: 60). These will be used in the coverage verification step after TDD implementation.
+Store the parsed flags:
+- `SKIP_COVERAGE`: `true` if `--skip-coverage` was passed, `false` otherwise
+- `COVERAGE_THRESHOLD`: the value after `--coverage-threshold`, or `60` if not specified
 
 ## Loop Initialization
 
-Initialize persistent loop to ensure work continues until complete:
-!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ARGUMENTS" "COMPLETE" "" "" '{}'; fi`
+Initialize persistent loop to ensure work continues until complete (uses `$ISSUE_NUM`, not raw `$ARGUMENTS`):
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else ISSUE_NUM=$(echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g' | tr -d ' '); "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ISSUE_NUM" "COMPLETE" "" "" '{}'; fi`
 
 ## Context
 
-- Issue details: !`gh issue view "$ARGUMENTS" --json title,state,body,labels,comments --jq '.' 2>/dev/null || echo "Issue not found"`
+- Issue details: !`ISSUE_NUM=$(echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g' | tr -d ' '); gh issue view "$ISSUE_NUM" --json title,state,body,labels,comments --jq '.' 2>/dev/null || echo "Issue not found"`
 - Current branch: !`git branch --show-current 2>&1 || echo "unknown"`
 - Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
 - Repository name: !`basename \`git rev-parse --show-toplevel 2>/dev/null\` 2>/dev/null || echo "unknown"`
@@ -101,7 +100,7 @@ Do not:
 
 Use AskUserQuestion with this exact configuration:
 
-- **Question:** "Would you like to create a worktree for isolated work on issue #$ARGUMENTS?"
+- **Question:** "Would you like to create a worktree for isolated work on issue #$ISSUE_NUM?"
 - **Options:**
   1. "Yes, create worktree" - Create isolated worktree and switch to it
   2. "No, work in current directory" - Stay here and create a branch
@@ -124,10 +123,10 @@ Use AskUserQuestion with this exact configuration:
 2. **Create worktree directory name**
    ```bash
    REPO_NAME=`basename \`git rev-parse --show-toplevel\``
-   ISSUE_TITLE=`gh issue view "$ARGUMENTS" --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
-   WORKTREE_NAME="${REPO_NAME}-issue-$ARGUMENTS-$ISSUE_TITLE"
+   ISSUE_TITLE=`gh issue view "$ISSUE_NUM" --json title --jq '.title' | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
+   WORKTREE_NAME="${REPO_NAME}-issue-$ISSUE_NUM-$ISSUE_TITLE"
    WORKTREE_PATH="../$WORKTREE_NAME"
-   BRANCH_NAME="issue-$ARGUMENTS-$ISSUE_TITLE"
+   BRANCH_NAME="issue-$ISSUE_NUM-$ISSUE_TITLE"
    ```
 
 3. **Fetch and create worktree**
@@ -180,7 +179,7 @@ Use AskUserQuestion with this exact configuration:
 
    ```bash
    REPO_ROOT=`git rev-parse --show-toplevel`
-   "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ARGUMENTS"
+   "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ISSUE_NUM"
    ```
 
    This saves the worktree path so the pre-tool-use hook will **block** any tool call that accidentally targets the original repo instead of the worktree.
@@ -314,7 +313,7 @@ Ask user: "Potential related issues found. How would you like to proceed?"
 **If "Link" selected:**
 
 ```bash
-gh issue comment "$ARGUMENTS" --body "Potentially related to #NNN - investigating"
+gh issue comment "$ISSUE_NUM" --body "Potentially related to #NNN - investigating"
 ```
 
 ### 2. Explore Root Cause
@@ -329,7 +328,7 @@ When searching for root cause:
 **REQUIRED unless using a worktree.** Never commit to main/master.
 
 ```bash
-git checkout -b "fix/$ARGUMENTS-<short-desc>"
+git checkout -b "fix/$ISSUE_NUM-<short-desc>"
 ```
 
 Verify you are on the new branch before proceeding:
@@ -385,7 +384,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
 | Variable | Value |
 |----------|-------|
 | `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (from context above) |
-| `STATE_FILE` | `.claude/start-issue-$ARGUMENTS.loop.local.json` |
+| `STATE_FILE` | `.claude/start-issue-$ISSUE_NUM.loop.local.json` |
 | `SKIP_COVERAGE` | from parsed flags (default: `false`) |
 | `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
 
@@ -497,7 +496,7 @@ Before coding, outline:
 **REQUIRED unless using a worktree.** Never commit to main/master.
 
 ```bash
-git checkout -b "feat/$ARGUMENTS-<short-desc>"
+git checkout -b "feat/$ISSUE_NUM-<short-desc>"
 ```
 
 Verify you are on the new branch before proceeding:
@@ -556,7 +555,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
 | Variable | Value |
 |----------|-------|
 | `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (from context above) |
-| `STATE_FILE` | `.claude/start-issue-$ARGUMENTS.loop.local.json` |
+| `STATE_FILE` | `.claude/start-issue-$ISSUE_NUM.loop.local.json` |
 | `SKIP_COVERAGE` | from parsed flags (default: `false`) |
 | `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
 
