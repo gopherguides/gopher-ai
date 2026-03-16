@@ -637,12 +637,19 @@ MERGEABLE=$(echo "$MERGE_STATE" | jq -r '.mergeable')
 STATE_STATUS=$(echo "$MERGE_STATE" | jq -r '.mergeStateStatus')
 ```
 
-If `MERGEABLE` is not `MERGEABLE` or `STATE_STATUS` is `BLOCKED`:
-- **STOP immediately** — do NOT attempt merge
-- Display: "Branch protection requirements not met (mergeable: $MERGEABLE, status: $STATE_STATUS). Cannot merge."
-- Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`
-- Do NOT output `<done>SHIPPED</done>`
-- Inform the user what is blocking and stop
+GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Poll when `UNKNOWN`, block when `BLOCKED`:**
+
+- If `MERGEABLE` is `UNKNOWN` or `STATE_STATUS` is `UNKNOWN`: retry up to 6 times (5s apart). If still `UNKNOWN` after retries, ask the user via `AskUserQuestion` whether to proceed or wait.
+- If `STATE_STATUS` is `BLOCKED`:
+  - **STOP immediately** — do NOT attempt merge
+  - Display: "Branch protection requirements not met (status: BLOCKED). Cannot merge."
+  - Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`
+  - Do NOT output `<done>SHIPPED</done>`
+  - Inform the user what is blocking and stop
+- If `MERGEABLE` is `CONFLICTING`:
+  - **STOP** — display "PR has merge conflicts. Resolve conflicts before merging."
+  - Clean up loop state and stop without `<done>SHIPPED</done>`
+- If `MERGEABLE` is `MERGEABLE` and `STATE_STATUS` is not `BLOCKED`: proceed to merge
 
 #### 13e. Merge the PR
 
