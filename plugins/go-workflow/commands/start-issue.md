@@ -384,7 +384,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
 | Variable | Value |
 |----------|-------|
 | `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (from context above) |
-| `STATE_FILE` | `.claude/start-issue-$ISSUE_NUM.loop.local.json` |
+| `STATE_FILE` | Absolute path to `.claude/start-issue-$ISSUE_NUM.loop.local.json` (in the original repo, not the worktree) |
 | `SKIP_COVERAGE` | from parsed flags (default: `false`) |
 | `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
 
@@ -555,7 +555,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
 | Variable | Value |
 |----------|-------|
 | `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (from context above) |
-| `STATE_FILE` | `.claude/start-issue-$ISSUE_NUM.loop.local.json` |
+| `STATE_FILE` | Absolute path to `.claude/start-issue-$ISSUE_NUM.loop.local.json` (in the original repo, not the worktree) |
 | `SKIP_COVERAGE` | from parsed flags (default: `false`) |
 | `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
 

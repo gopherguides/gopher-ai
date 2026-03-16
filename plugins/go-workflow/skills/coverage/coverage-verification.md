@@ -9,9 +9,11 @@ The calling command MUST set these variables before invoking this workflow:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `BASE_BRANCH` | Branch to diff against | `origin/main` |
-| `STATE_FILE` | Path to the loop state JSON file | `.claude/ship.loop.local.json` |
+| `STATE_FILE` | **Absolute path** to the loop state JSON file | `/path/to/.claude/ship.loop.local.json` |
 | `SKIP_COVERAGE` | Whether to skip coverage entirely | `true` or `false` |
 | `COVERAGE_THRESHOLD` | Minimum coverage percentage for changed files | `60` |
+
+**Worktree note:** When running in a worktree, `STATE_FILE` MUST be an absolute path to the state file (which lives in the original repo's `.claude/` directory, not the worktree). Coverage artifacts (`.claude/coverage.out`) are written relative to the current working directory — ensure `.claude/` exists via `mkdir -p .claude` before running coverage commands.
 
 ## Step A: Skip Conditions
 
@@ -22,8 +24,11 @@ Skip this entire workflow (return to the calling command's next step) if ANY of 
 
 ## Step B: Detect Changed Source Files
 
+Detect changed files including both committed and uncommitted changes (uncommitted changes are common when called from `/start-issue` before the commit step):
+
 ```bash
-CHANGED_FILES=$(git diff --name-only "${BASE_BRANCH}...HEAD")
+mkdir -p .claude
+CHANGED_FILES=$( (git diff --name-only "${BASE_BRANCH}...HEAD" 2>/dev/null; git diff --name-only HEAD 2>/dev/null; git diff --name-only --cached HEAD 2>/dev/null) | sort -u )
 ```
 
 Filter to source files per detected project type, excluding test files, generated files, and vendored code:
