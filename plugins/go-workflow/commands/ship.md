@@ -636,9 +636,9 @@ MERGE_STATE=$(gh api graphql -f query='
 MERGEABLE=$(echo "$MERGE_STATE" | jq -r '.mergeable')
 STATE_STATUS=$(echo "$MERGE_STATE" | jq -r '.mergeStateStatus')
 
-# Check if repo uses a merge queue
-USES_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/branches/$BASE_BRANCH/protection" --jq '.required_status_checks.strict // false' 2>/dev/null || echo "false")
-HAS_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/rules/branches/$BASE_BRANCH" 2>/dev/null | jq '[.[] | select(.type == "merge_queue")] | length > 0' 2>/dev/null || echo "false")
+# Check if repo uses a merge queue (URL-encode branch name for slash-containing branches)
+ENCODED_BRANCH=$(printf '%s' "$BASE_BRANCH" | jq -sRr @uri)
+HAS_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/rules/branches/$ENCODED_BRANCH" 2>/dev/null | jq '[.[] | select(.type == "merge_queue")] | length > 0' 2>/dev/null || echo "false")
 ```
 
 GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Poll when `UNKNOWN`, hard-block only on clear failures:**
@@ -656,8 +656,14 @@ GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state a
 
 **CRITICAL: NEVER use `--admin` flag. NEVER use any flag or method that bypasses branch protection. If the merge fails due to branch protection, STOP and inform the user — do NOT retry with elevated privileges.**
 
+For merge-queue repos, omit the merge strategy flag — `gh pr merge` will enqueue the PR automatically:
+
 ```bash
-gh pr merge "$PR_NUM" $MERGE_FLAG --delete-branch
+if [ "$HAS_MERGE_QUEUE" = "true" ]; then
+  gh pr merge "$PR_NUM" --delete-branch
+else
+  gh pr merge "$PR_NUM" $MERGE_FLAG --delete-branch
+fi
 ```
 
 If the merge command fails (non-zero exit code):
