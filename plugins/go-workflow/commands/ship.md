@@ -635,20 +635,21 @@ MERGE_STATE=$(gh api graphql -f query='
 
 MERGEABLE=$(echo "$MERGE_STATE" | jq -r '.mergeable')
 STATE_STATUS=$(echo "$MERGE_STATE" | jq -r '.mergeStateStatus')
+
+# Check if repo uses a merge queue
+USES_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/branches/$BASE_BRANCH/protection" --jq '.required_status_checks.strict // false' 2>/dev/null || echo "false")
+HAS_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/rules/branches/$BASE_BRANCH" 2>/dev/null | jq '[.[] | select(.type == "merge_queue")] | length > 0' 2>/dev/null || echo "false")
 ```
 
-GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Poll when `UNKNOWN`, block when `BLOCKED`:**
+GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Poll when `UNKNOWN`, hard-block only on clear failures:**
 
 - If `MERGEABLE` is `UNKNOWN` or `STATE_STATUS` is `UNKNOWN`: retry up to 6 times (5s apart). If still `UNKNOWN` after retries, ask the user via `AskUserQuestion` whether to proceed or wait.
-- If `STATE_STATUS` is `BLOCKED`:
-  - **STOP immediately** — do NOT attempt merge
-  - Display: "Branch protection requirements not met (status: BLOCKED). Cannot merge."
-  - Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`
-  - Do NOT output `<done>SHIPPED</done>`
-  - Inform the user what is blocking and stop
 - If `MERGEABLE` is `CONFLICTING`:
   - **STOP** — display "PR has merge conflicts. Resolve conflicts before merging."
   - Clean up loop state and stop without `<done>SHIPPED</done>`
+- If `STATE_STATUS` is `BLOCKED`:
+  - **If the repo uses a merge queue** (`HAS_MERGE_QUEUE` is true): proceed to merge — `gh pr merge` will enqueue the PR correctly.
+  - **If no merge queue**: **STOP immediately** — do NOT attempt merge. Display: "Branch protection requirements not met (status: BLOCKED). Cannot merge." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user what is blocking and stop.
 - If `MERGEABLE` is `MERGEABLE` and `STATE_STATUS` is not `BLOCKED`: proceed to merge
 
 #### 13e. Merge the PR
