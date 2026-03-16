@@ -49,7 +49,8 @@ jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
    --arg skip_coverage "$SKIP_COVERAGE" --arg coverage_threshold "$COVERAGE_THRESHOLD" \
    --arg coverage_result "" --argjson coverage_tests_generated 0 \
    --arg e2e_attempted "" --arg e2e_result "" --argjson e2e_pages_tested 0 \
-   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_pages_tested: $e2e_pages_tested}' \
+   --arg review_clean "" \
+   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean}' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
@@ -68,7 +69,8 @@ fi
 If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from persisted fields using `jq`:
 
 1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD`
-2. Read `pass`, `pr_number`, `base_branch`, `bot_review_baseline`, `llm`, `discovered_bots`, `has_ci`, `skip_coverage`, `coverage_threshold`, `coverage_result`, `coverage_tests_generated`, `e2e_attempted`, `e2e_result`, `e2e_pages_tested` fields via `jq -r '.field // empty' "$STATE_FILE"`
+2. Read `pass`, `pr_number`, `base_branch`, `bot_review_baseline`, `llm`, `discovered_bots`, `has_ci`, `skip_coverage`, `coverage_threshold`, `coverage_result`, `coverage_tests_generated`, `e2e_attempted`, `e2e_result`, `e2e_pages_tested`, `review_clean` fields via `jq -r '.field // empty' "$STATE_FILE"`
+3. If `review_clean` is `"true"`, set `REVIEW_CLEAN=true` to preserve the clean-review fast path after re-entry
 
 Then skip to the corresponding phase:
 
@@ -213,7 +215,7 @@ Capture the output as `FINDINGS`.
 
 #### 5c. Parse Findings
 
-- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → set `REVIEW_CLEAN=true` and skip directly to Step 7.5 (coverage verification). After Steps 7.5 and 7.6 complete, skip Step 8's loop-back decision and proceed directly to Step 9 (pushing) — do NOT re-run LLM review when the review was already clean
+- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → set `REVIEW_CLEAN=true` and **persist it to state file** (`jq '.review_clean = "true"'`) for re-entry recovery. Skip directly to Step 7.5 (coverage verification). After Steps 7.5 and 7.6 complete, skip Step 8's loop-back decision and proceed directly to Step 9 (pushing) — do NOT re-run LLM review when the review was already clean
 - Otherwise: extract structured findings and display with pass number
 - **Filter bot noise:** Silently discard findings containing usage-limit or quota messages
 - **De-duplicate across passes:** If a finding from a previous pass appears again (same file, same line, same issue), skip it
@@ -333,14 +335,14 @@ CHANGED_SRC=$(echo "$CHANGED_FILES" | grep -E '\.(ts|tsx|js|jsx)$' \
 **Rust** (Cargo.toml exists):
 ```bash
 CHANGED_SRC=$(echo "$CHANGED_FILES" | grep '\.rs$' \
-  | grep -v '/tests/' \
+  | grep -v -E '(^tests/|/tests/)' \
   || true)
 ```
 
 **Python** (pyproject.toml or setup.py exists):
 ```bash
 CHANGED_SRC=$(echo "$CHANGED_FILES" | grep '\.py$' \
-  | grep -v -E '(^test_|_test\.py$|^conftest\.py$)' \
+  | grep -v -E '(^tests?/|/tests?/|test_[^/]*\.py$|_test\.py$|conftest\.py$)' \
   || true)
 ```
 
@@ -377,15 +379,16 @@ elif grep -q '"jest"' package.json 2>/dev/null; then
   # Jest writes coverage/coverage-summary.json by default
   COVERAGE_JSON="coverage/coverage-summary.json"
 elif grep -q '"c8"' package.json 2>/dev/null || grep -q '"nyc"' package.json 2>/dev/null; then
-  npx c8 --reporter=json npm test 2>/dev/null || true
-  COVERAGE_JSON="coverage/coverage-final.json"
+  npx c8 --reporter=json-summary npm test 2>/dev/null || true
+  COVERAGE_JSON="coverage/coverage-summary.json"
 fi
 ```
 
-Parse `coverage-summary.json` for per-file coverage. The format is:
+Parse `coverage-summary.json` for per-file coverage. Both vitest, jest, and c8 (with `json-summary` reporter) use this format:
 ```json
 {
-  "path/to/file.ts": { "lines": { "total": 100, "covered": 75, "pct": 75.0 }, ... }
+  "path/to/file.ts": { "lines": { "total": 100, "covered": 75, "pct": 75.0 }, ... },
+  "total": { "lines": { "total": 500, "covered": 350, "pct": 70.0 }, ... }
 }
 ```
 
@@ -583,10 +586,13 @@ Skip this entire step (proceed to Step 8) if ANY of these are true:
 - Changed Go files contain HTTP handler patterns: `http.Handler`, `echo.Context`, `gin.Context`, `chi.Router`, `http.HandleFunc`
 - `*.html`, `*.tsx`, `*.vue` files exist in the project
 
-**Web-facing change detection:**
+**Web-facing change detection** (recompute changed files if not already set — they may be empty if Step 7.5 was skipped):
 ```bash
+if [ -z "$CHANGED_FILES" ]; then
+  CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...HEAD")
+fi
 WEB_CHANGES=$(echo "$CHANGED_FILES" | grep -E '\.(templ|html|tsx|vue|jsx)$' || true)
-HANDLER_CHANGES=$(echo "$CHANGED_SRC" | while read f; do
+HANDLER_CHANGES=$(echo "$CHANGED_FILES" | grep '\.go$' | while read f; do
   grep -l -E 'http\.Handler|echo\.Context|gin\.Context|chi\.Router|http\.HandleFunc|http\.ServeMux' "$f" 2>/dev/null
 done || true)
 ```
