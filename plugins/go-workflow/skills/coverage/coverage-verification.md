@@ -135,7 +135,7 @@ elif command -v coverage >/dev/null 2>&1; then
 fi
 ```
 
-If the coverage command fails or the coverage tool is not available → display a warning ("Coverage tool unavailable, skipping coverage gate") and return to calling command's next step. Do NOT block progress.
+If the coverage tool binary is genuinely missing (e.g., `cargo-llvm-cov` not installed) → display a warning ("Coverage tool unavailable, skipping coverage gate") and return to calling command's next step. However, if the coverage command ran and produced output (e.g., `coverage.out` exists with content, or JSON file exists with data), the tool did NOT fail — proceed to Step D even if coverage is 0%. Do NOT treat low coverage as a tool failure.
 
 ## Step D: Analyze Changed-File Coverage
 
@@ -203,29 +203,69 @@ For **Python**, parse `coverage.json` — extract `files.<path>.summary.percent_
 
 ## Step E: Coverage Gate Decision
 
-Display a coverage report:
+**MANDATORY RULE — NO EXCEPTIONS:**
+
+When coverage is below `COVERAGE_THRESHOLD`, you MUST call `AskUserQuestion` to let the user decide. You MUST NOT:
+- Decide on your own to skip, waive, or bypass the coverage gate
+- Rationalize that low coverage is "pre-existing," "inherited," or "not caused by your changes"
+- Argue that the threshold does not apply because changes were small, trivial, or limited to a few lines
+- Conclude that coverage is "effectively" acceptable despite being numerically below threshold
+- Claim that other tests (template tests, integration tests, etc.) make up for low unit coverage
+- Add commentary, analysis, or justification between the coverage report and the `AskUserQuestion` call
+- Proceed to the next step without calling `AskUserQuestion` when coverage < threshold
+
+**Design philosophy: "if you touch it, you own it."** The entire file's coverage counts, regardless of which lines you changed or whether uncovered code existed before your changes. This is intentional. The purpose of this gate is to **improve coverage in the codebase over time** — every touched file is an opportunity. Only the USER can decide to proceed with low coverage. You cannot make that decision.
+
+**If coverage < `COVERAGE_THRESHOLD`: your ONLY permitted action is to display the report (Step E.1) and then IMMEDIATELY call `AskUserQuestion` (Step E.2). Any other action is a violation of this workflow.**
+
+### Step E.1: Display Coverage Report
+
+Output ONLY the coverage table and aggregate line. Do NOT add any analysis, explanation, or commentary. Do NOT discuss why coverage is low or whether the low coverage is justified.
 
 ```
 ## Coverage Report (Changed Files)
 
 | File | Coverage | Uncovered Functions |
 |------|----------|-------------------|
-| pkg/auth/handler.go | 72% | ValidateToken, RefreshSession |
-| pkg/api/routes.go | 45% | RegisterRoutes |
-| internal/db/queries.go | 88% | — |
+<one row per file from CHANGED_SRC, using FILE_REPORT from Step D>
 
-**Changed-file coverage: 62% (threshold: 60%)**
+**Changed-file coverage: {AGGREGATE_COVERAGE}% (threshold: {COVERAGE_THRESHOLD}%)**
 ```
 
-Decision logic:
+### Step E.2: Gate Decision
 
-- **Coverage >= `COVERAGE_THRESHOLD`** → pass. Display report and return to calling command's next step.
-- **Coverage < `COVERAGE_THRESHOLD`** → ask user via `AskUserQuestion`:
-  "Changed files have X% coverage (threshold: Y%). Options:\n1. Generate tests for uncovered functions\n2. Proceed without additional tests"
-  - If "generate tests" → proceed to Step F
-  - If "proceed" → return to calling command's next step
-- **No test files exist at all** (coverage output is empty or all functions show 0%) → report "No test files found for changed packages" and offer to generate initial tests via `AskUserQuestion`
-- **Coverage tool failed or unavailable** → warn and proceed (non-blocking)
+Apply IMMEDIATELY after displaying the report — no intervening text or analysis:
+
+- **Coverage >= `COVERAGE_THRESHOLD`** → pass. Return to calling command's next step.
+- **Coverage < `COVERAGE_THRESHOLD`** → you MUST call `AskUserQuestion` with this exact question and options:
+
+  **Question:** "Changed files have {AGGREGATE_COVERAGE}% coverage (threshold: {COVERAGE_THRESHOLD}%). What would you like to do?"
+
+  **Options (Go projects):**
+  1. "Generate tests for all uncovered functions in changed files"
+  2. "Generate tests only for functions I added or modified"
+  3. "Proceed without additional tests"
+  4. "Show me the uncovered functions so I can decide"
+
+  **Options (non-Go projects):** Omit options 2 and 4 — changed-function detection and per-function uncovered listings are only supported for Go (Step D only populates `UNCOVERED_FUNCS` for Go). Present options 1 and 3 only.
+
+  Handle the user's choice:
+  - Option 1 → proceed to Step F in **all uncovered functions** mode
+  - Option 2 (Go only) → proceed to Step F in **changed functions only** mode
+  - Option 3 → return to calling command's next step
+  - Option 4 (Go only) → display the full `UNCOVERED_FUNCS` list with file locations, then re-ask with options 1-3
+
+- **No test files exist at all** (coverage output is empty or all functions show 0%) → you MUST call `AskUserQuestion` with:
+  "No test files found for changed packages. Changed files have 0% coverage (threshold: {COVERAGE_THRESHOLD}%). What would you like to do?"
+  Options:
+  1. "Generate initial tests for changed files"
+  2. "Proceed without tests"
+
+  You MUST NOT decide to skip test generation on your own. Only the user can make this decision.
+
+- **Coverage tool genuinely failed or unavailable** → warn and proceed ONLY if the tool genuinely failed (non-zero exit code AND no usable output, or missing binary). If `go test -coverprofile` produced a `coverage.out` file with content, or if the JSON coverage file exists with data, the tool did NOT fail — proceed with coverage analysis even if coverage is 0%.
+
+### Step E.3: Persist Result
 
 Persist `coverage_result` in state file:
 
@@ -236,7 +276,36 @@ jq --arg cr "$AGGREGATE_COVERAGE" '.coverage_result = $cr' "$STATE_FILE" > "$TMP
 
 ## Step F: Test Generation for Uncovered Code
 
-Generate tests appropriate for the detected project type. For each uncovered function in changed files:
+**Mode selection** (set by Step E.2 user choice):
+
+- **All uncovered functions mode** (option 1): Generate tests for every uncovered function in `CHANGED_SRC`, as listed in `UNCOVERED_FUNCS` from Step D.
+- **No-test-files path** (from Step E.2 "Generate initial tests"): `UNCOVERED_FUNCS` may be empty because Step D short-circuits when coverage data is missing. In this case, read each file in `CHANGED_SRC` directly and extract all exported function/method signatures as test targets.
+- **Changed functions only mode** (option 2, Go only): Restrict test generation to Go functions whose bodies were added or modified. Identify changed functions by mapping diff hunks to their enclosing function using committed, staged, unstaged, and untracked changes (matching Step B's file detection):
+  ```bash
+  # Combine committed + staged + unstaged diffs
+  COMBINED_DIFF=$( (git diff "${BASE_BRANCH}...HEAD" -- $CHANGED_SRC 2>/dev/null; git diff HEAD -- $CHANGED_SRC 2>/dev/null; git diff --cached HEAD -- $CHANGED_SRC 2>/dev/null) )
+  # For untracked files: generate a synthetic diff so new functions are detected
+  UNTRACKED_SRC=$(git ls-files --others --exclude-standard 2>/dev/null | grep '\.go$' | grep -v '_test\.go$' || true)
+  for uf in $UNTRACKED_SRC; do
+    COMBINED_DIFF="${COMBINED_DIFF}
+$(git diff --no-index /dev/null "$uf" 2>/dev/null || true)"
+  done
+  # Extract function names from diff hunk headers (@@...@@ func Name or func (r *T) Name)
+  # These identify the enclosing function for ANY changed line, not just added declarations.
+  # Use `go tool cover -func` format for matching: bare name for functions, receiver for methods.
+  CHANGED_FUNC_NAMES=$(echo "$COMBINED_DIFF" | grep -oE '^@@.*@@ func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | sed 's/^@@.*@@ //' | sort -u)
+  # Also catch newly added function declarations (on added lines)
+  NEW_FUNCS=$(echo "$COMBINED_DIFF" | grep -E '^\+.*func ' | grep -v '^\+\+\+' | sed 's/^+//' | grep -oE 'func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | sed 's/^func //' | sort -u)
+  CHANGED_FUNC_NAMES=$(printf '%s\n%s' "$CHANGED_FUNC_NAMES" "$NEW_FUNCS" | sort -u | grep -v '^$')
+  ```
+  **Matching logic:** Cross-reference per-file to avoid ambiguity (e.g., `Run` in `pkg/a/a.go` vs `pkg/b/b.go`). For each file in `CHANGED_SRC`:
+  1. Get the functions changed in that file from `COMBINED_DIFF` (hunk headers and added `func` lines scoped to that file)
+  2. Get the uncovered functions in that file from `UNCOVERED_FUNCS` (Step D stores entries as `file:func1, func2`)
+  3. Intersect the two lists — only generate tests for functions that are BOTH changed AND uncovered in the same file
+
+  If no functions match across any file (all changed functions are already covered), report this and return to calling command's next step.
+
+Generate tests appropriate for the detected project type. For each target uncovered function:
 
 1. **Read the source file** and understand the function signature, parameters, return types, and dependencies
 
