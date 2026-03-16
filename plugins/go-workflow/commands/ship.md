@@ -615,13 +615,51 @@ elif echo "$MERGE_SETTINGS" | jq -e '.rebase == true' >/dev/null 2>&1; then
 fi
 ```
 
-#### 13d. Merge the PR
+#### 13d. Branch protection mergeability check
+
+**CRITICAL: Before attempting merge, verify that branch protection requirements are satisfied. NEVER bypass branch protection.**
+
+Query GitHub's mergeability status:
+
+```bash
+MERGE_STATE=$(gh api graphql -f query='
+  query($owner: String!, $repo: String!, $pr: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        mergeStateStatus
+        mergeable
+      }
+    }
+  }
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" --jq '.data.repository.pullRequest')
+
+MERGEABLE=$(echo "$MERGE_STATE" | jq -r '.mergeable')
+STATE_STATUS=$(echo "$MERGE_STATE" | jq -r '.mergeStateStatus')
+```
+
+If `MERGEABLE` is not `MERGEABLE` or `STATE_STATUS` is `BLOCKED`:
+- **STOP immediately** — do NOT attempt merge
+- Display: "Branch protection requirements not met (mergeable: $MERGEABLE, status: $STATE_STATUS). Cannot merge."
+- Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`
+- Do NOT output `<done>SHIPPED</done>`
+- Inform the user what is blocking and stop
+
+#### 13e. Merge the PR
+
+**CRITICAL: NEVER use `--admin` flag. NEVER use any flag or method that bypasses branch protection. If the merge fails due to branch protection, STOP and inform the user — do NOT retry with elevated privileges.**
 
 ```bash
 gh pr merge "$PR_NUM" $MERGE_FLAG --delete-branch
 ```
 
-#### 13e. Display summary
+If the merge command fails (non-zero exit code):
+- Do NOT retry with `--admin` or any other bypass flag
+- Display the error output to the user
+- Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`
+- Do NOT output `<done>SHIPPED</done>`
+- Stop and let the user resolve the blocking issue
+
+#### 13f. Display summary
 
 ```
 ## Ship Complete
