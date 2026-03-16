@@ -213,7 +213,7 @@ Capture the output as `FINDINGS`.
 
 #### 5c. Parse Findings
 
-- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → skip to Step 7.5 (coverage verification) to ensure changed code has adequate test coverage before pushing
+- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → set `REVIEW_CLEAN=true` and skip directly to Step 7.5 (coverage verification). After Steps 7.5 and 7.6 complete, skip Step 8's loop-back decision and proceed directly to Step 9 (pushing) — do NOT re-run LLM review when the review was already clean
 - Otherwise: extract structured findings and display with pass number
 - **Filter bot noise:** Silently discard findings containing usage-limit or quota messages
 - **De-duplicate across passes:** If a finding from a previous pass appears again (same file, same line, same issue), skip it
@@ -369,13 +369,27 @@ Parse the `go tool cover -func` output — each line shows `file:line: functionN
 **Node/TypeScript**:
 ```bash
 if grep -q '"vitest"' package.json 2>/dev/null; then
-  npx vitest run --coverage --reporter=json --outputFile=.claude/coverage.json 2>/dev/null || true
+  npx vitest run --coverage --coverage.reporter=json-summary 2>/dev/null || true
+  # Vitest writes coverage/coverage-summary.json by default
+  COVERAGE_JSON="coverage/coverage-summary.json"
 elif grep -q '"jest"' package.json 2>/dev/null; then
-  npx jest --coverage --coverageReporters=json-summary --coverageDirectory=.claude 2>/dev/null || true
+  npx jest --coverage --coverageReporters=json-summary 2>/dev/null || true
+  # Jest writes coverage/coverage-summary.json by default
+  COVERAGE_JSON="coverage/coverage-summary.json"
 elif grep -q '"c8"' package.json 2>/dev/null || grep -q '"nyc"' package.json 2>/dev/null; then
-  npx c8 --reporter=json --report-dir=.claude npm test 2>/dev/null || true
+  npx c8 --reporter=json npm test 2>/dev/null || true
+  COVERAGE_JSON="coverage/coverage-final.json"
 fi
 ```
+
+Parse `coverage-summary.json` for per-file coverage. The format is:
+```json
+{
+  "path/to/file.ts": { "lines": { "total": 100, "covered": 75, "pct": 75.0 }, ... }
+}
+```
+
+Extract `lines.pct` for each changed file to compute per-file and aggregate coverage.
 
 **Rust**:
 ```bash
@@ -405,37 +419,59 @@ Parse the coverage output and compute per-file coverage for changed files only:
 2. Identify specific uncovered functions/methods in changed files
 3. Calculate the aggregate coverage percentage across all changed source files
 
-For Go, parse `go tool cover -func` output. Each line has the format: `file:line:\tfunctionName\tcoverage%`. Filter to changed files and compute per-file and aggregate coverage:
+For Go, parse the raw coverprofile to compute **statement-weighted** coverage (not function-average). The coverprofile format is:
+```
+mode: set
+file.go:startLine.startCol,endLine.endCol numStatements hitCount
+```
+
+Use statement counts weighted by whether they were hit:
 
 ```bash
-# Extract per-function coverage for changed files and compute aggregate
-# go tool cover -func output format: "file.go:line:  funcName  75.0%"
+# Extract per-function coverage for display and statement-weighted coverage for the gate
 COVERAGE_FUNC=$(go tool cover -func=.claude/coverage.out 2>/dev/null)
 AGGREGATE_COVERAGE=""
 FILE_REPORT=""
 UNCOVERED_FUNCS=""
+TOTAL_STMTS=0
+TOTAL_COVERED=0
 
 for f in $CHANGED_SRC; do
-  # Extract all function lines for this file (exclude the total line)
-  FILE_LINES=$(echo "$COVERAGE_FUNC" | grep "^${f}:" | grep -v "^total:")
-  if [ -z "$FILE_LINES" ]; then
+  # Statement-weighted coverage from raw coverprofile
+  # Each line: file:start,end numStmts hitCount
+  FILE_STMTS=$(grep "^${f}:" .claude/coverage.out 2>/dev/null | awk '{
+    split($2, a, " "); stmts=$2; hit=$3
+    total+=stmts; if(hit>0) covered+=stmts
+  } END {printf "%d %d", total, covered}')
+  FILE_TOTAL=$(echo "$FILE_STMTS" | awk '{print $1}')
+  FILE_COVERED=$(echo "$FILE_STMTS" | awk '{print $2}')
+
+  if [ "$FILE_TOTAL" -eq 0 ] 2>/dev/null; then
     FILE_REPORT="${FILE_REPORT}\n| ${f} | N/A (no statements) | — |"
     continue
   fi
-  # Compute file-level coverage: average of function coverages
-  FILE_COV=$(echo "$FILE_LINES" | awk '{gsub(/%/,"",$NF); sum+=$NF; n++} END {if(n>0) printf "%.1f", sum/n; else print "0.0"}')
-  # Identify uncovered functions (0.0%)
-  UNCOV=$(echo "$FILE_LINES" | awk '$NF == "0.0%" {print $2}' | paste -sd ", " -)
+
+  FILE_COV=$(awk "BEGIN {printf \"%.1f\", ($FILE_COVERED/$FILE_TOTAL)*100}")
+  TOTAL_STMTS=$((TOTAL_STMTS + FILE_TOTAL))
+  TOTAL_COVERED=$((TOTAL_COVERED + FILE_COVERED))
+
+  # Identify uncovered functions from go tool cover -func output
+  FILE_FUNC_LINES=$(echo "$COVERAGE_FUNC" | grep "^${f}:" | grep -v "^total:")
+  UNCOV=$(echo "$FILE_FUNC_LINES" | awk '$NF == "0.0%" {print $2}' | paste -sd ", " -)
   UNCOV_DISPLAY="${UNCOV:-—}"
   FILE_REPORT="${FILE_REPORT}\n| ${f} | ${FILE_COV}% | ${UNCOV_DISPLAY} |"
-  # Track uncovered for test generation
+
   if [ -n "$UNCOV" ]; then
     UNCOVERED_FUNCS="${UNCOVERED_FUNCS}\n${f}:${UNCOV}"
   fi
 done
 
-# Compute aggregate: average across all changed file coverages
-AGGREGATE_COVERAGE=$(echo "$COVERAGE_FUNC" | grep -E "^($(echo $CHANGED_SRC | tr ' ' '|')):" | grep -v "^total:" | awk '{gsub(/%/,"",$NF); sum+=$NF; n++} END {if(n>0) printf "%.1f", sum/n; else print "0.0"}')
+# Statement-weighted aggregate across all changed files
+if [ "$TOTAL_STMTS" -gt 0 ]; then
+  AGGREGATE_COVERAGE=$(awk "BEGIN {printf \"%.1f\", ($TOTAL_COVERED/$TOTAL_STMTS)*100}")
+else
+  AGGREGATE_COVERAGE="0.0"
+fi
 ```
 
 For **Node/TypeScript**, parse JSON coverage summary — extract `lines.pct` for each changed file from the JSON output.
@@ -702,6 +738,7 @@ fi
 
 Check if we should continue reviewing:
 
+- If `REVIEW_CLEAN` is `true` (review returned NO_ISSUES_FOUND) → proceed to Step 9 (no point re-reviewing clean code)
 - If `PASS >= MAX_PASSES` → proceed to Step 9
 - Otherwise → go back to Step 5 for next review pass
 
