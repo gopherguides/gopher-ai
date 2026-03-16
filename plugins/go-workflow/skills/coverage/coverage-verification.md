@@ -247,13 +247,13 @@ Apply IMMEDIATELY after displaying the report — no intervening text or analysi
   3. "Proceed without additional tests"
   4. "Show me the uncovered functions so I can decide"
 
-  **Options (non-Go projects):** Omit option 2 — changed-function detection is only supported for Go. Present options 1, 3, and 4 only.
+  **Options (non-Go projects):** Omit options 2 and 4 — changed-function detection and per-function uncovered listings are only supported for Go (Step D only populates `UNCOVERED_FUNCS` for Go). Present options 1 and 3 only.
 
   Handle the user's choice:
   - Option 1 → proceed to Step F in **all uncovered functions** mode
   - Option 2 (Go only) → proceed to Step F in **changed functions only** mode
   - Option 3 → return to calling command's next step
-  - Option 4 → display the full `UNCOVERED_FUNCS` list with file locations, then re-ask with options 1-3 (or 1-2-3 for Go)
+  - Option 4 (Go only) → display the full `UNCOVERED_FUNCS` list with file locations, then re-ask with options 1-3
 
 - **No test files exist at all** (coverage output is empty or all functions show 0%) → you MUST call `AskUserQuestion` with:
   "No test files found for changed packages. Changed files have 0% coverage (threshold: {COVERAGE_THRESHOLD}%). What would you like to do?"
@@ -279,18 +279,25 @@ jq --arg cr "$AGGREGATE_COVERAGE" '.coverage_result = $cr' "$STATE_FILE" > "$TMP
 **Mode selection** (set by Step E.2 user choice):
 
 - **All uncovered functions mode** (option 1 or no-test-files path): Generate tests for every uncovered function in `CHANGED_SRC`, as listed in `UNCOVERED_FUNCS` from Step D.
-- **Changed functions only mode** (option 2, Go only): Restrict test generation to Go functions whose bodies were added or modified. Identify changed functions by mapping diff hunks to their enclosing function using both committed and worktree changes:
+- **Changed functions only mode** (option 2, Go only): Restrict test generation to Go functions whose bodies were added or modified. Identify changed functions by mapping diff hunks to their enclosing function using committed, staged, unstaged, and untracked changes (matching Step B's file detection):
   ```bash
-  # Combine committed + staged + unstaged diffs to match Step B's file detection
+  # Combine committed + staged + unstaged diffs
   COMBINED_DIFF=$( (git diff "${BASE_BRANCH}...HEAD" -- $CHANGED_SRC 2>/dev/null; git diff HEAD -- $CHANGED_SRC 2>/dev/null; git diff --cached HEAD -- $CHANGED_SRC 2>/dev/null) )
-  # Extract function names from diff hunk headers (@@...@@ func Name) — these identify
-  # the enclosing function for ANY changed line, not just added func declarations
-  CHANGED_FUNC_NAMES=$(echo "$COMBINED_DIFF" | grep -oE '^@@.*@@.*func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | grep -oE 'func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | awk '{print $NF}' | sort -u)
-  # Also catch newly added functions (func declaration on an added line)
-  NEW_FUNCS=$(echo "$COMBINED_DIFF" | grep -E '^\+.*func [A-Z]' | grep -oE 'func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | awk '{print $NF}' | sort -u)
+  # For untracked files: generate a synthetic diff so new functions are detected
+  UNTRACKED_SRC=$(git ls-files --others --exclude-standard 2>/dev/null | grep '\.go$' | grep -v '_test\.go$' || true)
+  for uf in $UNTRACKED_SRC; do
+    COMBINED_DIFF="${COMBINED_DIFF}
+$(git diff --no-index /dev/null "$uf" 2>/dev/null || true)"
+  done
+  # Extract function names from diff hunk headers (@@...@@ func Name or func (r *T) Name)
+  # These identify the enclosing function for ANY changed line, not just added declarations.
+  # Use `go tool cover -func` format for matching: bare name for functions, receiver for methods.
+  CHANGED_FUNC_NAMES=$(echo "$COMBINED_DIFF" | grep -oE '^@@.*@@ func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | sed 's/^@@.*@@ //' | sort -u)
+  # Also catch newly added function declarations (on added lines)
+  NEW_FUNCS=$(echo "$COMBINED_DIFF" | grep -E '^\+.*func ' | grep -v '^\+\+\+' | sed 's/^+//' | grep -oE 'func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | sed 's/^func //' | sort -u)
   CHANGED_FUNC_NAMES=$(printf '%s\n%s' "$CHANGED_FUNC_NAMES" "$NEW_FUNCS" | sort -u | grep -v '^$')
   ```
-  Cross-reference `CHANGED_FUNC_NAMES` with `UNCOVERED_FUNCS`. Only generate tests for functions that appear in BOTH lists (changed AND uncovered). If no functions match (all changed functions are already covered), report this and return to calling command's next step.
+  **Matching logic:** `UNCOVERED_FUNCS` from Step D uses `go tool cover -func` output which shows bare function names (e.g., `LoadConfig`) and method names without receiver types (e.g., `ServeHTTP`). Extract just the function/method name (last word) from both `CHANGED_FUNC_NAMES` and `UNCOVERED_FUNCS` for cross-referencing. Only generate tests for functions that appear in BOTH lists (changed AND uncovered). If no functions match (all changed functions are already covered), report this and return to calling command's next step.
 
 Generate tests appropriate for the detected project type. For each target uncovered function:
 
