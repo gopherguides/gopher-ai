@@ -24,12 +24,15 @@ Skip this entire workflow (return to the calling command's next step) if ANY of 
 
 ## Step B: Detect Changed Source Files
 
-Detect changed files including both committed and uncommitted changes (uncommitted changes are common when called from `/start-issue` before the commit step):
+Detect changed files including committed, uncommitted, staged, and untracked files (uncommitted/untracked changes are common when called from `/start-issue` before the commit step):
 
 ```bash
 mkdir -p .claude
-CHANGED_FILES=$( (git diff --name-only "${BASE_BRANCH}...HEAD" 2>/dev/null; git diff --name-only HEAD 2>/dev/null; git diff --name-only --cached HEAD 2>/dev/null) | sort -u )
+rm -f .claude/coverage.out .claude/coverage.json 2>/dev/null
+CHANGED_FILES=$( (git diff --name-only "${BASE_BRANCH}...HEAD" 2>/dev/null; git diff --name-only HEAD 2>/dev/null; git diff --name-only --cached HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null) | sort -u )
 ```
+
+The `rm -f` removes stale coverage artifacts from prior runs to prevent false results if the current coverage command fails.
 
 Filter to source files per detected project type, excluding test files, generated files, and vendored code:
 
