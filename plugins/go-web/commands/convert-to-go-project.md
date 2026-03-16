@@ -40,7 +40,7 @@ Convert the project at `$ARGUMENTS` (or current directory if `.`) to the Go stac
 ## Loop Initialization
 
 Initialize persistent loop to ensure conversion completes fully:
-!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "convert-to-go-project" "COMPLETE"; fi`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "convert-to-go-project" "COMPLETE"; fi`
 
 ## Step 1: Project Analysis
 

@@ -15,7 +15,7 @@ allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestio
 ## Loop Initialization
 
 Initialize persistent loop to ensure all build errors are resolved:
-!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "build-fix" "COMPLETE"; fi`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "build-fix" "COMPLETE"; fi`
 
 ## Step 1: Detect Build Systems
 

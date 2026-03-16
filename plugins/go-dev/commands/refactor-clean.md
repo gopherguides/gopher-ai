@@ -56,7 +56,7 @@ Example parsing:
 ## Loop Initialization
 
 Initialize persistent loop to ensure all confirmed fixes are applied cleanly:
-!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "refactor-clean" "COMPLETE"; fi`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "refactor-clean" "COMPLETE"; fi`
 
 ## Configuration
 

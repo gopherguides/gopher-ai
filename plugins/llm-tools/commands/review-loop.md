@@ -6,7 +6,7 @@ allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestio
 
 # Iterative LLM Review Loop
 
-!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "review-loop" "REVIEW_CLEAN" 25 "" '{"reviewing":"Resume the review-fix-verify cycle. Run the next review pass.","fixing":"Continue fixing: address remaining review findings, then verify.","verifying":"Continue verification: run build, test, and lint on fixes."}'; fi`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "review-loop" "REVIEW_CLEAN" 25 "" '{"reviewing":"Resume the review-fix-verify cycle. Run the next review pass.","fixing":"Continue fixing: address remaining review findings, then verify.","verifying":"Continue verification: run build, test, and lint on fixes."}'; fi`
 
 ## 1. Parse Arguments
 

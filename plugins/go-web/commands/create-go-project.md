@@ -215,7 +215,7 @@ After selecting a deployment platform that runs the app as a server (Railway, Fl
 ## Loop Initialization
 
 Initialize persistent loop to ensure project creation completes fully:
-!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "create-go-project-$ARGUMENTS" "COMPLETE"; fi`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "create-go-project-$ARGUMENTS" "COMPLETE"; fi`
 
 ## Security Validation
 

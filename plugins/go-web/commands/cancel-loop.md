@@ -14,7 +14,7 @@ Cancel the currently active persistent loop and allow normal session behavior.
 
 ## Execute Cancellation
 
-!`if [ -x "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" ]; then "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "$ARGUMENTS"; else echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; fi`
+!`if [ -x "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" ]; then "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "$ARGUMENTS"; else echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh then retry."; exit 1; fi`
 
 ## Result
 
