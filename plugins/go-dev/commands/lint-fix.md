@@ -36,7 +36,7 @@ Fix linting issues for specified path or options.
 ## Loop Initialization
 
 Initialize persistent loop to ensure all fixable issues are resolved:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "lint-fix" "COMPLETE"`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "lint-fix" "COMPLETE"; fi`
 
 ## Configuration
 

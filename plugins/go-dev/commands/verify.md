@@ -31,7 +31,7 @@ This is your pre-push sanity check. Run it anytime before pushing.
 ## Loop Initialization
 
 Initialize persistent loop to ensure all checks pass:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "verify" "COMPLETE"`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "verify" "COMPLETE"; fi`
 
 ## Configuration
 
@@ -53,7 +53,7 @@ Run verification on the specified path.
 ## Loop Initialization
 
 Initialize persistent loop to ensure all checks pass:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "verify" "COMPLETE"`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "verify" "COMPLETE"; fi`
 
 ## Configuration
 

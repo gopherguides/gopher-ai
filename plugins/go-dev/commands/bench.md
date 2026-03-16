@@ -38,7 +38,7 @@ with statistical rigor, profiles CPU and memory hotspots, and suggests concrete 
 ## Loop Initialization
 
 Initialize persistent loop to ensure benchmarks are complete and analyzed:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "bench" "COMPLETE"`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "bench" "COMPLETE"; fi`
 
 ## Configuration
 

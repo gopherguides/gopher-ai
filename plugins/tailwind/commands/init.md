@@ -43,7 +43,7 @@ Initialize Tailwind CSS v4 in the specified path: `$ARGUMENTS`
 ## Loop Initialization
 
 Initialize persistent loop to ensure Tailwind setup completes fully:
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-init" "COMPLETE"`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-init" "COMPLETE"; fi`
 
 ## Step 1: Validate Environment
 
