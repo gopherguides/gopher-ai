@@ -33,12 +33,14 @@ which python3
 
 If `GEMINI_API_KEY` is not set:
 
-> `GEMINI_API_KEY` is not set. Get one at https://aistudio.google.com/apikey
+> `GEMINI_API_KEY` is not set. Get one free at https://aistudio.google.com/apikey
 > Then export it: `export GEMINI_API_KEY="your-key-here"`
 
 Stop and wait for the user to set the key.
 
 If `python3` is not available, inform the user that Python 3 is required.
+
+> **Note:** The Gemini CLI's Nano Banana extension was investigated as an alternative generation path, but it has a known MCP tool registration bug (Gemini CLI v0.34.0 / Nano Banana v1.0.12) where tools fail to load at runtime. Only the REST API is reliable for image generation at this time.
 
 ## 2. Gather Image Details
 
@@ -48,11 +50,10 @@ Extract the image description from the user's request and confirm it.
 
 Ask the user which model to use:
 
-| Model ID | Codename | Best For |
-|----------|----------|----------|
-| `gemini-3.1-flash-image-preview` | Nano Banana 2 | Fast, high-volume, newest **(Recommended)** |
-| `gemini-3-pro-image-preview` | Nano Banana Pro | Highest quality, complex prompts |
-| `gemini-2.5-flash-image` | Nano Banana | Stable, proven, low-latency |
+| Model ID | Best For | Known Issues |
+|----------|----------|--------------|
+| `gemini-3.1-flash-image-preview` | Fast, high-volume, newest **(Recommended)** | `aspectRatio` may be ignored in edit/background operations |
+| `gemini-2.5-flash-image` | Stable, proven, fewest bugs | Most reliable for `imageConfig` params |
 
 Default: `gemini-3.1-flash-image-preview`
 
@@ -73,6 +74,8 @@ If no context clue, default to `1:1`.
 
 **All supported ratios:** `1:1`, `1:4`, `1:8`, `2:3`, `3:2`, `3:4`, `4:1`, `4:3`, `4:5`, `5:4`, `8:1`, `9:16`, `16:9`, `21:9`
 
+> **Note:** On `gemini-3.1-flash-image-preview`, `aspectRatio` may be silently ignored during image editing or background replacement operations. If aspect ratio is critical for an edit operation, consider using `gemini-2.5-flash-image` instead.
+
 ### Image Resolution
 
 Ask the user:
@@ -85,6 +88,8 @@ Ask the user:
 | `512` | Only available on `gemini-3.1-flash-image-preview` |
 
 Default: `1K`
+
+> **Important:** `imageSize` values are **case-sensitive**. Use `"1K"`, `"2K"`, `"4K"` exactly — lowercase (e.g., `"1k"`) silently falls back to 512px resolution.
 
 If user selects `512` with a model other than `gemini-3.1-flash-image-preview`, warn them and switch to `1K`.
 
@@ -300,3 +305,4 @@ Ask: "Would you like to regenerate with different settings, adjust the prompt, o
 | API 403 (forbidden) | Check API key, suggest regenerating |
 | JPEG when PNG requested | Auto-convert: Pillow → magick → .jpg fallback |
 | No image in response | Show model text, suggest rephrasing |
+| `imageSize` lowercase value | Warn about case sensitivity before sending request |
