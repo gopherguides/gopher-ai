@@ -267,15 +267,17 @@ if [ -f Makefile ]; then
 fi
 ```
 
-After generation, check for uncommitted changes that indicate stale generated code:
+After generation, check for modified or newly created generated files:
 
 ```bash
-GEN_DIFF=$(git diff --name-only)
-if [ -n "$GEN_DIFF" ]; then
+GEN_MODIFIED=$(git diff --name-only)
+GEN_UNTRACKED=$(git ls-files --others --exclude-standard)
+GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
+if [ -n "$GEN_ALL" ]; then
   echo "Generated code is stale. The following files changed after running generation:"
-  echo "$GEN_DIFF"
+  echo "$GEN_ALL"
   echo "Staging regenerated files..."
-  git add $GEN_DIFF
+  echo "$GEN_ALL" | xargs git add
 fi
 ```
 
@@ -669,10 +671,15 @@ After `--watch` completes, verify once more that checks are still for HEAD_SHA (
 ```bash
 FINAL_SHA=$(gh pr view "$PR_NUM" --json statusCheckRollup \
   --jq '.statusCheckRollup[0].commit.oid // empty' 2>/dev/null || true)
-if [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
-  echo "WARNING: Checks shifted to SHA $FINAL_SHA during watch (expected $HEAD_SHA). Re-running CI watch."
+if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
+  echo "STOP: CI checks shifted to SHA $FINAL_SHA during watch (expected $HEAD_SHA)."
+  echo "A new commit landed on this PR that was NOT reviewed locally."
+  echo "Restarting from review phase against the new HEAD."
   HEAD_SHA="$FINAL_SHA"
-  # Loop back to 10b
+  # Persist new HEAD SHA and reset pass counter, then restart from Step 5
+  TMP=".claude/ship.loop.local.json.tmp"
+  jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" '.head_sha = $sha | .pass = $pass | .review_clean = $rc' ".claude/ship.loop.local.json" > "$TMP" && mv "$TMP" ".claude/ship.loop.local.json"
+  # Go back to Step 5 (reviewing)
 fi
 ```
 
@@ -955,8 +962,9 @@ Decision logic:
 - If `STATE_STATUS` is `BLOCKED`:
   - **If the repo uses a merge queue** (`HAS_MERGE_QUEUE` is true): proceed to merge — `gh pr merge` will enqueue the PR correctly.
   - **If no merge queue**: **STOP immediately** — do NOT attempt merge. Display: "Branch protection requirements not met (status: BLOCKED). Cannot merge." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user what is blocking and stop.
-- If `STATE_STATUS` is `CLEAN` or `STATE_STATUS` is `HAS_HOOKS`: proceed to merge. These are the ONLY two states that mean "all checks passed and requirements satisfied."
-- **For ANY other `STATE_STATUS` value** (including but not limited to `UNSTABLE`, `BEHIND`, `DIRTY`, `DRAFT`): **STOP immediately.** Display: "PR is not ready to merge (mergeStateStatus: {STATE_STATUS}). Resolve the issue before merging." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user and stop.
+- If `STATE_STATUS` is `CLEAN` or `STATE_STATUS` is `HAS_HOOKS`: proceed to merge. These are the two states that mean "all checks passed and requirements satisfied."
+- If `STATE_STATUS` is `BEHIND` and `MERGEABLE` is `MERGEABLE`: proceed to merge. `BEHIND` only means the base branch moved forward — GitHub still allows merging if the repo does not require branches to be up-to-date. If the merge fails due to a "strict" branch protection rule, the error will be caught in Step 13e.
+- **For ANY other `STATE_STATUS` value** (including but not limited to `UNSTABLE`, `DIRTY`, `DRAFT`): **STOP immediately.** Display: "PR is not ready to merge (mergeStateStatus: {STATE_STATUS}). Resolve the issue before merging." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user and stop.
 
 #### 13e. Merge the PR
 
