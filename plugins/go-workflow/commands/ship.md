@@ -49,8 +49,8 @@ jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
    --arg skip_coverage "$SKIP_COVERAGE" --arg coverage_threshold "$COVERAGE_THRESHOLD" \
    --arg coverage_result "" --argjson coverage_tests_generated 0 \
    --arg e2e_attempted "" --arg e2e_result "" --argjson e2e_pages_tested 0 \
-   --arg review_clean "" \
-   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean}' \
+   --arg review_clean "" --arg head_sha "" \
+   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, head_sha: $head_sha}' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
@@ -69,7 +69,7 @@ fi
 If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from persisted fields using `jq`:
 
 1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD`
-2. Read `pass`, `pr_number`, `base_branch`, `bot_review_baseline`, `llm`, `discovered_bots`, `has_ci`, `skip_coverage`, `coverage_threshold`, `coverage_result`, `coverage_tests_generated`, `e2e_attempted`, `e2e_result`, `e2e_pages_tested`, `review_clean` fields via `jq -r '.field // empty' "$STATE_FILE"`
+2. Read `pass`, `pr_number`, `base_branch`, `bot_review_baseline`, `llm`, `discovered_bots`, `has_ci`, `skip_coverage`, `coverage_threshold`, `coverage_result`, `coverage_tests_generated`, `e2e_attempted`, `e2e_result`, `e2e_pages_tested`, `review_clean`, `head_sha` fields via `jq -r '.field // empty' "$STATE_FILE"`
 3. If `review_clean` is `"true"`, set `REVIEW_CLEAN=true` to preserve the clean-review fast path after re-entry
 
 Then skip to the corresponding phase:
@@ -215,7 +215,7 @@ Capture the output as `FINDINGS`.
 
 #### 5c. Parse Findings
 
-- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → set `REVIEW_CLEAN=true` and **persist it to state file** (`jq '.review_clean = "true"'`) for re-entry recovery. Skip directly to Step 7.5 (coverage verification). After Steps 7.5 and 7.6 complete, skip Step 8's loop-back decision and proceed directly to Step 9 (pushing) — do NOT re-run LLM review when the review was already clean
+- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → set `REVIEW_CLEAN=true` and **persist it to state file** (`jq '.review_clean = "true"'`) for re-entry recovery. Skip Step 6 (fixing) but still run Step 7 (verify phase, including codegen detection) to catch generated file drift. Then proceed to Steps 7.5 and 7.6, skip Step 8's loop-back decision, and proceed directly to Step 9 (pushing) — do NOT re-run LLM review when the review was already clean
 - Otherwise: extract structured findings and display with pass number
 - **Filter bot noise:** Silently discard findings containing usage-limit or quota messages
 - **De-duplicate across passes:** If a finding from a previous pass appears again (same file, same line, same issue), skip it
@@ -253,6 +253,49 @@ set_loop_phase ".claude/ship.loop.local.json" "verifying"
 Auto-detect project type and run appropriate verification:
 
 **Go** (go.mod exists):
+
+First, run code generation if a generation target is available:
+
+```bash
+if [ -f Makefile ]; then
+  GEN_TARGET=$(make -qp 2>/dev/null | awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' \
+    | grep -E '^(generate|gen|codegen|sqlc|proto|templ)$' | head -1 || true)
+  if [ -n "$GEN_TARGET" ]; then
+    # Capture pre-run snapshot of dirty/untracked files to distinguish generator output from fix-phase edits
+    GEN_SNAPSHOT=$(printf '%s\n%s' "$(git diff --name-only)" "$(git ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
+    echo "Running make $GEN_TARGET..."
+    if ! make "$GEN_TARGET" 2>&1; then
+      echo "WARNING: make $GEN_TARGET failed (tooling may not be installed). Skipping codegen check."
+      GEN_TARGET=""
+    fi
+  fi
+fi
+```
+
+If a codegen target ran successfully, check for modified or newly created generated files by comparing against a pre-run snapshot:
+
+```bash
+if [ -n "$GEN_TARGET" ]; then
+  # GEN_SNAPSHOT was captured before running the generator (see above)
+  GEN_MODIFIED=$(git diff --name-only)
+  GEN_UNTRACKED=$(git ls-files --others --exclude-standard)
+  GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
+  # Filter to only files that are NEW since the snapshot (not pre-existing edits from fix phase)
+  if [ -n "$GEN_SNAPSHOT" ]; then
+    GEN_NEW=$(comm -13 <(echo "$GEN_SNAPSHOT" | sort) <(echo "$GEN_ALL" | sort))
+  else
+    GEN_NEW="$GEN_ALL"
+  fi
+  if [ -n "$GEN_NEW" ]; then
+    echo "Generated code is stale. The following files changed after running generation:"
+    echo "$GEN_NEW"
+    echo "Staging regenerated files..."
+    echo "$GEN_NEW" | xargs git add
+  fi
+fi
+```
+
+Then run standard verification:
 
 ```bash
 go build ./...
@@ -538,16 +581,18 @@ PR_NUM=$(gh pr view --json number --jq '.number')
 
 Persist `pr_number` in state file.
 
-#### 9c. Capture bot review baseline
+#### 9c. Capture HEAD SHA and bot review baseline
 
 **CRITICAL: Capture immediately after push:**
 
 ```bash
+HEAD_SHA=$(git rev-parse HEAD)
+echo "HEAD SHA captured: $HEAD_SHA"
 BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "Bot review baseline captured: $BOT_REVIEW_BASELINE"
 ```
 
-Persist `bot_review_baseline` in state file.
+Persist both `head_sha` and `bot_review_baseline` in state file.
 
 ---
 
@@ -569,21 +614,94 @@ HAS_WORKFLOWS=$(find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yam
 
 If no workflow files exist → persist `has_ci: false` in state file and skip to Step 11.
 
-**If workflows exist**, persist `has_ci: true` in state file and watch CI with extended retry to handle slow check registration:
+**If workflows exist**, persist `has_ci: true` in state file.
+
+**MANDATORY — NO EXCEPTIONS:** You MUST verify that CI checks correspond to the latest pushed commit before considering CI as passed. You MUST NOT:
+- Assume passing checks from a prior commit apply to the current commit
+- Rationalize that "only a minor fix was pushed so old checks are still valid"
+- Skip SHA verification because `gh pr checks --watch` returned success
+- Treat "no checks yet" as "checks passed"
+
+The ENTIRE purpose of CI is to validate the EXACT code being merged. Stale check results from a previous push are meaningless.
+
+#### 10a. Capture and verify HEAD SHA
+
+Read `head_sha` from state file (set during push in Step 9a, 10 retry, or 12c):
 
 ```bash
-for i in 1 2 3 4 5 6; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
+HEAD_SHA=$(jq -r '.head_sha // empty' ".claude/ship.loop.local.json")
+if [ -z "$HEAD_SHA" ]; then
+  HEAD_SHA=$(git rev-parse HEAD)
+fi
+echo "Watching CI for commit: $HEAD_SHA"
 ```
 
-This waits up to 60 seconds for checks to appear (6 retries x 10s). If checks still haven't registered after all retries but workflow files exist, inform the user and ask whether to keep waiting or proceed.
+#### 10b. Wait for checks to register for the correct SHA
+
+Poll until GitHub reports checks for the HEAD SHA (up to 120 seconds). Note: `pull_request`-triggered checks run on a merge commit, not the PR head SHA. Use the REST API which reliably reports check runs for a specific commit:
+
+```bash
+CI_READY=false
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
+for i in $(seq 1 12); do
+  CHECK_COUNT=$(gh api "repos/$OWNER/$REPO/commits/$HEAD_SHA/check-runs" \
+    --jq '.total_count' 2>/dev/null || echo "0")
+  if [ "$CHECK_COUNT" -gt 0 ]; then
+    CI_READY=true
+    break
+  fi
+  echo "No checks for $HEAD_SHA yet... ($i/12)"
+  sleep 10
+done
+```
+
+If STILL not ready after 120 seconds: ask the user via `AskUserQuestion`: "CI checks for commit {HEAD_SHA} have not appeared after 120 seconds. The repo has workflow files. Wait longer, or proceed without CI verification?"
+
+#### 10c. Watch checks for the correct SHA
+
+Once checks for HEAD_SHA are confirmed, watch them:
+
+```bash
+gh pr checks "$PR_NUM" --watch
+```
+
+#### 10d. Post-watch SHA validation
+
+After `--watch` completes, verify that the PR head hasn't changed (a concurrent push could have shifted it):
+
+```bash
+FINAL_SHA=$(gh pr view "$PR_NUM" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
+if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
+  echo "STOP: PR head shifted to SHA $FINAL_SHA during watch (expected $HEAD_SHA)."
+  echo "A new commit landed on this PR that was NOT reviewed locally."
+  echo "Restarting from review phase against the new HEAD."
+  HEAD_SHA="$FINAL_SHA"
+  # Fetch and checkout the new PR head so local review runs against the correct code
+  BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote" 2>/dev/null || echo "origin")
+  PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
+  git fetch "$BRANCH_REMOTE" "$PR_HEAD_BRANCH"
+  git checkout "$PR_HEAD_BRANCH"
+  git reset --hard "$BRANCH_REMOTE/$PR_HEAD_BRANCH"
+  # Persist new HEAD SHA, reset pass counter, and set phase to reviewing for correct re-entry
+  TMP=".claude/ship.loop.local.json.tmp"
+  jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "reviewing" \
+    '.head_sha = $sha | .pass = $pass | .review_clean = $rc | .phase = $phase' \
+    ".claude/ship.loop.local.json" > "$TMP" && mv "$TMP" ".claude/ship.loop.local.json"
+  # Go back to Step 5 (reviewing)
+fi
+```
+
+#### 10e. CI failure handling
 
 If CI fails:
 1. Analyze the failure: `gh pr checks "$PR_NUM" --json name,state,description`
 2. Fix the issue
 3. Commit the fix
 4. Push: `git push`
-5. Re-capture `BOT_REVIEW_BASELINE`: `BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)` and persist
-6. Re-watch CI (go back to top of Step 10)
+5. Capture HEAD SHA: `HEAD_SHA=$(git rev-parse HEAD)` and persist `head_sha` in state file
+6. Re-capture `BOT_REVIEW_BASELINE`: `BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)` and persist
+7. Re-watch CI (go back to Step 10b — wait for checks for the NEW SHA)
 
 ---
 
@@ -705,7 +823,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow Steps 2-1
 - **Skip Step 12** (bot watch) — we handle that in Step 11 above
 - Do NOT create a second loop state file — all phases are managed under the `ship` loop
 
-#### 12c. Capture baseline BEFORE push
+#### 12c. Capture baseline BEFORE push, HEAD SHA AFTER push
 
 **CRITICAL:** Capture `BOT_REVIEW_BASELINE` before pushing, not after. This ensures we don't miss fast bot responses that arrive between the push and the timestamp capture:
 
@@ -713,9 +831,17 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow Steps 2-1
 BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ```
 
-Persist in state file. Then push the fixes.
+Then push the fixes. After pushing, capture HEAD SHA:
 
-Return to Step 10 (ci-watch) — set phase and re-watch CI before checking bot approval again.
+```bash
+git push
+HEAD_SHA=$(git rev-parse HEAD)
+echo "HEAD SHA captured: $HEAD_SHA"
+```
+
+Persist `bot_review_baseline` and `head_sha` in state file.
+
+Return to Step 10 (ci-watch) — set phase and re-watch CI for the new HEAD SHA before checking bot approval again.
 
 ---
 
@@ -824,7 +950,9 @@ ENCODED_BRANCH=$(printf '%s' "$BASE_BRANCH" | jq -sRr @uri)
 HAS_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/rules/branches/$ENCODED_BRANCH" 2>/dev/null | jq '[.[] | select(.type == "merge_queue")] | length > 0' 2>/dev/null || echo "false")
 ```
 
-GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Poll when `UNKNOWN`, hard-block only on clear failures:**
+GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Follow the decision logic below strictly — do not invent reasons to merge when a state is not covered:**
+
+Decision logic:
 
 - If `MERGEABLE` is `UNKNOWN` or `STATE_STATUS` is `UNKNOWN`: retry up to 6 times (5s apart). If still `UNKNOWN` after retries, ask the user via `AskUserQuestion` whether to proceed or wait.
 - If `MERGEABLE` is `CONFLICTING`:
@@ -833,7 +961,10 @@ GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state a
 - If `STATE_STATUS` is `BLOCKED`:
   - **If the repo uses a merge queue** (`HAS_MERGE_QUEUE` is true): proceed to merge — `gh pr merge` will enqueue the PR correctly.
   - **If no merge queue**: **STOP immediately** — do NOT attempt merge. Display: "Branch protection requirements not met (status: BLOCKED). Cannot merge." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user what is blocking and stop.
-- If `MERGEABLE` is `MERGEABLE` and `STATE_STATUS` is not `BLOCKED`: proceed to merge
+- If `STATE_STATUS` is `CLEAN` or `STATE_STATUS` is `HAS_HOOKS`: proceed to merge. These are the two states that mean "all checks passed and requirements satisfied."
+- If `STATE_STATUS` is `BEHIND` and `MERGEABLE` is `MERGEABLE`: proceed to merge. `BEHIND` only means the base branch moved forward — GitHub still allows merging if the repo does not require branches to be up-to-date. If the merge fails due to a "strict" branch protection rule, the error will be caught in Step 13e.
+- If `STATE_STATUS` is `UNSTABLE` and `MERGEABLE` is `MERGEABLE`: proceed to merge. `UNSTABLE` means some non-required or informational checks failed, but branch protection is still satisfied. GitHub allows the merge. If the merge fails, the error will be caught in Step 13e.
+- **For ANY other `STATE_STATUS` value** (including but not limited to `DIRTY`, `DRAFT`): **STOP immediately.** Display: "PR is not ready to merge (mergeStateStatus: {STATE_STATUS}). Resolve the issue before merging." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user and stop.
 
 #### 13e. Merge the PR
 
