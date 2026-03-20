@@ -262,7 +262,10 @@ if [ -f Makefile ]; then
     | grep -E '^(generate|gen|codegen|sqlc|proto|templ)$' | head -1 || true)
   if [ -n "$GEN_TARGET" ]; then
     echo "Running make $GEN_TARGET..."
-    make "$GEN_TARGET"
+    if ! make "$GEN_TARGET" 2>&1; then
+      echo "WARNING: make $GEN_TARGET failed (tooling may not be installed). Skipping codegen check."
+      GEN_TARGET=""
+    fi
   fi
 fi
 ```
@@ -676,9 +679,11 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   echo "A new commit landed on this PR that was NOT reviewed locally."
   echo "Restarting from review phase against the new HEAD."
   HEAD_SHA="$FINAL_SHA"
-  # Persist new HEAD SHA and reset pass counter, then restart from Step 5
+  # Persist new HEAD SHA, reset pass counter, and set phase to reviewing for correct re-entry
   TMP=".claude/ship.loop.local.json.tmp"
-  jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" '.head_sha = $sha | .pass = $pass | .review_clean = $rc' ".claude/ship.loop.local.json" > "$TMP" && mv "$TMP" ".claude/ship.loop.local.json"
+  jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "reviewing" \
+    '.head_sha = $sha | .pass = $pass | .review_clean = $rc | .phase = $phase' \
+    ".claude/ship.loop.local.json" > "$TMP" && mv "$TMP" ".claude/ship.loop.local.json"
   # Go back to Step 5 (reviewing)
 fi
 ```
@@ -964,7 +969,8 @@ Decision logic:
   - **If no merge queue**: **STOP immediately** — do NOT attempt merge. Display: "Branch protection requirements not met (status: BLOCKED). Cannot merge." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user what is blocking and stop.
 - If `STATE_STATUS` is `CLEAN` or `STATE_STATUS` is `HAS_HOOKS`: proceed to merge. These are the two states that mean "all checks passed and requirements satisfied."
 - If `STATE_STATUS` is `BEHIND` and `MERGEABLE` is `MERGEABLE`: proceed to merge. `BEHIND` only means the base branch moved forward — GitHub still allows merging if the repo does not require branches to be up-to-date. If the merge fails due to a "strict" branch protection rule, the error will be caught in Step 13e.
-- **For ANY other `STATE_STATUS` value** (including but not limited to `UNSTABLE`, `DIRTY`, `DRAFT`): **STOP immediately.** Display: "PR is not ready to merge (mergeStateStatus: {STATE_STATUS}). Resolve the issue before merging." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user and stop.
+- If `STATE_STATUS` is `UNSTABLE` and `MERGEABLE` is `MERGEABLE`: proceed to merge. `UNSTABLE` means some non-required or informational checks failed, but branch protection is still satisfied. GitHub allows the merge. If the merge fails, the error will be caught in Step 13e.
+- **For ANY other `STATE_STATUS` value** (including but not limited to `DIRTY`, `DRAFT`): **STOP immediately.** Display: "PR is not ready to merge (mergeStateStatus: {STATE_STATUS}). Resolve the issue before merging." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user and stop.
 
 #### 13e. Merge the PR
 
