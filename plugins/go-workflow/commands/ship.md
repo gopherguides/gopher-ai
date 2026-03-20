@@ -215,7 +215,7 @@ Capture the output as `FINDINGS`.
 
 #### 5c. Parse Findings
 
-- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → set `REVIEW_CLEAN=true` and **persist it to state file** (`jq '.review_clean = "true"'`) for re-entry recovery. Skip directly to Step 7.5 (coverage verification). After Steps 7.5 and 7.6 complete, skip Step 8's loop-back decision and proceed directly to Step 9 (pushing) — do NOT re-run LLM review when the review was already clean
+- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → set `REVIEW_CLEAN=true` and **persist it to state file** (`jq '.review_clean = "true"'`) for re-entry recovery. Skip Step 6 (fixing) but still run Step 7 (verify phase, including codegen detection) to catch generated file drift. Then proceed to Steps 7.5 and 7.6, skip Step 8's loop-back decision, and proceed directly to Step 9 (pushing) — do NOT re-run LLM review when the review was already clean
 - Otherwise: extract structured findings and display with pass number
 - **Filter bot noise:** Silently discard findings containing usage-limit or quota messages
 - **De-duplicate across passes:** If a finding from a previous pass appears again (same file, same line, same issue), skip it
@@ -638,34 +638,22 @@ echo "Watching CI for commit: $HEAD_SHA"
 
 #### 10b. Wait for checks to register for the correct SHA
 
-Poll until GitHub reports checks for the HEAD SHA (up to 120 seconds):
+Poll until GitHub reports checks for the HEAD SHA (up to 120 seconds). Note: `pull_request`-triggered checks run on a merge commit, not the PR head SHA. Use the REST API which reliably reports check runs for a specific commit:
 
 ```bash
 CI_READY=false
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
 for i in $(seq 1 12); do
-  CHECK_SHA=$(gh pr view "$PR_NUM" --json statusCheckRollup \
-    --jq '.statusCheckRollup[0].commit.oid // empty' 2>/dev/null || true)
-  if [ "$CHECK_SHA" = "$HEAD_SHA" ]; then
-    CI_READY=true
-    break
-  fi
-  echo "Checks showing SHA ${CHECK_SHA:-none}, waiting for $HEAD_SHA... ($i/12)"
-  sleep 10
-done
-```
-
-If `CI_READY` is still false, try the REST API as fallback:
-
-```bash
-if [ "$CI_READY" = "false" ]; then
-  OWNER=$(gh repo view --json owner --jq '.owner.login')
-  REPO=$(gh repo view --json name --jq '.name')
   CHECK_COUNT=$(gh api "repos/$OWNER/$REPO/commits/$HEAD_SHA/check-runs" \
     --jq '.total_count' 2>/dev/null || echo "0")
   if [ "$CHECK_COUNT" -gt 0 ]; then
     CI_READY=true
+    break
   fi
-fi
+  echo "No checks for $HEAD_SHA yet... ($i/12)"
+  sleep 10
+done
 ```
 
 If STILL not ready after 120 seconds: ask the user via `AskUserQuestion`: "CI checks for commit {HEAD_SHA} have not appeared after 120 seconds. The repo has workflow files. Wait longer, or proceed without CI verification?"
@@ -680,21 +668,21 @@ gh pr checks "$PR_NUM" --watch
 
 #### 10d. Post-watch SHA validation
 
-After `--watch` completes, verify once more that checks are still for HEAD_SHA (a concurrent push could have shifted them):
+After `--watch` completes, verify that the PR head hasn't changed (a concurrent push could have shifted it):
 
 ```bash
-FINAL_SHA=$(gh pr view "$PR_NUM" --json statusCheckRollup \
-  --jq '.statusCheckRollup[0].commit.oid // empty' 2>/dev/null || true)
+FINAL_SHA=$(gh pr view "$PR_NUM" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
 if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
-  echo "STOP: CI checks shifted to SHA $FINAL_SHA during watch (expected $HEAD_SHA)."
+  echo "STOP: PR head shifted to SHA $FINAL_SHA during watch (expected $HEAD_SHA)."
   echo "A new commit landed on this PR that was NOT reviewed locally."
   echo "Restarting from review phase against the new HEAD."
   HEAD_SHA="$FINAL_SHA"
   # Fetch and checkout the new PR head so local review runs against the correct code
+  BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote" 2>/dev/null || echo "origin")
   PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
-  git fetch origin "$PR_HEAD_BRANCH"
+  git fetch "$BRANCH_REMOTE" "$PR_HEAD_BRANCH"
   git checkout "$PR_HEAD_BRANCH"
-  git reset --hard "origin/$PR_HEAD_BRANCH"
+  git reset --hard "$BRANCH_REMOTE/$PR_HEAD_BRANCH"
   # Persist new HEAD SHA, reset pass counter, and set phase to reviewing for correct re-entry
   TMP=".claude/ship.loop.local.json.tmp"
   jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "reviewing" \
