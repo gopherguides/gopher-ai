@@ -16,7 +16,7 @@ description: |
 
 You detected an image generation request. Confirm intent before proceeding.
 
-**Say:** "It sounds like you want to generate an image. I can do that using the Gemini API or the Gemini CLI with the Nano Banana extension. Let me walk you through the options."
+**Say:** "It sounds like you want to generate an image. I can do that using the Gemini API. Let me walk you through the options."
 
 If the user confirms, proceed. If not, stop.
 
@@ -24,66 +24,23 @@ If the user confirms, proceed. If not, stop.
 
 ## 1. Check Prerequisites
 
-Verify the environment to determine available generation methods:
+Verify the environment:
 
 ```bash
 echo "GEMINI_API_KEY set: $([ -n "$GEMINI_API_KEY" ] && echo 'yes' || echo 'no')"
-which python3 2>/dev/null && echo "python3: available" || echo "python3: not found"
-which gemini 2>/dev/null && echo "gemini CLI: available" || echo "gemini CLI: not found"
-if which gemini >/dev/null 2>&1; then
-  gemini extensions list 2>/dev/null | grep -qi nanobanana && echo "Nano Banana extension: installed" || echo "Nano Banana extension: not installed"
-fi
+which python3
 ```
 
-**Determine available methods:**
+If `GEMINI_API_KEY` is not set:
 
-Both methods require a Gemini API key. The Nano Banana extension checks these env vars in order: `NANOBANANA_API_KEY`, `NANOBANANA_GEMINI_API_KEY`, `NANOBANANA_GOOGLE_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`.
+> `GEMINI_API_KEY` is not set. Get one free at https://aistudio.google.com/apikey
+> Then export it: `export GEMINI_API_KEY="your-key-here"`
 
-| Condition | Method Available |
-|-----------|-----------------|
-| `GEMINI_API_KEY` set + `python3` available | REST API (direct curl) |
-| `gemini` CLI + Nano Banana extension + any API key env var set | Gemini CLI (Nano Banana) |
+Stop and wait for the user to set the key.
 
-**If no API key is set at all**, show setup instructions and stop:
+If `python3` is not available, inform the user that Python 3 is required.
 
-> Image generation requires a Gemini API key. Get one free at https://aistudio.google.com/apikey
->
-> ```
-> export GEMINI_API_KEY="your-key-here"
-> ```
->
-> **Optional:** Install the Gemini CLI + Nano Banana extension for richer image commands (batch generation, styles, icons, patterns, diagrams):
-> ```
-> npm install -g @google/gemini-cli
-> gemini extensions install https://github.com/gemini-cli-extensions/nanobanana
-> ```
-> The extension uses `GEMINI_API_KEY` as a fallback, so no separate key is needed.
-
-If `python3` is not available but `GEMINI_API_KEY` is set, inform the user that Python 3 is required for the REST API path and suggest the CLI path instead.
-
-If the `gemini` CLI is installed but the Nano Banana extension is not, offer to install it:
-
-> Nano Banana extension not found. Install it with:
-> ```
-> gemini extensions install https://github.com/gemini-cli-extensions/nanobanana
-> ```
-
-## 1.5. Select Generation Method
-
-**If only ONE method is available**, auto-select it and inform the user:
-- REST API only: "Using REST API (GEMINI_API_KEY + python3 detected)"
-- CLI only: "Using Gemini CLI with Nano Banana extension"
-
-**If BOTH methods are available**, ask the user:
-
-| Method | Pros |
-|--------|------|
-| REST API **(default)** | Most reliable for aspect ratio and resolution settings |
-| Gemini CLI (Nano Banana) | Richer commands: batch generation (`--count`), style variations (`--styles`), icons, patterns, diagrams, story sequences |
-
-Default: REST API (more reliable for `imageConfig` parameters).
-
-Store the selection as `GENERATION_METHOD` (either `rest_api` or `cli_nanobanana`).
+> **Note:** The Gemini CLI's Nano Banana extension was investigated as an alternative generation path, but it has a known MCP tool registration bug (Gemini CLI v0.34.0 / Nano Banana v1.0.12) where tools fail to load at runtime. Only the REST API is reliable for image generation at this time.
 
 ## 2. Gather Image Details
 
@@ -99,8 +56,6 @@ Ask the user which model to use:
 | `gemini-2.5-flash-image` | Stable, proven, fewest bugs | Most reliable for `imageConfig` params |
 
 Default: `gemini-3.1-flash-image-preview`
-
-For the CLI path, model selection uses the `NANOBANANA_MODEL` env var (defaults to `gemini-3.1-flash-image-preview`).
 
 ### Aspect Ratio
 
@@ -146,13 +101,7 @@ Ask if they want to include a reference image (path to file). Default: no.
 
 Ask or auto-generate a descriptive filename in the current directory (e.g., `hero-banner.png`, `coffee-logo.png`).
 
-## 3. Generate Image
-
-### 3A. REST API Path
-
-**If `GENERATION_METHOD` is `rest_api`:**
-
-#### Build Request JSON
+## 3. Build Request JSON
 
 **First, export the gathered values as environment variables** so the python3 script can read them:
 
@@ -215,9 +164,9 @@ PYEOF
 
 Capture the printed path as `REQUEST_FILE`.
 
-#### API Call
+## 4. API Call
 
-Use the `REQUEST_FILE` path and the `GEMINI_MODEL` env var:
+Use the `REQUEST_FILE` path from Step 3 and the `GEMINI_MODEL` env var:
 
 ```bash
 RESPONSE_FILE="/tmp/gemini-image-response-$$.json"
@@ -231,7 +180,7 @@ echo "HTTP status: $HTTP_STATUS"
 
 If `HTTP_STATUS` is 429, wait 30s and retry once. If 400/403, show the error and suggest fixes. Only proceed if 200.
 
-#### Extract and Save Image
+## 5. Extract and Save Image
 
 Use python3 to parse the response and save:
 
@@ -315,73 +264,7 @@ if text_parts:
 PYEOF
 ```
 
-### 3B. CLI Path (Nano Banana Extension)
-
-**If `GENERATION_METHOD` is `cli_nanobanana`:**
-
-> **Known issue (as of Gemini CLI v0.34.0 / Nano Banana v1.0.12):** The extension's MCP tools (`generate_image`, `edit_image`, etc.) may fail to register in the CLI with `Tool "generate_image" not found`. If this happens, fall back to the REST API path automatically and inform the user.
-
-The Nano Banana extension runs as an MCP server inside the Gemini CLI, providing these tools: `generate_image`, `edit_image`, `restore_image`, `generate_icon`, `generate_pattern`, `generate_story`, `generate_diagram`.
-
-The extension requires an API key. It also requires separate configuration via `gemini extensions config nanobanana "API Key"` — the `GEMINI_API_KEY` env var fallback in the source code may not be sufficient since the CLI checks extension settings before starting the MCP server.
-
-#### Set Model (if not default)
-
-If the user chose `gemini-2.5-flash-image` instead of the default:
-
-```bash
-export NANOBANANA_MODEL='gemini-2.5-flash-image'
-```
-
-#### Generate via Nano Banana
-
-**Important:** Always single-quote user-provided values to prevent shell injection:
-
-```bash
-export GEMINI_PROMPT='<the user'"'"'s image description — single-quote wrapped>'
-export GEMINI_OUTPUT_PATH='<output file path>'
-```
-
-**Simple generation:**
-
-```bash
-printf '/generate "%s"\n' "$GEMINI_PROMPT" | gemini 2>&1
-```
-
-**With batch/style options** (CLI path advantage):
-
-```bash
-# Multiple variations
-printf '/generate "%s" --count=3 --preview\n' "$GEMINI_PROMPT" | gemini 2>&1
-
-# Style variations
-printf '/generate "%s" --styles="watercolor,oil-painting" --count=4\n' "$GEMINI_PROMPT" | gemini 2>&1
-```
-
-**Reference images** — use the `/edit` command:
-
-```bash
-printf '/edit %s "%s"\n' "$GEMINI_REF_IMAGE" "$GEMINI_PROMPT" | gemini 2>&1
-```
-
-#### Locate and Move Output
-
-The extension saves images to `./nanobanana-output/` with smart filenames:
-
-```bash
-NANOBANANA_DIR="./nanobanana-output"
-GENERATED_FILE=$(ls -t "$NANOBANANA_DIR"/* 2>/dev/null | head -1)
-if [ -n "$GENERATED_FILE" ]; then
-  mv "$GENERATED_FILE" "$GEMINI_OUTPUT_PATH"
-  echo "Saved to $GEMINI_OUTPUT_PATH"
-  SIZE_KB=$(du -k "$GEMINI_OUTPUT_PATH" | cut -f1)
-  echo "Size: ${SIZE_KB} KB"
-else
-  echo "No image was generated. Check gemini CLI output above for errors." >&2
-fi
-```
-
-## 4. Save Prompt File
+## 6. Save Prompt File
 
 Write a `{name}_prompt.txt` alongside the image:
 
@@ -390,7 +273,6 @@ PROMPT_FILE="${GEMINI_OUTPUT_PATH%.*}_prompt.txt"
 cat > "$PROMPT_FILE" << EOF
 Prompt: ${GEMINI_PROMPT}
 Model: ${GEMINI_MODEL}
-Generation Method: ${GENERATION_METHOD}
 Aspect Ratio: ${GEMINI_ASPECT_RATIO}
 Resolution: ${GEMINI_IMAGE_SIZE}
 Reference Image: ${GEMINI_REF_IMAGE:-none}
@@ -398,7 +280,7 @@ Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 EOF
 ```
 
-## 5. Cleanup and Report
+## 7. Cleanup and Report
 
 ```bash
 rm -f "${REQUEST_FILE}" "${RESPONSE_FILE}"
@@ -408,7 +290,6 @@ Report:
 - Image saved to: `{output_path}`
 - Prompt saved to: `{prompt_file}`
 - File size
-- Generation method used
 - Any model notes from text parts
 
 Ask: "Would you like to regenerate with different settings, adjust the prompt, or generate another image?"
@@ -417,13 +298,11 @@ Ask: "Would you like to regenerate with different settings, adjust the prompt, o
 
 | Error | Action |
 |-------|--------|
-| No API key set (any env var) | Link to https://aistudio.google.com/apikey, show both generation paths |
-| Missing `python3` (REST API path only) | Suggest CLI path, or install Python 3 |
+| Missing `GEMINI_API_KEY` | Link to https://aistudio.google.com/apikey |
+| Missing `python3` | Inform user Python 3 is required |
 | API 429 (rate limit) | Wait 30s and retry once |
 | API 400 (bad request) | Show error, suggest simpler prompt |
 | API 403 (forbidden) | Check API key, suggest regenerating |
 | JPEG when PNG requested | Auto-convert: Pillow → magick → .jpg fallback |
 | No image in response | Show model text, suggest rephrasing |
-| Nano Banana extension not installed | Show install command: `gemini extensions install https://github.com/gemini-cli-extensions/nanobanana` |
-| CLI generates no output | Check CLI output for errors, suggest REST API as fallback |
 | `imageSize` lowercase value | Warn about case sensitivity before sending request |
