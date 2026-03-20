@@ -261,6 +261,8 @@ if [ -f Makefile ]; then
   GEN_TARGET=$(make -qp 2>/dev/null | awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' \
     | grep -E '^(generate|gen|codegen|sqlc|proto|templ)$' | head -1 || true)
   if [ -n "$GEN_TARGET" ]; then
+    # Capture pre-run snapshot of dirty/untracked files to distinguish generator output from fix-phase edits
+    GEN_SNAPSHOT=$(printf '%s\n%s' "$(git diff --name-only)" "$(git ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
     echo "Running make $GEN_TARGET..."
     if ! make "$GEN_TARGET" 2>&1; then
       echo "WARNING: make $GEN_TARGET failed (tooling may not be installed). Skipping codegen check."
@@ -270,17 +272,26 @@ if [ -f Makefile ]; then
 fi
 ```
 
-After generation, check for modified or newly created generated files:
+If a codegen target ran successfully, check for modified or newly created generated files by comparing against a pre-run snapshot:
 
 ```bash
-GEN_MODIFIED=$(git diff --name-only)
-GEN_UNTRACKED=$(git ls-files --others --exclude-standard)
-GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
-if [ -n "$GEN_ALL" ]; then
-  echo "Generated code is stale. The following files changed after running generation:"
-  echo "$GEN_ALL"
-  echo "Staging regenerated files..."
-  echo "$GEN_ALL" | xargs git add
+if [ -n "$GEN_TARGET" ]; then
+  # GEN_SNAPSHOT was captured before running the generator (see above)
+  GEN_MODIFIED=$(git diff --name-only)
+  GEN_UNTRACKED=$(git ls-files --others --exclude-standard)
+  GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
+  # Filter to only files that are NEW since the snapshot (not pre-existing edits from fix phase)
+  if [ -n "$GEN_SNAPSHOT" ]; then
+    GEN_NEW=$(comm -13 <(echo "$GEN_SNAPSHOT" | sort) <(echo "$GEN_ALL" | sort))
+  else
+    GEN_NEW="$GEN_ALL"
+  fi
+  if [ -n "$GEN_NEW" ]; then
+    echo "Generated code is stale. The following files changed after running generation:"
+    echo "$GEN_NEW"
+    echo "Staging regenerated files..."
+    echo "$GEN_NEW" | xargs git add
+  fi
 fi
 ```
 
@@ -679,6 +690,11 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   echo "A new commit landed on this PR that was NOT reviewed locally."
   echo "Restarting from review phase against the new HEAD."
   HEAD_SHA="$FINAL_SHA"
+  # Fetch and checkout the new PR head so local review runs against the correct code
+  PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
+  git fetch origin "$PR_HEAD_BRANCH"
+  git checkout "$PR_HEAD_BRANCH"
+  git reset --hard "origin/$PR_HEAD_BRANCH"
   # Persist new HEAD SHA, reset pass counter, and set phase to reviewing for correct re-entry
   TMP=".claude/ship.loop.local.json.tmp"
   jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "reviewing" \
@@ -946,17 +962,7 @@ ENCODED_BRANCH=$(printf '%s' "$BASE_BRANCH" | jq -sRr @uri)
 HAS_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/rules/branches/$ENCODED_BRANCH" 2>/dev/null | jq '[.[] | select(.type == "merge_queue")] | length > 0' 2>/dev/null || echo "false")
 ```
 
-GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Use an explicit allowlist — only `CLEAN` and `HAS_HOOKS` are safe to merge:**
-
-**MANDATORY RULE — NO EXCEPTIONS:** Only `CLEAN` and `HAS_HOOKS` are safe merge states. You MUST NOT:
-- Treat `UNSTABLE` as "probably fine" or "close enough to clean"
-- Argue that individual checks passed so the overall state doesn't matter
-- Rationalize that the state is transient and will resolve on its own
-- Proceed with merge when `STATE_STATUS` is anything other than `CLEAN` or `HAS_HOOKS`
-- Invent reasons why a non-passing state should be treated as passing
-- Decide that because `MERGEABLE` is `MERGEABLE`, the `STATE_STATUS` can be ignored
-
-If `STATE_STATUS` is not in the allowlist: your ONLY permitted action is to STOP, display the state, clean up loop state, and inform the user. You cannot decide to merge.
+GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Follow the decision logic below strictly — do not invent reasons to merge when a state is not covered:**
 
 Decision logic:
 
