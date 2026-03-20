@@ -339,9 +339,11 @@ PYEOF
 
 **If `GENERATION_METHOD` is `cli_nanobanana`:**
 
-The Nano Banana extension runs as an MCP server inside the Gemini CLI, providing these commands: `/generate`, `/edit`, `/restore`, `/icon`, `/pattern`, `/story`, `/diagram`, `/nanobanana`.
+> **Known issue (as of Gemini CLI v0.34.0 / Nano Banana v1.0.12):** The extension's MCP tools (`generate_image`, `edit_image`, etc.) may fail to register in the CLI with `Tool "generate_image" not found`. If this happens, fall back to the REST API path automatically and inform the user.
 
-The extension requires an API key via one of: `NANOBANANA_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY` (checked in that order). If `GEMINI_API_KEY` is already set, no additional configuration is needed.
+The Nano Banana extension runs as an MCP server inside the Gemini CLI, providing these tools: `generate_image`, `edit_image`, `restore_image`, `generate_icon`, `generate_pattern`, `generate_story`, `generate_diagram`.
+
+The extension requires an API key. It also requires separate configuration via `gemini extensions config nanobanana "API Key"` — the `GEMINI_API_KEY` env var fallback in the source code may not be sufficient since the CLI checks extension settings before starting the MCP server.
 
 #### Set Model (if not default)
 
