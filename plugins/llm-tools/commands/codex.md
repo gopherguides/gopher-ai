@@ -242,11 +242,12 @@ Ask all review configuration questions in a **single `AskUserQuestion` call** wi
 
 | Option | Description |
 |--------|-------------|
-| Single pass (Recommended) | One review pass (fastest) |
-| Multi-pass (3) | Three passes, de-duplicated (most thorough) |
-| Multi-pass (custom) | Specify number of passes |
+| Exhaustive (Recommended) | `codex exec` with structured output — returns ALL findings in one pass |
+| Single pass | One `codex review` pass (fastest, but limited to 2-3 findings) |
+| Multi-pass (3) | Three `codex review` passes, de-duplicated |
+| Multi-pass (custom) | Specify number of `codex review` passes |
 
-Note: Multi-pass is most useful when PR/issue context is included.
+Note: Exhaustive mode uses `codex exec --output-schema` to bypass the 2-3 finding limit of `codex review`. Multi-pass is available as a fallback but is less effective than exhaustive mode.
 
 ### R2.5. Conditional Follow-Up (only if needed)
 
@@ -296,9 +297,50 @@ codex review --base <branch> -c model=<model>
 codex review --commit <sha> -c model=<model>
 ```
 
-#### If PR/Issue Context IS Included
+#### If "Exhaustive" Mode Selected
 
-Use `codex review -` (stdin mode) to keep the native review pipeline/rubric active while passing custom context. This preserves review quality that would be lost with `codex exec`.
+Use `codex exec` with structured output to get ALL findings in one pass. This bypasses the 2-3 finding limit of `codex review`.
+
+**Step 1: Generate the diff**
+
+Based on review type from R2:
+
+- **Uncommitted:** `git diff HEAD && git diff --cached && git ls-files --others --exclude-standard`
+- **Changes vs branch:** `git diff <branch>...HEAD`
+- **Specific commit:** `git show <sha>`
+
+**Step 2: Assemble the review prompt**
+
+Read the prompt template from `${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md` and fill placeholders:
+
+- `{DIFF}` ← diff from Step 1
+- `{SCOPE_HINT}` ← if provided, render as `## Specific Focus Area\n<value>`; otherwise empty
+- `{REPO_GUIDELINES}` ← auto-detect `AGENTS.md` or `CLAUDE.md` in repo root; include if found
+- `{PR_CONTEXT}` ← if PR/issue context was selected in R2, include PR title, body, linked issues, and review comments
+
+**Step 3: Execute with structured output**
+
+```bash
+REVIEW_JSON=$(codex exec -m <model> -s read-only \
+  --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
+  - <<'PROMPT_EOF'
+$ASSEMBLED_PROMPT
+PROMPT_EOF
+)
+```
+
+**Step 4: Parse structured JSON**
+
+1. Validate JSON. If invalid, log warning and treat as free-text `FINDINGS`.
+2. Filter findings with `confidence_score < 0.3`.
+3. Sort by priority (0 first), then confidence (highest first).
+4. Store as `FINDINGS` for R4.
+
+Skip to R4 (Report Results).
+
+#### If PR/Issue Context IS Included (Single/Multi-pass modes)
+
+Use `codex review -` (stdin mode) with the native review pipeline.
 
 **Step 1: Generate the diff**
 
@@ -478,6 +520,18 @@ Store the final aggregated output as `FINDINGS` for use in R4.
 ### R4. Report Results
 
 After execution completes:
+
+- **Exhaustive mode:** Parse the structured JSON and display as a formatted table:
+
+```
+## Code Review Findings — <N> issues
+
+| # | Priority | Category | File | Lines | Title | Confidence |
+|---|----------|----------|------|-------|-------|------------|
+| 1 | P0 | correctness | api/handler.go | 42-45 | Nil pointer on empty response | 0.95 |
+```
+
+Display `overall_explanation` and `overall_confidence_score` as a summary below the table. Show overall verdict (`patch is correct` / `patch is incorrect`).
 
 - **Single pass:** Show the review output (`FINDINGS`) to the user
 - **Multi-pass:** Show the aggregated, de-duplicated findings to the user with a summary header (e.g., "3 passes, 12 unique findings" or "Completed in 2 of 3 passes — no new findings in pass 2")

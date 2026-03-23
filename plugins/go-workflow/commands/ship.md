@@ -173,13 +173,57 @@ If the diff is empty, skip the review loop entirely — nothing to review. Proce
 
 #### 5b. Run LLM Review
 
+<!-- SYNC: codex-exec-review — keep aligned with review-loop.md Step 5b -->
+
 Execute review based on `LLM_CHOICE`:
 
-**Codex:**
+**Codex (exhaustive mode via `codex exec`):**
+
+Use `codex exec` with a structured output schema to get ALL findings in one pass (bypasses the 2-3 finding limit of `codex review`).
+
+1. Assemble the review prompt by constructing a heredoc with these sections:
+   - The review instructions (find ALL issues, priority levels, categories, rules)
+   - `{REPO_GUIDELINES}` — auto-detect `AGENTS.md` or `CLAUDE.md` in repo root; include contents if found
+   - The diff from Step 5a
+
+2. Create a temporary schema file:
 
 ```bash
-codex review --base "origin/$BASE_BRANCH"
+SCHEMA_FILE=$(mktemp /tmp/codex-review-schema.XXXXXX.json)
+cat > "$SCHEMA_FILE" <<'SCHEMA_EOF'
+{"type":"object","properties":{"findings":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string","maxLength":80},"body":{"type":"string","minLength":1},"confidence_score":{"type":"number","minimum":0,"maximum":1},"priority":{"type":"integer","minimum":0,"maximum":3},"category":{"type":"string","enum":["correctness","security","performance","maintainability","developer-experience"]},"code_location":{"type":"object","properties":{"file_path":{"type":"string","minLength":1},"line_range":{"type":"object","properties":{"start":{"type":"integer","minimum":1},"end":{"type":"integer","minimum":1}},"required":["start","end"],"additionalProperties":false}},"required":["file_path","line_range"],"additionalProperties":false}},"required":["title","body","confidence_score","priority","category","code_location"],"additionalProperties":false}},"overall_correctness":{"type":"string","enum":["patch is correct","patch is incorrect"]},"overall_explanation":{"type":"string","minLength":1},"overall_confidence_score":{"type":"number","minimum":0,"maximum":1}},"required":["findings","overall_correctness","overall_explanation","overall_confidence_score"],"additionalProperties":false}
+SCHEMA_EOF
 ```
+
+3. Execute:
+
+```bash
+REVIEW_JSON=$(codex exec -m "${MODEL:-gpt-5.4}" -s read-only \
+  --output-schema "$SCHEMA_FILE" \
+  - <<'PROMPT_EOF'
+$ASSEMBLED_PROMPT
+PROMPT_EOF
+)
+rm -f "$SCHEMA_FILE"
+```
+
+The review prompt must include these instructions:
+
+```text
+You are reviewing a code change (diff) for a pull request. Your task is to identify ALL issues — do not limit yourself to a small number. Report every actionable finding you discover.
+
+Focus on: Correctness (bugs, logic errors, race conditions, nil dereference), Security (injection, auth bypass, data exposure), Performance (O(n²) loops, unnecessary allocations), Maintainability (dead code, excessive complexity), Developer Experience (missing error context, unclear APIs).
+
+Rules:
+1. Only flag issues INTRODUCED by this diff.
+2. Every finding MUST cite the exact file path (relative to repo root) and line range.
+3. Verify line numbers against the diff — accuracy is critical.
+4. Priority: 0=critical, 1=high, 2=medium, 3=low.
+5. If the diff is clean, return an empty findings array.
+6. Do NOT stop after finding a few issues — review the ENTIRE diff.
+```
+
+4. Validate JSON. If invalid, set `CODEX_EXEC_FALLBACK=true` and treat output as free-text `FINDINGS`.
 
 **Gemini:**
 
@@ -211,9 +255,23 @@ $DIFF
 EOF
 ```
 
-Capture the output as `FINDINGS`.
+Capture the output as `FINDINGS` (for gemini/ollama) or `REVIEW_JSON` (for codex).
 
 #### 5c. Parse Findings
+
+**Structured JSON (codex exec mode):**
+
+When `LLM_CHOICE` is `codex` and `CODEX_EXEC_FALLBACK` is not `true`:
+
+1. Validate JSON: `echo "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, fall through to free-text parsing.
+2. Extract findings count, overall correctness, and confidence via `jq`.
+3. Filter findings with `confidence_score < 0.3` (likely false positives).
+4. If zero findings and `overall_correctness` is `"patch is correct"`: review is clean → set `REVIEW_CLEAN=true` and persist to state file. Skip Step 6 but still run Step 7. Proceed to Steps 7.5 and 7.6, skip Step 8's loop-back, proceed to Step 9.
+5. Display findings as formatted table sorted by priority then confidence.
+6. De-duplicate across passes using `(file_path, line_range.start, normalized title)`.
+7. Store findings in state file for re-entry.
+
+**Free-text (codex quick/fallback / gemini / ollama):**
 
 - If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → set `REVIEW_CLEAN=true` and **persist it to state file** (`jq '.review_clean = "true"'`) for re-entry recovery. Skip Step 6 (fixing) but still run Step 7 (verify phase, including codegen detection) to catch generated file drift. Then proceed to Steps 7.5 and 7.6, skip Step 8's loop-back decision, and proceed directly to Step 9 (pushing) — do NOT re-run LLM review when the review was already clean
 - Otherwise: extract structured findings and display with pass number
