@@ -229,7 +229,7 @@ REVIEW_JSON=$(codex exec -m "$MODEL" -s read-only \
   --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
   - < "$PROMPT_FILE")
 # Strip codex exec headers (version/config info printed before JSON)
-REVIEW_JSON=$(echo "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
+REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
 rm -f "$PROMPT_FILE"
 ```
 

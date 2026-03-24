@@ -205,7 +205,7 @@ REVIEW_JSON=$(codex exec -m "${MODEL:-gpt-5.4}" -s read-only \
   --output-schema "$SCHEMA_FILE" \
   - < "$PROMPT_FILE")
 # Strip codex exec headers (version/config info printed before JSON)
-REVIEW_JSON=$(echo "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
+REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
 rm -f "$PROMPT_FILE" "$SCHEMA_FILE"
 ```
 
