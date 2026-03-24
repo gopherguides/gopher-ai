@@ -230,6 +230,11 @@ REVIEW_JSON=$(codex exec -m "$MODEL" -s read-only \
   - < "$PROMPT_FILE")
 # Strip codex exec headers (version/config info printed before JSON)
 REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
+# Guard: if stripping removed all output, codex exec returned no JSON
+if [ -z "$REVIEW_JSON" ]; then
+  echo "WARNING: codex exec produced no JSON output after header stripping"
+  REVIEW_JSON='{"error":"no JSON output"}'
+fi
 rm -f "$PROMPT_FILE"
 ```
 
