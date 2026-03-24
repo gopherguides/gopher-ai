@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--llm codex|gemini|ollama] [--passes <n>] [--no-merge] [--skip-coverage] [--coverage-threshold <n>]"
 description: "Ship a PR: LLM review, coverage gate, e2e tests, push, CI watch, bot approval, merge"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page"]
+allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page"]
 ---
 
 # Ship PR
@@ -255,6 +255,24 @@ EOF
 ```
 
 Capture the output as `FINDINGS` (for gemini/ollama) or `REVIEW_JSON` (for codex).
+
+**Agent-based review (fallback):**
+
+If the selected LLM CLI is not installed or fails to execute, fall back to dispatching a quality-review subagent instead:
+
+1. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md`
+2. Fill in template variables:
+   - `{WORKTREE_PATH}` — absolute working directory
+   - `{CHANGED_FILES}` — list of files in the diff
+   - `{DIFF}` — the diff from Step 5a
+   - `{PATTERNS}` — "Follow existing project conventions"
+   - `{REPO_CONVENTIONS}` — from CLAUDE.md/AGENTS.md if present
+3. Dispatch: `Agent(prompt=<filled>, model=sonnet)`
+4. Parse the agent's structured response:
+   - `CLEAN` verdict → set `REVIEW_CLEAN=true`, skip Step 6
+   - `HAS_FINDINGS` → extract findings list, continue to Step 5c
+
+This ensures `/ship` can always complete a review pass even without codex/gemini/ollama installed.
 
 #### 5c. Parse Findings
 

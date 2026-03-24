@@ -1,7 +1,7 @@
 ---
-argument-hint: "<issue-number> [--skip-coverage] [--coverage-threshold <n>]"
+argument-hint: "<issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
 description: "Start working on a GitHub issue (auto-detects bug vs feature)"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "EnterPlanMode"]
+allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "EnterPlanMode", "Agent"]
 ---
 
 # Start Issue
@@ -19,6 +19,7 @@ This command starts work on a GitHub issue, automatically detecting whether it's
 **Options:**
 - `--skip-coverage`: Skip coverage verification after implementation
 - `--coverage-threshold <n>`: Override default 60% coverage threshold
+- `--no-agents`: Use single-session workflow instead of subagent dispatch (for small/simple issues)
 
 **Workflow:**
 
@@ -44,7 +45,7 @@ Clear any leftover worktree state from a prior session. This prevents the pre-to
 ## Security Validation & Flag Parsing
 
 Strip optional flags and extract the issue number:
-!ISSUE_NUM=`echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g' | tr -d ' '`; HAS_SKIP=`echo "$ARGUMENTS" | grep -q '\-\-skip-coverage' && echo "true" || echo "false"`; COV_THRESH=`echo "$ARGUMENTS" | grep -oE '\-\-coverage-threshold [0-9]+' | awk '{print $2}'`; if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric. Usage: /start-issue <number> [--skip-coverage] [--coverage-threshold <n>]"; exit 1; fi; echo "Issue: $ISSUE_NUM | skip-coverage: $HAS_SKIP | coverage-threshold: ${COV_THRESH:-60}"
+!ISSUE_NUM=`echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g; s/--no-agents//g' | tr -d ' '`; HAS_SKIP=`echo "$ARGUMENTS" | grep -q '\-\-skip-coverage' && echo "true" || echo "false"`; COV_THRESH=`echo "$ARGUMENTS" | grep -oE '\-\-coverage-threshold [0-9]+' | awk '{print $2}'`; NO_AGENTS=`echo "$ARGUMENTS" | grep -q '\-\-no-agents' && echo "true" || echo "false"`; if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric. Usage: /start-issue <number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"; exit 1; fi; echo "Issue: $ISSUE_NUM | skip-coverage: $HAS_SKIP | coverage-threshold: ${COV_THRESH:-60} | no-agents: $NO_AGENTS"
 
 The output above shows the parsed issue number and flag values.
 
@@ -53,11 +54,12 @@ The output above shows the parsed issue number and flag values.
 Store the parsed flags:
 - `SKIP_COVERAGE`: `true` if `--skip-coverage` was passed, `false` otherwise
 - `COVERAGE_THRESHOLD`: the value after `--coverage-threshold`, or `60` if not specified
+- `NO_AGENTS`: `true` if `--no-agents` was passed, `false` otherwise
 
 ## Loop Initialization
 
 Initialize persistent loop to ensure work continues until complete (uses `$ISSUE_NUM`, not raw `$ARGUMENTS`):
-!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else ISSUE_NUM=$(echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g' | tr -d ' '); "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ISSUE_NUM" "COMPLETE" "" "" '{}'; fi`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else ISSUE_NUM=$(echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g; s/--no-agents//g' | tr -d ' '); "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ISSUE_NUM" "COMPLETE" "" "" '{}'; fi`
 
 ## Context
 
@@ -284,236 +286,32 @@ Analyze the issue to determine if it's a **bug fix** or **new feature**:
 
 ---
 
-## Bug Fix Workflow
+## Subagent-Orchestrated Workflow (Default)
 
-If issue is a **bug**, follow this workflow:
+**If `NO_AGENTS` is `true`, skip to the "Manual Workflow (Fallback)" section below.**
 
-### 1. Check for Duplicates
+This workflow uses focused subagents for exploration, implementation, and review. The orchestrator (this session) retains all control flow, verification gates, and external interactions.
 
-Search for related issues before starting work:
+### Step 1: Check for Duplicates (Bug Fix Only)
+
+If issue is a **bug**, search for related issues:
 
 ```bash
 gh issue list --state all --limit 50 --search "<key terms from title/body>"
 ```
 
-**If potential duplicates found**, present them:
+**If potential duplicates found**, present them and ask user how to proceed (Continue / Skip / Link).
 
-| Issue | State | Title |
-|-------|-------|-------|
-| #NNN | open/closed | Issue title |
-
-Ask user: "Potential related issues found. How would you like to proceed?"
-
-| Option | Action |
-|--------|--------|
-| Continue | Proceed with fix (not a duplicate) |
-| Skip | Stop - user will handle manually |
-| Link | Comment linking related issues, then continue |
-
-**If "Link" selected:**
-
-```bash
-gh issue comment "$ISSUE_NUM" --body "Potentially related to #NNN - investigating"
-```
-
-### 2. Explore Root Cause
-
-When searching for root cause:
-- **Start with error text**: Grep for exact error message first
-- **Limit file reads**: Read max 3 files before forming hypothesis
-- **Use targeted searches**: Grep for function names, not broad patterns
-
-### 3. Create Branch (skip if worktree was created)
+### Step 2: Create Branch (skip if worktree was created)
 
 **REQUIRED unless using a worktree.** Never commit to main/master.
 
+For bugs:
 ```bash
 git checkout -b "fix/$ISSUE_NUM-<short-desc>"
 ```
 
-Verify you are on the new branch before proceeding:
-```bash
-git branch --show-current
-```
-
-### 4. TDD: Write Failing Test (Red)
-
-**IRON LAW: No fix code exists before this test. If you already wrote fix code, DELETE IT NOW and write the test first. No exceptions without explicit user permission.**
-
-Write a test that reproduces the bug and **fails**. This proves the bug exists and will verify the fix.
-
-**Run the test and confirm it fails:**
-
-```bash
-go test ./path/to/package/... -run TestName -v -count=1
-```
-
-**Verify the failure is correct:**
-- The test MUST fail because of the bug (missing behavior, wrong output, panic), NOT because of a syntax error, wrong import, or typo in the test itself.
-- If you cannot explain exactly why the test fails, the test is wrong. Fix the test, not the code.
-
-**Red flag: If the test passes immediately, something is wrong.** The test is not testing what you think. It may be testing a different code path, using stale data, or asserting the wrong thing. Investigate before proceeding — do NOT move on to writing fix code.
-
-- **If the test FAILS for the right reason** → Proceed to step 5.
-- **If the test PASSES** → The test does NOT reproduce the bug. Rewrite until it fails.
-
-Do not proceed until the test fails for the correct reason.
-
-### 5. TDD: Implement Fix (Green)
-
-Implement the **minimal fix** to make the test pass. Avoid scope creep.
-
-**Run the test and confirm it passes:**
-
-```bash
-go test ./path/to/package/... -run TestName -v
-```
-
-- **If the test PASSES** → The fix works. Proceed to step 6.
-- **If the test FAILS** → The fix is incomplete. Iterate until the test passes.
-
-Do not proceed until the test passes.
-
-### 6. Verify
-
-Run the full verification checklist. **All must pass before proceeding:**
-
-- **Build**: `go build ./...` — confirm compilation succeeds
-- **All tests**: `go test ./...` — confirm ALL tests pass (not just the new one)
-- **Lint**: `golangci-lint run` (if available) — confirm no lint issues
-- **Build logs**: If a dev server is running (Air, Vite, Webpack, etc.), check its log output for errors
-
-If any step fails, fix the issue and re-run until all green.
-
-### 6.5. Coverage Verification
-
-Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow Steps A through F with these parameters:
-
-| Variable | Value |
-|----------|-------|
-| `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (from context above) |
-| `STATE_FILE` | Absolute path to `.claude/start-issue-$ISSUE_NUM.loop.local.json` (in the original repo, not the worktree) |
-| `SKIP_COVERAGE` | from parsed flags (default: `false`) |
-| `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
-
-After coverage verification completes (or is skipped), continue to Step 7.
-
-### 7. Security Review
-
-Before submitting, scan for security issues in changed files:
-
-- **Dependency vulnerabilities**: Run `govulncheck ./...` (if available)
-- **Scan changed files** for common Go security issues:
-  - Hardcoded secrets or credentials
-  - SQL injection (string concatenation in queries instead of parameterized)
-  - Path traversal (`filepath.Join` with user input without `filepath.Clean`)
-  - Unsafe `exec.Command` with unsanitized user input
-  - Missing error checks on security-critical operations (crypto, auth, file permissions)
-- **If changes touch auth, crypto, or data handling code**, suggest running `/codex review` with a security focus
-
-### 8. Pre-PR Code Review (Optional)
-
-Consider running `/codex review` for an independent code review before creating the PR. This is optional but recommended for non-trivial changes. If the review surfaces issues, address them before PR creation.
-
-### 9. Submit
-
-Commit and push changes, then create a PR:
-
-1. Stage and commit with a conventional commit message referencing the issue
-2. Push the branch: `git push -u origin <branch>`
-3. **Check for PR template** — look for a template file in these locations (in order):
-   - `.github/pull_request_template.md`
-   - `.github/PULL_REQUEST_TEMPLATE.md`
-   - `.github/PULL_REQUEST_TEMPLATE/` (directory with multiple templates — list and ask user which to use)
-   - `docs/pull_request_template.md`
-   - `docs/PULL_REQUEST_TEMPLATE/` (directory with multiple templates)
-   - `pull_request_template.md` (repo root)
-   - `PULL_REQUEST_TEMPLATE/` (repo root directory with multiple templates)
-4. **If template found**: Read the template and use its exact section structure for the PR body. Fill in every section — do not omit or skip sections. Always include `Fixes #<issue-number>` or `Closes #<issue-number>` even if the template doesn't have a dedicated section for it.
-5. **If no template found**: Use this default format:
-   ```
-   ## Summary
-   <1-3 bullet points describing what changed and why>
-
-   Fixes #<issue-number>
-
-   ## Test Plan
-   <How the changes were tested>
-   ```
-6. Create the PR with heredoc formatting:
-   ```bash
-   gh pr create --title "<type>(<scope>): <subject>" --body "`cat <<'EOF'
-   <filled-in template or default body>
-   EOF
-   `"
-   ```
-
-### 10. Watch CI
-
-After creating the PR, watch CI and fix any failures:
-
-1. Run: `gh pr checks --watch`
-2. **If "no checks reported"**: CI takes time to register after a push. **Wait 10 seconds and retry, up to 3 times**, before concluding there are no checks:
-   ```bash
-   for i in 1 2 3; do sleep 10 && gh pr checks --watch && break; done
-   ```
-   If still no checks after retries, verify the repo actually has CI workflow files:
-   ```bash
-   find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1 | grep -q . || echo "No workflow files found"
-   ```
-   Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. If workflow files exist, the checks are likely still propagating — wait longer and retry.
-3. If checks fail:
-   - Get failure details: `gh pr checks --json name,state,description`
-   - Analyze and fix the failing check (test, lint, build)
-   - Commit and push the fix
-   - Return to step 1
-4. Continue only when all checks pass
-
----
-
-## Feature Workflow
-
-If issue is a **new feature**, follow this workflow:
-
-### 1. Understand Requirements
-
-Review the issue body and comments thoroughly for:
-- Acceptance criteria
-- Edge cases mentioned
-- User expectations
-- Technical constraints
-
-If requirements are ambiguous or incomplete, ask 1-2 targeted clarifying questions using AskUserQuestion before proceeding. Do not guess at requirements.
-
-### 2. Explore Codebase
-
-Search for:
-- Similar existing implementations (grep for related function names, types, patterns)
-- Related components and integration points
-- Coding patterns and conventions to follow
-- Existing tests that cover adjacent behavior
-
-### 3. Design Approach
-
-**HARD GATE: Do NOT start writing tests or code until the user has confirmed the approach.**
-
-Propose 2-3 approaches with concrete trade-offs:
-
-For each approach, briefly describe:
-- What it changes (files, types, APIs)
-- Trade-offs (complexity vs simplicity, performance vs maintainability)
-- Why you would or wouldn't recommend it
-
-Present these to the user and get explicit approval on the chosen approach.
-
-**For trivial features** (single function, obvious implementation with no design decisions): a brief "I'll implement X using Y pattern — proceeding unless you object" with a 5-second pause before continuing is sufficient.
-
-**For non-trivial features** (new package, API changes, data model changes, multiple files): present approaches and WAIT for explicit user approval via AskUserQuestion before proceeding.
-
-### 4. Create Branch (skip if worktree was created)
-
-**REQUIRED unless using a worktree.** Never commit to main/master.
-
+For features:
 ```bash
 git checkout -b "feat/$ISSUE_NUM-<short-desc>"
 ```
@@ -523,61 +321,138 @@ Verify you are on the new branch before proceeding:
 git branch --show-current
 ```
 
-### 5. TDD: Write Tests First (Red)
+### Step 3: Explore Phase
 
-**IRON LAW: No implementation code exists before these tests. If you already wrote implementation code, DELETE IT NOW and write the tests first. No exceptions without explicit user permission.**
+Read `${CLAUDE_PLUGIN_ROOT}/agents/explore-prompt.md` and fill in the template variables:
+- `{ISSUE_TITLE}` — from issue context
+- `{ISSUE_BODY}` — from issue context (body + comments)
+- `{ISSUE_TYPE}` — "bug" or "feature"
+- `{WORKTREE_PATH}` — absolute path to working directory
+- `{REPO_CONVENTIONS}` — from CLAUDE.md or AGENTS.md if present in the repo
 
-Write comprehensive tests covering:
-- Happy path
-- Edge cases
-- Error conditions
-
-Each test should demonstrate ONE intended behavior. If you cannot name the specific behavior being tested, the test is too vague.
-
-**Run the tests and confirm they fail:**
-
-```bash
-go test ./path/to/package/... -run TestName -v -count=1
+Dispatch the Explore subagent:
+```
+Agent(prompt=<filled template>, model=sonnet, subagent_type=Explore)
 ```
 
-**Verify the failures are correct:**
-- Tests MUST fail because the feature is not yet implemented (missing function, wrong return value, unhandled case), NOT because of syntax errors or wrong imports.
-- If you cannot explain exactly why each test fails, the test is wrong.
+Store the results: RELEVANT_FILES, PATTERNS, ROOT_CAUSE (bugs) or INTEGRATION_POINTS (features), PROPOSED_CHANGES, TASK_DECOMPOSITION.
 
-**Red flag: If any test passes immediately, something is wrong.** The test is not testing new functionality — it may be asserting existing behavior or testing the wrong thing. Investigate before proceeding.
+### Step 4: Design Approach (Features Only)
 
-- **If the tests FAIL for the right reasons** → Proceed to step 6.
-- **If the tests PASS** → They are not testing new functionality. Rewrite until they fail.
+**HARD GATE: Do NOT start implementation until the user has confirmed the approach.**
 
-Do not proceed until the tests fail for the correct reasons.
+Using the Explore results, propose 2-3 approaches with concrete trade-offs:
+- What it changes (files, types, APIs)
+- Trade-offs (complexity vs simplicity, performance vs maintainability)
+- Why you would or wouldn't recommend it
 
-### 6. TDD: Implement Feature (Green)
+**For trivial features** (single function, obvious implementation): "I'll implement X using Y pattern — proceeding unless you object" with a 5-second pause.
 
-Build the feature following existing code patterns and conventions. Implement the **minimal code** to make the tests pass.
+**For non-trivial features** (new package, API changes, data model changes): present approaches and WAIT for explicit user approval via AskUserQuestion.
 
-**Run the tests and confirm they pass:**
+### Step 5: Task Decomposition
+
+Using the Explore results and approved approach:
+
+**For bugs:** Typically 1 task — fix the root cause identified in the Explore phase.
+
+**For features:** Decompose into N tasks where each task:
+- Has a clear description of what to implement
+- Lists TARGET_FILES (files to create/modify) — must be disjoint across tasks for parallel dispatch
+- Lists TEST_FILES
+- Lists CONTEXT_FILES (read-only reference files)
+- Notes dependencies on other tasks (empty = independent)
+
+**Parallel dispatch decision:** If ALL tasks have disjoint TARGET_FILES and no dependencies, they can run in parallel. Otherwise, sequential.
+
+### Step 6: Implementation Phase
+
+For each task, read `${CLAUDE_PLUGIN_ROOT}/agents/implementer-prompt.md` and fill in the template variables:
+- `{TASK_DESCRIPTION}` — from task decomposition
+- `{TARGET_FILES}` — files this agent may create/modify
+- `{TEST_FILES}` — test file(s) for this task
+- `{WORKTREE_PATH}` — absolute path to working directory
+- `{PATTERNS}` — from Explore results
+- `{CONTEXT_FILES}` — read-only reference files
+- `{ISSUE_TYPE}` — "bug" or "feature"
+
+**Dispatch:**
+- **Parallel** (independent tasks with disjoint files):
+  ```
+  For each task: Agent(prompt=<filled>, model=sonnet, run_in_background=true)
+  Wait for all to complete. Collect results.
+  ```
+- **Sequential** (dependent tasks or overlapping files):
+  ```
+  For each task in order: Agent(prompt=<filled>, model=sonnet)
+  ```
+
+**Handle subagent status:**
+
+| Status | Action |
+|--------|--------|
+| DONE | Continue to next task or review phase |
+| DONE_WITH_CONCERNS | Evaluate concerns — fix correctness issues before proceeding |
+| NEEDS_CONTEXT | Supply the requested information, re-dispatch the implementer |
+| BLOCKED | Present blockers to user via AskUserQuestion, get guidance |
+
+### Step 7: Spec Compliance Review
+
+After ALL implementation tasks complete, generate the diff:
 
 ```bash
-go test ./path/to/package/... -run TestName -v
+git diff origin/${DEFAULT_BRANCH}...HEAD
 ```
 
-- **If the tests PASS** → The implementation satisfies the requirements. Proceed to step 7.
-- **If the tests FAIL** → The implementation is incomplete. Iterate until all tests pass.
+Read `${CLAUDE_PLUGIN_ROOT}/agents/spec-review-prompt.md` and fill in:
+- `{ISSUE_TITLE}`, `{ISSUE_BODY}`, `{ACCEPTANCE_CRITERIA}` — from issue context
+- `{WORKTREE_PATH}` — working directory
+- `{CHANGED_FILES}` — list of all files changed
+- `{DIFF}` — the full diff
 
-Do not proceed until the tests pass.
+Dispatch:
+```
+Agent(prompt=<filled>, model=opus)
+```
 
-### 7. Verify
+**If VERDICT = FAIL:**
+- Address missing requirements by re-dispatching implementer subagent(s) for the gaps
+- Re-run spec review (max 2 retry cycles)
+
+**If VERDICT = PASS:** Proceed to quality review.
+
+### Step 8: Code Quality Review
+
+Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md` and fill in:
+- `{WORKTREE_PATH}` — working directory
+- `{CHANGED_FILES}` — list of all files changed
+- `{DIFF}` — the full diff
+- `{PATTERNS}` — from Explore results
+- `{REPO_CONVENTIONS}` — from CLAUDE.md or AGENTS.md
+
+Dispatch:
+```
+Agent(prompt=<filled>, model=sonnet)
+```
+
+**If HAS_FINDINGS:**
+- Priority 0-1 (critical/high): Fix these directly, then re-run quality review (max 1 retry)
+- Priority 2-3 (medium/low): Note in PR description but do not block
+
+**If CLEAN:** Proceed to verification.
+
+### Step 9: Verify
 
 Run the full verification checklist. **All must pass before proceeding:**
 
 - **Build**: `go build ./...` — confirm compilation succeeds
-- **All tests**: `go test ./...` — confirm ALL tests pass (not just the new ones)
+- **All tests**: `go test ./...` — confirm ALL tests pass
 - **Lint**: `golangci-lint run` (if available) — confirm no lint issues
-- **Build logs**: If a dev server is running (Air, Vite, Webpack, etc.), check its log output for errors
+- **Build logs**: If a dev server is running, check its log output for errors
 
 If any step fails, fix the issue and re-run until all green.
 
-### 7.5. Coverage Verification
+### Step 9.5: Coverage Verification
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow Steps A through F with these parameters:
 
@@ -588,9 +463,9 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
 | `SKIP_COVERAGE` | from parsed flags (default: `false`) |
 | `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
 
-After coverage verification completes (or is skipped), continue to Step 8.
+After coverage verification completes (or is skipped), continue to Step 10.
 
-### 8. Security Review
+### Step 10: Security Review
 
 Before submitting, scan for security issues in changed files:
 
@@ -603,11 +478,7 @@ Before submitting, scan for security issues in changed files:
   - Missing error checks on security-critical operations (crypto, auth, file permissions)
 - **If changes touch auth, crypto, or data handling code**, suggest running `/codex review` with a security focus
 
-### 9. Pre-PR Code Review (Optional)
-
-Consider running `/codex review` for an independent code review before creating the PR. This is optional but recommended for non-trivial changes. If the review surfaces issues, address them before PR creation.
-
-### 10. Submit
+### Step 11: Submit
 
 Commit and push changes, then create a PR:
 
@@ -640,26 +511,55 @@ Commit and push changes, then create a PR:
    `"
    ```
 
-### 11. Watch CI
+### Step 12: Watch CI
 
 After creating the PR, watch CI and fix any failures:
 
 1. Run: `gh pr checks --watch`
-2. **If "no checks reported"**: CI takes time to register after a push. **Wait 10 seconds and retry, up to 3 times**, before concluding there are no checks:
+2. **If "no checks reported"**: Wait 10 seconds and retry, up to 3 times:
    ```bash
    for i in 1 2 3; do sleep 10 && gh pr checks --watch && break; done
    ```
-   If still no checks after retries, verify the repo actually has CI workflow files:
-   ```bash
-   find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1 | grep -q . || echo "No workflow files found"
-   ```
-   Only conclude there are no CI checks if no `.yml`/`.yaml` workflow files exist. If workflow files exist, the checks are likely still propagating — wait longer and retry.
+   If still no checks after retries, verify CI workflow files exist.
 3. If checks fail:
    - Get failure details: `gh pr checks --json name,state,description`
-   - Analyze and fix the failing check (test, lint, build)
+   - Analyze and fix the failing check
    - Commit and push the fix
    - Return to step 1
 4. Continue only when all checks pass
+
+---
+
+## Manual Workflow (Fallback — `--no-agents`)
+
+**Use this workflow when `NO_AGENTS` is `true`.** This is the single-session flow for simple issues where subagent overhead is not justified.
+
+### Bug Fix (Manual)
+
+1. **Check for duplicates** (same as Step 1 above)
+2. **Create branch** (skip if worktree): `git checkout -b "fix/$ISSUE_NUM-<short-desc>"`
+3. **Explore root cause**: grep for error text, read max 3 files, form hypothesis
+4. **TDD Red — IRON LAW: No fix code before this test.** If you already wrote fix code, DELETE IT. Write a failing test. Run it. Verify it fails FOR THE RIGHT REASON. Red flag: test passes immediately = wrong test.
+5. **TDD Green**: Implement minimal fix. Run test. Verify it passes.
+6. **Verify**: `go build ./...` + `go test ./...` + `golangci-lint run`
+7. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md`, follow Steps A-F
+8. **Security review**: govulncheck, scan for secrets/injection/traversal
+9. **Submit**: commit, push, create PR with template
+10. **Watch CI**: `gh pr checks --watch`, fix failures
+
+### Feature (Manual)
+
+1. **Understand requirements**: Read issue + comments, ask clarifying questions if ambiguous
+2. **Explore codebase**: Find similar implementations, patterns, integration points
+3. **Design approach — HARD GATE**: Propose 2-3 approaches, get user approval before coding
+4. **Create branch** (skip if worktree): `git checkout -b "feat/$ISSUE_NUM-<short-desc>"`
+5. **TDD Red — IRON LAW: No implementation code before these tests.** If you already wrote code, DELETE IT. Write comprehensive tests (happy path, edge cases, errors). Each test = ONE behavior. Run them. Verify they fail FOR THE RIGHT REASONS. Red flag: test passes immediately = wrong test.
+6. **TDD Green**: Implement minimal code. Run tests. Verify all pass.
+7. **Verify**: `go build ./...` + `go test ./...` + `golangci-lint run`
+8. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md`, follow Steps A-F
+9. **Security review**: govulncheck, scan for secrets/injection/traversal
+10. **Submit**: commit, push, create PR with template
+11. **Watch CI**: `gh pr checks --watch`, fix failures
 
 ---
 

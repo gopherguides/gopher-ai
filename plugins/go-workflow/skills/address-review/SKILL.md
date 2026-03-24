@@ -10,7 +10,7 @@ description: |
   NOT for: creating new PRs, performing your own code review, general coding tasks, or
   closing/managing PRs without review context.
 argument-hint: "[PR-number] [--no-watch]"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion"]
+allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion", "Agent"]
 ---
 
 # Address PR Review Comments
@@ -320,7 +320,21 @@ if [ -f "$LOOP_STATE_FILE" ]; then
 fi
 ```
 
-For each unresolved review comment:
+### Parallel Fix Dispatch (when 3+ comments target different files)
+
+When there are 3 or more unresolved comments targeting **different files**, dispatch parallel Implementer subagents:
+
+1. **Group comments by file** — comments in the same file are handled by one subagent
+2. **For each file group**, dispatch an Agent subagent (sonnet) with:
+   - "You are addressing PR review comments in `{FILE_PATH}`. Working directory: `{PROJECT_ROOT}`."
+   - All comments for that file (reviewer text, line number, suggested change)
+   - "For each comment: understand the request, locate the code, make the minimal fix, validate against feedback. Report: files changed, fixes applied, testability of each fix."
+3. **Dispatch all file-group agents in parallel** using `run_in_background: true`
+4. **Collect results** — proceed to Step 4.5 (test generation) with combined fix list
+
+**Fall back to sequential processing** when fewer than 3 comments or all target the same file.
+
+For each unresolved review comment (sequential mode, or when parallel dispatch is not used):
 
 ### 4a. Understand the Request
 Determine what change is requested: code style, logic, docs, test, refactoring? Is it testable (alters observable behavior)?
