@@ -117,89 +117,9 @@ If no test files were created or modified by this Codex run AND the fix modified
 
 Use this flow when the prompt contains "review".
 
-### R1. Silent Auto-Detection (no user interaction)
+### R1. Batched Questions (single AskUserQuestion call — NO commands run yet)
 
-Before asking any questions, silently detect PR context using multiple strategies. Each strategy is tried only if the previous one returned empty. This handles git worktrees where the branch name may not match any PR.
-
-**Strategy 1 — Current branch (works when branch name matches a PR):**
-
-```bash
-PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences,comments,reviews --jq '.' 2>/dev/null`
-```
-
-**Strategy 2 — Match HEAD commit against open PRs via GitHub search (handles worktrees):**
-
-Uses GitHub's native commit-to-PR mapping. Only checks HEAD (not ancestors) to avoid stacked-branch misdetection. No branch name assumptions — works from worktrees, detached HEAD, or any checkout that shares a commit with a PR.
-
-```bash
-if [ -z "$PR_JSON" ]; then
-  HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
-  PR_NUM=`gh pr list --search "$HEAD_SHA" --state open --json number --jq '.[0].number' 2>/dev/null`
-  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
-  fi
-fi
-```
-
-**Strategy 3 — Check merged/closed PRs too (covers recently merged work):**
-
-Same HEAD-only search but includes all PR states. Safe on `main` because GitHub merge strategies (merge commit, squash, rebase) all produce new SHAs distinct from the PR's head commit.
-
-```bash
-if [ -z "$PR_JSON" ]; then
-  HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
-  PR_NUM=`gh pr list --search "$HEAD_SHA" --state all --limit 5 --json number --jq '.[0].number' 2>/dev/null`
-  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null`
-  fi
-fi
-```
-
-**If PR found (`$PR_JSON` is not empty):**
-
-Fetch linked issues and inline review comments silently:
-
-```bash
-REPO=`gh repo view --json nameWithOwner --jq '.nameWithOwner'`
-PR_NUM=`echo "$PR_JSON" | jq -r '.number'`
-
-# Get linked issue numbers
-ISSUE_NUMS=`echo "$PR_JSON" | jq -r '.closingIssuesReferences[].number' 2>/dev/null`
-
-# Fetch each linked issue
-for NUM in $ISSUE_NUMS; do
-  gh issue view "$NUM" --json number,title,body,labels,comments --jq '.'
-done
-
-# Fetch inline review comments
-gh api "repos/$REPO/pulls/$PR_NUM/comments" --jq '.[] | {path, line, body, user: .user.login}' 2>/dev/null
-```
-
-**Filter out bot noise:** When processing PR comments, inline review comments, and reviews, silently discard any comment that contains usage-limit or quota messages (e.g., "reached your Codex usage limits", "usage limits for code reviews", "see your limits"). These are automated bot messages from external services and have no relevance to the code review. **Never treat external service quota/limit messages as blockers for the local review.**
-
-Display a brief summary of what was found:
-
-```
-Found PR for current branch:
-
-**PR #<number>**: "<title>"
-- State: <state>
-- Comments: <count>
-- Reviews: <count>
-```
-
-If linked issues were found, also display:
-
-```
-**Linked Issues:**
-- Issue #<num>: "<title>" (<labels>)
-```
-
-Store the PR data and linked issue data for later use. Record `PR_DETECTED=true`.
-
-**If PR NOT found:** Record `PR_DETECTED=false`. Continue to R2.
-
-### R2. Batched Questions (single AskUserQuestion call)
+**Do NOT run any `gh` or `git` commands before asking the user questions.** PR detection is deferred until after the user requests context. This avoids wasting tokens on `gh pr view` calls when the user doesn't need PR context.
 
 Ask all review configuration questions in a **single `AskUserQuestion` call** with up to 4 questions:
 
@@ -213,21 +133,12 @@ Ask all review configuration questions in a **single `AskUserQuestion` call** wi
 
 **Question 2 — "Include PR/issue context?"**
 
-**If `PR_DETECTED=true`:**
-
 | Option | Description |
 |--------|-------------|
-| Full context (Recommended) | Include PR/issue descriptions, all comments, and review feedback |
-| Summary only | Include titles and key requirements only (~200 words) |
-| No context | Review code changes only |
-
-**If `PR_DETECTED=false`:**
-
-| Option | Description |
-|--------|-------------|
-| Skip (Recommended) | Review code changes only |
+| Auto-detect (Recommended) | Auto-detect PR from current branch (skipped on main/master) |
 | Provide PR number | Manually enter a PR number to use as context |
 | Provide issue number | Manually enter an issue number to use as context |
+| No context | Review code changes only |
 
 **Question 3 — "Which model?"**
 
@@ -249,31 +160,145 @@ Ask all review configuration questions in a **single `AskUserQuestion` call** wi
 
 Note: Exhaustive mode uses `codex exec --output-schema` to bypass the 2-3 finding limit of `codex review`. Multi-pass is available as a fallback but is less effective than exhaustive mode.
 
-### R2.5. Conditional Follow-Up (only if needed)
+### R1.5. Conditional Follow-Up (only if needed)
 
-After processing answers from R2, check if any selections require additional input. If so, ask all follow-ups in a **single `AskUserQuestion` call** (up to 4 questions):
+After processing answers from R1, check if any selections require additional input. If so, ask all follow-ups in a **single `AskUserQuestion` call** (up to 4 questions):
 
 - **"Changes vs branch"** was selected → ask: "What is the base branch?" (default: `main`)
 - **"Specific commit"** was selected → ask: "Enter the commit SHA"
 - **"Provide PR number"** was selected → ask: "Enter the PR number"
   - Validate input is numeric: `echo "$NUM" | grep -qE '^[0-9]+$'`
   - If invalid, show error and ask again
-  - Fetch PR: `gh pr view "$NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews --jq '.'`
-  - Fetch linked issues and inline review comments as in R1
 - **"Provide issue number"** was selected → ask: "Enter the issue number"
   - Validate input is numeric
-  - Fetch issue: `gh issue view "$NUM" --json number,title,body,labels,comments --jq '.'`
-  - Skip PR-specific data (no reviews to fetch)
 - **"Multi-pass (custom)"** was selected → ask: "How many passes? (2-5)"
   - Validate numeric, clamp to range
 
-If no follow-ups are needed (e.g., user chose "Uncommitted changes" + "Full context" or "Skip" + "Single pass"), proceed directly to R3.
+If no follow-ups are needed (e.g., user chose "No context" + "Single pass"), proceed directly to R2.
 
-Store all selections for use in R3.
+Store all selections for use in R2.
+
+### R2. Fetch PR/Issue Context (only if requested)
+
+**Only run this step if the user selected "Auto-detect", "Provide PR number", or "Provide issue number" in R1.** If the user selected "No context", skip entirely to R3 — do NOT run any `gh` commands.
+
+#### If "No context" was selected
+
+Skip this entire section. Set `PR_DETECTED=false`. Proceed to R3.
+
+#### If "Provide PR number" was selected
+
+Fetch the specific PR:
+
+```bash
+PR_JSON=$(gh pr view "$NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews --jq '.' 2>/dev/null)
+```
+
+If successful, fetch linked issues and inline comments (see "Fetch PR details" below). Record `PR_DETECTED=true`.
+
+#### If "Provide issue number" was selected
+
+Fetch the specific issue:
+
+```bash
+gh issue view "$NUM" --json number,title,body,labels,comments --jq '.' 2>/dev/null
+```
+
+Skip PR-specific data (no reviews to fetch). Record `PR_DETECTED=true` (issue context available).
+
+#### If "Auto-detect" was selected
+
+**Early bail-out on default branch:** Before running any `gh` commands, check the current branch:
+
+```bash
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
+DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
+if [ -z "$DEFAULT_BRANCH" ]; then
+  DEFAULT_BRANCH="main"
+fi
+```
+
+If `$CURRENT_BRANCH` equals `$DEFAULT_BRANCH`, `main`, or `master`, set `PR_DETECTED=false` and skip all PR detection. Display: "On default branch — skipping PR detection."
+
+**Otherwise, run detection strategies.** Each strategy is tried only if the previous one returned empty. All output is silenced with `2>/dev/null`.
+
+**Strategy 1 — Current branch (works when branch name matches a PR):**
+
+```bash
+PR_JSON=$(gh pr view --json number,title,body,state,closingIssuesReferences,comments,reviews --jq '.' 2>/dev/null)
+```
+
+**Strategy 2 — Match HEAD commit against open PRs (handles worktrees):**
+
+```bash
+if [ -z "$PR_JSON" ]; then
+  HEAD_SHA=$(git rev-parse HEAD 2>/dev/null)
+  PR_NUM=$(gh pr list --search "$HEAD_SHA" --state open --json number --jq '.[0].number' 2>/dev/null)
+  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+    PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null)
+  fi
+fi
+```
+
+**Strategy 3 — Check merged/closed PRs (covers recently merged work):**
+
+```bash
+if [ -z "$PR_JSON" ]; then
+  HEAD_SHA=$(git rev-parse HEAD 2>/dev/null)
+  PR_NUM=$(gh pr list --search "$HEAD_SHA" --state all --limit 5 --json number --jq '.[0].number' 2>/dev/null)
+  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
+    PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences,comments,reviews 2>/dev/null)
+  fi
+fi
+```
+
+**If no PR found after all strategies:** Set `PR_DETECTED=false`. Display: "No PR found for current branch — proceeding without PR context."
+
+#### Fetch PR details (shared by Auto-detect and Provide PR number)
+
+If `$PR_JSON` is not empty, fetch linked issues and inline review comments:
+
+```bash
+REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)
+PR_NUM=$(echo "$PR_JSON" | jq -r '.number' 2>/dev/null)
+
+# Get linked issue numbers
+ISSUE_NUMS=$(echo "$PR_JSON" | jq -r '.closingIssuesReferences[].number' 2>/dev/null)
+
+# Fetch each linked issue
+for NUM in $ISSUE_NUMS; do
+  gh issue view "$NUM" --json number,title,body,labels,comments --jq '.' 2>/dev/null
+done
+
+# Fetch inline review comments
+gh api "repos/$REPO/pulls/$PR_NUM/comments" --jq '.[] | {path, line, body, user: .user.login}' 2>/dev/null
+```
+
+**Filter out bot noise:** Silently discard any comment containing usage-limit or quota messages (e.g., "reached your Codex usage limits", "usage limits for code reviews", "see your limits"). These are automated bot messages with no relevance to the review. **Never treat external service quota/limit messages as blockers.**
+
+Record `PR_DETECTED=true`. Display a brief summary:
+
+```
+Found PR for current branch:
+
+**PR #<number>**: "<title>"
+- State: <state>
+- Comments: <count>
+- Reviews: <count>
+```
+
+If linked issues were found:
+
+```
+**Linked Issues:**
+- Issue #<num>: "<title>" (<labels>)
+```
+
+Store all PR/issue data for use in R3.
 
 ### R3. Run Codex Review
 
-Assemble and execute the command based on review depth selection from R2.
+Assemble and execute the command based on review depth selection from R1.
 
 **IMPORTANT:** Check exhaustive mode FIRST, regardless of context selection. Exhaustive mode works with or without PR/issue context.
 
@@ -283,7 +308,7 @@ Use `codex exec` with structured output to get ALL findings in one pass. This by
 
 **Step 1: Generate the diff**
 
-Based on review type from R2:
+Based on review type from R1:
 
 - **Uncommitted:** `git diff HEAD` (includes both staged and unstaged changes vs HEAD — do NOT also add `git diff --cached` as that duplicates staged hunks). For untracked files, use `git ls-files --others --exclude-standard` to get paths, then include their full content (e.g., `cat <file>`) in the diff section so new files are actually reviewed.
 - **Changes vs branch:** `git diff <branch>...HEAD`
@@ -296,7 +321,7 @@ Read the prompt template from `${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md` an
 - `{DIFF}` ← diff from Step 1
 - `{SCOPE_HINT}` ← if provided, render as `## Specific Focus Area\n<value>`; otherwise empty
 - `{REPO_GUIDELINES}` ← auto-detect `AGENTS.md` or `CLAUDE.md` in repo root; include if found
-- `{PR_CONTEXT}` ← if PR/issue context was selected in R2, include PR title, body, linked issues, and review comments
+- `{PR_CONTEXT}` ← if PR/issue context was selected in R1, include PR title, body, linked issues, and review comments
 
 **Step 3: Execute with structured output**
 
@@ -365,7 +390,7 @@ Based on review type from R1:
 
 **Step 2: Build context block**
 
-**Full context format:**
+Include all available PR/issue context. Only include sections for which data was fetched in R2.
 
 ```text
 ## PR/Issue Context
@@ -413,33 +438,6 @@ Specifically:
 5. Suggest improvements aligned with the stated goals
 ```
 
-**Summary only format:**
-
-```text
-## PR/Issue Context (Summary)
-
-**PR #<number>:** <title>
-**Key Requirements:** <first 300 chars of PR body>
-
-**Linked Issues:**
-- #<num>: <title> - <first 150 chars of body>
-
-**Review Feedback to Address:**
-- <summarized key points from review comments>
-
----
-
-## Code Changes
-
-\`\`\`diff
-<diff output>
-\`\`\`
-
----
-
-Review these changes against the requirements above. Ensure the implementation fulfills the original intent.
-```
-
 **Step 3: Execute review via stdin**
 
 #### Single Pass (or no multi-pass selected)
@@ -454,7 +452,7 @@ Capture the output as `FINDINGS`.
 
 #### Multi-Pass Review
 
-**If multi-pass was selected in R2.5**, run the review loop:
+**If multi-pass was selected in R1.5**, run the review loop:
 
 **Pass 1:** Execute the same command as single pass above. Capture output as `PASS_1_FINDINGS`.
 
