@@ -132,3 +132,10 @@ count_active_loops() {
   count=$(find_active_loops | wc -l | tr -d ' ')
   echo "$count"
 }
+
+# Wrapper for setup-loop.sh script so it works when sourced as a library
+setup_loop() {
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)"
+  "$script_dir/setup-loop.sh" "$@"
+}
