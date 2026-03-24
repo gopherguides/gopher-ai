@@ -223,11 +223,13 @@ PROMPT_TEMPLATE=$(cat "${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md")
 3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs):
 
 ```bash
-PROMPT_FILE=$(mktemp /tmp/codex-review-prompt.XXXXXX.md)
+PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 REVIEW_JSON=$(codex exec -m "$MODEL" -s read-only \
   --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
   - < "$PROMPT_FILE")
+# Strip codex exec headers (version/config info printed before JSON)
+REVIEW_JSON=$(echo "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
 rm -f "$PROMPT_FILE"
 ```
 

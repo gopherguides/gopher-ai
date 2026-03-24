@@ -303,11 +303,13 @@ Read the prompt template from `${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md` an
 Write the assembled prompt to a temp file to avoid heredoc expansion issues with special characters in diffs:
 
 ```bash
-PROMPT_FILE=$(mktemp /tmp/codex-review-prompt.XXXXXX.md)
+PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 REVIEW_JSON=$(codex exec -m <model> -s read-only \
   --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
   - < "$PROMPT_FILE")
+# Strip codex exec headers (version/config info printed before JSON)
+REVIEW_JSON=$(echo "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
 rm -f "$PROMPT_FILE"
 ```
 

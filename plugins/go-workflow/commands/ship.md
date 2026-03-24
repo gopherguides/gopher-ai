@@ -190,7 +190,7 @@ Use `codex exec` with a structured output schema to get ALL findings in one pass
 2. Create a temporary schema file:
 
 ```bash
-SCHEMA_FILE=$(mktemp /tmp/codex-review-schema.XXXXXX.json)
+SCHEMA_FILE=$(mktemp /tmp/codex-review-schema-XXXXXX)
 cat > "$SCHEMA_FILE" <<'SCHEMA_EOF'
 {"type":"object","properties":{"findings":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string","maxLength":80},"body":{"type":"string","minLength":1},"confidence_score":{"type":"number","minimum":0,"maximum":1},"priority":{"type":"integer","minimum":0,"maximum":3},"category":{"type":"string","enum":["correctness","security","performance","maintainability","developer-experience"]},"code_location":{"type":"object","properties":{"file_path":{"type":"string","minLength":1},"line_range":{"type":"object","properties":{"start":{"type":"integer","minimum":1},"end":{"type":"integer","minimum":1}},"required":["start","end"],"additionalProperties":false}},"required":["file_path","line_range"],"additionalProperties":false}},"required":["title","body","confidence_score","priority","category","code_location"],"additionalProperties":false}},"overall_correctness":{"type":"string","enum":["patch is correct","patch is incorrect"]},"overall_explanation":{"type":"string","minLength":1},"overall_confidence_score":{"type":"number","minimum":0,"maximum":1}},"required":["findings","overall_correctness","overall_explanation","overall_confidence_score"],"additionalProperties":false}
 SCHEMA_EOF
@@ -199,11 +199,13 @@ SCHEMA_EOF
 3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs), then execute:
 
 ```bash
-PROMPT_FILE=$(mktemp /tmp/codex-review-prompt.XXXXXX.md)
+PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 REVIEW_JSON=$(codex exec -m "${MODEL:-gpt-5.4}" -s read-only \
   --output-schema "$SCHEMA_FILE" \
   - < "$PROMPT_FILE")
+# Strip codex exec headers (version/config info printed before JSON)
+REVIEW_JSON=$(echo "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
 rm -f "$PROMPT_FILE" "$SCHEMA_FILE"
 ```
 
