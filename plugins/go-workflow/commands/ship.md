@@ -222,7 +222,7 @@ Rules:
 6. Do NOT stop after finding a few issues — review the ENTIRE diff.
 ```
 
-4. Validate JSON. If invalid, set `CODEX_EXEC_FALLBACK=true` and treat output as free-text `FINDINGS`.
+4. Validate JSON. If invalid or empty, this is a review failure — do NOT fall through to the free-text clean-review path. Warn the user: "Codex exec returned invalid output. Review did not complete." Ask whether to retry, fall back to `codex review --base`, or abort.
 
 **Gemini:**
 

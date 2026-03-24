@@ -285,7 +285,7 @@ Use `codex exec` with structured output to get ALL findings in one pass. This by
 
 Based on review type from R2:
 
-- **Uncommitted:** `git diff HEAD` combined with `git diff --cached`. For untracked files, use `git ls-files --others --exclude-standard` to get paths, then include their full content (e.g., `cat <file>`) in the diff section so new files are actually reviewed.
+- **Uncommitted:** `git diff HEAD` (includes both staged and unstaged changes vs HEAD — do NOT also add `git diff --cached` as that duplicates staged hunks). For untracked files, use `git ls-files --others --exclude-standard` to get paths, then include their full content (e.g., `cat <file>`) in the diff section so new files are actually reviewed.
 - **Changes vs branch:** `git diff <branch>...HEAD`
 - **Specific commit:** `git show <sha>`
 

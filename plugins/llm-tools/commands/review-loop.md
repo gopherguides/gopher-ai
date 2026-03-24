@@ -196,7 +196,7 @@ Read the updated `pass:` value from the state file into `PASS` for use in this p
 Based on `REVIEW_SCOPE`:
 
 - **Changes vs branch:** `git diff ${BASE_BRANCH}...HEAD`
-- **Uncommitted changes:** `git diff HEAD` combined with `git diff --cached`. For untracked files, use `git ls-files --others --exclude-standard` to get paths, then include their full content (e.g., `cat <file>`) in the diff section so new files are actually reviewed by `codex exec`.
+- **Uncommitted changes:** `git diff HEAD` (includes both staged and unstaged changes vs HEAD — do NOT also add `git diff --cached` as that duplicates staged hunks). For untracked files, use `git ls-files --others --exclude-standard` to get paths, then include their full content (e.g., `cat <file>`) in the diff section so new files are actually reviewed by `codex exec`.
 - **Specific files:** `git diff ${BASE_BRANCH}...HEAD -- <file_paths>`
 
 ### 5b. Run LLM Review
@@ -231,7 +231,7 @@ REVIEW_JSON=$(codex exec -m "$MODEL" -s read-only \
 rm -f "$PROMPT_FILE"
 ```
 
-4. Validate JSON was returned. If `codex exec` returns non-JSON output, set `CODEX_EXEC_FALLBACK=true` and treat the output as free-text `FINDINGS` (fall through to Step 6b).
+4. Validate JSON was returned. If `codex exec` returns non-JSON or empty output, this is a review failure — do NOT fall through to the free-text clean-review path (which would treat empty output as `NO_ISSUES_FOUND`). Instead, warn the user: "Codex exec returned invalid output. Review did not complete." Ask whether to retry the pass, fall back to `codex review` for this pass, or skip the review.
 
 **Codex (quick mode — `--quick` flag):**
 
