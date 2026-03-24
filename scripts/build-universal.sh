@@ -112,6 +112,15 @@ build_gemini() {
             done
         fi
 
+        if [[ -d "${plugin_dir}agents/" ]]; then
+            mkdir -p "$ext_dir/agents"
+            for agent_file in "${plugin_dir}agents/"*.md; do
+                if [[ -f "$agent_file" ]]; then
+                    cp "$agent_file" "$ext_dir/agents/"
+                fi
+            done
+        fi
+
         if [[ -d "${plugin_dir}commands/" ]]; then
             for cmd_file in "${plugin_dir}commands/"*.md; do
                 if [[ -f "$cmd_file" ]]; then

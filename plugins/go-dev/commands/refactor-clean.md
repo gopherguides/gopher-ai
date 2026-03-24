@@ -1,7 +1,7 @@
 ---
 argument-hint: "[path] [--dry-run]"
 description: "Find and remove dead Go code, orphaned tests, and complexity issues"
-allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
+allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "Agent"]
 ---
 
 **If `$ARGUMENTS` is empty or not provided:**
@@ -103,6 +103,33 @@ go version
 | `goimports` | Unused import cleanup | `go build` error parsing for unused imports |
 
 If no specialized tools are available, inform the user which tools would improve results and offer to install them, but proceed with manual analysis regardless.
+
+### Parallel Analysis Dispatch
+
+**Dispatch all 4 analysis categories as parallel Explore subagents for speed.** Each subagent gets a focused analysis scope and returns structured findings.
+
+Launch 4 Agent calls in a SINGLE message (parallel dispatch):
+
+1. **Unused Exports Agent** (sonnet, Explore) — "Analyze unused exported functions and types in `$TARGET_PATH`. Use staticcheck -checks U1000 if available, deadcode if available, or manual grep fallback. Exclude main/init, cmd/ packages, interface implementations, generated files (*_templ.go, *_mock.go, *.pb.go), vendor/. Report: file, line, symbol, type, confidence."
+
+2. **Orphaned Tests Agent** (sonnet, Explore) — "Find orphaned test files in `$TARGET_PATH`. For each *_test.go, check if corresponding source exists and tested functions still exist. Verify via `go list` before flagging test-only directories. Report: test file, issue type, details."
+
+3. **Complexity Agent** (sonnet, Explore) — "Identify complex functions in `$TARGET_PATH`. Use gocyclo -over 15 or gocognit -over 15 if available, or count nesting depth/branches manually for functions >50 lines. Report: file, line, function, score, extraction suggestion."
+
+4. **Import Cleanup Agent** (sonnet, Explore) — "Find unused imports in `$TARGET_PATH`. Use goimports -l if available, or parse `go build` output. Flag side-effect imports for review only (do NOT mark as auto-removable). Report: file, import, issue type."
+
+Each subagent should include in its prompt:
+- The available tools detected in Step 2
+- The `TARGET_PATH` and module path from go.mod
+- Instructions to use absolute paths and `cd` to the project root
+
+Collect all 4 results, then proceed to Step 7 (Present Findings Report) with the aggregated findings.
+
+**If any subagent fails or returns empty results**, fall through to the manual analysis steps below for that category only.
+
+### Manual Analysis Steps (Fallback)
+
+The following steps are used as fallback when subagent dispatch fails, or as reference for what each subagent should do. When subagent dispatch succeeds, skip directly to Step 7.
 
 ### 3. Analyze Unused Exported Functions and Types
 

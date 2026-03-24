@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--llm codex|gemini|ollama] [--max-passes <n>] [--quick] [scope hint]"
 description: "Iterative LLM review loop: review, fix, verify, repeat until clean"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion"]
+allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---
 
 # Iterative LLM Review Loop
@@ -375,6 +375,25 @@ Set phase to `fixing`:
 ```bash
 set_loop_phase ".claude/review-loop.loop.local.json" "fixing"
 ```
+
+### Parallel Fix Dispatch (when 3+ findings target different files)
+
+When structured findings (codex exec mode) contain 3 or more findings targeting **different files**, dispatch parallel Implementer subagents for faster resolution:
+
+1. **Group findings by file** — findings in the same file must be handled sequentially (one subagent per file group)
+2. **Group by test file** — if two source files share the same `_test.go` (same package), they must be in the same group to avoid write conflicts on test files
+3. **For each file group**, dispatch an Agent subagent (sonnet) with this prompt:
+   - "You are fixing review findings in `{FILE_PATH}`. Working directory: `{PROJECT_ROOT}`."
+   - Include all findings for that file (title, body, line range, priority, category)
+   - "For each finding: read the file, evaluate validity, fix if valid (skip if not), generate test if testable. Report STATUS, FILES_CHANGED, TEST_RESULTS, SKIPPED findings with reasons."
+3. **Dispatch all file-group agents in parallel** using `run_in_background: true`
+4. **Collect results** — aggregate FIXED and SKIPPED counts across all subagents
+5. **Proceed to Step 8** (Verify Phase) with combined results
+
+**Fall back to sequential processing** (steps 7a/7b below) when:
+- Fewer than 3 findings (subagent overhead not justified)
+- Findings are free-text (not structured JSON — harder to distribute)
+- All findings target the same file
 
 ### 7a. Structured findings (codex exec mode)
 
