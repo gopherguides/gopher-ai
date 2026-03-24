@@ -195,16 +195,15 @@ cat > "$SCHEMA_FILE" <<'SCHEMA_EOF'
 SCHEMA_EOF
 ```
 
-3. Execute:
+3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs), then execute:
 
 ```bash
+PROMPT_FILE=$(mktemp /tmp/codex-review-prompt.XXXXXX.md)
+echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 REVIEW_JSON=$(codex exec -m "${MODEL:-gpt-5.4}" -s read-only \
   --output-schema "$SCHEMA_FILE" \
-  - <<'PROMPT_EOF'
-$ASSEMBLED_PROMPT
-PROMPT_EOF
-)
-rm -f "$SCHEMA_FILE"
+  - < "$PROMPT_FILE")
+rm -f "$PROMPT_FILE" "$SCHEMA_FILE"
 ```
 
 The review prompt must include these instructions:

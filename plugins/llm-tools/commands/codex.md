@@ -305,7 +305,7 @@ Use `codex exec` with structured output to get ALL findings in one pass. This by
 
 Based on review type from R2:
 
-- **Uncommitted:** `git diff HEAD && git diff --cached && git ls-files --others --exclude-standard`
+- **Uncommitted:** `git diff HEAD` combined with `git diff --cached`. For untracked files, use `git ls-files --others --exclude-standard` to get paths, then include their full content (e.g., `cat <file>`) in the diff section so new files are actually reviewed.
 - **Changes vs branch:** `git diff <branch>...HEAD`
 - **Specific commit:** `git show <sha>`
 
@@ -320,19 +320,21 @@ Read the prompt template from `${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md` an
 
 **Step 3: Execute with structured output**
 
+Write the assembled prompt to a temp file to avoid heredoc expansion issues with special characters in diffs:
+
 ```bash
+PROMPT_FILE=$(mktemp /tmp/codex-review-prompt.XXXXXX.md)
+echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 REVIEW_JSON=$(codex exec -m <model> -s read-only \
   --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
-  - <<'PROMPT_EOF'
-$ASSEMBLED_PROMPT
-PROMPT_EOF
-)
+  - < "$PROMPT_FILE")
+rm -f "$PROMPT_FILE"
 ```
 
 **Step 4: Parse structured JSON**
 
 1. Validate JSON. If invalid, log warning and treat as free-text `FINDINGS`.
-2. Filter findings with `confidence_score < 0.3`.
+2. Filter findings with `confidence_score < 0.3` FIRST, then check for clean result (zero findings after filtering also triggers clean path).
 3. Sort by priority (0 first), then confidence (highest first).
 4. Store as `FINDINGS` for R4.
 

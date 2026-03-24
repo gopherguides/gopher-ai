@@ -220,15 +220,15 @@ PROMPT_TEMPLATE=$(cat "${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md")
 - `{REPO_GUIDELINES}` ← auto-detect `AGENTS.md` in repo root; if found, render as `## Repository Review Guidelines\n$(cat AGENTS.md)`; else check `CLAUDE.md`; otherwise empty string
 - `{PR_CONTEXT}` ← if PR was detected in Step 4a, render PR number, title, body, and linked issues; otherwise empty string
 
-3. Execute with structured output:
+3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs):
 
 ```bash
+PROMPT_FILE=$(mktemp /tmp/codex-review-prompt.XXXXXX.md)
+echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 REVIEW_JSON=$(codex exec -m "$MODEL" -s read-only \
   --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
-  - <<'PROMPT_EOF'
-$ASSEMBLED_PROMPT
-PROMPT_EOF
-)
+  - < "$PROMPT_FILE")
+rm -f "$PROMPT_FILE"
 ```
 
 4. Validate JSON was returned. If `codex exec` returns non-JSON output, set `CODEX_EXEC_FALLBACK=true` and treat the output as free-text `FINDINGS` (fall through to Step 6b).
@@ -306,20 +306,15 @@ When `LLM_CHOICE` is `codex` and `QUICK_MODE` is `false` and `CODEX_EXEC_FALLBAC
 
 1. Validate JSON: `echo "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, log a warning and fall through to Step 6b with `FINDINGS="$REVIEW_JSON"`.
 
-2. Extract findings:
+2. Extract and filter findings:
 
 ```bash
-FINDING_COUNT=$(echo "$REVIEW_JSON" | jq '.findings | length')
 OVERALL=$(echo "$REVIEW_JSON" | jq -r '.overall_correctness')
 OVERALL_EXPLANATION=$(echo "$REVIEW_JSON" | jq -r '.overall_explanation')
 OVERALL_CONFIDENCE=$(echo "$REVIEW_JSON" | jq -r '.overall_confidence_score')
 ```
 
-3. If `FINDING_COUNT == 0` and `OVERALL` is `"patch is correct"`:
-   - If `PASS == 1`: Ask user to confirm scope is correct. If confirmed → output `<done>REVIEW_CLEAN</done>`.
-   - If `PASS > 1`: Clean verification pass. Output summary and `<done>REVIEW_CLEAN</done>`.
-
-4. Filter low-confidence noise — discard findings with `confidence_score < 0.3`:
+3. Filter low-confidence noise FIRST — discard findings with `confidence_score < 0.3`:
 
 ```bash
 FILTERED_JSON=$(echo "$REVIEW_JSON" | jq '{
@@ -330,6 +325,14 @@ FILTERED_JSON=$(echo "$REVIEW_JSON" | jq '{
 }')
 FINDING_COUNT=$(echo "$FILTERED_JSON" | jq '.findings | length')
 ```
+
+4. Check for clean review AFTER filtering (so filtered-to-zero also triggers clean path):
+
+If `FINDING_COUNT == 0` and `OVERALL` is `"patch is correct"`:
+   - If `PASS == 1`: Ask user to confirm scope is correct. If confirmed → output `<done>REVIEW_CLEAN</done>`.
+   - If `PASS > 1`: Clean verification pass. Output summary and `<done>REVIEW_CLEAN</done>`.
+
+If `FINDING_COUNT == 0` but `OVERALL` is `"patch is incorrect"`: display `overall_explanation` as a warning but treat as clean (no actionable findings survived filtering).
 
 5. Sort by priority (0 first), then confidence (highest first).
 
