@@ -1115,6 +1115,22 @@ Step 13: merging
 | `addressing` | Resume addressing bot review feedback (Steps 2-11 of address-review) |
 | `merging` | Resume merge attempt |
 
+## Verification Gate (HARD — applies before ANY completion signal)
+
+Before outputting `<done>SHIPPED</done>`, every claim MUST have FRESH evidence from THIS session:
+
+1. **"Tests pass"** → show actual `go test` output with "ok" lines and zero failures. Not "I ran the tests earlier" — run them NOW.
+2. **"Build succeeds"** → show actual `go build ./...` output with exit code 0.
+3. **"CI passes"** → show actual `gh pr checks` output with all checks green.
+4. **"Bot approvals received"** → show actual `gh pr reviews` output with APPROVED states.
+5. **"PR merged"** → show actual merge output or `gh pr view` showing MERGED state.
+
+**Red-flag language check** — if you are about to write any of the following, STOP and run verification instead:
+- "should work" / "should be fine"
+- "probably" / "likely"
+- "I believe" / "I think"
+- "Done!" / "Shipped!" without preceding command output showing proof
+
 ## Completion Criteria
 
 Output `<done>SHIPPED</done>` ONLY when ALL of these are true:
@@ -1124,9 +1140,9 @@ Output `<done>SHIPPED</done>` ONLY when ALL of these are true:
 3. E2E smoke tests passed (or skipped — no web components / MCP unavailable)
 4. Changes pushed to remote
 5. PR exists
-6. CI passes (or no CI configured)
-7. Bot approvals received (or no bots configured)
-8. PR merged (or `--no-merge` specified)
+6. CI passes (or no CI configured) — with output shown above
+7. Bot approvals received (or no bots configured) — with output shown above
+8. PR merged (or `--no-merge` specified) — with output shown above
 
 **Safety note:** If you've iterated 15+ times without completion, document what's blocking and ask the user for guidance.
 

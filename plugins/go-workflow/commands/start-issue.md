@@ -338,18 +338,26 @@ git branch --show-current
 
 ### 4. TDD: Write Failing Test (Red)
 
+**IRON LAW: No fix code exists before this test. If you already wrote fix code, DELETE IT NOW and write the test first. No exceptions without explicit user permission.**
+
 Write a test that reproduces the bug and **fails**. This proves the bug exists and will verify the fix.
 
 **Run the test and confirm it fails:**
 
 ```bash
-go test ./path/to/package/... -run TestName -v
+go test ./path/to/package/... -run TestName -v -count=1
 ```
 
-- **If the test FAILS** → The test correctly reproduces the bug. Proceed to step 5.
-- **If the test PASSES** → The test does NOT reproduce the bug. Rewrite the test until it fails, proving the bug exists.
+**Verify the failure is correct:**
+- The test MUST fail because of the bug (missing behavior, wrong output, panic), NOT because of a syntax error, wrong import, or typo in the test itself.
+- If you cannot explain exactly why the test fails, the test is wrong. Fix the test, not the code.
 
-Do not proceed until the test fails.
+**Red flag: If the test passes immediately, something is wrong.** The test is not testing what you think. It may be testing a different code path, using stale data, or asserting the wrong thing. Investigate before proceeding — do NOT move on to writing fix code.
+
+- **If the test FAILS for the right reason** → Proceed to step 5.
+- **If the test PASSES** → The test does NOT reproduce the bug. Rewrite until it fails.
+
+Do not proceed until the test fails for the correct reason.
 
 ### 5. TDD: Implement Fix (Green)
 
@@ -469,27 +477,38 @@ If issue is a **new feature**, follow this workflow:
 
 ### 1. Understand Requirements
 
-Review the issue body and comments for:
+Review the issue body and comments thoroughly for:
 - Acceptance criteria
 - Edge cases mentioned
 - User expectations
 - Technical constraints
 
+If requirements are ambiguous or incomplete, ask 1-2 targeted clarifying questions using AskUserQuestion before proceeding. Do not guess at requirements.
+
 ### 2. Explore Codebase
 
 Search for:
-- Similar existing implementations
-- Related components
-- Coding patterns to follow
-- Integration points
+- Similar existing implementations (grep for related function names, types, patterns)
+- Related components and integration points
+- Coding patterns and conventions to follow
+- Existing tests that cover adjacent behavior
 
-### 3. Plan Approach
+### 3. Design Approach
 
-Before coding, outline:
-- Files to create/modify
-- Data structures needed
-- API changes (if any)
-- Test coverage plan
+**HARD GATE: Do NOT start writing tests or code until the user has confirmed the approach.**
+
+Propose 2-3 approaches with concrete trade-offs:
+
+For each approach, briefly describe:
+- What it changes (files, types, APIs)
+- Trade-offs (complexity vs simplicity, performance vs maintainability)
+- Why you would or wouldn't recommend it
+
+Present these to the user and get explicit approval on the chosen approach.
+
+**For trivial features** (single function, obvious implementation with no design decisions): a brief "I'll implement X using Y pattern — proceeding unless you object" with a 5-second pause before continuing is sufficient.
+
+**For non-trivial features** (new package, API changes, data model changes, multiple files): present approaches and WAIT for explicit user approval via AskUserQuestion before proceeding.
 
 ### 4. Create Branch (skip if worktree was created)
 
@@ -506,21 +525,31 @@ git branch --show-current
 
 ### 5. TDD: Write Tests First (Red)
 
+**IRON LAW: No implementation code exists before these tests. If you already wrote implementation code, DELETE IT NOW and write the tests first. No exceptions without explicit user permission.**
+
 Write comprehensive tests covering:
 - Happy path
 - Edge cases
 - Error conditions
 
+Each test should demonstrate ONE intended behavior. If you cannot name the specific behavior being tested, the test is too vague.
+
 **Run the tests and confirm they fail:**
 
 ```bash
-go test ./path/to/package/... -run TestName -v
+go test ./path/to/package/... -run TestName -v -count=1
 ```
 
-- **If the tests FAIL** → Tests correctly define the expected behavior. Proceed to step 6.
-- **If the tests PASS** → The tests are not testing new functionality. Rewrite until they fail against the current (unimplemented) code.
+**Verify the failures are correct:**
+- Tests MUST fail because the feature is not yet implemented (missing function, wrong return value, unhandled case), NOT because of syntax errors or wrong imports.
+- If you cannot explain exactly why each test fails, the test is wrong.
 
-Do not proceed until the tests fail.
+**Red flag: If any test passes immediately, something is wrong.** The test is not testing new functionality — it may be asserting existing behavior or testing the wrong thing. Investigate before proceeding.
+
+- **If the tests FAIL for the right reasons** → Proceed to step 6.
+- **If the tests PASS** → They are not testing new functionality. Rewrite until they fail.
+
+Do not proceed until the tests fail for the correct reasons.
 
 ### 6. TDD: Implement Feature (Green)
 
@@ -634,18 +663,35 @@ After creating the PR, watch CI and fix any failures:
 
 ---
 
+## Verification Gate (HARD — applies before ANY completion signal)
+
+Before outputting `<done>COMPLETE</done>`, every claim MUST have FRESH evidence from THIS session:
+
+1. **"Tests pass"** → show actual `go test` output with "ok" lines and zero failures. Not "I ran the tests earlier" — run them NOW.
+2. **"Build succeeds"** → show actual `go build ./...` output with exit code 0.
+3. **"Lint clean"** → show actual `golangci-lint run` output.
+4. **"CI passes"** → show actual `gh pr checks` output with all checks green.
+
+**Red-flag language check** — if you are about to write any of the following, STOP and run verification instead:
+- "should work" / "should be fine"
+- "probably" / "likely"
+- "I believe this fixes..." / "I think this resolves..."
+- "Done!" / "Complete!" without preceding command output showing proof
+
+**Do NOT commit, push, or create a PR without fresh verification evidence.**
+
 ## Completion Criteria
 
 **DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
 
 1. Code changes are implemented and address the issue
-2. Tests are written and ALL PASS (`go test ./...` or equivalent)
+2. Tests are written and ALL PASS (`go test ./...` or equivalent) — with output shown above
 3. Coverage verified or skipped (per `--skip-coverage` flag)
-4. Linting passes (`golangci-lint run` or equivalent)
+4. Linting passes (`golangci-lint run` or equivalent) — with output shown above
 5. Changes are committed with a proper commit message
 6. Changes are pushed to the remote branch
 7. PR is created and the PR URL is displayed
-8. CI checks pass (`gh pr checks` shows all green)
+8. CI checks pass (`gh pr checks` shows all green) — with output shown above
 
 **When ALL criteria are met, output exactly:**
 
