@@ -218,9 +218,9 @@ if [ -z "$DEFAULT_BRANCH" ]; then
 fi
 ```
 
-If `$CURRENT_BRANCH` equals `$DEFAULT_BRANCH`, `main`, or `master`, set `PR_DETECTED=false` and skip all PR detection. Display: "On default branch — skipping PR detection."
+If `$CURRENT_BRANCH` equals `$DEFAULT_BRANCH`, `main`, or `master`: skip the automatic strategies (they would match unrelated merged PRs). Instead, ask the user via `AskUserQuestion`: "On default branch — auto-detect skipped. Enter a PR number for context, or press Enter to proceed without context." If the user provides a PR number, fetch it (same as "Provide PR number" path). Otherwise set `PR_DETECTED=false`.
 
-**Otherwise, run detection strategies.** Each strategy is tried only if the previous one returned empty. All output is silenced with `2>/dev/null`.
+**If NOT on the default branch, run detection strategies.** Each strategy is tried only if the previous one returned empty. All output is silenced with `2>/dev/null`.
 
 **Strategy 1 — Current branch (works when branch name matches a PR):**
 
@@ -252,7 +252,7 @@ if [ -z "$PR_JSON" ]; then
 fi
 ```
 
-**If no PR found after all strategies:** Set `PR_DETECTED=false`. Display: "No PR found for current branch — proceeding without PR context."
+**If no PR found after all strategies:** Ask the user via `AskUserQuestion`: "No PR found for current branch. Enter a PR number for context, or press Enter to proceed without context." If the user provides a PR number, fetch it (same as "Provide PR number" path). Otherwise set `PR_DETECTED=false`.
 
 #### Fetch PR details (shared by Auto-detect and Provide PR number)
 
@@ -390,7 +390,11 @@ Based on review type from R1:
 
 **Step 2: Build context block**
 
-Include all available PR/issue context. Only include sections for which data was fetched in R2.
+Include PR/issue context fetched in R2. Only include sections for which data exists.
+
+**Size guard:** Before assembling, estimate the total context size (PR body + issue bodies + comments). If the combined text exceeds ~4000 characters, use the **Summary format** to avoid crowding the diff out of the model context. Otherwise use the **Full format**.
+
+**Full format:**
 
 ```text
 ## PR/Issue Context
@@ -436,6 +440,33 @@ Specifically:
 3. Identify any requirements from the issue that may be missing
 4. Flag any code that contradicts the original intent
 5. Suggest improvements aligned with the stated goals
+```
+
+**Summary format** (used when context exceeds ~4000 chars):
+
+```text
+## PR/Issue Context (Summary)
+
+**PR #<number>:** <title>
+**Key Requirements:** <first 300 chars of PR body>
+
+**Linked Issues:**
+- #<num>: <title> - <first 150 chars of body>
+
+**Review Feedback to Address:**
+- <summarized key points from review comments>
+
+---
+
+## Code Changes
+
+\`\`\`diff
+<diff output>
+\`\`\`
+
+---
+
+Review these changes against the requirements above. Ensure the implementation fulfills the original intent.
 ```
 
 **Step 3: Execute review via stdin**
