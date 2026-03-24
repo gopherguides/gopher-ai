@@ -41,7 +41,7 @@ Parse `$ARGUMENTS`:
 - If argument is a file path (ends in `.md`): validate that single file
 - If argument is a directory path: validate all `.md` files under it
 - `--json`: Output structured JSON instead of markdown report
-- Default scope (no path): `plugins/*/commands/*.md` and `plugins/*/skills/*/SKILL.md`
+- Default scope (no path): `plugins/*/commands/*.md` and `plugins/*/skills/**/*.md`
 
 Strip `--json` from arguments before parsing the path.
 
@@ -63,7 +63,7 @@ find <directory> -name '*.md' -type f | sort
 
 ```bash
 find plugins/*/commands -name '*.md' -type f 2>/dev/null | sort
-find plugins/*/skills -name 'SKILL.md' -type f 2>/dev/null | sort
+find plugins/*/skills -name '*.md' -type f 2>/dev/null | sort
 ```
 
 Also include any `.md` files in the `shared/commands/` directory.
@@ -100,13 +100,13 @@ Report: "Extracted N code blocks from M files."
 
 ## Step 3: Layer 1 — Static Analysis
 
-### 3a. Syntax Check (bash -n)
+### 3a. Syntax Check
 
-For each extracted code block:
+For each extracted code block, dispatch by language tag:
 
-```bash
-bash -n "$TMPDIR/block-NNN.sh" 2>&1
-```
+- `bash` or `shell` → `bash -n "$TMPDIR/block-NNN.sh" 2>&1`
+- `sh` → `sh -n "$TMPDIR/block-NNN.sh" 2>&1` (POSIX mode)
+- `zsh` → `zsh -n "$TMPDIR/block-NNN.sh" 2>&1` (if `zsh` is available, otherwise skip with info note)
 
 Record any syntax errors with the original file path and line offset.
 
@@ -118,10 +118,14 @@ Check if ShellCheck is available:
 command -v shellcheck >/dev/null 2>&1 && echo "available" || echo "not available"
 ```
 
-**If ShellCheck is available**, run it on each block:
+**If ShellCheck is available**, run it on each block with the appropriate shell dialect:
+
+- `bash` or `shell` → `--shell=bash`
+- `sh` → `--shell=sh`
+- `zsh` → skip ShellCheck (not supported by ShellCheck)
 
 ```bash
-shellcheck --format=json --shell=bash \
+shellcheck --format=json --shell=<detected-shell> \
   --exclude=SC1091 \
   --exclude=SC2086 \
   --exclude=SC2034 \
@@ -139,15 +143,17 @@ Parse the JSON output. Map ShellCheck line numbers back to original markdown lin
 
 ## Step 4: Layer 2 — Command Classification
 
-For each code block, parse the first command on each line and classify into tiers:
+For each code block, parse **ALL commands on each line** — including chained commands separated by `;`, `&&`, `||`, and pipe targets after `|`. A block's tier is the **highest (most restrictive) tier** of ANY command found anywhere in the block (RED > YELLOW > GREEN). This prevents destructive commands from hiding behind a GREEN prefix (e.g., `echo ok; rm -rf /`).
 
 ### GREEN (read-only, safe to execute)
 
-`echo`, `cat`, `grep`, `rg`, `jq`, `mktemp`, `ls`, `pwd`, `date`, `command`, `basename`, `dirname`, `wc`, `sort`, `head`, `tail`, `tr`, `cut`, `awk`, `sed` (without `-i`), `printf`, `test`, `[`, `true`, `false`, `type`, `which`, `readlink`, `realpath`, `stat`, `file`, `diff`, `comm`, `uniq`, `tee` (to /tmp only), `env`, `export`
+`echo`, `cat`, `grep`, `rg`, `jq`, `mktemp`, `ls`, `pwd`, `date`, `command`, `basename`, `dirname`, `wc`, `sort`, `head`, `tail`, `tr`, `cut`, `sed` (without `-i`), `printf`, `test`, `[`, `true`, `false`, `type`, `which`, `readlink`, `realpath`, `stat`, `file`, `diff`, `comm`, `uniq`, `export`
 
 ### YELLOW (conditionally safe, syntax check only)
 
-`git log`, `git status`, `git diff`, `git branch`, `git show`, `git rev-parse`, `git remote`, `find` (without `-exec`, `-delete`, `-execdir`), `curl` (without pipe to `sh`/`bash`/`eval`), `wget` (without pipe to `sh`/`bash`/`eval`), `go build`, `go vet`, `go test`, `go list`, `go mod`, `go version`, `golangci-lint`, `npm`, `npx`, `node`, `docker`, `gh`
+`awk`, `env`, `tee`, `find` (without `-exec`, `-delete`, `-execdir`), `git log`, `git status`, `git diff`, `git branch`, `git show`, `git rev-parse`, `git remote`, `curl` (without pipe to `sh`/`bash`/`eval`), `wget` (without pipe to `sh`/`bash`/`eval`), `go build`, `go vet`, `go test`, `go list`, `go mod`, `go version`, `golangci-lint`, `npm`, `npx`, `node`, `docker`, `gh`
+
+**Note:** `awk`, `env`, and `tee` are YELLOW because they can execute arbitrary subprocesses (`awk 'BEGIN{system(...)}'`, `env bash -c '...'`) or write to arbitrary files.
 
 ### RED (never execute, report as warning)
 
@@ -178,18 +184,35 @@ Known plugin runtime variables to detect:
 
 For blocks containing only GREEN-tier commands and no unresolvable template variables:
 
+Detect the timeout command (macOS does not ship GNU `timeout`):
+
 ```bash
-timeout 5 env -i \
+if command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="gtimeout"
+elif command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout"
+else
+  TIMEOUT_CMD=""
+fi
+```
+
+If no timeout command is available, skip execution and report as `info`: "No `timeout` or `gtimeout` available — skipping safe execution. Install coreutils for execution support."
+
+Execute with the detected timeout command:
+
+```bash
+$TIMEOUT_CMD 5 env -i \
   HOME=/tmp \
   TMPDIR=/tmp \
-  PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
+  PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
   bash --restricted "$TMPDIR/block-NNN.sh" 2>&1
 ```
 
 Guardrails:
-- **Timeout**: 5 seconds per block
+- **Timeout**: 5 seconds per block (via `gtimeout` on macOS, `timeout` on Linux)
 - **Restricted bash** (`bash --restricted`): Prevents `cd`, changing `PATH`, redirecting output to files outside `/tmp`
 - **Clean environment** (`env -i`): No inherited secrets or config
+- **PATH includes `/opt/homebrew/bin`**: Ensures tools installed via Homebrew on Apple Silicon are available
 - **Write restriction**: Only `/tmp` is writable
 
 Record exit code and any stderr output. Non-zero exit codes become `warning` findings.
