@@ -190,7 +190,7 @@ Use `codex exec` with a structured output schema to get ALL findings in one pass
 2. Create a temporary schema file:
 
 ```bash
-SCHEMA_FILE=$(mktemp /tmp/codex-review-schema.XXXXXX.json)
+SCHEMA_FILE=$(mktemp /tmp/codex-review-schema-XXXXXX)
 cat > "$SCHEMA_FILE" <<'SCHEMA_EOF'
 {"type":"object","properties":{"findings":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string","maxLength":80},"body":{"type":"string","minLength":1},"confidence_score":{"type":"number","minimum":0,"maximum":1},"priority":{"type":"integer","minimum":0,"maximum":3},"category":{"type":"string","enum":["correctness","security","performance","maintainability","developer-experience"]},"code_location":{"type":"object","properties":{"file_path":{"type":"string","minLength":1},"line_range":{"type":"object","properties":{"start":{"type":"integer","minimum":1},"end":{"type":"integer","minimum":1}},"required":["start","end"],"additionalProperties":false}},"required":["file_path","line_range"],"additionalProperties":false}},"required":["title","body","confidence_score","priority","category","code_location"],"additionalProperties":false}},"overall_correctness":{"type":"string","enum":["patch is correct","patch is incorrect"]},"overall_explanation":{"type":"string","minLength":1},"overall_confidence_score":{"type":"number","minimum":0,"maximum":1}},"required":["findings","overall_correctness","overall_explanation","overall_confidence_score"],"additionalProperties":false}
 SCHEMA_EOF
@@ -199,11 +199,18 @@ SCHEMA_EOF
 3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs), then execute:
 
 ```bash
-PROMPT_FILE=$(mktemp /tmp/codex-review-prompt.XXXXXX.md)
+PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 REVIEW_JSON=$(codex exec -m "${MODEL:-gpt-5.4}" -s read-only \
   --output-schema "$SCHEMA_FILE" \
   - < "$PROMPT_FILE")
+# Strip codex exec headers (version/config info printed before JSON)
+REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
+# Guard: if stripping removed all output, codex exec returned no JSON
+if [ -z "$REVIEW_JSON" ]; then
+  echo "WARNING: codex exec produced no JSON output after header stripping"
+  REVIEW_JSON='{"error":"no JSON output"}'
+fi
 rm -f "$PROMPT_FILE" "$SCHEMA_FILE"
 ```
 
@@ -284,7 +291,7 @@ This ensures `/ship` can always complete a review pass even without codex/gemini
 
 When `LLM_CHOICE` is `codex` and `CODEX_EXEC_FALLBACK` is not `true`:
 
-1. Validate JSON: `echo "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, fall through to free-text parsing.
+1. Validate JSON: `printf '%s\n' "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, fall through to free-text parsing.
 2. Extract findings count, overall correctness, and confidence via `jq`.
 3. Filter findings with `confidence_score < 0.3` (likely false positives).
 4. If zero findings and `overall_correctness` is `"patch is correct"`: review is clean → set `REVIEW_CLEAN=true` and persist to state file. Skip Step 6 but still run Step 7. Proceed to Steps 7.5 and 7.6, skip Step 8's loop-back, proceed to Step 9.

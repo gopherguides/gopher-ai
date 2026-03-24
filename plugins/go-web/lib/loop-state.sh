@@ -132,3 +132,18 @@ count_active_loops() {
   count=$(find_active_loops | wc -l | tr -d ' ')
   echo "$count"
 }
+
+# Wrapper for setup-loop.sh script so it works when sourced as a library
+# Compatible with both bash (BASH_SOURCE) and zsh (CLAUDE_PLUGIN_ROOT)
+setup_loop() {
+  local script_dir
+  if [ -n "${BASH_SOURCE[0]:-}" ]; then
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)"
+  elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    script_dir="${CLAUDE_PLUGIN_ROOT}/scripts"
+  else
+    echo "Error: Cannot locate setup-loop.sh (set CLAUDE_PLUGIN_ROOT)" >&2
+    return 1
+  fi
+  "$script_dir/setup-loop.sh" "$@"
+}
