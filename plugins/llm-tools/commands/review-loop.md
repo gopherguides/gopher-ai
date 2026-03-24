@@ -24,11 +24,11 @@ Store as `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE` (default: `false`), and `SCOPE
 ```bash
 STATE_FILE=".claude/review-loop.loop.local.json"
 TMP="$STATE_FILE.tmp"
-jq --arg args "$ARGUMENTS" --argjson pass 0 \
-   '. + {args: $args, pass: $pass}' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+jq --arg args "$ARGUMENTS" --argjson pass 0 --arg quick_mode "$QUICK_MODE" \
+   '. + {args: $args, pass: $pass, quick_mode: $quick_mode}' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
-This ensures stop-hook re-entry can restore the original configuration.
+This ensures stop-hook re-entry can restore the original configuration (including `QUICK_MODE`).
 
 ## 2. Prerequisite Check
 
@@ -67,9 +67,9 @@ fi
 
 If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from the persisted fields using `jq`:
 
-1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `SCOPE_HINT`
+1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE`, `SCOPE_HINT`
 2. Read `pass` field via `jq -r '.pass // 0' "$STATE_FILE"` to restore the current pass count
-3. Read `scope`, `base_branch`, `model`, `file_paths` fields via `jq -r '.field // empty' "$STATE_FILE"` to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`
+3. Read `scope`, `base_branch`, `model`, `file_paths`, `quick_mode` fields via `jq -r '.field // empty' "$STATE_FILE"` to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`, `QUICK_MODE`
 
 Then skip to the corresponding phase:
 
@@ -196,7 +196,7 @@ Read the updated `pass:` value from the state file into `PASS` for use in this p
 Based on `REVIEW_SCOPE`:
 
 - **Changes vs branch:** `git diff ${BASE_BRANCH}...HEAD`
-- **Uncommitted changes:** `git diff HEAD` combined with `git diff --cached` and `git ls-files --others --exclude-standard`
+- **Uncommitted changes:** `git diff HEAD` combined with `git diff --cached`. For untracked files, use `git ls-files --others --exclude-standard` to get paths, then include their full content (e.g., `cat <file>`) in the diff section so new files are actually reviewed by `codex exec`.
 - **Specific files:** `git diff ${BASE_BRANCH}...HEAD -- <file_paths>`
 
 ### 5b. Run LLM Review

@@ -273,29 +273,9 @@ Store all selections for use in R3.
 
 ### R3. Run Codex Review
 
-Assemble and execute the command based on what to review and context settings.
+Assemble and execute the command based on review depth selection from R2.
 
-#### If NO PR/Issue Context Selected
-
-Use standard codex review commands (existing behavior):
-
-**For uncommitted changes:**
-
-```bash
-codex review --uncommitted -c model=<model>
-```
-
-**For changes vs branch:**
-
-```bash
-codex review --base <branch> -c model=<model>
-```
-
-**For specific commit:**
-
-```bash
-codex review --commit <sha> -c model=<model>
-```
+**IMPORTANT:** Check exhaustive mode FIRST, regardless of context selection. Exhaustive mode works with or without PR/issue context.
 
 #### If "Exhaustive" Mode Selected
 
@@ -340,7 +320,31 @@ rm -f "$PROMPT_FILE"
 
 Skip to R4 (Report Results).
 
-#### If PR/Issue Context IS Included (Single/Multi-pass modes)
+#### If Single/Multi-pass AND NO PR/Issue Context Selected
+
+Use standard codex review commands:
+
+**For uncommitted changes:**
+
+```bash
+codex review --uncommitted -c model=<model>
+```
+
+**For changes vs branch:**
+
+```bash
+codex review --base <branch> -c model=<model>
+```
+
+**For specific commit:**
+
+```bash
+codex review --commit <sha> -c model=<model>
+```
+
+Capture output as `FINDINGS`. Skip to R4 (or multi-pass loop below).
+
+#### If Single/Multi-pass AND PR/Issue Context IS Included
 
 Use `codex review -` (stdin mode) with the native review pipeline.
 
