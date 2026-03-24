@@ -1,0 +1,97 @@
+{
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          },
+          "confidence_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3,
+            "description": "0=critical, 1=high, 2=medium, 3=low"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "correctness",
+              "security",
+              "performance",
+              "maintainability",
+              "developer-experience"
+            ]
+          },
+          "code_location": {
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "line_range": {
+                "type": "object",
+                "properties": {
+                  "start": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "end": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": ["start", "end"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["file_path", "line_range"],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "title",
+          "body",
+          "confidence_score",
+          "priority",
+          "category",
+          "code_location"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "overall_correctness": {
+      "type": "string",
+      "enum": ["patch is correct", "patch is incorrect"]
+    },
+    "overall_explanation": {
+      "type": "string",
+      "minLength": 1
+    },
+    "overall_confidence_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "required": [
+    "findings",
+    "overall_correctness",
+    "overall_explanation",
+    "overall_confidence_score"
+  ],
+  "additionalProperties": false
+}

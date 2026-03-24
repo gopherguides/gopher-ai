@@ -1,5 +1,5 @@
 ---
-argument-hint: "[--llm codex|gemini|ollama] [--max-passes <n>] [scope hint]"
+argument-hint: "[--llm codex|gemini|ollama] [--max-passes <n>] [--quick] [scope hint]"
 description: "Iterative LLM review loop: review, fix, verify, repeat until clean"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion"]
 ---
@@ -14,20 +14,21 @@ Parse `$ARGUMENTS` to extract:
 
 - `--llm <value>`: LLM to use for reviews. Options: `codex` (default), `gemini`, `ollama`
 - `--max-passes <n>`: Maximum review passes before stopping (default: 5)
+- `--quick`: Use lightweight `codex review` instead of exhaustive `codex exec` (faster but limited to 2-3 findings per pass). Only applies when `--llm codex`.
 - Remaining text: scope hint (e.g., "focus on error handling")
 
-Store as `LLM_CHOICE`, `MAX_PASSES`, and `SCOPE_HINT`.
+Store as `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE` (default: `false`), and `SCOPE_HINT`.
 
 **Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.claude/review-loop.loop.local.json` using `jq`:
 
 ```bash
 STATE_FILE=".claude/review-loop.loop.local.json"
 TMP="$STATE_FILE.tmp"
-jq --arg args "$ARGUMENTS" --argjson pass 0 \
-   '. + {args: $args, pass: $pass}' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+jq --arg args "$ARGUMENTS" --argjson pass 0 --arg quick_mode "$QUICK_MODE" \
+   '. + {args: $args, pass: $pass, quick_mode: $quick_mode}' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
-This ensures stop-hook re-entry can restore the original configuration.
+This ensures stop-hook re-entry can restore the original configuration (including `QUICK_MODE`).
 
 ## 2. Prerequisite Check
 
@@ -66,9 +67,9 @@ fi
 
 If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from the persisted fields using `jq`:
 
-1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `SCOPE_HINT`
+1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE`, `SCOPE_HINT`
 2. Read `pass` field via `jq -r '.pass // 0' "$STATE_FILE"` to restore the current pass count
-3. Read `scope`, `base_branch`, `model`, `file_paths` fields via `jq -r '.field // empty' "$STATE_FILE"` to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`
+3. Read `scope`, `base_branch`, `model`, `file_paths`, `quick_mode` fields via `jq -r '.field // empty' "$STATE_FILE"` to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`, `QUICK_MODE`
 
 Then skip to the corresponding phase:
 
@@ -195,17 +196,49 @@ Read the updated `pass:` value from the state file into `PASS` for use in this p
 Based on `REVIEW_SCOPE`:
 
 - **Changes vs branch:** `git diff ${BASE_BRANCH}...HEAD`
-- **Uncommitted changes:** `git diff HEAD` combined with `git diff --cached` and `git ls-files --others --exclude-standard`
+- **Uncommitted changes:** `git diff HEAD` (includes both staged and unstaged changes vs HEAD — do NOT also add `git diff --cached` as that duplicates staged hunks). For untracked files, use `git ls-files --others --exclude-standard` to get paths, then include their full content (e.g., `cat <file>`) in the diff section so new files are actually reviewed by `codex exec`.
 - **Specific files:** `git diff ${BASE_BRANCH}...HEAD -- <file_paths>`
 
 ### 5b. Run LLM Review
 
 Execute the review based on `LLM_CHOICE`:
 
-**Codex:**
+**Codex (default — exhaustive mode via `codex exec`):**
+
+When `QUICK_MODE` is `false` (the default), use `codex exec` with a structured output schema. This bypasses the 2-3 finding limit of `codex review` and returns ALL findings as structured JSON.
+
+1. Read the prompt template:
 
 ```bash
-# For changes vs branch (native mode):
+PROMPT_TEMPLATE=$(cat "${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md")
+```
+
+2. Build the prompt by replacing `{PLACEHOLDER}` tokens:
+
+- `{DIFF}` ← diff from Step 5a
+- `{SCOPE_HINT}` ← if `SCOPE_HINT` is set, render as `## Specific Focus Area\n$SCOPE_HINT`; otherwise empty string
+- `{REPO_GUIDELINES}` ← auto-detect `AGENTS.md` in repo root; if found, render as `## Repository Review Guidelines\n$(cat AGENTS.md)`; else check `CLAUDE.md`; otherwise empty string
+- `{PR_CONTEXT}` ← if PR was detected in Step 4a, render PR number, title, body, and linked issues; otherwise empty string
+
+3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs):
+
+```bash
+PROMPT_FILE=$(mktemp /tmp/codex-review-prompt.XXXXXX.md)
+echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
+REVIEW_JSON=$(codex exec -m "$MODEL" -s read-only \
+  --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
+  - < "$PROMPT_FILE")
+rm -f "$PROMPT_FILE"
+```
+
+4. Validate JSON was returned. If `codex exec` returns non-JSON or empty output, this is a review failure — do NOT fall through to the free-text clean-review path (which would treat empty output as `NO_ISSUES_FOUND`). Instead, warn the user: "Codex exec returned invalid output. Review did not complete." Ask whether to retry the pass, fall back to `codex review` for this pass, or skip the review.
+
+**Codex (quick mode — `--quick` flag):**
+
+When `QUICK_MODE` is `true`, use the standard `codex review` command. This is faster but limited to 2-3 findings per pass:
+
+```bash
+# For changes vs branch:
 codex review --base "$BASE_BRANCH" -c model="$MODEL"
 
 # For uncommitted:
@@ -213,7 +246,7 @@ codex review --uncommitted -c model="$MODEL"
 
 # For specific files or when scope hint is provided, use stdin:
 DIFF=$(git diff ${BASE_BRANCH}...HEAD -- <files>)
-echo "$DIFF" | codex review -c model="$MODEL" - <<EOF
+codex review -c model="$MODEL" - <<EOF
 $DIFF
 
 ## Review Instructions
@@ -222,6 +255,8 @@ Report each finding with: file path, line number, severity (error/warning/sugges
 If there are no issues, respond with exactly: NO_ISSUES_FOUND
 EOF
 ```
+
+Capture output as free-text `FINDINGS`.
 
 **Gemini:**
 
@@ -265,7 +300,66 @@ Capture the output as `FINDINGS`.
 
 ## 6. Parse Findings
 
-After capturing the LLM review output:
+### 6a. Structured JSON (codex exec mode)
+
+When `LLM_CHOICE` is `codex` and `QUICK_MODE` is `false` and `CODEX_EXEC_FALLBACK` is not `true`:
+
+1. Validate JSON: `echo "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, log a warning and fall through to Step 6b with `FINDINGS="$REVIEW_JSON"`.
+
+2. Extract and filter findings:
+
+```bash
+OVERALL=$(echo "$REVIEW_JSON" | jq -r '.overall_correctness')
+OVERALL_EXPLANATION=$(echo "$REVIEW_JSON" | jq -r '.overall_explanation')
+OVERALL_CONFIDENCE=$(echo "$REVIEW_JSON" | jq -r '.overall_confidence_score')
+```
+
+3. Filter low-confidence noise FIRST — discard findings with `confidence_score < 0.3`:
+
+```bash
+FILTERED_JSON=$(echo "$REVIEW_JSON" | jq '{
+  findings: [.findings[] | select(.confidence_score >= 0.3)],
+  overall_correctness: .overall_correctness,
+  overall_explanation: .overall_explanation,
+  overall_confidence_score: .overall_confidence_score
+}')
+FINDING_COUNT=$(echo "$FILTERED_JSON" | jq '.findings | length')
+```
+
+4. Check for clean review AFTER filtering (so filtered-to-zero also triggers clean path):
+
+If `FINDING_COUNT == 0` and `OVERALL` is `"patch is correct"`:
+   - If `PASS == 1`: Ask user to confirm scope is correct. If confirmed → output `<done>REVIEW_CLEAN</done>`.
+   - If `PASS > 1`: Clean verification pass. Output summary and `<done>REVIEW_CLEAN</done>`.
+
+If `FINDING_COUNT == 0` but `OVERALL` is `"patch is incorrect"`: display `overall_explanation` as a warning but treat as clean (no actionable findings survived filtering).
+
+5. Sort by priority (0 first), then confidence (highest first).
+
+6. Display as formatted table:
+
+```
+## Review Findings (Pass $PASS) — $FINDING_COUNT issues
+
+| # | Priority | Category | File | Lines | Title | Confidence |
+|---|----------|----------|------|-------|-------|------------|
+| 1 | P0 | correctness | api/handler.go | 42-45 | Nil pointer on empty response | 0.95 |
+```
+
+Display `overall_explanation` as a summary below the table.
+
+7. **De-duplicate across passes:** Compare `(file_path, line_range.start, normalized title)` against previous-pass findings stored in state file. Skip duplicates.
+
+8. Store findings in state file for de-duplication and re-entry:
+
+```bash
+jq --argjson f "$FILTERED_JSON" --arg key "findings_pass_$PASS" \
+  '.[$key] = $f.findings' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+```
+
+### 6b. Free-text (codex quick mode / gemini / ollama)
+
+After capturing the LLM review output as `FINDINGS`:
 
 - If output (trimmed) equals exactly `NO_ISSUES_FOUND` or has fewer than 20 characters of content:
   - If `PASS == 1`: Ask user to confirm the scope is correct (first-pass clean review may indicate wrong scope). If user confirms scope is fine → output `<done>REVIEW_CLEAN</done>` and stop.
@@ -282,7 +376,39 @@ Set phase to `fixing`:
 set_loop_phase ".claude/review-loop.loop.local.json" "fixing"
 ```
 
-For each finding from Step 6:
+### 7a. Structured findings (codex exec mode)
+
+When findings are structured JSON from Step 6a, iterate using `jq` and process in priority order (P0 first):
+
+```bash
+for i in $(seq 0 $((FINDING_COUNT - 1))); do
+  FILE=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].code_location.file_path")
+  START=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].code_location.line_range.start")
+  END=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].code_location.line_range.end")
+  TITLE=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].title")
+  BODY=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].body")
+  PRIORITY=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].priority")
+  CATEGORY=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].category")
+  CONFIDENCE=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].confidence_score")
+done
+```
+
+For each finding:
+
+1. Read `$FILE` lines `$START` to `$END` plus surrounding context
+2. Evaluate: Is this valid? Cross-reference with category and confidence.
+3. Auto-skip findings with `priority == 3` AND `confidence < 0.5` (nit-level noise)
+4. If valid: make the fix using Edit tool
+5. If not valid or intentionally skipped: record the reason
+6. For testable fixes (changes observable behavior): generate a corresponding test
+   - Check for existing `_test.go` / `_test.ts` / `test_*.py` files
+   - If table-driven tests exist, add a new case
+   - If no test exists, create one following project conventions
+   - Verify the new test passes
+
+### 7b. Free-text findings (codex quick mode / gemini / ollama)
+
+For each finding from Step 6b:
 
 1. Read the relevant file and surrounding code context
 2. Evaluate the finding — is it valid and actionable?
@@ -373,6 +499,16 @@ Display summary for this pass:
 - Verification status
 
 ## 10. Loop Decision
+
+### Multi-pass optimization for codex exec mode
+
+Since `codex exec` returns ALL findings in a single pass (no artificial limit), additional passes are primarily useful for verification after fixes. When `LLM_CHOICE` is `codex` and `QUICK_MODE` is `false`:
+
+- If pass 1 returned findings and they were all fixed, run ONE verification pass (pass 2) with the same prompt and a fresh diff
+- If pass 2 is clean (zero findings) → stop immediately regardless of `MAX_PASSES`
+- If pass 2 has findings, those are genuinely new issues introduced by fixes → continue normally
+
+### Standard loop decision
 
 Check if we should continue:
 
