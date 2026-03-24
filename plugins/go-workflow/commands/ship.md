@@ -139,8 +139,11 @@ fi
 
 If `LLM_AVAILABLE` is `false`:
 - Set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`
+- **Persist to state file** for re-entry recovery: `jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`
 - Inform the user: "`$LLM_CHOICE` CLI not found — falling back to agent-based code review."
 - Continue to Step 5 (do NOT abort)
+
+**On re-entry (Step 2):** Also restore `USE_AGENT_REVIEW` from state file: `USE_AGENT_REVIEW=$(jq -r '.use_agent_review // empty' "$STATE_FILE")`. If `"true"`, set `CODEX_EXEC_FALLBACK=true`.
 
 ---
 
@@ -254,12 +257,14 @@ EOF
 
 Capture the output as `FINDINGS` (for gemini/ollama) or `REVIEW_JSON` (for codex).
 
+**Error handling for LLM exec:** If the codex/gemini/ollama command exits with a non-zero status or produces no output, set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, then fall through to the agent-based review below instead of aborting.
+
 **Agent-based review (when `USE_AGENT_REVIEW` is `true` or LLM exec fails):**
 
-If the selected LLM CLI is not installed (detected in Step 4) or the exec command fails at runtime, use the agent-based review:
+If the selected LLM CLI is not installed (detected in Step 4) or the exec command fails at runtime (non-zero exit), use the agent-based review:
 
 1. Set `CODEX_EXEC_FALLBACK=true` (tells Step 5c to skip JSON parsing)
-2. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md`
+2. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md` as a base template. **Adapt for the detected project language** — if the project is not Go (no go.mod), replace Go-specific review criteria (Go idioms, `go test -race`, etc.) with language-appropriate equivalents. The prompt's structure (VERDICT, FINDINGS, SUMMARY) remains the same regardless of language.
 3. Fill in template variables:
    - `{WORKTREE_PATH}` — absolute working directory
    - `{CHANGED_FILES}` — list of files in the diff

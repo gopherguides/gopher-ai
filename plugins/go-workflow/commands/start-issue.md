@@ -363,7 +363,7 @@ Using the Explore results and approved approach:
 - Lists CONTEXT_FILES (read-only reference files)
 - Notes dependencies on other tasks (empty = independent)
 
-**Parallel dispatch decision:** If ALL tasks have disjoint TARGET_FILES and no dependencies, they can run in parallel. Otherwise, sequential.
+**Parallel dispatch decision:** If ALL tasks have disjoint TARGET_FILES AND disjoint TEST_FILES (including shared test helpers in the same package) and no dependencies, they can run in parallel. Otherwise, sequential. Two tasks in the same Go package almost always share a `_test.go` file — default to sequential for same-package tasks.
 
 ### Step 6: Implementation Phase
 
@@ -398,10 +398,12 @@ For each task, read `${CLAUDE_PLUGIN_ROOT}/agents/implementer-prompt.md` and fil
 
 ### Step 7: Spec Compliance Review
 
-After ALL implementation tasks complete, generate the diff:
+After ALL implementation tasks complete, determine the default branch and generate the diff:
 
 ```bash
-git diff origin/${DEFAULT_BRANCH}...HEAD
+DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
+git fetch origin "$DEFAULT_BRANCH" 2>/dev/null || true
+git diff "origin/${DEFAULT_BRANCH}...HEAD"
 ```
 
 Read `${CLAUDE_PLUGIN_ROOT}/agents/spec-review-prompt.md` and fill in:
@@ -458,7 +460,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
 
 | Variable | Value |
 |----------|-------|
-| `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (from context above) |
+| `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (compute DEFAULT_BRANCH if not already set: `git remote show origin 2>/dev/null \| grep 'HEAD branch' \| sed 's/.*: //' \|\| echo "main"`) |
 | `STATE_FILE` | Absolute path to `.claude/start-issue-$ISSUE_NUM.loop.local.json` (in the original repo, not the worktree) |
 | `SKIP_COVERAGE` | from parsed flags (default: `false`) |
 | `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
@@ -541,7 +543,7 @@ After creating the PR, watch CI and fix any failures:
 3. **Explore root cause**: grep for error text, read max 3 files, form hypothesis
 4. **TDD Red — IRON LAW: No fix code before this test.** If you already wrote fix code, DELETE IT. Write a failing test. Run it. Verify it fails FOR THE RIGHT REASON. Red flag: test passes immediately = wrong test.
 5. **TDD Green**: Implement minimal fix. Run test. Verify it passes.
-6. **Verify**: `go build ./...` + `go test ./...` + `golangci-lint run`
+6. **Verify**: `go build ./...` + `go test ./...` + `golangci-lint run` (if installed)
 7. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md`, follow Steps A-F
 8. **Security review**: govulncheck, scan for secrets/injection/traversal
 9. **Submit**: commit, push, create PR with template
@@ -555,7 +557,7 @@ After creating the PR, watch CI and fix any failures:
 4. **Create branch** (skip if worktree): `git checkout -b "feat/$ISSUE_NUM-<short-desc>"`
 5. **TDD Red — IRON LAW: No implementation code before these tests.** If you already wrote code, DELETE IT. Write comprehensive tests (happy path, edge cases, errors). Each test = ONE behavior. Run them. Verify they fail FOR THE RIGHT REASONS. Red flag: test passes immediately = wrong test.
 6. **TDD Green**: Implement minimal code. Run tests. Verify all pass.
-7. **Verify**: `go build ./...` + `go test ./...` + `golangci-lint run`
+7. **Verify**: `go build ./...` + `go test ./...` + `golangci-lint run` (if installed)
 8. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md`, follow Steps A-F
 9. **Security review**: govulncheck, scan for secrets/injection/traversal
 10. **Submit**: commit, push, create PR with template

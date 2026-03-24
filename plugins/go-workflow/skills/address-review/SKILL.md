@@ -325,7 +325,8 @@ fi
 When there are 3 or more unresolved comments targeting **different files**, dispatch parallel Implementer subagents:
 
 1. **Group comments by file** — comments in the same file are handled by one subagent
-2. **For each file group**, dispatch an Agent subagent (sonnet) with:
+2. **Group by shared test files** — if two source files are in the same package and share a `_test.go`, they must be in the same group to avoid write conflicts
+3. **For each file group**, dispatch an Agent subagent (sonnet) with:
    - "You are addressing PR review comments in `{FILE_PATH}`. Working directory: `{PROJECT_ROOT}`."
    - All comments for that file (reviewer text, line number, suggested change)
    - "For each comment: understand the request, locate the code, make the minimal fix, validate against feedback. Report: files changed, fixes applied, testability of each fix."
