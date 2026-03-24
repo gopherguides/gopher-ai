@@ -63,7 +63,7 @@ Initialize persistent loop to ensure work continues until complete (uses `$ISSUE
 
 ## Context
 
-- Issue details: !`ISSUE_NUM=$(echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g' | tr -d ' '); gh issue view "$ISSUE_NUM" --json title,state,body,labels,comments --jq '.' 2>/dev/null || echo "Issue not found"`
+- Issue details: !`ISSUE_NUM=$(echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g; s/--no-agents//g' | tr -d ' '); gh issue view "$ISSUE_NUM" --json title,state,body,labels,comments --jq '.' 2>/dev/null || echo "Issue not found"`
 - Current branch: !`git branch --show-current 2>&1 || echo "unknown"`
 - Default branch: !`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"`
 - Repository name: !`basename \`git rev-parse --show-toplevel 2>/dev/null\` 2>/dev/null || echo "unknown"`
@@ -569,7 +569,7 @@ Before outputting `<done>COMPLETE</done>`, every claim MUST have FRESH evidence 
 
 1. **"Tests pass"** → show actual `go test` output with "ok" lines and zero failures. Not "I ran the tests earlier" — run them NOW.
 2. **"Build succeeds"** → show actual `go build ./...` output with exit code 0.
-3. **"Lint clean"** → show actual `golangci-lint run` output.
+3. **"Lint clean"** → show actual `golangci-lint run` output (if golangci-lint is installed; skip this check if unavailable).
 4. **"CI passes"** → show actual `gh pr checks` output with all checks green.
 
 **Red-flag language check** — if you are about to write any of the following, STOP and run verification instead:
@@ -587,7 +587,7 @@ Before outputting `<done>COMPLETE</done>`, every claim MUST have FRESH evidence 
 1. Code changes are implemented and address the issue
 2. Tests are written and ALL PASS (`go test ./...` or equivalent) — with output shown above
 3. Coverage verified or skipped (per `--skip-coverage` flag)
-4. Linting passes (`golangci-lint run` or equivalent) — with output shown above
+4. Linting passes (`golangci-lint run` or equivalent, if installed) — with output shown above
 5. Changes are committed with a proper commit message
 6. Changes are pushed to the remote branch
 7. PR is created and the PR URL is displayed

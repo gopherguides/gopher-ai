@@ -124,25 +124,23 @@ If there are uncommitted changes, ask the user: "There are uncommitted changes. 
 
 ## 4. Prerequisite Check
 
-Verify the selected LLM CLI is installed. Fail fast with install instructions if not found.
+Verify the selected LLM CLI is installed. If not found, **fall back to agent-based review** instead of aborting.
 
 ```bash
+LLM_AVAILABLE=true
 if [ "$LLM_CHOICE" = "codex" ]; then
-  command -v codex >/dev/null 2>&1 || { echo "codex not found. Install: npm install -g @openai/codex"; exit 1; }
+  command -v codex >/dev/null 2>&1 || LLM_AVAILABLE=false
 elif [ "$LLM_CHOICE" = "gemini" ]; then
-  command -v gemini >/dev/null 2>&1 || { echo "gemini not found. Install: npm install -g @google/gemini-cli"; exit 1; }
+  command -v gemini >/dev/null 2>&1 || LLM_AVAILABLE=false
 elif [ "$LLM_CHOICE" = "ollama" ]; then
-  command -v ollama >/dev/null 2>&1 || { echo "ollama not found. Install: brew install ollama"; exit 1; }
+  command -v ollama >/dev/null 2>&1 || LLM_AVAILABLE=false
 fi
 ```
 
-If the check fails, report the error, clean up the loop state file, and **stop without emitting the completion promise** (the PR was NOT shipped):
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
-```
-
-Do NOT output `<done>SHIPPED</done>`. Simply inform the user of the missing prerequisite and stop.
+If `LLM_AVAILABLE` is `false`:
+- Set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`
+- Inform the user: "`$LLM_CHOICE` CLI not found — falling back to agent-based code review."
+- Continue to Step 5 (do NOT abort)
 
 ---
 
@@ -256,21 +254,22 @@ EOF
 
 Capture the output as `FINDINGS` (for gemini/ollama) or `REVIEW_JSON` (for codex).
 
-**Agent-based review (fallback):**
+**Agent-based review (when `USE_AGENT_REVIEW` is `true` or LLM exec fails):**
 
-If the selected LLM CLI is not installed or fails to execute, fall back to dispatching a quality-review subagent instead:
+If the selected LLM CLI is not installed (detected in Step 4) or the exec command fails at runtime, use the agent-based review:
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md`
-2. Fill in template variables:
+1. Set `CODEX_EXEC_FALLBACK=true` (tells Step 5c to skip JSON parsing)
+2. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md`
+3. Fill in template variables:
    - `{WORKTREE_PATH}` — absolute working directory
    - `{CHANGED_FILES}` — list of files in the diff
    - `{DIFF}` — the diff from Step 5a
    - `{PATTERNS}` — "Follow existing project conventions"
    - `{REPO_CONVENTIONS}` — from CLAUDE.md/AGENTS.md if present
-3. Dispatch: `Agent(prompt=<filled>, model=sonnet)`
-4. Parse the agent's structured response:
-   - `CLEAN` verdict → set `REVIEW_CLEAN=true`, skip Step 6
-   - `HAS_FINDINGS` → extract findings list, continue to Step 5c
+4. Dispatch: `Agent(prompt=<filled>, model=sonnet)`
+5. Parse the agent's structured response directly (skip Step 5c JSON parsing):
+   - `CLEAN` verdict → set `REVIEW_CLEAN=true`, persist to state file, skip Step 6
+   - `HAS_FINDINGS` → extract findings from the agent's FINDINGS section, use as free-text findings for Step 6
 
 This ensures `/ship` can always complete a review pass even without codex/gemini/ollama installed.
 
@@ -1140,7 +1139,7 @@ Before outputting `<done>SHIPPED</done>`, every claim MUST have FRESH evidence f
 1. **"Tests pass"** → show actual `go test` output with "ok" lines and zero failures. Not "I ran the tests earlier" — run them NOW.
 2. **"Build succeeds"** → show actual `go build ./...` output with exit code 0.
 3. **"CI passes"** → show actual `gh pr checks` output with all checks green.
-4. **"Bot approvals received"** → show actual `gh pr reviews` output with APPROVED states.
+4. **"Bot approvals received"** → show actual `gh pr view --json reviews --jq '.reviews[] | {author: .author.login, state: .state}'` output with APPROVED states.
 5. **"PR merged"** → show actual merge output or `gh pr view` showing MERGED state.
 
 **Red-flag language check** — if you are about to write any of the following, STOP and run verification instead:

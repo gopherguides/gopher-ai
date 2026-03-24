@@ -381,7 +381,8 @@ set_loop_phase ".claude/review-loop.loop.local.json" "fixing"
 When structured findings (codex exec mode) contain 3 or more findings targeting **different files**, dispatch parallel Implementer subagents for faster resolution:
 
 1. **Group findings by file** — findings in the same file must be handled sequentially (one subagent per file group)
-2. **For each file group**, dispatch an Agent subagent (sonnet) with this prompt:
+2. **Group by test file** — if two source files share the same `_test.go` (same package), they must be in the same group to avoid write conflicts on test files
+3. **For each file group**, dispatch an Agent subagent (sonnet) with this prompt:
    - "You are fixing review findings in `{FILE_PATH}`. Working directory: `{PROJECT_ROOT}`."
    - Include all findings for that file (title, body, line range, priority, category)
    - "For each finding: read the file, evaluate validity, fix if valid (skip if not), generate test if testable. Report STATUS, FILES_CHANGED, TEST_RESULTS, SKIPPED findings with reasons."
