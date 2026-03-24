@@ -78,7 +78,7 @@ check_git_state() {
       echo "Warning: Uncommitted changes detected. Test results may not reflect saved code." >&2
     fi
   fi
-  if echo "$cmd_text" | grep -qE 'git tag|goreleaser release|goreleaser build|gh release'; then
+  if echo "$cmd_text" | grep -qE 'git tag|goreleaser release|goreleaser build|gh release create|gh release upload'; then
     if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
       printf '{"decision":"block","reason":"Uncommitted changes detected. Please commit or stash changes before releasing."}\n'
       exit 0
