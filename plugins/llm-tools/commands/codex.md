@@ -204,7 +204,7 @@ Fetch the specific issue:
 gh issue view "$NUM" --json number,title,body,labels,comments --jq '.' 2>/dev/null
 ```
 
-Skip PR-specific data (no reviews to fetch). Record `PR_DETECTED=true` (issue context available).
+Skip PR-specific data (no reviews to fetch). Record `ISSUE_DETECTED=true` and `PR_DETECTED=false` (issue context available but no PR data).
 
 #### If "Auto-detect" was selected
 
@@ -212,13 +212,10 @@ Skip PR-specific data (no reviews to fetch). Record `PR_DETECTED=true` (issue co
 
 ```bash
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
-DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
-if [ -z "$DEFAULT_BRANCH" ]; then
-  DEFAULT_BRANCH="main"
-fi
+DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main")
 ```
 
-If `$CURRENT_BRANCH` equals `$DEFAULT_BRANCH`, `main`, or `master`: skip the automatic strategies (they would match unrelated merged PRs). Instead, ask the user via `AskUserQuestion`: "On default branch — auto-detect skipped. Enter a PR number for context, or press Enter to proceed without context." If the user provides input, validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
+If `$CURRENT_BRANCH` equals `$DEFAULT_BRANCH`: skip the automatic strategies (they would match unrelated merged PRs). Instead, ask the user via `AskUserQuestion`: "On default branch — auto-detect skipped. Enter a PR number (e.g. `123`), issue number (e.g. `#45`), or press Enter to proceed without context." If the user provides input prefixed with `#`, strip the `#` and use the "Provide issue number" path. Otherwise validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
 
 **If NOT on the default branch, run detection strategies.** Each strategy is tried only if the previous one returned empty. All output is silenced with `2>/dev/null`.
 
@@ -252,7 +249,7 @@ if [ -z "$PR_JSON" ]; then
 fi
 ```
 
-**If no PR found after all strategies:** Ask the user via `AskUserQuestion`: "No PR found for current branch. Enter a PR number for context, or press Enter to proceed without context." If the user provides input, validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
+**If no PR found after all strategies:** Ask the user via `AskUserQuestion`: "No PR found for current branch. Enter a PR number (e.g. `123`), issue number (e.g. `#45`), or press Enter to proceed without context." If the user provides input prefixed with `#`, strip the `#` and use the "Provide issue number" path. Otherwise validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
 
 #### Fetch PR details (shared by Auto-detect and Provide PR number)
 
@@ -321,7 +318,7 @@ Read the prompt template from `${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md` an
 - `{DIFF}` ← diff from Step 1
 - `{SCOPE_HINT}` ← if provided, render as `## Specific Focus Area\n<value>`; otherwise empty
 - `{REPO_GUIDELINES}` ← auto-detect `AGENTS.md` or `CLAUDE.md` in repo root; include if found
-- `{PR_CONTEXT}` ← if `PR_DETECTED` is `true` after R2 completes, include PR title, body, linked issues, and review comments; otherwise leave empty
+- `{PR_CONTEXT}` ← if `PR_DETECTED` is `true`, include PR title, body, linked issues, and review comments. If `ISSUE_DETECTED` is `true` (but no PR), include issue title, body, labels, and comments instead. If neither, leave empty
 
 **Step 3: Execute with structured output**
 
@@ -394,7 +391,7 @@ Include PR/issue context fetched in R2. Only include sections for which data exi
 
 **Size guard:** Before assembling, estimate the total context size (PR body + issue bodies + comments). If the combined text exceeds ~4000 characters, use the **Summary format** to avoid crowding the diff out of the model context. Otherwise use the **Full format**.
 
-**Full format:**
+**Full format — PR context** (use when `PR_DETECTED` is `true`):
 
 ```text
 ## PR/Issue Context
@@ -440,6 +437,40 @@ Specifically:
 3. Identify any requirements from the issue that may be missing
 4. Flag any code that contradicts the original intent
 5. Suggest improvements aligned with the stated goals
+```
+
+**Full format — Issue-only context** (use when `ISSUE_DETECTED` is `true` but `PR_DETECTED` is `false`):
+
+```text
+## Issue Context
+
+### Issue #<number>: <title>
+**Labels:** <labels>
+**Description:**
+<issue body>
+
+**Issue Comments:**
+- @<user>: <comment body>
+
+---
+
+## Code Changes
+
+\`\`\`diff
+<diff output>
+\`\`\`
+
+---
+
+## Review Instructions
+
+Review the code changes above against the requirements from the issue.
+
+Specifically:
+1. Verify the implementation addresses the stated requirements
+2. Identify any requirements from the issue that may be missing
+3. Flag any code that contradicts the original intent
+4. Suggest improvements aligned with the stated goals
 ```
 
 **Summary format** (used when context exceeds ~4000 chars):
