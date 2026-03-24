@@ -78,11 +78,13 @@ Use `awk` to parse the markdown:
 
 ```bash
 awk '
-  /^```(bash|sh|shell|zsh)/ { in_block=1; start=NR+1; lang=$0; gsub(/^```/, "", lang); next }
-  /^```$/ && in_block { in_block=0; print start"-"NR-1" "lang; next }
+  /^[[:space:]]*```(bash|sh|shell|zsh)/ { in_block=1; start=NR+1; lang=$0; sub(/^[[:space:]]*```/, "", lang); next }
+  /^[[:space:]]*```$/ && in_block { in_block=0; print start"-"NR-1" "lang; next }
   in_block { print NR": "$0 }
 ' <file>
 ```
+
+**Note:** The pattern matches fenced blocks with optional leading whitespace (indented blocks inside list items, blockquotes, etc.).
 
 For each block, record:
 - **File path** (relative to project root)
@@ -165,20 +167,30 @@ For each RED-tier command found, emit a **warning** finding (not an error — th
 
 ### 5a. Detect Template Variables
 
-Before executing a block, scan for template variables that cannot be resolved outside the plugin runtime:
+Before executing a block, scan for **known plugin runtime variables** that cannot be resolved outside the plugin context. Use an explicit list — do NOT match all uppercase variables, as that would falsely flag standard shell variables like `$HOME`, `$PATH`, `$PWD`.
 
-```bash
-grep -qE '\$\{?[A-Z_]+(:-[^}]*)?\}?' "$TMPDIR/block-NNN.sh"
+Known plugin runtime variables (match these literally):
+
+```
+$CLAUDE_PLUGIN_ROOT, ${CLAUDE_PLUGIN_ROOT}
+$ARGUMENTS, ${ARGUMENTS}
+$MODEL, ${MODEL}
+$TARGET_PATH, ${TARGET_PATH}
+$STAGED, ${STAGED}
+$DRY_RUN, ${DRY_RUN}
+$REVIEW_JSON, ${REVIEW_JSON}
+$DIFF, ${DIFF}
+$FINDINGS, ${FINDINGS}
+$LLM_CHOICE, ${LLM_CHOICE}
 ```
 
-Known plugin runtime variables to detect:
-- `$CLAUDE_PLUGIN_ROOT`, `${CLAUDE_PLUGIN_ROOT}`
-- `$ARGUMENTS`, `${ARGUMENTS}`
-- `$MODEL`, `${MODEL}`
-- `$TARGET_PATH`, `$STAGED`, `$DRY_RUN`
-- Any `$UPPERCASE_VAR` that is assigned within the block itself is OK — only flag variables that are **used but never assigned** within the block
+```bash
+grep -qE '\$\{?(CLAUDE_PLUGIN_ROOT|ARGUMENTS|MODEL|TARGET_PATH|STAGED|DRY_RUN|REVIEW_JSON|DIFF|FINDINGS|LLM_CHOICE)\}?' "$TMPDIR/block-NNN.sh"
+```
 
-**If unresolvable template variables found**: Skip execution for this block. Report as `info`: "Block contains template variables — skipped execution."
+Standard shell variables (`$HOME`, `$PATH`, `$PWD`, `$USER`, `$TMPDIR`) and variables assigned within the block itself are NOT considered template variables.
+
+**If plugin runtime variables found**: Skip execution for this block. Report as `info`: "Block contains plugin runtime variables — skipped execution."
 
 ### 5b. Execute GREEN Blocks
 
@@ -198,15 +210,21 @@ fi
 
 If no timeout command is available, skip execution and report as `info`: "No `timeout` or `gtimeout` available — skipping safe execution. Install coreutils for execution support."
 
-Execute with the detected timeout command:
+Execute with the detected timeout command, dispatching by the block's language tag:
+
+- `bash` or `shell` → `bash --restricted`
+- `sh` → `sh` (POSIX mode, no `--restricted` flag — not supported by POSIX sh)
+- `zsh` → `zsh` (if available, otherwise skip with info note)
 
 ```bash
 $TIMEOUT_CMD 5 env -i \
   HOME=/tmp \
   TMPDIR=/tmp \
   PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
-  bash --restricted "$TMPDIR/block-NNN.sh" 2>&1
+  <shell-command> "$TMPDIR/block-NNN.sh" 2>&1
 ```
+
+Where `<shell-command>` is `bash --restricted`, `sh`, or `zsh` based on the block's language tag.
 
 Guardrails:
 - **Timeout**: 5 seconds per block (via `gtimeout` on macOS, `timeout` on Linux)
