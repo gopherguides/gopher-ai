@@ -53,7 +53,8 @@ For each file to create or modify:
 Break the work into independent tasks. For each task:
 - **Task N:** description
 - **Target files:** files this task creates/modifies (must be disjoint from other tasks for parallel dispatch)
-- **Test files:** where tests for this task go
+- **Test files:** where tests for this task go (must also be disjoint for parallel dispatch)
+- **Context files:** read-only files this task's implementer should read for reference (existing code, interfaces, types)
 - **Dependencies:** other tasks that must complete first (empty = independent)
 
 ## Rules

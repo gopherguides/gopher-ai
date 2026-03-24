@@ -257,7 +257,7 @@ EOF
 
 Capture the output as `FINDINGS` (for gemini/ollama) or `REVIEW_JSON` (for codex).
 
-**Error handling for LLM exec:** If the codex/gemini/ollama command exits with a non-zero status or produces no output, set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, then fall through to the agent-based review below instead of aborting.
+**Error handling for LLM exec:** If the codex/gemini/ollama command exits with a non-zero status or produces no output, set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, **persist to state file** (`jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`), then fall through to the agent-based review below instead of aborting.
 
 **Agent-based review (when `USE_AGENT_REVIEW` is `true` or LLM exec fails):**
 

@@ -57,10 +57,10 @@ Verify the test PASSES. If it fails, iterate until it passes.
 ### Step 3: Build Check
 
 ```bash
-cd "{WORKTREE_PATH}" && go build ./...
+cd "{WORKTREE_PATH}" && go build ./path/to/your/package/...
 ```
 
-Ensure compilation succeeds across the entire module, not just the package you changed.
+Build ONLY the package you changed, NOT `./...`. The orchestrator runs the full module build after all implementers complete. Running `go build ./...` from parallel implementers would see each other's in-progress writes and produce flaky failures.
 
 ### Step 4: Self-Review
 
