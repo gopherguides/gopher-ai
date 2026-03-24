@@ -306,26 +306,26 @@ Capture the output as `FINDINGS`.
 
 When `LLM_CHOICE` is `codex` and `QUICK_MODE` is `false` and `CODEX_EXEC_FALLBACK` is not `true`:
 
-1. Validate JSON: `echo "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, log a warning and fall through to Step 6b with `FINDINGS="$REVIEW_JSON"`.
+1. Validate JSON: `printf '%s\n' "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, log a warning and fall through to Step 6b with `FINDINGS="$REVIEW_JSON"`.
 
 2. Extract and filter findings:
 
 ```bash
-OVERALL=$(echo "$REVIEW_JSON" | jq -r '.overall_correctness')
-OVERALL_EXPLANATION=$(echo "$REVIEW_JSON" | jq -r '.overall_explanation')
-OVERALL_CONFIDENCE=$(echo "$REVIEW_JSON" | jq -r '.overall_confidence_score')
+OVERALL=$(printf '%s\n' "$REVIEW_JSON" | jq -r '.overall_correctness')
+OVERALL_EXPLANATION=$(printf '%s\n' "$REVIEW_JSON" | jq -r '.overall_explanation')
+OVERALL_CONFIDENCE=$(printf '%s\n' "$REVIEW_JSON" | jq -r '.overall_confidence_score')
 ```
 
 3. Filter low-confidence noise FIRST — discard findings with `confidence_score < 0.3`:
 
 ```bash
-FILTERED_JSON=$(echo "$REVIEW_JSON" | jq '{
+FILTERED_JSON=$(printf '%s\n' "$REVIEW_JSON" | jq '{
   findings: [.findings[] | select(.confidence_score >= 0.3)],
   overall_correctness: .overall_correctness,
   overall_explanation: .overall_explanation,
   overall_confidence_score: .overall_confidence_score
 }')
-FINDING_COUNT=$(echo "$FILTERED_JSON" | jq '.findings | length')
+FINDING_COUNT=$(printf '%s\n' "$FILTERED_JSON" | jq '.findings | length')
 ```
 
 4. Check for clean review AFTER filtering (so filtered-to-zero also triggers clean path):
@@ -403,14 +403,14 @@ When findings are structured JSON from Step 6a, iterate using `jq` and process i
 
 ```bash
 for i in $(seq 0 $((FINDING_COUNT - 1))); do
-  FILE=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].code_location.file_path")
-  START=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].code_location.line_range.start")
-  END=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].code_location.line_range.end")
-  TITLE=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].title")
-  BODY=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].body")
-  PRIORITY=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].priority")
-  CATEGORY=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].category")
-  CONFIDENCE=$(echo "$FILTERED_JSON" | jq -r ".findings[$i].confidence_score")
+  FILE=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].code_location.file_path")
+  START=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].code_location.line_range.start")
+  END=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].code_location.line_range.end")
+  TITLE=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].title")
+  BODY=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].body")
+  PRIORITY=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].priority")
+  CATEGORY=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].category")
+  CONFIDENCE=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].confidence_score")
 done
 ```
 

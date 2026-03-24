@@ -286,7 +286,7 @@ This ensures `/ship` can always complete a review pass even without codex/gemini
 
 When `LLM_CHOICE` is `codex` and `CODEX_EXEC_FALLBACK` is not `true`:
 
-1. Validate JSON: `echo "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, fall through to free-text parsing.
+1. Validate JSON: `printf '%s\n' "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, fall through to free-text parsing.
 2. Extract findings count, overall correctness, and confidence via `jq`.
 3. Filter findings with `confidence_score < 0.3` (likely false positives).
 4. If zero findings and `overall_correctness` is `"patch is correct"`: review is clean → set `REVIEW_CLEAN=true` and persist to state file. Skip Step 6 but still run Step 7. Proceed to Steps 7.5 and 7.6, skip Step 8's loop-back, proceed to Step 9.
