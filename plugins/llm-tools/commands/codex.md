@@ -218,7 +218,7 @@ if [ -z "$DEFAULT_BRANCH" ]; then
 fi
 ```
 
-If `$CURRENT_BRANCH` equals `$DEFAULT_BRANCH`, `main`, or `master`: skip the automatic strategies (they would match unrelated merged PRs). Instead, ask the user via `AskUserQuestion`: "On default branch — auto-detect skipped. Enter a PR number for context, or press Enter to proceed without context." If the user provides a PR number, fetch it (same as "Provide PR number" path). Otherwise set `PR_DETECTED=false`.
+If `$CURRENT_BRANCH` equals `$DEFAULT_BRANCH`, `main`, or `master`: skip the automatic strategies (they would match unrelated merged PRs). Instead, ask the user via `AskUserQuestion`: "On default branch — auto-detect skipped. Enter a PR number for context, or press Enter to proceed without context." If the user provides input, validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
 
 **If NOT on the default branch, run detection strategies.** Each strategy is tried only if the previous one returned empty. All output is silenced with `2>/dev/null`.
 
@@ -252,7 +252,7 @@ if [ -z "$PR_JSON" ]; then
 fi
 ```
 
-**If no PR found after all strategies:** Ask the user via `AskUserQuestion`: "No PR found for current branch. Enter a PR number for context, or press Enter to proceed without context." If the user provides a PR number, fetch it (same as "Provide PR number" path). Otherwise set `PR_DETECTED=false`.
+**If no PR found after all strategies:** Ask the user via `AskUserQuestion`: "No PR found for current branch. Enter a PR number for context, or press Enter to proceed without context." If the user provides input, validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
 
 #### Fetch PR details (shared by Auto-detect and Provide PR number)
 
@@ -321,7 +321,7 @@ Read the prompt template from `${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md` an
 - `{DIFF}` ← diff from Step 1
 - `{SCOPE_HINT}` ← if provided, render as `## Specific Focus Area\n<value>`; otherwise empty
 - `{REPO_GUIDELINES}` ← auto-detect `AGENTS.md` or `CLAUDE.md` in repo root; include if found
-- `{PR_CONTEXT}` ← if PR/issue context was selected in R1, include PR title, body, linked issues, and review comments
+- `{PR_CONTEXT}` ← if `PR_DETECTED` is `true` after R2 completes, include PR title, body, linked issues, and review comments; otherwise leave empty
 
 **Step 3: Execute with structured output**
 
@@ -444,6 +444,8 @@ Specifically:
 
 **Summary format** (used when context exceeds ~4000 chars):
 
+**If PR context is available:**
+
 ```text
 ## PR/Issue Context (Summary)
 
@@ -467,6 +469,31 @@ Specifically:
 ---
 
 Review these changes against the requirements above. Ensure the implementation fulfills the original intent.
+```
+
+**If only issue context is available (no PR):**
+
+```text
+## Issue Context (Summary)
+
+**Issue #<number>:** <title>
+**Labels:** <labels>
+**Key Requirements:** <first 300 chars of issue body>
+
+**Issue Discussion:**
+- <summarized key points from issue comments>
+
+---
+
+## Code Changes
+
+\`\`\`diff
+<diff output>
+\`\`\`
+
+---
+
+Review these changes against the requirements above. Ensure the implementation addresses the issue.
 ```
 
 **Step 3: Execute review via stdin**
