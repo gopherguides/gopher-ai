@@ -175,7 +175,7 @@ After processing answers from R1, check if any selections require additional inp
   fi
   ```
 
-  Display: "Detected base branch: `$BASE_BRANCH`" so the user can override via natural language if wrong.
+  Display: "Detected base branch: `$BASE_BRANCH`". If the user corrects it (e.g., "use `develop`"), update `BASE_BRANCH` accordingly.
 
 - **"Specific commit"** was selected → ask: "Enter the commit SHA"
 - **"Provide PR number"** was selected → ask: "Enter the PR number"
@@ -186,7 +186,7 @@ After processing answers from R1, check if any selections require additional inp
 - **"Multi-pass (custom)"** was selected → ask: "How many passes? (2-5)"
   - Validate numeric, clamp to range
 
-If the only follow-up was the base branch (i.e., "Changes vs branch" selected with no other selections requiring input), the auto-detection above handles it — skip `AskUserQuestion` entirely and proceed directly to R2.
+If the only follow-up was the base branch (i.e., "Changes vs branch" selected with no other selections requiring input), the auto-detection above handles it — skip `AskUserQuestion` and proceed directly to R2. The detected branch is displayed so the user can see it and correct it if needed before the review runs.
 
 If no follow-ups are needed (e.g., user chose "No context" + "Single pass"), proceed directly to R2.
 

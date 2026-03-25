@@ -173,7 +173,7 @@ fi
 echo "Detected base branch: $BASE_BRANCH"
 ```
 
-Display: "Detected base branch: `$BASE_BRANCH`" so the user can override via natural language if wrong.
+Display: "Detected base branch: `$BASE_BRANCH`". If the user corrects it (e.g., "use `develop`"), update `BASE_BRANCH` accordingly.
 
 **Remaining follow-ups** — only ask `AskUserQuestion` if OTHER selections need input:
 
