@@ -88,7 +88,7 @@ Before asking any questions, silently detect PR context using multiple strategie
 **Strategy 1 — Current branch:**
 
 ```bash
-PR_JSON=`gh pr view --json number,title,body,state,closingIssuesReferences --jq '.' 2>/dev/null`
+PR_JSON=`gh pr view --json number,title,body,state,baseRefName,closingIssuesReferences --jq '.' 2>/dev/null`
 ```
 
 **Strategy 2 — Match HEAD commit against open PRs:**
@@ -98,7 +98,7 @@ if [ -z "$PR_JSON" ]; then
   HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
   PR_NUM=`gh pr list --search "$HEAD_SHA" --state open --json number --jq '.[0].number' 2>/dev/null`
   if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences 2>/dev/null`
+    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,closingIssuesReferences 2>/dev/null`
   fi
 fi
 ```
@@ -110,7 +110,7 @@ if [ -z "$PR_JSON" ]; then
   HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
   PR_NUM=`gh pr list --search "$HEAD_SHA" --state all --limit 5 --json number --jq '.[0].number' 2>/dev/null`
   if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,closingIssuesReferences 2>/dev/null`
+    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,closingIssuesReferences 2>/dev/null`
   fi
 fi
 ```
@@ -158,11 +158,28 @@ Show model options based on `LLM_CHOICE`:
 | deepseek-coder | Code-specialized |
 | Custom | Enter model name |
 
-### 4c. Conditional Follow-Up
+### 4c. Auto-Detect Base Branch & Conditional Follow-Up
 
-If "Changes vs branch" was selected, ask for the base branch (default: `main`).
-If "Specific files" was selected, ask for the base branch (default: `main`) AND the file paths.
-If "Custom" model was selected, ask for the model name.
+**Base branch auto-detection** (for "Changes vs branch" or "Specific files" scopes):
+
+Reuse PR data from Step 4a if available, otherwise fall back to remote default:
+
+```bash
+if [ -n "$PR_JSON" ]; then
+  BASE_BRANCH=`echo "$PR_JSON" | jq -r '.baseRefName'`
+else
+  BASE_BRANCH=`(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' | grep .) || (git remote show -n origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep .) || echo "main"`
+fi
+echo "Detected base branch: $BASE_BRANCH"
+```
+
+Display: "Detected base branch: `$BASE_BRANCH`". If the user corrects it (e.g., "use `develop`"), update `BASE_BRANCH` accordingly.
+
+**Remaining follow-ups** — only ask `AskUserQuestion` if OTHER selections need input:
+
+- If "Specific files" was selected → ask for the file paths (base branch is already auto-detected above)
+- If "Custom" model was selected → ask for the model name
+- If no remaining follow-ups are needed, skip `AskUserQuestion` entirely
 
 Store all selections: `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`.
 

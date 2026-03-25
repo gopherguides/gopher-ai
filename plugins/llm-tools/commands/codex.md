@@ -119,7 +119,7 @@ Use this flow when the prompt contains "review".
 
 ### R1. Batched Questions (single AskUserQuestion call — NO commands run yet)
 
-**Do NOT run any `gh` or `git` commands before asking the user questions.** PR detection is deferred until after the user requests context. This avoids wasting tokens on `gh pr view` calls when the user doesn't need PR context.
+**Do NOT run any `gh` or `git` commands before asking the user questions.** PR detection is deferred until after the user requests context. This avoids wasting tokens on `gh pr view` calls when the user doesn't need PR context. Exception: lightweight branch detection (`gh pr view --json baseRefName`, `git remote show origin`) is permitted in R1.5 after R1 answers are collected — these are fast, single-field queries that avoid blocking the user.
 
 Ask all review configuration questions in a **single `AskUserQuestion` call** with up to 4 questions:
 
@@ -164,7 +164,19 @@ Note: Exhaustive mode uses `codex exec --output-schema` to bypass the 2-3 findin
 
 After processing answers from R1, check if any selections require additional input. If so, ask all follow-ups in a **single `AskUserQuestion` call** (up to 4 questions):
 
-- **"Changes vs branch"** was selected → ask: "What is the base branch?" (default: `main`)
+- **"Changes vs branch"** was selected → silently auto-detect the base branch instead of asking:
+
+  ```bash
+  PR_JSON=`gh pr view --json baseRefName --jq '.' 2>/dev/null || echo ""`
+  if [ -n "$PR_JSON" ] && [ "$PR_JSON" != "" ]; then
+    BASE_BRANCH=`echo "$PR_JSON" | jq -r '.baseRefName'`
+  else
+    BASE_BRANCH=`(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' | grep .) || (git remote show -n origin 2>/dev/null | rg 'HEAD branch' | sed 's/.*: //' | grep .) || echo "main"`
+  fi
+  ```
+
+  Display: "Detected base branch: `$BASE_BRANCH`". If the user corrects it (e.g., "use `develop`"), update `BASE_BRANCH` accordingly.
+
 - **"Specific commit"** was selected → ask: "Enter the commit SHA"
 - **"Provide PR number"** was selected → ask: "Enter the PR number"
   - Validate input is numeric: `echo "$NUM" | grep -qE '^[0-9]+$'`
@@ -173,6 +185,8 @@ After processing answers from R1, check if any selections require additional inp
   - Validate input is numeric
 - **"Multi-pass (custom)"** was selected → ask: "How many passes? (2-5)"
   - Validate numeric, clamp to range
+
+If the only follow-up was the base branch (i.e., "Changes vs branch" selected with no other selections requiring input), the auto-detection above handles it — skip `AskUserQuestion` and proceed directly to R2. The detected branch is displayed so the user can see it and correct it if needed before the review runs.
 
 If no follow-ups are needed (e.g., user chose "No context" + "Single pass"), proceed directly to R2.
 
