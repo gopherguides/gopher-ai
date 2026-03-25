@@ -168,7 +168,7 @@ Reuse PR data from Step 4a if available, otherwise fall back to remote default:
 if [ -n "$PR_JSON" ]; then
   BASE_BRANCH=`echo "$PR_JSON" | jq -r '.baseRefName'`
 else
-  BASE_BRANCH=`git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main"`
+  BASE_BRANCH=`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || git remote show -n origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main"`
 fi
 echo "Detected base branch: $BASE_BRANCH"
 ```
