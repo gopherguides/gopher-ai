@@ -171,7 +171,7 @@ After processing answers from R1, check if any selections require additional inp
   if [ -n "$PR_JSON" ] && [ "$PR_JSON" != "" ]; then
     BASE_BRANCH=`echo "$PR_JSON" | jq -r '.baseRefName'`
   else
-    BASE_BRANCH=`git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' || git remote show -n origin 2>/dev/null | rg 'HEAD branch' | sed 's/.*: //' | grep . || echo "main"`
+    BASE_BRANCH=`(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' | grep .) || (git remote show -n origin 2>/dev/null | rg 'HEAD branch' | sed 's/.*: //' | grep .) || echo "main"`
   fi
   ```
 
