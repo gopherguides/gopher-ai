@@ -9,12 +9,13 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | Platform | Status | Install Method |
 |----------|--------|----------------|
 | **Claude Code** | Full support | Plugin marketplace |
-| **OpenAI Codex CLI** | Skills only | Manual or skills installer |
+| **OpenAI Codex CLI** | Skills + workflows | Manual or skills installer |
 | **Google Gemini CLI** | Extensions | Manual install |
 
 **What's included:**
 - 7 modules (go-workflow, go-dev, productivity, gopher-guides, llm-tools, go-web, tailwind)
-- 5 auto-invoked skills for Go best practices, second opinions, and more
+- 6 auto-invoked reference skills for Go best practices, second opinions, and more
+- 7 workflow skills for issue-to-PR automation (available on Claude Code and Codex)
 - 20+ slash commands for development workflows
 
 ## Quick Start
@@ -248,7 +249,25 @@ SHELL=/bin/bash claude
 
 ### OpenAI Codex CLI
 
-Skills are installed to `~/.codex/skills/`. After installation, skills activate automatically based on context. You can also invoke directly with `$skill-name`.
+Skills are installed to `~/.codex/skills/`. After installation, reference skills activate automatically based on context. Workflow skills are invoked explicitly:
+
+```
+$start-issue 42    # Full issue-to-PR workflow
+$create-worktree 42  # Create isolated worktree
+$commit            # Auto-generate commit message
+$create-pr         # Create PR with template
+$ship              # Verify, push, CI watch, merge
+$remove-worktree   # Remove a single worktree
+$prune-worktree    # Batch cleanup completed worktrees
+```
+
+**Repo-local installation** (alternative to global `~/.codex/skills/`):
+
+```bash
+cp -r .agents/skills/ /path/to/your-repo/.agents/skills/
+```
+
+Skills in `.agents/skills/` are automatically discovered by Codex when working in that repo.
 
 ### Google Gemini CLI
 
