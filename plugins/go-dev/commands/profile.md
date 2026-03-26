@@ -74,7 +74,7 @@ data showing WHERE the bottleneck actually is. Measure before AND after every ch
 
    ```bash
    # Check for existing benchmarks
-   grep -rl 'func Bench' --include='*_test.go' ./target/path/ 2>/dev/null
+   rg -l 'func Bench' --glob '*_test.go' ./target/path/ 2>/dev/null
    ```
 
    **If existing benchmarks found:** Use them. Run them to establish baseline.
@@ -190,7 +190,7 @@ data showing WHERE the bottleneck actually is. Measure before AND after every ch
 13. **Check for concurrency patterns:**
 
     ```bash
-    grep -n 'go func\|sync\.\|chan \|<-' ./target/path/*.go 2>/dev/null
+    rg -n 'go func|sync\.|chan |<-' ./target/path/*.go 2>/dev/null
     ```
 
     If no concurrency found, skip to Phase 5.
@@ -275,7 +275,7 @@ For each bottleneck, starting with highest impact:
     | Bottleneck | Optimization |
     |-----------|-------------|
     | Unbuffered I/O reads | Wrap reader in `bufio.NewReader(rd)` |
-    | String concatenation in loop | Use `[]rune` or `strings.Builder` |
+    | String concatenation in loop | Use `strings.Builder` or `[]byte` |
     | Per-call buffer allocation | Accept reusable `[]byte` parameter |
     | Slice growing without capacity | `make([]T, 0, expectedCap)` |
     | `fmt.Sprintf` in hot path | Use `strconv` functions directly |

@@ -339,8 +339,8 @@ Continuous profiling catches performance regressions that only appear under prod
 
 ## Benchmarking Reminders
 
-- Use `b.Loop()` (Go 1.24+) instead of `for i := 0; i < b.N; i++` to prevent compiler
-  from optimizing away the benchmark target
+- Use `b.Loop()` (Go 1.24+) instead of `for i := 0; i < b.N; i++` — prevents compiler
+  from optimizing away the benchmark target. For Go < 1.24, use a sink variable with `b.N`
 - Use `b.ReportAllocs()` or `-benchmem` to track allocations per operation
 - Use `-count=6` minimum for benchstat comparisons (more runs = better statistics)
 - Use `b.StopTimer()`/`b.StartTimer()` to exclude setup from timing
@@ -354,8 +354,8 @@ Understanding relative costs helps prioritize optimizations:
 |-----------|---------|----------|
 | L1 cache reference | 0.5 ns | 1x |
 | Main memory reference | 100 ns | 200x |
-| SSD random read | 16 µs | 32,000x |
-| Disk seek | 10 ms | 20,000,000x |
+| SSD random read (NVMe) | 100 µs | 200,000x |
+| HDD disk seek | 10 ms | 20,000,000x |
 | Network round-trip (same datacenter) | 500 µs | 1,000,000x |
 | Network round-trip (cross datacenter) | 150 ms | 300,000,000x |
 
