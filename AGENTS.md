@@ -24,6 +24,7 @@ Skills are auto-invoked based on context. Install from `dist/codex/skills/`:
 | `second-opinion` | Architecture decisions, security code, "sanity check" |
 | `tailwind-best-practices` | Tailwind CSS classes, themes, utilities |
 | `templui` | Go/Templ web apps, HTMX, Alpine.js |
+| `go-profiling-optimization` | Profiling, pprof, optimization, PGO, "why is this slow" |
 | `gopher-guides` | Go training materials, idiomatic patterns |
 
 ## Installation
@@ -57,6 +58,7 @@ $go-best-practices
 $second-opinion
 $tailwind-best-practices
 $templui
+$go-profiling-optimization
 $gopher-guides
 ```
 
