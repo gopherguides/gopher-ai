@@ -221,7 +221,12 @@ data showing WHERE the bottleneck actually is. Measure before AND after every ch
 
     For each non-empty extracted profile:
     ```bash
-    go tool pprof -top trace-sync.pprof 2>&1 | head -15
+    for prof in trace-net.pprof trace-sync.pprof trace-syscall.pprof trace-sched.pprof; do
+      if [ -s "$prof" ]; then
+        echo "=== $prof ==="
+        go tool pprof -top "$prof" 2>&1 | head -15
+      fi
+    done
     ```
 
     Look for:
@@ -387,11 +392,11 @@ For each bottleneck, starting with highest impact:
 
 1. Baseline benchmarks established with acceptable variance
 2. CPU and memory profiles generated and analyzed
-3. At least one bottleneck identified with profiling evidence
-4. Bottleneck report presented to user
-5. At least one optimization applied and verified with benchstat (p < 0.05)
-6. Tests pass after all optimizations
-7. Final before/after comparison presented
+3. Bottleneck report presented to user (may be empty if code is already optimal)
+4. If bottlenecks found: optimizations applied and verified with benchstat, OR user declined changes
+5. If no bottlenecks found: report that code is already well-optimized with profiling evidence
+6. Tests pass (if optimizations were applied)
+7. Final summary presented
 
 **When ALL criteria are met, output exactly:**
 
