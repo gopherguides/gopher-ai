@@ -1,13 +1,16 @@
 ---
 name: tailwind-best-practices
 description: |
-  TRIGGER when user mentions "Tailwind", "tailwind", "tw-", or "tailwindcss" in their query.
-  Load this skill for every Tailwind-related question including: CSS-to-utility conversion,
-  theme/color configuration, dark mode, content/source path setup, class detection issues,
-  responsive breakpoints, focus-visible/ring accessibility, v3-to-v4 migration, and component
-  styling with utilities. Must be loaded before using any Tailwind MCP tools.
-  DO NOT trigger for: Bootstrap, Bulma, plain CSS without Tailwind mentions, inline styles,
-  or non-styling topics like htmx behavior.
+  TRIGGER when user mentions "Tailwind", "tailwind", "tw-", or "tailwindcss", or when working
+  in any project that uses Tailwind CSS (tailwind in dependencies, tailwind.config.* present,
+  @tailwind/@import "tailwindcss" directives in CSS files). Also activate for styling questions
+  in Tailwind projects even without explicit "Tailwind" keyword — e.g., "why isn't md:w-1/2
+  applying?", "my @source glob isn't picked up", "responsive design", "dark mode", "custom
+  colors", "spacing", "flex/grid layout". Covers: CSS-to-utility conversion, theme/color
+  configuration, dark mode, content/source path setup, class detection issues, responsive
+  breakpoints, focus-visible/ring accessibility, v3-to-v4 migration, component styling.
+  Must be loaded before using any Tailwind MCP tools.
+  DO NOT trigger for: Bootstrap, Bulma, plain CSS without Tailwind context, or non-styling topics.
 ---
 
 # Tailwind CSS v4 Best Practices
