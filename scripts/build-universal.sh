@@ -138,22 +138,21 @@ $prune-worktree
 
 ## Installation
 
-### Plugin Installation (Recommended)
+### Repo-Local (Recommended)
 
-Copy plugins to your Codex plugins directory:
+Codex reads `.agents/plugins/marketplace.json` on startup and discovers all plugins automatically. No manual installation needed when working inside a repo that includes this file.
+
+### Global (Personal) Installation
 
 ```bash
+mkdir -p ~/.codex/plugins ~/.agents/plugins
 cp -r dist/codex/plugins/* ~/.codex/plugins/
+cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
 ```
 
-Or for repo-local discovery, copy the marketplace and plugins:
+Restart Codex after installation.
 
-```bash
-cp -r .agents/ /path/to/your-repo/.agents/
-cp -r plugins/ /path/to/your-repo/plugins/
-```
-
-### Flat Skills Installation (Legacy)
+### Flat Skills (Legacy)
 
 ```bash
 cp -r dist/codex/skills/* ~/.codex/skills/

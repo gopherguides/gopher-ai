@@ -39,14 +39,17 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 ### OpenAI Codex CLI
 
 ```bash
-# Via plugin marketplace (repo-local)
-# Clone the repo — Codex auto-discovers plugins from .agents/plugins/marketplace.json
+# Repo-local (auto-discovered)
+# Clone the repo and run Codex — plugins load from .agents/plugins/marketplace.json
 
-# Or global install
+# Global install
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
 ./scripts/build-universal.sh
+mkdir -p ~/.codex/plugins ~/.agents/plugins
 cp -r dist/codex/plugins/* ~/.codex/plugins/
+cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
+# Restart Codex
 ```
 
 ### Google Gemini CLI
@@ -249,7 +252,11 @@ SHELL=/bin/bash claude
 
 ### OpenAI Codex CLI
 
-Plugins are distributed via the Codex plugin system. Each plugin contains skills that activate automatically or can be invoked explicitly.
+Plugins are distributed via the [Codex plugin system](https://developers.openai.com/codex/plugins). Each plugin contains skills that activate automatically or can be invoked explicitly.
+
+**Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and discovers all plugins automatically. Each plugin has both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` — the same plugin directory serves both platforms.
+
+**Global install:** Copy `dist/codex/plugins/` to `~/.codex/plugins/` and `marketplace.json` to `~/.agents/plugins/`. See Quick Start above.
 
 **Workflow skills** (from `go-workflow` plugin):
 
@@ -263,9 +270,7 @@ $remove-worktree   # Remove a single worktree
 $prune-worktree    # Batch cleanup completed worktrees
 ```
 
-**Repo-local plugin discovery:**
-
-Codex automatically discovers plugins via `.agents/plugins/marketplace.json` at the repo root. Each plugin has a `.codex-plugin/plugin.json` manifest alongside the existing `.claude-plugin/plugin.json` — the same plugin directory serves both platforms.
+**Flat skills (legacy):** Individual skills can also be installed to `~/.codex/skills/` or via `$skill-installer`.
 
 ### Google Gemini CLI
 

@@ -10,7 +10,7 @@ gopher-ai is a Go-focused development toolkit distributed as both Claude Code pl
 
 | Plugin | Description | Skills |
 |--------|-------------|--------|
-| `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review, coverage |
+| `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review |
 | `go-dev` | Go development tools and best practices | go-best-practices, go-profiling-optimization, systematic-debugging, validate-skills |
 | `gopher-guides` | Gopher Guides training materials | gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | second-opinion, gemini-image |
@@ -47,39 +47,61 @@ $prune-worktree
 
 ## Installation
 
-### Plugin Installation (Recommended)
+### Repo-Local (Recommended)
 
-Codex discovers plugins via the `.agents/plugins/marketplace.json` at the repo root. When you clone this repo and run Codex, all plugins are available automatically.
+This repo includes `.agents/plugins/marketplace.json` which Codex reads on startup. When you clone this repo and run Codex inside it, all plugins are discovered automatically — no manual installation needed.
 
-To install plugins globally:
-
-```bash
-git clone https://github.com/gopherguides/gopher-ai
-cd gopher-ai
-./scripts/build-universal.sh
-cp -r dist/codex/plugins/* ~/.codex/plugins/
-```
-
-### Repo-Local Installation
-
-Copy the marketplace and plugins to your project:
+To add these plugins to **your own repo**:
 
 ```bash
+# Copy marketplace and plugin directories
 mkdir -p /path/to/your-repo/.agents/plugins
 cp .agents/plugins/marketplace.json /path/to/your-repo/.agents/plugins/
 cp -r plugins/ /path/to/your-repo/plugins/
 ```
 
-Codex automatically discovers plugins listed in `.agents/plugins/marketplace.json`.
+### Global (Personal) Installation
+
+To make plugins available across all your repos:
+
+```bash
+git clone https://github.com/gopherguides/gopher-ai
+cd gopher-ai
+./scripts/build-universal.sh
+
+# Copy plugins to your personal plugins directory
+mkdir -p ~/.codex/plugins
+cp -r dist/codex/plugins/* ~/.codex/plugins/
+
+# Create personal marketplace (or add entries to existing one)
+mkdir -p ~/.agents/plugins
+cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
+```
+
+Restart Codex after installation.
+
+### Flat Skills (Legacy)
+
+Individual skills can also be installed without the plugin system:
+
+```bash
+cp -r dist/codex/skills/* ~/.codex/skills/
+```
+
+Or use the built-in skill installer for curated skills:
+
+```
+$skill-installer
+```
 
 ## Architecture
 
 ```
 .agents/plugins/
-  marketplace.json       # Codex plugin marketplace
+  marketplace.json       # Codex plugin discovery
 
 .claude-plugin/
-  marketplace.json       # Claude Code plugin marketplace
+  marketplace.json       # Claude Code plugin discovery
 
 plugins/
   <plugin-name>/
