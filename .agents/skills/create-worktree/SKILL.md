@@ -43,12 +43,20 @@ PR_JSON=$(gh pr view "$NUMBER" --json number,title,headRefName 2>/dev/null)
 
 **If PR detected**: Extract the linked issue number from the branch name (`issue-<NUM>-` pattern) or PR body (`Fixes #N`, `Closes #N`). Use the issue number for naming.
 
-**If not a PR**: Treat as an issue number directly.
+**If PR detected but no linked issue found**: Fall back to using the PR number itself as the identifier. Set `ISSUE_NUM=$NUMBER` and use the PR title for naming:
+
+```bash
+ISSUE_NUM=$NUMBER
+PR_TITLE=$(echo "$PR_JSON" | jq -r '.title // empty')
+```
+
+**If not a PR**: Treat as an issue number directly. Set `ISSUE_NUM=$NUMBER`.
 
 Fetch issue/PR details:
 
 ```bash
-gh issue view "$ISSUE_NUM" --json title,state,number
+gh issue view "$ISSUE_NUM" --json title,state,number 2>/dev/null || \
+  gh pr view "$ISSUE_NUM" --json title,state,number
 ```
 
 ### Step 3: Check for Existing Worktree

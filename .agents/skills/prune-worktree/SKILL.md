@@ -72,7 +72,7 @@ For each confirmed worktree:
 
 ```bash
 git worktree remove "$WORKTREE_PATH"
-git branch -D "$BRANCH_NAME" 2>/dev/null || true
+git branch -D "$BRANCH" 2>/dev/null || true
 ```
 
 ### Step 6: Clean Up Stale Entries
