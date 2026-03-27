@@ -4,24 +4,22 @@ Project instructions for OpenAI Codex CLI.
 
 ## Project Overview
 
-gopher-ai is a Go-focused development toolkit providing reference skills and workflow skills for AI-assisted Go development. It contains seven plugin modules available as Claude Code plugins, with key skills and workflows also available for Codex CLI.
+gopher-ai is a Go-focused development toolkit distributed as both Claude Code plugins and Codex plugins. Each plugin bundles related skills that activate automatically or can be invoked explicitly.
 
-## Reference Skills
+## Plugins
 
-Auto-invoked based on context. These provide knowledge and best practices:
+| Plugin | Description | Skills |
+|--------|-------------|--------|
+| `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review, coverage |
+| `go-dev` | Go development tools and best practices | go-best-practices, go-profiling-optimization, systematic-debugging, validate-skills |
+| `gopher-guides` | Gopher Guides training materials | gopher-guides |
+| `llm-tools` | Multi-LLM second opinions and delegation | second-opinion, gemini-image |
+| `go-web` | Go web scaffolding (Templ + HTMX) | templui, htmx |
+| `tailwind` | Tailwind CSS v4 tools | tailwind-best-practices |
 
-| Skill | Triggers |
-|-------|----------|
-| `go-best-practices` | Go code, patterns, reviews, "best way to..." |
-| `go-profiling-optimization` | Profiling, pprof, optimization, PGO, "why is this slow" |
-| `second-opinion` | Architecture decisions, security code, "sanity check" |
-| `tailwind-best-practices` | Tailwind CSS classes, themes, utilities |
-| `templui` | Go/Templ web apps, HTMX, Alpine.js |
-| `gopher-guides` | Go training materials, idiomatic patterns |
+## Workflow Skills (go-workflow plugin)
 
-## Workflow Skills
-
-Issue-to-PR workflow automation. Invoke explicitly with `$skill-name`:
+Invoke explicitly with `$skill-name`:
 
 | Skill | Description |
 |-------|-------------|
@@ -49,68 +47,49 @@ $prune-worktree
 
 ## Installation
 
-### Via Skills Installer
+### Plugin Installation (Recommended)
+
+Codex discovers plugins via the `.agents/plugins/marketplace.json` at the repo root. When you clone this repo and run Codex, all plugins are available automatically.
+
+To install plugins globally:
 
 ```bash
-codex> $skill-installer gopherguides/gopher-ai
-```
-
-### Manual Installation
-
-```bash
-# Clone the repository
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
-
-# Build universal distribution
 ./scripts/build-universal.sh
-
-# Copy skills to Codex
-cp -r dist/codex/skills/* ~/.codex/skills/
+cp -r dist/codex/plugins/* ~/.codex/plugins/
 ```
 
 ### Repo-Local Installation
 
-To add workflow skills directly to your project:
+Copy the marketplace and plugins to your project:
 
 ```bash
-# Copy .agents/skills/ to your repo
-cp -r .agents/skills/ /path/to/your-repo/.agents/skills/
+mkdir -p /path/to/your-repo/.agents/plugins
+cp .agents/plugins/marketplace.json /path/to/your-repo/.agents/plugins/
+cp -r plugins/ /path/to/your-repo/plugins/
 ```
 
-Skills in `.agents/skills/` are automatically discovered by Codex when working in that repo.
-
-## Usage
-
-Reference skills activate automatically. Workflow skills are invoked directly:
-
-```
-$go-best-practices
-$start-issue 42
-$commit
-$create-pr
-$ship
-```
+Codex automatically discovers plugins listed in `.agents/plugins/marketplace.json`.
 
 ## Architecture
 
 ```
-.agents/skills/          # Repo-local Codex workflow skills
-  start-issue/
-  create-worktree/
-  commit/
-  create-pr/
-  ship/
-  remove-worktree/
-  prune-worktree/
+.agents/plugins/
+  marketplace.json       # Codex plugin marketplace
 
-plugins/                 # Claude Code plugins (also distributed as Codex skills)
+.claude-plugin/
+  marketplace.json       # Claude Code plugin marketplace
+
+plugins/
   <plugin-name>/
     .claude-plugin/
-      plugin.json        # Plugin metadata
-    commands/            # Claude Code slash commands (*.md)
-    skills/              # Auto-invoked skills (SKILL.md)
-    agents/              # Agent definitions
+      plugin.json        # Claude Code manifest
+    .codex-plugin/
+      plugin.json        # Codex manifest
+    commands/            # Claude Code slash commands
+    skills/              # Skills (shared by both platforms)
+    agents/              # Claude Code agent definitions
 ```
 
 ## Requirements
@@ -119,21 +98,7 @@ plugins/                 # Claude Code plugins (also distributed as Codex skills
 - Git with worktree support
 - `golangci-lint` (optional, for lint checks)
 
-## Development
-
-```bash
-# Install git hooks
-./scripts/install-hooks.sh
-
-# Build universal distribution
-./scripts/build-universal.sh
-
-# Sync shared files
-./scripts/sync-shared.sh
-```
-
 ## Links
 
 - [Gopher Guides](https://gopherguides.com) - Official Go training
 - [GitHub Repository](https://github.com/gopherguides/gopher-ai)
-- [Claude Code Plugin Docs](https://docs.anthropic.com/claude-code/plugins)

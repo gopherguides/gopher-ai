@@ -9,13 +9,13 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | Platform | Status | Install Method |
 |----------|--------|----------------|
 | **Claude Code** | Full support | Plugin marketplace |
-| **OpenAI Codex CLI** | Skills + workflows | Manual or skills installer |
+| **OpenAI Codex CLI** | Full plugin support | Plugin install or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
 **What's included:**
 - 7 modules (go-workflow, go-dev, productivity, gopher-guides, llm-tools, go-web, tailwind)
 - 6 auto-invoked reference skills for Go best practices, second opinions, and more
-- 7 workflow skills for issue-to-PR automation (available on Claude Code and Codex)
+- 7 workflow skills for issue-to-PR automation (via Codex plugins and Claude Code commands)
 - 20+ slash commands for development workflows
 
 ## Quick Start
@@ -39,14 +39,14 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 ### OpenAI Codex CLI
 
 ```bash
-# Via skills installer
-codex> $skill-installer gopherguides/gopher-ai
+# Via plugin marketplace (repo-local)
+# Clone the repo — Codex auto-discovers plugins from .agents/plugins/marketplace.json
 
-# Or manual installation
+# Or global install
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
 ./scripts/build-universal.sh
-cp -r dist/codex/skills/* ~/.codex/skills/
+cp -r dist/codex/plugins/* ~/.codex/plugins/
 ```
 
 ### Google Gemini CLI
@@ -249,7 +249,9 @@ SHELL=/bin/bash claude
 
 ### OpenAI Codex CLI
 
-Skills are installed to `~/.codex/skills/`. After installation, reference skills activate automatically based on context. Workflow skills are invoked explicitly:
+Plugins are distributed via the Codex plugin system. Each plugin contains skills that activate automatically or can be invoked explicitly.
+
+**Workflow skills** (from `go-workflow` plugin):
 
 ```
 $start-issue 42    # Full issue-to-PR workflow
@@ -261,13 +263,9 @@ $remove-worktree   # Remove a single worktree
 $prune-worktree    # Batch cleanup completed worktrees
 ```
 
-**Repo-local installation** (alternative to global `~/.codex/skills/`):
+**Repo-local plugin discovery:**
 
-```bash
-cp -r .agents/skills/ /path/to/your-repo/.agents/skills/
-```
-
-Skills in `.agents/skills/` are automatically discovered by Codex when working in that repo.
+Codex automatically discovers plugins via `.agents/plugins/marketplace.json` at the repo root. Each plugin has a `.codex-plugin/plugin.json` manifest alongside the existing `.claude-plugin/plugin.json` — the same plugin directory serves both platforms.
 
 ### Google Gemini CLI
 
@@ -379,7 +377,8 @@ cd gopher-ai
 ```
 
 This generates:
-- `dist/codex/` - Codex-compatible skills
+- `dist/codex/plugins/` - Codex plugin packages
+- `dist/codex/skills/` - Flat skills (legacy/backward-compatible)
 - `dist/gemini/` - Gemini extensions
 - `dist/*.tar.gz` - Release archives
 

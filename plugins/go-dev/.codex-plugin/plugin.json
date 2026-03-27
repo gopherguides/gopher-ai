@@ -1,0 +1,20 @@
+{
+  "name": "go-dev",
+  "version": "1.5.0",
+  "description": "Go-specific development tools with idiomatic best practices",
+  "author": {
+    "name": "Gopher Guides",
+    "email": "support@gopherguides.com"
+  },
+  "homepage": "https://gopherguides.com",
+  "repository": "https://github.com/gopherguides/gopher-ai",
+  "license": "MIT",
+  "keywords": ["go", "testing", "lint", "explain", "best-practices"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Go Dev",
+    "shortDescription": "Go-specific development tools with idiomatic best practices",
+    "developerName": "Gopher Guides",
+    "category": "Development"
+  }
+}

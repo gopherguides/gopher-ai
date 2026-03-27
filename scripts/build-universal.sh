@@ -15,37 +15,76 @@ mkdir -p "$DIST_DIR"
 
 build_codex() {
     echo ""
-    echo "Building Codex skills..."
-    echo "------------------------"
+    echo "Building Codex plugins..."
+    echo "-------------------------"
 
     local codex_dir="$DIST_DIR/codex"
-    mkdir -p "$codex_dir/skills"
+    mkdir -p "$codex_dir/plugins" "$codex_dir/skills"
 
+    # Build Codex plugin packages for plugins with .codex-plugin/plugin.json
+    for plugin_dir in "$ROOT_DIR"/plugins/*/; do
+        plugin_name=$(basename "$plugin_dir")
+        if [[ -f "${plugin_dir}.codex-plugin/plugin.json" ]]; then
+            echo "  - Building plugin: $plugin_name"
+            local dest="$codex_dir/plugins/$plugin_name"
+            mkdir -p "$dest/.codex-plugin"
+            cp "${plugin_dir}.codex-plugin/plugin.json" "$dest/.codex-plugin/"
+
+            # Copy skills
+            if [[ -d "${plugin_dir}skills/" ]]; then
+                for skill_dir in "${plugin_dir}skills/"*/; do
+                    if [[ -f "${skill_dir}SKILL.md" ]]; then
+                        skill_name=$(basename "$skill_dir")
+                        mkdir -p "$dest/skills/$skill_name"
+                        cp "${skill_dir}"*.md "$dest/skills/$skill_name/"
+                    fi
+                done
+            fi
+        fi
+    done
+
+    # Generate Codex marketplace manifest
+    echo "  - Generating marketplace.json"
+    generate_codex_marketplace > "$codex_dir/plugins/marketplace.json"
+
+    # Also copy all skills flat for backward compatibility (cp -r dist/codex/skills/)
     for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
         if [[ -f "${skill_dir}SKILL.md" ]]; then
             skill_name=$(basename "$skill_dir")
-            echo "  - Copying skill: $skill_name"
             mkdir -p "$codex_dir/skills/$skill_name"
             cp "${skill_dir}"*.md "$codex_dir/skills/$skill_name/"
         fi
     done
 
-    # Copy repo-local workflow skills from .agents/skills/
-    if [[ -d "$ROOT_DIR/.agents/skills" ]]; then
-        for skill_dir in "$ROOT_DIR"/.agents/skills/*/; do
-            if [[ -f "${skill_dir}SKILL.md" ]]; then
-                skill_name=$(basename "$skill_dir")
-                echo "  - Copying workflow skill: $skill_name"
-                mkdir -p "$codex_dir/skills/$skill_name"
-                cp "${skill_dir}"*.md "$codex_dir/skills/$skill_name/"
-            fi
-        done
-    fi
-
     echo "  - Generating AGENTS.md"
     generate_agents_md > "$codex_dir/AGENTS.md"
 
     echo "  Done: $codex_dir"
+}
+
+generate_codex_marketplace() {
+    local first=true
+    echo '{'
+    echo '  "name": "gopher-ai",'
+    echo '  "plugins": ['
+    for plugin_dir in "$ROOT_DIR"/plugins/*/; do
+        plugin_name=$(basename "$plugin_dir")
+        if [[ -f "${plugin_dir}.codex-plugin/plugin.json" ]]; then
+            if [[ "$first" == true ]]; then
+                first=false
+            else
+                echo ','
+            fi
+            local category="Development"
+            if [[ "$plugin_name" == "llm-tools" ]]; then
+                category="Productivity"
+            fi
+            printf '    {\n      "name": "%s",\n      "source": { "source": "local", "path": "./plugins/%s" },\n      "policy": { "installation": "AVAILABLE" },\n      "category": "%s"\n    }' "$plugin_name" "$plugin_name" "$category"
+        fi
+    done
+    echo ''
+    echo '  ]'
+    echo '}'
 }
 
 generate_agents_md() {
@@ -56,24 +95,22 @@ Project instructions for OpenAI Codex CLI.
 
 ## Project Overview
 
-gopher-ai is a Go-focused development toolkit providing reference skills and workflow skills for AI-assisted Go development.
+gopher-ai is a Go-focused development toolkit distributed as Codex plugins. Each plugin bundles related skills that activate automatically or can be invoked explicitly.
 
-## Reference Skills
+## Plugins
 
-Auto-invoked based on context. These provide knowledge and best practices:
+| Plugin | Description | Skills |
+|--------|-------------|--------|
+| `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review, coverage |
+| `go-dev` | Go development tools and best practices | go-best-practices, go-profiling-optimization, systematic-debugging, validate-skills |
+| `gopher-guides` | Gopher Guides training materials | gopher-guides |
+| `llm-tools` | Multi-LLM second opinions and delegation | second-opinion, gemini-image |
+| `go-web` | Go web scaffolding (Templ + HTMX) | templui, htmx |
+| `tailwind` | Tailwind CSS v4 tools | tailwind-best-practices |
 
-| Skill | Triggers |
-|-------|----------|
-| `go-best-practices` | Go code, patterns, reviews, "best way to..." |
-| `go-profiling-optimization` | Profiling, pprof, optimization, PGO, "why is this slow" |
-| `second-opinion` | Architecture decisions, security code, "sanity check" |
-| `tailwind-best-practices` | Tailwind CSS classes, themes, utilities |
-| `templui` | Go/Templ web apps, HTMX, Alpine.js |
-| `gopher-guides` | Go training materials, idiomatic patterns |
+## Workflow Skills (go-workflow plugin)
 
-## Workflow Skills
-
-Issue-to-PR workflow automation. Invoke explicitly with `$skill-name`:
+Invoke explicitly with `$skill-name`:
 
 | Skill | Description |
 |-------|-------------|
@@ -99,16 +136,27 @@ $prune-worktree
 # Cleans up worktrees for closed issues.
 ```
 
-## Usage
+## Installation
 
-Reference skills activate automatically. Workflow skills are invoked directly:
+### Plugin Installation (Recommended)
 
+Copy plugins to your Codex plugins directory:
+
+```bash
+cp -r dist/codex/plugins/* ~/.codex/plugins/
 ```
-$go-best-practices
-$start-issue 42
-$commit
-$create-pr
-$ship
+
+Or for repo-local discovery, copy the marketplace and plugins:
+
+```bash
+cp -r .agents/ /path/to/your-repo/.agents/
+cp -r plugins/ /path/to/your-repo/plugins/
+```
+
+### Flat Skills Installation (Legacy)
+
+```bash
+cp -r dist/codex/skills/* ~/.codex/skills/
 ```
 
 ## Requirements
@@ -333,9 +381,11 @@ print_summary() {
     echo ""
     echo "Installation instructions:"
     echo ""
-    echo "  Codex CLI:"
+    echo "  Codex CLI (plugins):"
+    echo "    cp -r dist/codex/plugins/* ~/.codex/plugins/"
+    echo ""
+    echo "  Codex CLI (flat skills, legacy):"
     echo "    cp -r dist/codex/skills/* ~/.codex/skills/"
-    echo "    cp dist/codex/AGENTS.md ./AGENTS.md"
     echo ""
     echo "  Gemini CLI:"
     echo "    gemini extensions install ./dist/gemini/gopher-ai-<plugin>"
