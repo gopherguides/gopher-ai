@@ -8,7 +8,8 @@
         "path": "./plugins/go-workflow"
       },
       "policy": {
-        "installation": "AVAILABLE"
+        "installation": "AVAILABLE",
+        "authentication": "ON_FIRST_USE"
       },
       "category": "Development"
     },
@@ -19,7 +20,8 @@
         "path": "./plugins/go-dev"
       },
       "policy": {
-        "installation": "AVAILABLE"
+        "installation": "AVAILABLE",
+        "authentication": "ON_FIRST_USE"
       },
       "category": "Development"
     },
@@ -30,7 +32,8 @@
         "path": "./plugins/gopher-guides"
       },
       "policy": {
-        "installation": "AVAILABLE"
+        "installation": "AVAILABLE",
+        "authentication": "ON_FIRST_USE"
       },
       "category": "Development"
     },
@@ -41,7 +44,8 @@
         "path": "./plugins/llm-tools"
       },
       "policy": {
-        "installation": "AVAILABLE"
+        "installation": "AVAILABLE",
+        "authentication": "ON_FIRST_USE"
       },
       "category": "Productivity"
     },
@@ -52,7 +56,8 @@
         "path": "./plugins/go-web"
       },
       "policy": {
-        "installation": "AVAILABLE"
+        "installation": "AVAILABLE",
+        "authentication": "ON_FIRST_USE"
       },
       "category": "Development"
     },
@@ -63,7 +68,8 @@
         "path": "./plugins/tailwind"
       },
       "policy": {
-        "installation": "AVAILABLE"
+        "installation": "AVAILABLE",
+        "authentication": "ON_FIRST_USE"
       },
       "category": "Development"
     }
