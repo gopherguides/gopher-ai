@@ -22,7 +22,6 @@ $remove-worktree
 ### Step 1: List Worktrees
 
 ```bash
-REPO_NAME=$(basename "$(git rev-parse --show-toplevel)")
 git worktree list
 ```
 

@@ -88,7 +88,7 @@ gh pr merge --auto --squash
 
 If merge is blocked by required reviews, inform the user and stop.
 
-### Step 6: Report
+### Phase 6: Report
 
 Display the final PR URL and merge status.
 

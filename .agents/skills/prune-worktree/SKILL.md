@@ -22,7 +22,6 @@ $prune-worktree
 ### Step 1: List All Issue Worktrees
 
 ```bash
-REPO_NAME=$(basename "$(git rev-parse --show-toplevel)")
 git worktree list | grep "issue-" || echo "No issue worktrees found"
 ```
 
@@ -52,11 +51,11 @@ For each issue worktree:
 3. Check if the branch is merged:
    ```bash
    BRANCH=$(cd "$WORKTREE_PATH" && git branch --show-current)
-   MERGED=$(git log "origin/$DEFAULT_BRANCH" --oneline | head -100)
+   MERGED=$(git branch -r --merged "origin/$DEFAULT_BRANCH" | grep -q "origin/$BRANCH" && echo "true" || echo "false")
    ```
 
 4. Classify as:
-   - **Pruneable**: Issue is closed AND branch is merged
+   - **Pruneable**: Issue is closed (`STATE` = `CLOSED`) AND branch is merged (`MERGED` = `true`)
    - **Keep**: Issue is open OR branch is not merged
 
 ### Step 4: Report and Confirm
