@@ -9,13 +9,13 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | Platform | Status | Install Method |
 |----------|--------|----------------|
 | **Claude Code** | Full support | Plugin marketplace |
-| **OpenAI Codex CLI** | Skills + workflows | Manual or skills installer |
+| **OpenAI Codex CLI** | Full plugin support | Plugin install or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
 **What's included:**
 - 7 modules (go-workflow, go-dev, productivity, gopher-guides, llm-tools, go-web, tailwind)
 - 6 auto-invoked reference skills for Go best practices, second opinions, and more
-- 7 workflow skills for issue-to-PR automation (available on Claude Code and Codex)
+- 7 workflow skills for issue-to-PR automation (via Codex plugins and Claude Code commands)
 - 20+ slash commands for development workflows
 
 ## Quick Start
@@ -39,14 +39,18 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 ### OpenAI Codex CLI
 
 ```bash
-# Via skills installer
-codex> $skill-installer gopherguides/gopher-ai
-
-# Or manual installation
+# Repo-local (auto-discovered — just clone and run Codex)
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
+codex   # Plugins load automatically from .agents/plugins/marketplace.json
+# Use /plugins to browse, $start-issue 42 to invoke workflow skills
+
+# Global install (all repos)
 ./scripts/build-universal.sh
-cp -r dist/codex/skills/* ~/.codex/skills/
+mkdir -p ~/.codex/plugins ~/.agents/plugins
+cp -r dist/codex/plugins/* ~/.codex/plugins/
+cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
+# Restart Codex — use /plugins to verify
 ```
 
 ### Google Gemini CLI
@@ -249,7 +253,13 @@ SHELL=/bin/bash claude
 
 ### OpenAI Codex CLI
 
-Skills are installed to `~/.codex/skills/`. After installation, reference skills activate automatically based on context. Workflow skills are invoked explicitly:
+Plugins are distributed via the [Codex plugin system](https://developers.openai.com/codex/plugins). Each plugin contains skills that activate automatically or can be invoked explicitly.
+
+**Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse and manage installed plugins. Each plugin has both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` — the same plugin directory serves both platforms.
+
+**Global install:** Copy `dist/codex/plugins/` to `~/.codex/plugins/` and `marketplace.json` to `~/.agents/plugins/`. The built marketplace points at `~/.codex/plugins/` using Codex's personal marketplace path rules. See Quick Start above.
+
+**Workflow skills** (from `go-workflow` plugin):
 
 ```
 $start-issue 42    # Full issue-to-PR workflow
@@ -261,13 +271,7 @@ $remove-worktree   # Remove a single worktree
 $prune-worktree    # Batch cleanup completed worktrees
 ```
 
-**Repo-local installation** (alternative to global `~/.codex/skills/`):
-
-```bash
-cp -r .agents/skills/ /path/to/your-repo/.agents/skills/
-```
-
-Skills in `.agents/skills/` are automatically discovered by Codex when working in that repo.
+**Flat skills (legacy):** Individual skills can also be installed to `~/.codex/skills/` or via `$skill-installer`.
 
 ### Google Gemini CLI
 
@@ -279,11 +283,11 @@ Extensions are installed per-module. Each extension includes:
 
 ## MCP Servers
 
-The **tailwind** module includes an MCP (Model Context Protocol) server for Tailwind CSS documentation lookups. This is configured automatically when using Claude Code.
+The **tailwind** module includes an MCP (Model Context Protocol) server for Tailwind CSS documentation lookups. This is configured automatically in both Claude Code and Codex plugin installs.
 
 ### tailwindcss-mcp-server
 
-**Defined in:** `plugins/tailwind/.claude-plugin/plugin.json`
+**Defined in:** `plugins/tailwind/.claude-plugin/plugin.json` and `plugins/tailwind/.mcp.json`
 
 ```json
 {
@@ -379,7 +383,8 @@ cd gopher-ai
 ```
 
 This generates:
-- `dist/codex/` - Codex-compatible skills
+- `dist/codex/plugins/` - Codex plugin packages
+- `dist/codex/skills/` - Flat skills (legacy/backward-compatible)
 - `dist/gemini/` - Gemini extensions
 - `dist/*.tar.gz` - Release archives
 

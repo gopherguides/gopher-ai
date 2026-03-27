@@ -1,0 +1,20 @@
+{
+  "name": "go-workflow",
+  "version": "1.5.0",
+  "description": "Issue-to-PR workflow automation with git worktree management",
+  "author": {
+    "name": "Gopher Guides",
+    "email": "support@gopherguides.com"
+  },
+  "homepage": "https://gopherguides.com",
+  "repository": "https://github.com/gopherguides/gopher-ai",
+  "license": "MIT",
+  "keywords": ["workflow", "github", "issues", "pr", "worktree"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Go Workflow",
+    "shortDescription": "Issue-to-PR workflow automation with git worktree management",
+    "developerName": "Gopher Guides",
+    "category": "Development"
+  }
+}
