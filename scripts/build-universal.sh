@@ -70,7 +70,7 @@ generate_codex_marketplace() {
             if [[ "$plugin_name" == "llm-tools" ]]; then
                 category="Productivity"
             fi
-            printf '    {\n      "name": "%s",\n      "source": { "source": "local", "path": "./.codex/plugins/%s" },\n      "policy": { "installation": "AVAILABLE", "authentication": "ON_FIRST_USE" },\n      "category": "%s"\n    }' "$plugin_name" "$plugin_name" "$category"
+            printf '    {\n      "name": "%s",\n      "source": { "source": "local", "path": "./.codex/plugins/%s" },\n      "policy": { "installation": "AVAILABLE", "authentication": "ON_USE" },\n      "category": "%s"\n    }' "$plugin_name" "$plugin_name" "$category"
         fi
     done
     echo ''
