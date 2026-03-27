@@ -39,17 +39,18 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 ### OpenAI Codex CLI
 
 ```bash
-# Repo-local (auto-discovered)
-# Clone the repo and run Codex — plugins load from .agents/plugins/marketplace.json
-
-# Global install
+# Repo-local (auto-discovered — just clone and run Codex)
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
+codex   # Plugins load automatically from .agents/plugins/marketplace.json
+# Use /plugins to browse, $start-issue 42 to invoke workflow skills
+
+# Global install (all repos)
 ./scripts/build-universal.sh
 mkdir -p ~/.codex/plugins ~/.agents/plugins
 cp -r dist/codex/plugins/* ~/.codex/plugins/
 cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
-# Restart Codex
+# Restart Codex — use /plugins to verify
 ```
 
 ### Google Gemini CLI
@@ -254,7 +255,7 @@ SHELL=/bin/bash claude
 
 Plugins are distributed via the [Codex plugin system](https://developers.openai.com/codex/plugins). Each plugin contains skills that activate automatically or can be invoked explicitly.
 
-**Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and discovers all plugins automatically. Each plugin has both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` — the same plugin directory serves both platforms.
+**Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse and manage installed plugins. Each plugin has both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` — the same plugin directory serves both platforms.
 
 **Global install:** Copy `dist/codex/plugins/` to `~/.codex/plugins/` and `marketplace.json` to `~/.agents/plugins/`. See Quick Start above.
 

@@ -140,7 +140,7 @@ $prune-worktree
 
 ### Repo-Local (Recommended)
 
-Codex reads `.agents/plugins/marketplace.json` on startup and discovers all plugins automatically. No manual installation needed when working inside a repo that includes this file.
+Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse available plugins.
 
 ### Global (Personal) Installation
 
@@ -150,7 +150,7 @@ cp -r dist/codex/plugins/* ~/.codex/plugins/
 cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
 ```
 
-Restart Codex after installation.
+Restart Codex after installation. Use `/plugins` to verify.
 
 ### Flat Skills (Legacy)
 

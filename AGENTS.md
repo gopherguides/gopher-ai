@@ -51,10 +51,11 @@ $prune-worktree
 
 This repo includes `.agents/plugins/marketplace.json` which Codex reads on startup. When you clone this repo and run Codex inside it, all plugins are discovered automatically — no manual installation needed.
 
+Browse available plugins with the `/plugins` command in Codex CLI.
+
 To add these plugins to **your own repo**:
 
 ```bash
-# Copy marketplace and plugin directories
 mkdir -p /path/to/your-repo/.agents/plugins
 cp .agents/plugins/marketplace.json /path/to/your-repo/.agents/plugins/
 cp -r plugins/ /path/to/your-repo/plugins/
@@ -69,16 +70,12 @@ git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
 ./scripts/build-universal.sh
 
-# Copy plugins to your personal plugins directory
-mkdir -p ~/.codex/plugins
+mkdir -p ~/.codex/plugins ~/.agents/plugins
 cp -r dist/codex/plugins/* ~/.codex/plugins/
-
-# Create personal marketplace (or add entries to existing one)
-mkdir -p ~/.agents/plugins
 cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
 ```
 
-Restart Codex after installation.
+Restart Codex after installation. Use `/plugins` to verify they appear.
 
 ### Flat Skills (Legacy)
 
@@ -88,11 +85,7 @@ Individual skills can also be installed without the plugin system:
 cp -r dist/codex/skills/* ~/.codex/skills/
 ```
 
-Or use the built-in skill installer for curated skills:
-
-```
-$skill-installer
-```
+Or use the built-in `$skill-installer` for curated skills.
 
 ## Architecture
 
