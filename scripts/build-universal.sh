@@ -19,7 +19,11 @@ build_codex() {
     echo "------------------------"
 
     local codex_dir="$DIST_DIR/codex"
+    local repo_agents_dir="$ROOT_DIR/.agents/skills"
     mkdir -p "$codex_dir/skills"
+
+    rm -rf "$repo_agents_dir"
+    mkdir -p "$repo_agents_dir"
 
     for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
         if [[ -f "${skill_dir}SKILL.md" ]]; then
@@ -27,12 +31,15 @@ build_codex() {
             echo "  - Copying skill: $skill_name"
             mkdir -p "$codex_dir/skills/$skill_name"
             cp "${skill_dir}"*.md "$codex_dir/skills/$skill_name/"
+            mkdir -p "$repo_agents_dir/$skill_name"
+            cp "${skill_dir}"*.md "$repo_agents_dir/$skill_name/"
         fi
     done
 
     echo "  - Generating AGENTS.md"
     generate_agents_md > "$codex_dir/AGENTS.md"
 
+    echo "  - Populated repo-level .agents/skills/ ($(find "$repo_agents_dir" -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ') skills)"
     echo "  Done: $codex_dir"
 }
 
@@ -42,38 +49,91 @@ generate_agents_md() {
 
 Project instructions for OpenAI Codex CLI.
 
-## Project Overview
-
-gopher-ai is a Go-focused development toolkit providing skills for:
-
-- **Go Best Practices**: Idiomatic Go patterns and error handling
-- **Second Opinion**: Get alternative perspectives on complex decisions
-- **Tailwind CSS**: v4 best practices and utilities
-- **templUI**: Go/Templ web development with HTMX/Alpine.js
-- **Gopher Guides**: Training materials integration
-
 ## Available Skills
 
-Skills are auto-invoked based on context. Available skills:
+Skills auto-activate based on context, or invoke directly with `$skill-name`.
+
+### Go Development
 
 | Skill | Triggers |
 |-------|----------|
 | `go-best-practices` | Go code, patterns, reviews, "best way to..." |
-| `second-opinion` | Architecture decisions, security code, "sanity check" |
-| `tailwind-best-practices` | Tailwind CSS classes, themes, utilities |
-| `templui` | Go/Templ web apps, HTMX, Alpine.js |
+| `go-profiling-optimization` | Performance, profiling, benchmarks, "why is this slow" |
+| `systematic-debugging` | Debugging, test failures, stack traces, "why is this broken" |
 | `gopher-guides` | Go training materials, idiomatic patterns |
 
-## Usage with Codex
+### Code Quality
 
-Skills activate automatically. You can also invoke directly:
+| Skill | Triggers |
+|-------|----------|
+| `validate-skills` | Editing command/skill .md files, shell code validation |
+| `address-review` | PR review comments, reviewer feedback, unresolved threads |
+
+### Web Development
+
+| Skill | Triggers |
+|-------|----------|
+| `tailwind-best-practices` | Tailwind CSS classes, themes, v4 config |
+| `templui` | Go/Templ web apps, templUI components, HTMX/Alpine.js |
+| `htmx` | htmx attributes, partial page updates, SSE, swaps |
+
+### Multi-LLM
+
+| Skill | Triggers |
+|-------|----------|
+| `second-opinion` | Architecture decisions, security code, "sanity check" |
+| `gemini-image` | Image generation requests |
+
+## Installation
+
+### Via Codex skill installer (recommended)
 
 ```
-$go-best-practices
-$second-opinion
-$tailwind-best-practices
-$templui
-$gopher-guides
+codex> $skill-installer gopherguides/gopher-ai
+```
+
+### One-liner install
+
+```bash
+# User-level (available across all projects)
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+
+# Repo-level (available to all contributors)
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --repo .
+```
+
+### Manual install
+
+```bash
+git clone https://github.com/gopherguides/gopher-ai
+cd gopher-ai
+./scripts/build-universal.sh
+cp -r dist/codex/skills/* ~/.agents/skills/
+```
+
+### Skill locations
+
+| Scope | Path | Use case |
+|-------|------|----------|
+| Repo-level | `.agents/skills/` | Shared team standards (committed to repo) |
+| User-level | `$HOME/.agents/skills/` | Personal toolkit across all projects |
+| Legacy | `~/.codex/skills/` | Still loaded for backward compatibility |
+
+> **Migrating from `~/.codex/skills/`?** Move your skills to `~/.agents/skills/` — Codex scans both paths, but `.agents/skills/` is the current convention.
+
+## Updating
+
+Re-run the installer to replace existing skills:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+```
+
+Or update manually:
+
+```bash
+rm -rf ~/.agents/skills/{go-best-practices,second-opinion,tailwind-best-practices,templui,gopher-guides,go-profiling-optimization,systematic-debugging,validate-skills,htmx,address-review,gemini-image}
+cp -r dist/codex/skills/* ~/.agents/skills/
 ```
 
 ## Links
@@ -292,9 +352,12 @@ print_summary() {
     echo ""
     echo "Installation instructions:"
     echo ""
-    echo "  Codex CLI:"
-    echo "    cp -r dist/codex/skills/* ~/.codex/skills/"
+    echo "  Codex CLI (user-level):"
+    echo "    cp -r dist/codex/skills/* ~/.agents/skills/"
     echo "    cp dist/codex/AGENTS.md ./AGENTS.md"
+    echo ""
+    echo "  Codex CLI (legacy path, still supported):"
+    echo "    cp -r dist/codex/skills/* ~/.codex/skills/"
     echo ""
     echo "  Gemini CLI:"
     echo "    gemini extensions install ./dist/gemini/gopher-ai-<plugin>"

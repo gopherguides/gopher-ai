@@ -9,12 +9,12 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | Platform | Status | Install Method |
 |----------|--------|----------------|
 | **Claude Code** | Full support | Plugin marketplace |
-| **OpenAI Codex CLI** | Skills only | Manual or skills installer |
+| **OpenAI Codex CLI** | Skills only | Skills installer, one-liner, or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
 **What's included:**
 - 7 modules (go-workflow, go-dev, productivity, gopher-guides, llm-tools, go-web, tailwind)
-- 5 auto-invoked skills for Go best practices, second opinions, and more
+- 11 auto-invoked skills for Go best practices, debugging, profiling, and more
 - 20+ slash commands for development workflows
 
 ## Quick Start
@@ -38,14 +38,17 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 ### OpenAI Codex CLI
 
 ```bash
-# Via skills installer
+# Via skills installer (recommended)
 codex> $skill-installer gopherguides/gopher-ai
+
+# Or one-liner install (user-level)
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
 
 # Or manual installation
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
 ./scripts/build-universal.sh
-cp -r dist/codex/skills/* ~/.codex/skills/
+cp -r dist/codex/skills/* ~/.agents/skills/
 ```
 
 ### Google Gemini CLI
@@ -192,14 +195,22 @@ Skills are auto-invoked behaviors that activate based on context. Available acro
 | Skill | Triggers When |
 |-------|---------------|
 | `go-best-practices` | Writing Go code, asking about patterns, code reviews |
-| `second-opinion` | Architecture decisions, security code, "sanity check" requests |
+| `go-profiling-optimization` | Performance, profiling, benchmarks, "why is this slow" |
+| `systematic-debugging` | Debugging, test failures, stack traces, "why is this broken" |
+| `gopher-guides` | Asking about Go idioms, "what's the right way to..." |
+| `validate-skills` | Editing command/skill .md files, shell code validation |
+| `address-review` | PR review comments, reviewer feedback, unresolved threads |
 | `tailwind-best-practices` | Working with Tailwind CSS classes, themes, utilities |
 | `templui` | Building Go/Templ web apps, HTMX/Alpine.js integration |
-| `gopher-guides` | Asking about Go idioms, "what's the right way to..." |
+| `htmx` | htmx attributes, partial page updates, SSE, swaps |
+| `second-opinion` | Architecture decisions, security code, "sanity check" requests |
+| `gemini-image` | Image generation requests |
 
 ## Agent Skills (GitHub Copilot)
 
-Distributable [Agent Skills](https://agentskills.io) for Go code quality auditing. Install to your repo:
+> **Not to be confused with Codex skills.** These Agent Skills follow the [agentskills.io](https://agentskills.io) specification and install to `.github/skills/` for GitHub Copilot. For Codex CLI skills (which use `.agents/skills/`), see [OpenAI Codex CLI](#openai-codex-cli) above.
+
+Distributable Agent Skills for Go code quality auditing. Install to your repo:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/agent-skills/scripts/install.sh) --repo .
@@ -248,7 +259,34 @@ SHELL=/bin/bash claude
 
 ### OpenAI Codex CLI
 
-Skills are installed to `~/.codex/skills/`. After installation, skills activate automatically based on context. You can also invoke directly with `$skill-name`.
+**Skill locations** (Codex scans in this order):
+
+| Scope | Path | Use case |
+|-------|------|----------|
+| Repo-level | `.agents/skills/` | Shared team standards, committed to repo |
+| User-level | `$HOME/.agents/skills/` | Personal toolkit across all projects |
+| Legacy | `~/.codex/skills/` | Still loaded for backward compatibility |
+
+After installation, skills activate automatically based on context. You can also invoke directly with `$skill-name`.
+
+**Updating skills:**
+
+Re-run the installer to replace existing skills with the latest version:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+```
+
+**Migrating from `~/.codex/skills/`:**
+
+The `~/.codex/skills/` path is legacy. Move to the current convention:
+
+```bash
+# Install to the new location
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+# Remove legacy copy
+rm -rf ~/.codex/skills/
+```
 
 ### Google Gemini CLI
 
@@ -363,6 +401,7 @@ This generates:
 - `dist/codex/` - Codex-compatible skills
 - `dist/gemini/` - Gemini extensions
 - `dist/*.tar.gz` - Release archives
+- `.agents/skills/` - Repo-local Codex skills (for working inside this repo)
 
 ## License
 

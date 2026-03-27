@@ -2,93 +2,102 @@
 
 Project instructions for OpenAI Codex CLI.
 
-## Project Overview
-
-gopher-ai is a Claude Code plugin marketplace providing Go-focused development tools. It contains seven plugins:
-
-- **go-workflow**: Issue-to-PR workflow automation with git worktree management
-- **go-dev**: Go-specific development tools (test generation, linting, code explanation)
-- **productivity**: Git activity reports (standup, weekly summaries, changelogs, releases)
-- **gopher-guides**: MCP integration with Gopher Guides training materials
-- **llm-tools**: Multi-LLM utilities (Ollama, Gemini, Codex delegation, comparisons)
-- **go-web**: Go web project scaffolding and templUI integration
-- **tailwind**: Tailwind CSS v4 migration and optimization tools
-
 ## Available Skills
 
-Skills are auto-invoked based on context. Install from `dist/codex/skills/`:
+Skills auto-activate based on context, or invoke directly with `$skill-name`.
+
+### Go Development
 
 | Skill | Triggers |
 |-------|----------|
 | `go-best-practices` | Go code, patterns, reviews, "best way to..." |
-| `second-opinion` | Architecture decisions, security code, "sanity check" |
-| `tailwind-best-practices` | Tailwind CSS classes, themes, utilities |
-| `templui` | Go/Templ web apps, HTMX, Alpine.js |
-| `go-profiling-optimization` | Profiling, pprof, optimization, PGO, "why is this slow" |
+| `go-profiling-optimization` | Performance, profiling, benchmarks, "why is this slow" |
+| `systematic-debugging` | Debugging, test failures, stack traces, "why is this broken" |
 | `gopher-guides` | Go training materials, idiomatic patterns |
+
+### Code Quality
+
+| Skill | Triggers |
+|-------|----------|
+| `validate-skills` | Editing command/skill .md files, shell code validation |
+| `address-review` | PR review comments, reviewer feedback, unresolved threads |
+
+### Web Development
+
+| Skill | Triggers |
+|-------|----------|
+| `tailwind-best-practices` | Tailwind CSS classes, themes, v4 config |
+| `templui` | Go/Templ web apps, templUI components, HTMX/Alpine.js |
+| `htmx` | htmx attributes, partial page updates, SSE, swaps |
+
+### Multi-LLM
+
+| Skill | Triggers |
+|-------|----------|
+| `second-opinion` | Architecture decisions, security code, "sanity check" |
+| `gemini-image` | Image generation requests |
 
 ## Installation
 
-### Via Skills Installer
+### Via Codex skill installer (recommended)
 
-```bash
+```
 codex> $skill-installer gopherguides/gopher-ai
 ```
 
-### Manual Installation
+### One-liner install
 
 ```bash
-# Clone the repository
+# User-level (available across all projects)
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+
+# Repo-level (available to all contributors)
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --repo .
+```
+
+### Manual install
+
+```bash
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
-
-# Build universal distribution
 ./scripts/build-universal.sh
-
-# Copy skills to Codex
-cp -r dist/codex/skills/* ~/.codex/skills/
+cp -r dist/codex/skills/* ~/.agents/skills/
 ```
 
-## Usage
+### Skill locations
 
-Skills activate automatically based on context. You can also invoke directly:
+| Scope | Path | Use case |
+|-------|------|----------|
+| Repo-level | `.agents/skills/` | Shared team standards (committed to repo) |
+| User-level | `$HOME/.agents/skills/` | Personal toolkit across all projects |
+| Legacy | `~/.codex/skills/` | Still loaded for backward compatibility |
 
+> **Migrating from `~/.codex/skills/`?** Move your skills to `~/.agents/skills/` — Codex scans both paths, but `.agents/skills/` is the current convention.
+
+## Updating
+
+Re-run the installer to replace existing skills:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
 ```
-$go-best-practices
-$second-opinion
-$tailwind-best-practices
-$templui
-$go-profiling-optimization
-$gopher-guides
-```
 
-## Architecture
+Or update manually:
 
-```
-plugins/
-  <plugin-name>/
-    .claude-plugin/
-      plugin.json      # Plugin metadata
-    commands/          # Slash command definitions (*.md)
-    skills/            # Auto-invoked skills (SKILL.md)
-    agents/            # Agent definitions
+```bash
+rm -rf ~/.agents/skills/{go-best-practices,second-opinion,tailwind-best-practices,templui,gopher-guides,go-profiling-optimization,systematic-debugging,validate-skills,htmx,address-review,gemini-image}
+cp -r dist/codex/skills/* ~/.agents/skills/
 ```
 
 ## Development
 
 ```bash
-# Install git hooks
-./scripts/install-hooks.sh
-
-# Build universal distribution
-./scripts/build-universal.sh
-
-# Sync shared files
-./scripts/sync-shared.sh
+./scripts/install-hooks.sh       # Install git hooks
+./scripts/build-universal.sh     # Build universal distribution
+./scripts/sync-shared.sh         # Sync shared files
 ```
 
 ## Links
 
 - [Gopher Guides](https://gopherguides.com) - Official Go training
 - [GitHub Repository](https://github.com/gopherguides/gopher-ai)
-- [Claude Code Plugin Docs](https://docs.anthropic.com/claude-code/plugins)
