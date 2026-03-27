@@ -257,7 +257,7 @@ Plugins are distributed via the [Codex plugin system](https://developers.openai.
 
 **Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse and manage installed plugins. Each plugin has both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` — the same plugin directory serves both platforms.
 
-**Global install:** Copy `dist/codex/plugins/` to `~/.codex/plugins/` and `marketplace.json` to `~/.agents/plugins/`. See Quick Start above.
+**Global install:** Copy `dist/codex/plugins/` to `~/.codex/plugins/` and `marketplace.json` to `~/.agents/plugins/`. The built marketplace points at `~/.codex/plugins/` using Codex's personal marketplace path rules. See Quick Start above.
 
 **Workflow skills** (from `go-workflow` plugin):
 
@@ -283,11 +283,11 @@ Extensions are installed per-module. Each extension includes:
 
 ## MCP Servers
 
-The **tailwind** module includes an MCP (Model Context Protocol) server for Tailwind CSS documentation lookups. This is configured automatically when using Claude Code.
+The **tailwind** module includes an MCP (Model Context Protocol) server for Tailwind CSS documentation lookups. This is configured automatically in both Claude Code and Codex plugin installs.
 
 ### tailwindcss-mcp-server
 
-**Defined in:** `plugins/tailwind/.claude-plugin/plugin.json`
+**Defined in:** `plugins/tailwind/.claude-plugin/plugin.json` and `plugins/tailwind/.mcp.json`
 
 ```json
 {

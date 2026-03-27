@@ -27,27 +27,15 @@ build_codex() {
         if [[ -f "${plugin_dir}.codex-plugin/plugin.json" ]]; then
             echo "  - Building plugin: $plugin_name"
             local dest="$codex_dir/plugins/$plugin_name"
-            mkdir -p "$dest/.codex-plugin"
-            cp "${plugin_dir}.codex-plugin/plugin.json" "$dest/.codex-plugin/"
-
-            # Copy skills
-            if [[ -d "${plugin_dir}skills/" ]]; then
-                for skill_dir in "${plugin_dir}skills/"*/; do
-                    if [[ -f "${skill_dir}SKILL.md" ]]; then
-                        skill_name=$(basename "$skill_dir")
-                        mkdir -p "$dest/skills/$skill_name"
-                        cp "${skill_dir}"*.md "$dest/skills/$skill_name/"
-                    fi
-                done
-            fi
+            mkdir -p "$dest"
+            cp -R "${plugin_dir}." "$dest/"
+            rm -rf "$dest/.claude-plugin"
         fi
     done
 
-    # Generate Codex marketplace manifest
     echo "  - Generating marketplace.json"
     generate_codex_marketplace > "$codex_dir/plugins/marketplace.json"
 
-    # Also copy all skills flat for backward compatibility (cp -r dist/codex/skills/)
     for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
         if [[ -f "${skill_dir}SKILL.md" ]]; then
             skill_name=$(basename "$skill_dir")
@@ -66,6 +54,9 @@ generate_codex_marketplace() {
     local first=true
     echo '{'
     echo '  "name": "gopher-ai",'
+    echo '  "interface": {'
+    echo '    "displayName": "Gopher AI"'
+    echo '  },'
     echo '  "plugins": ['
     for plugin_dir in "$ROOT_DIR"/plugins/*/; do
         plugin_name=$(basename "$plugin_dir")
@@ -79,7 +70,7 @@ generate_codex_marketplace() {
             if [[ "$plugin_name" == "llm-tools" ]]; then
                 category="Productivity"
             fi
-            printf '    {\n      "name": "%s",\n      "source": { "source": "local", "path": "./plugins/%s" },\n      "policy": { "installation": "AVAILABLE", "authentication": "ON_FIRST_USE" },\n      "category": "%s"\n    }' "$plugin_name" "$plugin_name" "$category"
+            printf '    {\n      "name": "%s",\n      "source": { "source": "local", "path": "./.codex/plugins/%s" },\n      "policy": { "installation": "AVAILABLE", "authentication": "ON_FIRST_USE" },\n      "category": "%s"\n    }' "$plugin_name" "$plugin_name" "$category"
         fi
     done
     echo ''

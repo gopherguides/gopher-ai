@@ -1,5 +1,8 @@
 {
   "name": "gopher-ai",
+  "interface": {
+    "displayName": "Gopher AI"
+  },
   "plugins": [
     {
       "name": "go-workflow",
