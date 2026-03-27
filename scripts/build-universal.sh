@@ -30,6 +30,18 @@ build_codex() {
         fi
     done
 
+    # Copy repo-local workflow skills from .agents/skills/
+    if [[ -d "$ROOT_DIR/.agents/skills" ]]; then
+        for skill_dir in "$ROOT_DIR"/.agents/skills/*/; do
+            if [[ -f "${skill_dir}SKILL.md" ]]; then
+                skill_name=$(basename "$skill_dir")
+                echo "  - Copying workflow skill: $skill_name"
+                mkdir -p "$codex_dir/skills/$skill_name"
+                cp "${skill_dir}"*.md "$codex_dir/skills/$skill_name/"
+            fi
+        done
+    fi
+
     echo "  - Generating AGENTS.md"
     generate_agents_md > "$codex_dir/AGENTS.md"
 
@@ -44,37 +56,66 @@ Project instructions for OpenAI Codex CLI.
 
 ## Project Overview
 
-gopher-ai is a Go-focused development toolkit providing skills for:
+gopher-ai is a Go-focused development toolkit providing reference skills and workflow skills for AI-assisted Go development.
 
-- **Go Best Practices**: Idiomatic Go patterns and error handling
-- **Second Opinion**: Get alternative perspectives on complex decisions
-- **Tailwind CSS**: v4 best practices and utilities
-- **templUI**: Go/Templ web development with HTMX/Alpine.js
-- **Gopher Guides**: Training materials integration
+## Reference Skills
 
-## Available Skills
-
-Skills are auto-invoked based on context. Available skills:
+Auto-invoked based on context. These provide knowledge and best practices:
 
 | Skill | Triggers |
 |-------|----------|
 | `go-best-practices` | Go code, patterns, reviews, "best way to..." |
+| `go-profiling-optimization` | Profiling, pprof, optimization, PGO, "why is this slow" |
 | `second-opinion` | Architecture decisions, security code, "sanity check" |
 | `tailwind-best-practices` | Tailwind CSS classes, themes, utilities |
 | `templui` | Go/Templ web apps, HTMX, Alpine.js |
 | `gopher-guides` | Go training materials, idiomatic patterns |
 
-## Usage with Codex
+## Workflow Skills
 
-Skills activate automatically. You can also invoke directly:
+Issue-to-PR workflow automation. Invoke explicitly with `$skill-name`:
+
+| Skill | Description |
+|-------|-------------|
+| `$start-issue <number>` | Full issue-to-PR workflow: fetch, branch, TDD, verify, submit |
+| `$create-worktree <number>` | Create isolated git worktree for an issue or PR |
+| `$commit` | Auto-generate conventional commit message |
+| `$create-pr` | Create PR following repo template |
+| `$ship` | Ship a PR: verify, push, create PR, watch CI, merge |
+| `$remove-worktree` | Interactively remove a single worktree |
+| `$prune-worktree` | Batch cleanup of completed worktrees |
+
+### Example Workflow
+
+```
+$start-issue 42
+# Codex fetches the issue, creates a worktree, detects bug vs feature,
+# guides you through TDD implementation, verifies, and creates a PR.
+
+$ship
+# Verifies build/tests/lint, pushes, watches CI, and merges.
+
+$prune-worktree
+# Cleans up worktrees for closed issues.
+```
+
+## Usage
+
+Reference skills activate automatically. Workflow skills are invoked directly:
 
 ```
 $go-best-practices
-$second-opinion
-$tailwind-best-practices
-$templui
-$gopher-guides
+$start-issue 42
+$commit
+$create-pr
+$ship
 ```
+
+## Requirements
+
+- GitHub CLI (`gh`) installed and authenticated
+- Git with worktree support
+- `golangci-lint` (optional, for lint checks)
 
 ## Links
 

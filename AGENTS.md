@@ -4,28 +4,48 @@ Project instructions for OpenAI Codex CLI.
 
 ## Project Overview
 
-gopher-ai is a Claude Code plugin marketplace providing Go-focused development tools. It contains seven plugins:
+gopher-ai is a Go-focused development toolkit providing reference skills and workflow skills for AI-assisted Go development. It contains seven plugin modules available as Claude Code plugins, with key skills and workflows also available for Codex CLI.
 
-- **go-workflow**: Issue-to-PR workflow automation with git worktree management
-- **go-dev**: Go-specific development tools (test generation, linting, code explanation)
-- **productivity**: Git activity reports (standup, weekly summaries, changelogs, releases)
-- **gopher-guides**: MCP integration with Gopher Guides training materials
-- **llm-tools**: Multi-LLM utilities (Ollama, Gemini, Codex delegation, comparisons)
-- **go-web**: Go web project scaffolding and templUI integration
-- **tailwind**: Tailwind CSS v4 migration and optimization tools
+## Reference Skills
 
-## Available Skills
-
-Skills are auto-invoked based on context. Install from `dist/codex/skills/`:
+Auto-invoked based on context. These provide knowledge and best practices:
 
 | Skill | Triggers |
 |-------|----------|
 | `go-best-practices` | Go code, patterns, reviews, "best way to..." |
+| `go-profiling-optimization` | Profiling, pprof, optimization, PGO, "why is this slow" |
 | `second-opinion` | Architecture decisions, security code, "sanity check" |
 | `tailwind-best-practices` | Tailwind CSS classes, themes, utilities |
 | `templui` | Go/Templ web apps, HTMX, Alpine.js |
-| `go-profiling-optimization` | Profiling, pprof, optimization, PGO, "why is this slow" |
 | `gopher-guides` | Go training materials, idiomatic patterns |
+
+## Workflow Skills
+
+Issue-to-PR workflow automation. Invoke explicitly with `$skill-name`:
+
+| Skill | Description |
+|-------|-------------|
+| `$start-issue <number>` | Full issue-to-PR workflow: fetch, branch, TDD, verify, submit |
+| `$create-worktree <number>` | Create isolated git worktree for an issue or PR |
+| `$commit` | Auto-generate conventional commit message |
+| `$create-pr` | Create PR following repo template |
+| `$ship` | Ship a PR: verify, push, create PR, watch CI, merge |
+| `$remove-worktree` | Interactively remove a single worktree |
+| `$prune-worktree` | Batch cleanup of completed worktrees |
+
+### Example Workflow
+
+```
+$start-issue 42
+# Codex fetches the issue, creates a worktree, detects bug vs feature,
+# guides you through TDD implementation, verifies, and creates a PR.
+
+$ship
+# Verifies build/tests/lint, pushes, watches CI, and merges.
+
+$prune-worktree
+# Cleans up worktrees for closed issues.
+```
 
 ## Installation
 
@@ -49,30 +69,55 @@ cd gopher-ai
 cp -r dist/codex/skills/* ~/.codex/skills/
 ```
 
+### Repo-Local Installation
+
+To add workflow skills directly to your project:
+
+```bash
+# Copy .agents/skills/ to your repo
+cp -r .agents/skills/ /path/to/your-repo/.agents/skills/
+```
+
+Skills in `.agents/skills/` are automatically discovered by Codex when working in that repo.
+
 ## Usage
 
-Skills activate automatically based on context. You can also invoke directly:
+Reference skills activate automatically. Workflow skills are invoked directly:
 
 ```
 $go-best-practices
-$second-opinion
-$tailwind-best-practices
-$templui
-$go-profiling-optimization
-$gopher-guides
+$start-issue 42
+$commit
+$create-pr
+$ship
 ```
 
 ## Architecture
 
 ```
-plugins/
+.agents/skills/          # Repo-local Codex workflow skills
+  start-issue/
+  create-worktree/
+  commit/
+  create-pr/
+  ship/
+  remove-worktree/
+  prune-worktree/
+
+plugins/                 # Claude Code plugins (also distributed as Codex skills)
   <plugin-name>/
     .claude-plugin/
-      plugin.json      # Plugin metadata
-    commands/          # Slash command definitions (*.md)
-    skills/            # Auto-invoked skills (SKILL.md)
-    agents/            # Agent definitions
+      plugin.json        # Plugin metadata
+    commands/            # Claude Code slash commands (*.md)
+    skills/              # Auto-invoked skills (SKILL.md)
+    agents/              # Agent definitions
 ```
+
+## Requirements
+
+- GitHub CLI (`gh`) installed and authenticated
+- Git with worktree support
+- `golangci-lint` (optional, for lint checks)
 
 ## Development
 
