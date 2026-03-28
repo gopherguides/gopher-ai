@@ -9,7 +9,7 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | Platform | Status | Install Method |
 |----------|--------|----------------|
 | **Claude Code** | Full support | Plugin marketplace |
-| **OpenAI Codex CLI** | Full plugin support | Plugin install or manual |
+| **OpenAI Codex CLI** | Full plugin support | Repo-local, installer script, or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
 **What's included:**
@@ -45,12 +45,13 @@ cd gopher-ai
 codex   # Plugins load automatically from .agents/plugins/marketplace.json
 # Use /plugins to browse, $start-issue 42 to invoke workflow skills
 
-# Global install (all repos)
+# Global install or update (all repos)
 ./scripts/build-universal.sh
-mkdir -p ~/.codex/plugins ~/.agents/plugins
-cp -r dist/codex/plugins/* ~/.codex/plugins/
-cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
+./scripts/install-codex.sh --user
 # Restart Codex — use /plugins to verify
+
+# Or one-liner install from GitHub
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
 ```
 
 ### Google Gemini CLI
@@ -257,7 +258,11 @@ Plugins are distributed via the [Codex plugin system](https://developers.openai.
 
 **Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse and manage installed plugins. Each plugin has both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` — the same plugin directory serves both platforms.
 
-**Global install:** Copy `dist/codex/plugins/` to `~/.codex/plugins/` and `marketplace.json` to `~/.agents/plugins/`. The built marketplace points at `~/.codex/plugins/` using Codex's personal marketplace path rules. See Quick Start above.
+**Global install or update:** Build the distribution and run `./scripts/install-codex.sh --user`. The installer replaces the current gopher-ai plugins in `~/.codex/plugins/` and merges the marketplace entries into `~/.agents/plugins/marketplace.json` without removing unrelated plugin entries.
+
+**Install into another repo:** Use `./scripts/install-codex.sh --repo /path/to/your-repo` to copy the current plugin set into another repository and update that repo's `.agents/plugins/marketplace.json`.
+
+**Manual install:** Copy `dist/codex/plugins/` to `~/.codex/plugins/` and `marketplace.json` to `~/.agents/plugins/` if you prefer manual steps.
 
 **Workflow skills** (from `go-workflow` plugin):
 

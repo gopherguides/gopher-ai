@@ -27,8 +27,7 @@ build_codex() {
         if [[ -f "${plugin_dir}.codex-plugin/plugin.json" ]]; then
             echo "  - Building plugin: $plugin_name"
             local dest="$codex_dir/plugins/$plugin_name"
-            mkdir -p "$dest"
-            cp -R "${plugin_dir}." "$dest/"
+            cp -R "$plugin_dir" "$codex_dir/plugins/"
             rm -rf "$dest/.claude-plugin"
         fi
     done
@@ -86,13 +85,13 @@ Project instructions for OpenAI Codex CLI.
 
 ## Project Overview
 
-gopher-ai is a Go-focused development toolkit distributed as Codex plugins. Each plugin bundles related skills that activate automatically or can be invoked explicitly.
+gopher-ai is a Go-focused development toolkit distributed as both Claude Code plugins and Codex plugins. Each plugin bundles related skills that activate automatically or can be invoked explicitly.
 
 ## Plugins
 
 | Plugin | Description | Skills |
 |--------|-------------|--------|
-| `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review, coverage |
+| `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review |
 | `go-dev` | Go development tools and best practices | go-best-practices, go-profiling-optimization, systematic-debugging, validate-skills |
 | `gopher-guides` | Gopher Guides training materials | gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | second-opinion, gemini-image |
@@ -131,22 +130,61 @@ $prune-worktree
 
 ### Repo-Local (Recommended)
 
-Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse available plugins.
+This repo includes `.agents/plugins/marketplace.json` which Codex reads on startup. When you clone this repo and run Codex inside it, all plugins are discovered automatically.
 
-### Global (Personal) Installation
+Use `/plugins` to browse available plugins.
+
+To add these plugins to another repo:
 
 ```bash
-mkdir -p ~/.codex/plugins ~/.agents/plugins
-cp -r dist/codex/plugins/* ~/.codex/plugins/
-cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
+./scripts/install-codex.sh --repo /path/to/your-repo
 ```
 
-Restart Codex after installation. Use `/plugins` to verify.
+### Global (Personal) Installation and Update
+
+To install or replace the current gopher-ai plugins in your personal Codex setup:
+
+```bash
+./scripts/build-universal.sh
+./scripts/install-codex.sh --user
+```
+
+Or as a one-liner from GitHub:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+```
+
+Restart Codex after installation or update. Use `/plugins` to verify.
 
 ### Flat Skills (Legacy)
 
+Individual skills can also be installed without the plugin system:
+
 ```bash
 cp -r dist/codex/skills/* ~/.codex/skills/
+```
+
+Or use the built-in `$skill-installer` for curated skills.
+
+## Architecture
+
+```
+.agents/plugins/
+  marketplace.json       # Codex plugin discovery
+
+.claude-plugin/
+  marketplace.json       # Claude Code plugin discovery
+
+plugins/
+  <plugin-name>/
+    .claude-plugin/
+      plugin.json        # Claude Code manifest
+    .codex-plugin/
+      plugin.json        # Codex manifest
+    commands/            # Claude Code slash commands
+    skills/              # Skills shared by both platforms
+    agents/              # Claude Code agent definitions
 ```
 
 ## Requirements
@@ -154,6 +192,7 @@ cp -r dist/codex/skills/* ~/.codex/skills/
 - GitHub CLI (`gh`) installed and authenticated
 - Git with worktree support
 - `golangci-lint` (optional, for lint checks)
+- `jq` for `./scripts/install-codex.sh`
 
 ## Links
 
@@ -326,8 +365,6 @@ EOF
 convert_allowlist_to_denylist() {
     local allowlist="$1"
 
-    local all_tools='["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Task", "TodoWrite", "AskUserQuestion", "NotebookEdit"]'
-
     if [[ "$allowlist" == *"Bash"* && "$allowlist" != *"Bash("* ]]; then
         echo "[]"
         return
@@ -344,8 +381,8 @@ create_archives() {
     cd "$DIST_DIR"
 
     if [[ -d "codex" ]]; then
-        tar -czf "gopher-ai-codex-skills-v${VERSION}.tar.gz" codex/
-        echo "  - Created: gopher-ai-codex-skills-v${VERSION}.tar.gz"
+        tar -czf "gopher-ai-codex-plugins-v${VERSION}.tar.gz" codex/
+        echo "  - Created: gopher-ai-codex-plugins-v${VERSION}.tar.gz"
     fi
 
     if [[ -d "gemini" ]]; then
@@ -371,10 +408,11 @@ print_summary() {
     echo ""
     echo "Installation instructions:"
     echo ""
-    echo "  Codex CLI (plugins):"
-    echo "    mkdir -p ~/.codex/plugins ~/.agents/plugins"
-    echo "    cp -r dist/codex/plugins/* ~/.codex/plugins/"
-    echo "    cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json"
+    echo "  Codex CLI (user-level plugins):"
+    echo "    ./scripts/install-codex.sh --user"
+    echo ""
+    echo "  Codex CLI (repo-level plugins):"
+    echo "    ./scripts/install-codex.sh --repo /path/to/your-repo"
     echo ""
     echo "  Codex CLI (flat skills, legacy):"
     echo "    cp -r dist/codex/skills/* ~/.codex/skills/"

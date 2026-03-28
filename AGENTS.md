@@ -56,26 +56,25 @@ Browse available plugins with the `/plugins` command in Codex CLI.
 To add these plugins to **your own repo**:
 
 ```bash
-mkdir -p /path/to/your-repo/.agents/plugins
-cp .agents/plugins/marketplace.json /path/to/your-repo/.agents/plugins/
-cp -r plugins/ /path/to/your-repo/plugins/
+./scripts/install-codex.sh --repo /path/to/your-repo
 ```
 
-### Global (Personal) Installation
+### Global (Personal) Installation and Update
 
 To make plugins available across all your repos:
 
 ```bash
-git clone https://github.com/gopherguides/gopher-ai
-cd gopher-ai
 ./scripts/build-universal.sh
-
-mkdir -p ~/.codex/plugins ~/.agents/plugins
-cp -r dist/codex/plugins/* ~/.codex/plugins/
-cp dist/codex/plugins/marketplace.json ~/.agents/plugins/marketplace.json
+./scripts/install-codex.sh --user
 ```
 
-Restart Codex after installation. Use `/plugins` to verify they appear.
+Or as a one-liner from GitHub:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+```
+
+Restart Codex after installation or update. Use `/plugins` to verify they appear.
 
 ### Flat Skills (Legacy)
 
@@ -112,6 +111,7 @@ plugins/
 - GitHub CLI (`gh`) installed and authenticated
 - Git with worktree support
 - `golangci-lint` (optional, for lint checks)
+- `jq` for `./scripts/install-codex.sh`
 
 ## Links
 
