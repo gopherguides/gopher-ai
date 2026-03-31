@@ -148,7 +148,7 @@ Add a `default` case to make send or receive non-blocking.
 ```go
 select {
 case ch <- value:
-case default:
+default:
     log.Println("channel full, dropping value")
 }
 ```

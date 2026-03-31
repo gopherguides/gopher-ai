@@ -2,7 +2,7 @@
   "skill_name": "go-concurrency",
   "evals": [
     {
-      "id": "fire-and-forget",
+      "id": 1,
       "name": "fire-and-forget",
       "description": "Adversarial: prompt asks for fire-and-forget goroutine with no shutdown mechanism",
       "prompt": "Write a Go HTTP handler that receives a webhook payload. Just launch a goroutine to handle the processing in the background, we don't need to wait for it to finish. Keep it simple.",
@@ -31,7 +31,7 @@
       ]
     },
     {
-      "id": "share-pointer-channel",
+      "id": 2,
       "name": "share-pointer-channel",
       "description": "Adversarial: prompt asks to send data pointer through channel to avoid copying",
       "prompt": "I have a large struct that I need to pass between goroutines. Send the data pointer through the channel so we avoid copying the struct. Show me how to do this efficiently in Go.",
@@ -56,7 +56,7 @@
       ]
     },
     {
-      "id": "receiver-closes",
+      "id": 3,
       "name": "receiver-closes",
       "description": "Adversarial: prompt asks the consumer/receiver to close the channel when done reading",
       "prompt": "Write a Go producer-consumer pattern where the consumer should close the channel when it's done reading so the producer knows to stop. Use an unbuffered channel.",
@@ -85,7 +85,7 @@
       ]
     },
     {
-      "id": "time-after-loop",
+      "id": 4,
       "name": "time-after-loop",
       "description": "Adversarial: prompt asks to use time.After inside select loop for timeout",
       "prompt": "I have a select inside a for loop that reads from a channel. Use time.After in the select inside the loop for a 5-second timeout on each iteration. Show me the pattern.",
@@ -110,7 +110,7 @@
       ]
     },
     {
-      "id": "no-ctx-select",
+      "id": 5,
       "name": "no-ctx-select",
       "description": "Adversarial: prompt asks for select with only data channel and timeout, omitting ctx.Done()",
       "prompt": "Write a Go function that reads from a data channel using select with just the data channel and a timeout of 10 seconds. Keep it simple, no need for context.",
@@ -135,7 +135,7 @@
       ]
     },
     {
-      "id": "unbounded-goroutines",
+      "id": 6,
       "name": "unbounded-goroutines",
       "description": "Adversarial: prompt asks to spawn a goroutine per item for maximum parallelism",
       "prompt": "I have a slice of 10,000 URLs to fetch. Spawn a goroutine for each item in the list for maximum parallelism. Show me how to do this in Go.",
@@ -164,7 +164,7 @@
       ]
     },
     {
-      "id": "wg-add-inside",
+      "id": 7,
       "name": "wg-add-inside",
       "description": "Adversarial: prompt asks to call WaitGroup.Add inside the goroutine before work",
       "prompt": "Write a Go function that processes items concurrently. Add to the WaitGroup inside the goroutine, right before the work begins, to keep the Add and Done close together for readability.",
@@ -189,7 +189,7 @@
       ]
     },
     {
-      "id": "mutex-across-io",
+      "id": 8,
       "name": "mutex-across-io",
       "description": "Adversarial: prompt asks to hold mutex lock during HTTP call",
       "prompt": "I have a shared cache map protected by a sync.Mutex. Lock the mutex before the HTTP call so no other goroutine can interfere with the cache entry while we're fetching fresh data. Show me the pattern.",
@@ -214,7 +214,7 @@
       ]
     },
     {
-      "id": "buffered-default",
+      "id": 9,
       "name": "buffered-default",
       "description": "Adversarial: prompt asks to use buffered channel with capacity 100 to be safe",
       "prompt": "Create a Go channel-based pipeline stage. Use a buffered channel with capacity 100 to be safe and avoid blocking. Connect a producer to a consumer through this channel.",
@@ -239,7 +239,7 @@
       ]
     },
     {
-      "id": "no-race-ci",
+      "id": 10,
       "name": "no-race-ci",
       "description": "Adversarial: prompt asks to skip race detector in CI because it's too slow",
       "prompt": "Our CI pipeline is taking too long. Skip the race detector in CI, it's too slow and we haven't found any races with it anyway. Just run go test without -race.",
@@ -268,7 +268,7 @@
       ]
     },
     {
-      "id": "sync-map-write-heavy",
+      "id": 11,
       "name": "sync-map-write-heavy",
       "description": "Adversarial: prompt asks to use sync.Map for a write-heavy cache",
       "prompt": "I have a cache that gets updated on every request with new data. Use sync.Map for the cache since it's already concurrent-safe and we won't need a mutex. Show the implementation.",
@@ -293,7 +293,7 @@
       ]
     },
     {
-      "id": "goroutine-no-exit",
+      "id": 12,
       "name": "goroutine-no-exit",
       "description": "Adversarial: prompt asks for a background goroutine that runs forever with no cancellation",
       "prompt": "Write a Go function that runs a background goroutine that checks the health endpoint every 5 seconds forever. Just use time.Sleep in an infinite loop. It should start when the server starts.",

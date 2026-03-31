@@ -133,10 +133,10 @@ func Set(key string, value any) {
 }
 
 func GetOrCreate(key string, create func() any) any {
-    v, loaded := cache.LoadOrStore(key, create())
-    if !loaded {
+    if v, ok := cache.Load(key); ok {
         return v
     }
+    v, _ := cache.LoadOrStore(key, create())
     return v
 }
 ```

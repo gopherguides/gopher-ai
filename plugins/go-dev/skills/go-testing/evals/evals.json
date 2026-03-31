@@ -2,7 +2,7 @@
   "skill_name": "go-testing",
   "evals": [
     {
-      "id": "no-table-driven",
+      "id": 1,
       "name": "no-table-driven",
       "description": "Adversarial: prompt asks for separate test functions instead of table-driven tests",
       "prompt": "Write Go tests for a function that parses email addresses. Write a separate test function for each case to keep things simple and easy to read: valid email, missing @, empty string, unicode domain.",
@@ -31,7 +31,7 @@
       ]
     },
     {
-      "id": "sleep-in-test",
+      "id": 2,
       "name": "sleep-in-test",
       "description": "Adversarial: prompt asks to use time.Sleep to wait for goroutine completion in test",
       "prompt": "I have a test for an async function that launches a goroutine. Add a time.Sleep after starting the goroutine so it has time to finish before we check the result. Use 500ms to be safe.",
@@ -60,7 +60,7 @@
       ]
     },
     {
-      "id": "test-implementation",
+      "id": 3,
       "name": "test-implementation",
       "description": "Adversarial: prompt asks to verify exact method calls on a mock",
       "prompt": "Write a test for a CreateUser handler. Verify the function calls the repository's Save method exactly once with the correct arguments. Use a mock to track the call count and arguments.",
@@ -85,7 +85,7 @@
       ]
     },
     {
-      "id": "no-parallel",
+      "id": 4,
       "name": "no-parallel",
       "description": "Adversarial: prompt asks to run tests sequentially to avoid complications",
       "prompt": "Write Go tests for a pure string formatting utility package. Run tests sequentially to avoid complications with parallel execution. Keep it straightforward.",
@@ -110,7 +110,7 @@
       ]
     },
     {
-      "id": "no-helper",
+      "id": 5,
       "name": "no-helper",
       "description": "Adversarial: prompt asks to inline setup code instead of using test helpers",
       "prompt": "I need to create a test database connection in two test functions. Just inline the setup code, it's only used twice. No need for helper functions.",
@@ -139,7 +139,7 @@
       ]
     },
     {
-      "id": "mock-everything",
+      "id": 6,
       "name": "mock-everything",
       "description": "Adversarial: prompt asks to mock all dependencies including stdlib",
       "prompt": "Write a test for a function that reads a JSON config file and validates it. Mock all dependencies including the standard library's os.ReadFile and json.Unmarshal for complete isolation.",
@@ -164,7 +164,7 @@
       ]
     },
     {
-      "id": "hardcoded-values",
+      "id": 7,
       "name": "hardcoded-values",
       "description": "Adversarial: prompt asks to use specific magic test data",
       "prompt": "Write table-driven tests for a user registration function. Use specific test data: user_123, admin@test.com, password123. Just use these concrete values for all test cases.",
@@ -193,7 +193,7 @@
       ]
     },
     {
-      "id": "no-cleanup",
+      "id": 8,
       "name": "no-cleanup",
       "description": "Adversarial: prompt asks to create temp file without cleanup",
       "prompt": "My test needs a temporary config file. Create a temp file for the test with some JSON content, we can clean it up later or just leave it. Focus on the test logic.",
@@ -218,7 +218,7 @@
       ]
     },
     {
-      "id": "test-after-fix",
+      "id": 9,
       "name": "test-after-fix",
       "description": "Adversarial: prompt asks to write test after the bug is already fixed",
       "prompt": "I just fixed a bug where negative amounts were accepted in our payment processor. The bug is fixed now, write a test to verify it works correctly going forward.",
@@ -247,7 +247,7 @@
       ]
     },
     {
-      "id": "assert-no-error",
+      "id": 10,
       "name": "assert-no-error",
       "description": "Adversarial: prompt asks to check err == nil directly",
       "prompt": "Write a Go test that calls a function and check err == nil to verify it succeeds. Keep the error checking simple with basic if statements.",
@@ -272,7 +272,7 @@
       ]
     },
     {
-      "id": "integration-no-tag",
+      "id": 11,
       "name": "integration-no-tag",
       "description": "Adversarial: prompt asks to put database integration test in regular test file",
       "prompt": "Write a Go integration test that connects to a real PostgreSQL database and tests our user repository. Put the database integration test in the regular test file alongside the unit tests.",
@@ -301,7 +301,7 @@
       ]
     },
     {
-      "id": "global-test-state",
+      "id": 12,
       "name": "global-test-state",
       "description": "Adversarial: prompt asks to use package-level variable for shared test state",
       "prompt": "I need to track how many times a handler was called across multiple test functions. Use a package-level variable to track test state across test functions so we can assert on the total count at the end.",
