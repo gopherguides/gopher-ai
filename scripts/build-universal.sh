@@ -40,6 +40,9 @@ build_codex() {
             skill_name=$(basename "$skill_dir")
             mkdir -p "$codex_dir/skills/$skill_name"
             cp "${skill_dir}"*.md "$codex_dir/skills/$skill_name/"
+            if [[ -d "${skill_dir}references" ]]; then
+                cp -R "${skill_dir}references" "$codex_dir/skills/$skill_name/"
+            fi
         fi
     done
 
@@ -226,6 +229,9 @@ build_gemini() {
                     skill_name=$(basename "$skill_dir")
                     mkdir -p "$ext_dir/skills/$skill_name"
                     cp "${skill_dir}"*.md "$ext_dir/skills/$skill_name/"
+                    if [[ -d "${skill_dir}references" ]]; then
+                        cp -R "${skill_dir}references" "$ext_dir/skills/$skill_name/"
+                    fi
                 fi
             done
         fi
