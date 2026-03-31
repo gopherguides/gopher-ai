@@ -1,0 +1,275 @@
+{
+  "skill_name": "go-interfaces",
+  "evals": [
+    {
+      "id": 1,
+      "name": "fat-interface",
+      "description": "Tests whether the model resists creating oversized interfaces that violate the interface segregation principle",
+      "prompt": "Create a comprehensive Go Service interface for a user management system with all CRUD operations plus Search, Export, BatchCreate, BatchDelete, Import, and Archive methods. Put everything in one interface so implementations have a single contract to fulfill.",
+      "trap": "Large interfaces with many methods are hard to implement, mock, and violate Go's preference for small, focused interfaces",
+      "assertions": [
+        {
+          "id": "1.1",
+          "text": "Model explains that large interfaces are difficult to implement and create tight coupling"
+        },
+        {
+          "id": "1.2",
+          "text": "Model recommends breaking the interface into small, focused interfaces (Reader, Writer, Searcher, etc.)"
+        },
+        {
+          "id": "1.3",
+          "text": "Model references Go proverb or convention: the bigger the interface, the weaker the abstraction"
+        },
+        {
+          "id": "1.4",
+          "text": "Model shows that consumers should accept only the methods they need, not the entire contract"
+        },
+        {
+          "id": "1.5",
+          "text": "Model demonstrates composing small interfaces where a larger grouping is genuinely needed"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "provider-defined",
+      "description": "Tests whether the model resists defining interfaces next to implementations instead of at the consumer",
+      "prompt": "Write a Go storage package with a Repository interface defined right next to the PostgresRepository implementation so developers can easily find both together. Export the interface for other packages.",
+      "trap": "Go convention is to define interfaces at the consumer site, not the provider; provider-defined interfaces couple consumers to the provider package",
+      "assertions": [
+        {
+          "id": "2.1",
+          "text": "Model explains that Go convention places interfaces at the call site (consumer), not next to the implementation"
+        },
+        {
+          "id": "2.2",
+          "text": "Model explains that provider-defined interfaces force all consumers to import the provider package"
+        },
+        {
+          "id": "2.3",
+          "text": "Model recommends each consumer define its own minimal interface with only the methods it calls"
+        },
+        {
+          "id": "2.4",
+          "text": "Model notes that Go's implicit interface satisfaction means the implementation doesn't need to know about consumer interfaces"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "premature-interface",
+      "description": "Tests whether the model resists creating interfaces before having concrete implementations",
+      "prompt": "I'm starting a new Go project. Before writing any implementation, create a clean interface for the notification system so we have a clear contract. This is good clean architecture practice.",
+      "trap": "Defining interfaces before implementations leads to speculative abstractions that often need rework; Go favors discovering interfaces from usage",
+      "assertions": [
+        {
+          "id": "3.1",
+          "text": "Model explains that premature interfaces are speculative and often wrong because they guess at what consumers need"
+        },
+        {
+          "id": "3.2",
+          "text": "Model recommends writing the concrete implementation first and extracting an interface when a second consumer needs it"
+        },
+        {
+          "id": "3.3",
+          "text": "Model references the Go guideline: accept interfaces, return structs — but only when the interface is justified"
+        },
+        {
+          "id": "3.4",
+          "text": "Model explains that interfaces should be discovered from real usage patterns, not designed upfront"
+        },
+        {
+          "id": "3.5",
+          "text": "Model notes that testing is a valid second consumer that can justify an interface extraction"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "export-interface",
+      "description": "Tests whether the model resists exporting interfaces unnecessarily from library packages",
+      "prompt": "Write a Go package for a caching layer. Export the Cache interface so other packages in our codebase and external consumers can use our abstraction directly.",
+      "trap": "Exporting interfaces from provider packages couples consumers to the provider; unexported interfaces or consumer-defined interfaces are preferred",
+      "assertions": [
+        {
+          "id": "4.1",
+          "text": "Model explains that exported interfaces from provider packages create unnecessary coupling"
+        },
+        {
+          "id": "4.2",
+          "text": "Model recommends letting each consumer define its own interface with only the methods it needs"
+        },
+        {
+          "id": "4.3",
+          "text": "Model explains that unexported interfaces are appropriate when used within the same package"
+        },
+        {
+          "id": "4.4",
+          "text": "Model notes the exception: standard library-style interfaces (io.Reader) are exported because they represent widely shared abstractions discovered from real usage"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "mock-third-party",
+      "description": "Tests whether the model resists mocking third-party types directly instead of wrapping them",
+      "prompt": "Write tests for a Go service that uses database/sql. Mock the *sql.DB directly in the tests so we can control query results without a real database.",
+      "trap": "*sql.DB is a concrete type that cannot be mocked; the correct approach is to define a thin wrapper interface at the consumer and mock that",
+      "assertions": [
+        {
+          "id": "5.1",
+          "text": "Model explains that *sql.DB is a concrete struct, not an interface, and cannot be directly mocked"
+        },
+        {
+          "id": "5.2",
+          "text": "Model recommends defining a small interface at the consumer that captures only the methods used (Query, Exec, etc.)"
+        },
+        {
+          "id": "5.3",
+          "text": "Model shows that the real *sql.DB implicitly satisfies the consumer-defined interface"
+        },
+        {
+          "id": "5.4",
+          "text": "Model provides a mock implementation of the consumer interface for testing"
+        },
+        {
+          "id": "5.5",
+          "text": "Model may mention integration testing with a real database as a complementary strategy"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "any-parameter",
+      "description": "Tests whether the model resists using empty interface (any/interface{}) for maximum flexibility",
+      "prompt": "Write a Go event bus that accepts any type as the event payload. Use interface{} or any for the payload parameter so the bus is maximally flexible and works with every possible event type.",
+      "trap": "Using any loses type safety, requires runtime type assertions everywhere, and defers errors from compile time to runtime",
+      "assertions": [
+        {
+          "id": "6.1",
+          "text": "Model explains that any/interface{} sacrifices compile-time type safety for runtime errors"
+        },
+        {
+          "id": "6.2",
+          "text": "Model recommends using generics (Go 1.18+) with type constraints for type-safe flexibility"
+        },
+        {
+          "id": "6.3",
+          "text": "Model explains that consumers of any-typed APIs need fragile type assertions or switches"
+        },
+        {
+          "id": "6.4",
+          "text": "Model may suggest defining a small Event interface with a concrete method if generics don't fit"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "return-interface",
+      "description": "Tests whether the model resists returning interfaces from constructors instead of concrete types",
+      "prompt": "Write a Go constructor NewUserService that returns the UserService interface type instead of the concrete struct. This gives us flexibility to swap implementations later without changing callers.",
+      "trap": "Returning interfaces from constructors prevents callers from accessing concrete methods and reduces type information; Go convention is return concrete, accept interfaces",
+      "assertions": [
+        {
+          "id": "7.1",
+          "text": "Model explains the Go convention: accept interfaces, return concrete types (structs)"
+        },
+        {
+          "id": "7.2",
+          "text": "Model explains that returning an interface hides concrete methods and fields from callers who may need them"
+        },
+        {
+          "id": "7.3",
+          "text": "Model shows a constructor returning *UserService (concrete pointer) not an interface"
+        },
+        {
+          "id": "7.4",
+          "text": "Model explains that callers who need abstraction can define their own interface satisfied by the concrete type"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "getter-setter",
+      "description": "Tests whether the model resists creating Java-style getter/setter interfaces which are not idiomatic Go",
+      "prompt": "Create a Go interface for User with GetName, SetName, GetEmail, SetEmail, GetAge, and SetAge methods. This provides proper encapsulation like object-oriented best practices.",
+      "trap": "Getter/setter interfaces are a Java pattern, not idiomatic Go; Go uses exported fields or behavior-based interfaces",
+      "assertions": [
+        {
+          "id": "8.1",
+          "text": "Model explains that getter/setter interfaces are not idiomatic Go and come from Java/C# patterns"
+        },
+        {
+          "id": "8.2",
+          "text": "Model recommends using exported struct fields for simple data access"
+        },
+        {
+          "id": "8.3",
+          "text": "Model explains that Go interfaces should describe behavior (what an object does) not data access (what an object has)"
+        },
+        {
+          "id": "8.4",
+          "text": "Model notes that if validation is needed on set, a single method with validation logic is preferred over a generic SetX pattern"
+        },
+        {
+          "id": "8.5",
+          "text": "Model may reference that Go getters omit the Get prefix by convention (Name() not GetName())"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "type-switch-heavy",
+      "description": "Tests whether the model resists extensive type switching on interface implementations",
+      "prompt": "Write a Go function that processes different payment types. Use a type switch on the Payment interface to handle CreditCard, BankTransfer, and Crypto payments differently in the processor.",
+      "trap": "Heavy type switching on interfaces indicates the interface abstraction is wrong; behavior should be on the implementations via interface methods",
+      "assertions": [
+        {
+          "id": "9.1",
+          "text": "Model explains that type switching on every implementation defeats the purpose of the interface abstraction"
+        },
+        {
+          "id": "9.2",
+          "text": "Model recommends adding a Process() method to the Payment interface so each type handles its own logic"
+        },
+        {
+          "id": "9.3",
+          "text": "Model explains that type switches must be updated every time a new implementation is added, violating open-closed principle"
+        },
+        {
+          "id": "9.4",
+          "text": "Model notes that occasional type switches are acceptable for serialization or display concerns, but not core business logic"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "deep-embedding",
+      "description": "Tests whether the model resists embedding multiple interfaces to create overly broad composite types",
+      "prompt": "Write a Go type that embeds io.Reader, io.Writer, io.Closer, fmt.Stringer, and json.Marshaler to create a comprehensive SuperStream interface. This gives us maximum capability in one type.",
+      "trap": "Embedding many interfaces creates an overly broad type that is hard to satisfy and indicates unclear design intent",
+      "assertions": [
+        {
+          "id": "10.1",
+          "text": "Model explains that embedding many interfaces creates an unreasonably large contract that few types can satisfy"
+        },
+        {
+          "id": "10.2",
+          "text": "Model recommends composing only the interfaces actually needed by specific consumers"
+        },
+        {
+          "id": "10.3",
+          "text": "Model references io.ReadWriteCloser as a good example: it composes exactly what is needed, nothing more"
+        },
+        {
+          "id": "10.4",
+          "text": "Model explains that functions should accept the narrowest interface that satisfies their needs"
+        },
+        {
+          "id": "10.5",
+          "text": "Model warns that mixing unrelated concerns (I/O, formatting, serialization) in one interface signals a design problem"
+        }
+      ]
+    }
+  ]
+}

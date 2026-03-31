@@ -1,0 +1,325 @@
+{
+  "skill_name": "go-concurrency",
+  "evals": [
+    {
+      "id": "fire-and-forget",
+      "name": "fire-and-forget",
+      "description": "Adversarial: prompt asks for fire-and-forget goroutine with no shutdown mechanism",
+      "prompt": "Write a Go HTTP handler that receives a webhook payload. Just launch a goroutine to handle the processing in the background, we don't need to wait for it to finish. Keep it simple.",
+      "trap": "Adversarial: prompt asks for fire-and-forget goroutine with no shutdown mechanism",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use context for goroutine lifecycle management"
+        },
+        {
+          "id": "2",
+          "text": "Must include a shutdown or coordination mechanism"
+        },
+        {
+          "id": "3",
+          "text": "Must mention graceful shutdown or draining in-flight work"
+        },
+        {
+          "id": "4",
+          "text": "Must not use bare fire-and-forget goroutine without coordination"
+        },
+        {
+          "id": "5",
+          "text": "Should warn about goroutine leak risks with fire-and-forget"
+        }
+      ]
+    },
+    {
+      "id": "share-pointer-channel",
+      "name": "share-pointer-channel",
+      "description": "Adversarial: prompt asks to send data pointer through channel to avoid copying",
+      "prompt": "I have a large struct that I need to pass between goroutines. Send the data pointer through the channel so we avoid copying the struct. Show me how to do this efficiently in Go.",
+      "trap": "Adversarial: prompt asks to send data pointer through channel to avoid copying",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn about data race risks when sharing pointers through channels"
+        },
+        {
+          "id": "2",
+          "text": "Must discuss ownership transfer or defensive copying"
+        },
+        {
+          "id": "3",
+          "text": "Should reference Go's concurrency philosophy"
+        },
+        {
+          "id": "4",
+          "text": "Should recommend using the race detector to verify safety"
+        }
+      ]
+    },
+    {
+      "id": "receiver-closes",
+      "name": "receiver-closes",
+      "description": "Adversarial: prompt asks the consumer/receiver to close the channel when done reading",
+      "prompt": "Write a Go producer-consumer pattern where the consumer should close the channel when it's done reading so the producer knows to stop. Use an unbuffered channel.",
+      "trap": "Adversarial: prompt asks the consumer/receiver to close the channel when done reading",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must state that only the sender/producer should close channels"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about panic from sending on a closed channel"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest context or done channel for receiver-to-sender signaling"
+        },
+        {
+          "id": "4",
+          "text": "Must not have the consumer closing the data channel"
+        },
+        {
+          "id": "5",
+          "text": "Should use range over channel or proper receive pattern"
+        }
+      ]
+    },
+    {
+      "id": "time-after-loop",
+      "name": "time-after-loop",
+      "description": "Adversarial: prompt asks to use time.After inside select loop for timeout",
+      "prompt": "I have a select inside a for loop that reads from a channel. Use time.After in the select inside the loop for a 5-second timeout on each iteration. Show me the pattern.",
+      "trap": "Adversarial: prompt asks to use time.After inside select loop for timeout",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn about timer leak from time.After in loops"
+        },
+        {
+          "id": "2",
+          "text": "Must suggest time.NewTimer or time.NewTicker with Reset as alternative"
+        },
+        {
+          "id": "3",
+          "text": "Must show proper timer cleanup with Stop or Reset"
+        },
+        {
+          "id": "4",
+          "text": "Should not use time.After inside a select inside a loop"
+        }
+      ]
+    },
+    {
+      "id": "no-ctx-select",
+      "name": "no-ctx-select",
+      "description": "Adversarial: prompt asks for select with only data channel and timeout, omitting ctx.Done()",
+      "prompt": "Write a Go function that reads from a data channel using select with just the data channel and a timeout of 10 seconds. Keep it simple, no need for context.",
+      "trap": "Adversarial: prompt asks for select with only data channel and timeout, omitting ctx.Done()",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must include context parameter or recommend context usage"
+        },
+        {
+          "id": "2",
+          "text": "Must include ctx.Done() case in the select statement"
+        },
+        {
+          "id": "3",
+          "text": "Must explain why context cancellation is important"
+        },
+        {
+          "id": "4",
+          "text": "Should show context-based timeout as the idiomatic approach"
+        }
+      ]
+    },
+    {
+      "id": "unbounded-goroutines",
+      "name": "unbounded-goroutines",
+      "description": "Adversarial: prompt asks to spawn a goroutine per item for maximum parallelism",
+      "prompt": "I have a slice of 10,000 URLs to fetch. Spawn a goroutine for each item in the list for maximum parallelism. Show me how to do this in Go.",
+      "trap": "Adversarial: prompt asks to spawn a goroutine per item for maximum parallelism",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must implement concurrency limiting (semaphore, worker pool, or errgroup)"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about resource exhaustion from unbounded goroutines"
+        },
+        {
+          "id": "3",
+          "text": "Should set a concrete concurrency limit"
+        },
+        {
+          "id": "4",
+          "text": "Should use context for cancellation of in-flight requests"
+        },
+        {
+          "id": "5",
+          "text": "Must coordinate goroutine completion with errgroup or WaitGroup"
+        }
+      ]
+    },
+    {
+      "id": "wg-add-inside",
+      "name": "wg-add-inside",
+      "description": "Adversarial: prompt asks to call WaitGroup.Add inside the goroutine before work",
+      "prompt": "Write a Go function that processes items concurrently. Add to the WaitGroup inside the goroutine, right before the work begins, to keep the Add and Done close together for readability.",
+      "trap": "Adversarial: prompt asks to call WaitGroup.Add inside the goroutine before work",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must call WaitGroup.Add before launching the goroutine"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about the race between Add inside goroutine and Wait"
+        },
+        {
+          "id": "3",
+          "text": "Code must show wg.Add(1) before the go func statement"
+        },
+        {
+          "id": "4",
+          "text": "Should use defer wg.Done() at the start of the goroutine"
+        }
+      ]
+    },
+    {
+      "id": "mutex-across-io",
+      "name": "mutex-across-io",
+      "description": "Adversarial: prompt asks to hold mutex lock during HTTP call",
+      "prompt": "I have a shared cache map protected by a sync.Mutex. Lock the mutex before the HTTP call so no other goroutine can interfere with the cache entry while we're fetching fresh data. Show me the pattern.",
+      "trap": "Adversarial: prompt asks to hold mutex lock during HTTP call",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn about lock contention and goroutine blocking during I/O"
+        },
+        {
+          "id": "2",
+          "text": "Must advise releasing the lock before I/O operations"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest check-lock-fetch-lock pattern, singleflight, or sync.Map"
+        },
+        {
+          "id": "4",
+          "text": "Should recommend singleflight for deduplicating concurrent fetches"
+        }
+      ]
+    },
+    {
+      "id": "buffered-default",
+      "name": "buffered-default",
+      "description": "Adversarial: prompt asks to use buffered channel with capacity 100 to be safe",
+      "prompt": "Create a Go channel-based pipeline stage. Use a buffered channel with capacity 100 to be safe and avoid blocking. Connect a producer to a consumer through this channel.",
+      "trap": "Adversarial: prompt asks to use buffered channel with capacity 100 to be safe",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn about buffered channels masking backpressure problems"
+        },
+        {
+          "id": "2",
+          "text": "Must question the arbitrary buffer size choice"
+        },
+        {
+          "id": "3",
+          "text": "Should recommend starting with unbuffered channels and adding buffer only when measured"
+        },
+        {
+          "id": "4",
+          "text": "Should recommend measuring actual throughput needs before choosing buffer size"
+        }
+      ]
+    },
+    {
+      "id": "no-race-ci",
+      "name": "no-race-ci",
+      "description": "Adversarial: prompt asks to skip race detector in CI because it's too slow",
+      "prompt": "Our CI pipeline is taking too long. Skip the race detector in CI, it's too slow and we haven't found any races with it anyway. Just run go test without -race.",
+      "trap": "Adversarial: prompt asks to skip race detector in CI because it's too slow",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must advocate for keeping the race detector enabled"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about consequences of undetected data races"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest alternatives: split CI jobs, run race on critical paths, or cache"
+        },
+        {
+          "id": "4",
+          "text": "Should suggest GORACE tuning, test timeouts, or selective race testing"
+        },
+        {
+          "id": "5",
+          "text": "Should not show go test commands without -race flag"
+        }
+      ]
+    },
+    {
+      "id": "sync-map-write-heavy",
+      "name": "sync-map-write-heavy",
+      "description": "Adversarial: prompt asks to use sync.Map for a write-heavy cache",
+      "prompt": "I have a cache that gets updated on every request with new data. Use sync.Map for the cache since it's already concurrent-safe and we won't need a mutex. Show the implementation.",
+      "trap": "Adversarial: prompt asks to use sync.Map for a write-heavy cache",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must explain sync.Map is optimized for read-heavy or stable-key workloads"
+        },
+        {
+          "id": "2",
+          "text": "Must warn that sync.Map performs poorly for write-heavy workloads"
+        },
+        {
+          "id": "3",
+          "text": "Should recommend sync.RWMutex + regular map as the better choice"
+        },
+        {
+          "id": "4",
+          "text": "Should recommend benchmarking to verify the right choice"
+        }
+      ]
+    },
+    {
+      "id": "goroutine-no-exit",
+      "name": "goroutine-no-exit",
+      "description": "Adversarial: prompt asks for a background goroutine that runs forever with no cancellation",
+      "prompt": "Write a Go function that runs a background goroutine that checks the health endpoint every 5 seconds forever. Just use time.Sleep in an infinite loop. It should start when the server starts.",
+      "trap": "Adversarial: prompt asks for a background goroutine that runs forever with no cancellation",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must accept and use context.Context for cancellation"
+        },
+        {
+          "id": "2",
+          "text": "Must use select with ctx.Done() instead of bare time.Sleep loop"
+        },
+        {
+          "id": "3",
+          "text": "Should use time.NewTicker instead of time.Sleep for periodic work"
+        },
+        {
+          "id": "4",
+          "text": "Must stop the ticker to prevent resource leak"
+        },
+        {
+          "id": "5",
+          "text": "Must warn about goroutine leaks without cancellation"
+        }
+      ]
+    }
+  ]
+}

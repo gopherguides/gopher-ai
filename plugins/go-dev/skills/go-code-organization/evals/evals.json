@@ -1,0 +1,283 @@
+{
+  "skill_name": "go-code-organization",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-1",
+      "description": "The model should resist naming the type UserService since it would stutter as user.UserService. It should suggest a name like Service instead.",
+      "prompt": "Create a UserService type in the user package that handles CRUD operations for users",
+      "trap": "The model should resist naming the type UserService since it would stutter as user.UserService. It should suggest a name like Service instead.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against or avoids the stuttering name user.UserService"
+        },
+        {
+          "id": "2",
+          "text": "The response suggests a non-stuttering alternative such as Service or similar"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that Go package names are part of the type's qualified name"
+        },
+        {
+          "id": "4",
+          "text": "The response demonstrates the correct usage pattern like user.Service"
+        },
+        {
+          "id": "5",
+          "text": "The type is defined in a file within the user package"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "eval-2",
+      "description": "The model should recommend using a singular package name 'user' instead of the plural 'users'.",
+      "prompt": "Create a 'users' package for user management with types and functions for creating, reading, updating, and deleting users",
+      "trap": "The model should recommend using a singular package name 'user' instead of the plural 'users'.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recommends the singular package name 'user' over the plural 'users'"
+        },
+        {
+          "id": "2",
+          "text": "The response explains Go convention that package names should be singular"
+        },
+        {
+          "id": "3",
+          "text": "The response does not create a package named 'users'"
+        },
+        {
+          "id": "4",
+          "text": "The response provides working Go code with correct package declaration"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "eval-3",
+      "description": "The model should discourage using init() for database connections and recommend explicit initialization instead.",
+      "prompt": "Use init() to set up the database connection pool at startup so it's ready when the server starts handling requests",
+      "trap": "The model should discourage using init() for database connections and recommend explicit initialization instead.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response discourages or warns against using init() for database setup"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends explicit initialization (constructor, main setup, or similar)"
+        },
+        {
+          "id": "3",
+          "text": "The response explains problems with init(): implicit ordering, hard to test, hidden dependencies"
+        },
+        {
+          "id": "4",
+          "text": "The response shows an alternative pattern such as a New function or explicit setup in main"
+        },
+        {
+          "id": "5",
+          "text": "The response mentions that init() makes error handling difficult"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "eval-4",
+      "description": "The model should recommend dependency injection over global package-level state.",
+      "prompt": "Use a package-level variable for the config so all functions in the package can access it without passing it around",
+      "trap": "The model should recommend dependency injection over global package-level state.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against using package-level variables for shared state"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends dependency injection or passing config as a parameter"
+        },
+        {
+          "id": "3",
+          "text": "The response explains problems with global state: testing difficulty, hidden coupling, concurrency risks"
+        },
+        {
+          "id": "4",
+          "text": "The response shows an alternative pattern using structs or function parameters"
+        },
+        {
+          "id": "5",
+          "text": "The code example does not use a package-level mutable variable for config"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "eval-5",
+      "description": "The model should correct the naming to Go's MixedCaps convention.",
+      "prompt": "Name the function get_user_by_id for clarity since it clearly describes what the function does",
+      "trap": "The model should correct the naming to Go's MixedCaps convention.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response corrects the name to MixedCaps such as GetUserByID or getUserByID"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that Go uses MixedCaps not underscores for multi-word names"
+        },
+        {
+          "id": "3",
+          "text": "The response uses uppercase ID not Id since ID is an acronym"
+        },
+        {
+          "id": "4",
+          "text": "The response explains Go naming conventions for exported vs unexported identifiers"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "eval-6",
+      "description": "The model should advise against deep nesting and recommend a flatter structure.",
+      "prompt": "Organize the project with a deep package structure: pkg/services/user/internal/repository/postgres/ to keep everything properly separated",
+      "trap": "The model should advise against deep nesting and recommend a flatter structure.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against deep package nesting in Go projects"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends a flatter package structure"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that Go favors fewer, wider packages over deep hierarchies"
+        },
+        {
+          "id": "4",
+          "text": "The response provides an alternative simpler structure"
+        },
+        {
+          "id": "5",
+          "text": "The response does not endorse or create the deeply nested pkg/services/user/internal/repository/postgres/ structure"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "eval-7",
+      "description": "The model should correct the acronym casing to HTTPURL following Go convention.",
+      "prompt": "Name the struct HttpUrl for consistency with other types in the codebase",
+      "trap": "The model should correct the acronym casing to HTTPURL following Go convention.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response corrects Http to HTTP since it is an acronym"
+        },
+        {
+          "id": "2",
+          "text": "The response corrects Url to URL since it is an acronym"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends HTTPURL or httpURL depending on export context"
+        },
+        {
+          "id": "4",
+          "text": "The response references Go's acronym casing convention from Effective Go or the Go wiki"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "eval-8",
+      "description": "The model should discourage naked returns and explain they obscure what is being returned.",
+      "prompt": "Use naked returns in this function to keep the return statements clean and match the function signature",
+      "trap": "The model should discourage naked returns and explain they obscure what is being returned.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response discourages naked returns in non-trivial functions"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that naked returns reduce readability by hiding what is returned"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends explicit return values"
+        },
+        {
+          "id": "4",
+          "text": "The response notes that naked returns are only acceptable in very short functions"
+        },
+        {
+          "id": "5",
+          "text": "The code example uses explicit returns instead of naked returns"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "eval-9",
+      "description": "The model should recommend separating concerns into distinct packages.",
+      "prompt": "Put all the HTTP handlers, database models, middleware, and validation logic in the api package to keep related code together",
+      "trap": "The model should recommend separating concerns into distinct packages.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against putting multiple concerns in a single package"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends separating handlers, models, middleware, and validation"
+        },
+        {
+          "id": "3",
+          "text": "The response explains the single-responsibility principle for Go packages"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests a package structure that separates these concerns"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that large monolithic packages are harder to maintain and test"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "eval-10",
+      "description": "The model should recommend defining interfaces at the consumer, not the provider.",
+      "prompt": "Define the Storage interface in the storage package right next to the PostgresStorage implementation so everything is in one place",
+      "trap": "The model should recommend defining interfaces at the consumer, not the provider.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recommends defining the interface at the consumer side, not alongside the implementation"
+        },
+        {
+          "id": "2",
+          "text": "The response explains Go's implicit interface satisfaction enables consumer-side definitions"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that provider-side interfaces create unnecessary coupling"
+        },
+        {
+          "id": "4",
+          "text": "The response shows an example of the consumer package defining its own interface"
+        },
+        {
+          "id": "5",
+          "text": "The response references the Go proverb or convention about accepting interfaces and returning structs"
+        }
+      ]
+    }
+  ]
+}

@@ -12,9 +12,20 @@ description: |
   WHEN NOT: Non-Go languages, general debugging without performance focus (use
   systematic-debugging instead), writing new benchmarks from scratch (suggest /bench command),
   questions entirely unrelated to performance or optimization
+allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 
 <!-- cache:start -->
+
+**Persona:** You are a Go performance engineer. You measure before you optimize, you optimize one thing at a time, and you verify with statistical rigor.
+
+**Modes:**
+
+- **Coding mode** — optimizing code. Follow the profiling workflow: baseline, profile, isolate, optimize, verify.
+- **Review mode** — reviewing a PR for performance. Check for unnecessary allocations, missing benchmarks, premature optimization.
+- **Audit mode** — auditing performance across a codebase. Use up to 4 parallel sub-agents targeting: CPU hotspots, memory allocations, concurrency bottlenecks, and I/O patterns.
+
+> **Principle:** "Never optimize without profiling data. You will optimize the wrong thing."
 
 # Go Profiling & Optimization
 
@@ -360,6 +371,13 @@ Understanding relative costs helps prioritize optimizations:
 | Network round-trip (cross datacenter) | 150 ms | 300,000,000x |
 
 Focus on I/O and allocation patterns first. Nanosecond-level CPU optimizations rarely matter unless you're in a tight inner loop processing millions of items.
+
+## Cross-References
+
+- → go-concurrency for sync.Pool hot-path patterns and goroutine scheduling
+- → go-error-handling for error-path performance considerations
+- → systematic-debugging for diagnosing performance regressions
+- → go-testing for benchmark test patterns
 
 <!-- cache:end -->
 

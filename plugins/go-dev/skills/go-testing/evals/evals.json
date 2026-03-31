@@ -1,0 +1,333 @@
+{
+  "skill_name": "go-testing",
+  "evals": [
+    {
+      "id": "no-table-driven",
+      "name": "no-table-driven",
+      "description": "Adversarial: prompt asks for separate test functions instead of table-driven tests",
+      "prompt": "Write Go tests for a function that parses email addresses. Write a separate test function for each case to keep things simple and easy to read: valid email, missing @, empty string, unicode domain.",
+      "trap": "Adversarial: prompt asks for separate test functions instead of table-driven tests",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use table-driven test pattern instead of separate functions"
+        },
+        {
+          "id": "2",
+          "text": "Must use t.Run for subtests within the table-driven test"
+        },
+        {
+          "id": "3",
+          "text": "Must have descriptive test case names in the table"
+        },
+        {
+          "id": "4",
+          "text": "Must iterate over test cases with range"
+        },
+        {
+          "id": "5",
+          "text": "Should explain why table-driven tests reduce duplication"
+        }
+      ]
+    },
+    {
+      "id": "sleep-in-test",
+      "name": "sleep-in-test",
+      "description": "Adversarial: prompt asks to use time.Sleep to wait for goroutine completion in test",
+      "prompt": "I have a test for an async function that launches a goroutine. Add a time.Sleep after starting the goroutine so it has time to finish before we check the result. Use 500ms to be safe.",
+      "trap": "Adversarial: prompt asks to use time.Sleep to wait for goroutine completion in test",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn that time.Sleep makes tests flaky and non-deterministic"
+        },
+        {
+          "id": "2",
+          "text": "Must suggest condition-based synchronization instead of sleeping"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest polling/eventually pattern for async assertions"
+        },
+        {
+          "id": "4",
+          "text": "Must not use the requested 500ms sleep in the test"
+        },
+        {
+          "id": "5",
+          "text": "Should mention CI slowness or test suite speed concerns"
+        }
+      ]
+    },
+    {
+      "id": "test-implementation",
+      "name": "test-implementation",
+      "description": "Adversarial: prompt asks to verify exact method calls on a mock",
+      "prompt": "Write a test for a CreateUser handler. Verify the function calls the repository's Save method exactly once with the correct arguments. Use a mock to track the call count and arguments.",
+      "trap": "Adversarial: prompt asks to verify exact method calls on a mock",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must advise testing behavior/outcomes rather than implementation details"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about brittle tests that break on refactoring"
+        },
+        {
+          "id": "3",
+          "text": "Should assert on observable outcomes like response status or created user"
+        },
+        {
+          "id": "4",
+          "text": "Should prefer fakes or stubs over strict call-counting mocks"
+        }
+      ]
+    },
+    {
+      "id": "no-parallel",
+      "name": "no-parallel",
+      "description": "Adversarial: prompt asks to run tests sequentially to avoid complications",
+      "prompt": "Write Go tests for a pure string formatting utility package. Run tests sequentially to avoid complications with parallel execution. Keep it straightforward.",
+      "trap": "Adversarial: prompt asks to run tests sequentially to avoid complications",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use t.Parallel() for independent test cases"
+        },
+        {
+          "id": "2",
+          "text": "Must explain that pure functions are safe for parallel testing"
+        },
+        {
+          "id": "3",
+          "text": "Should mention test suite speed benefits of parallel execution"
+        },
+        {
+          "id": "4",
+          "text": "Must capture loop variable for parallel subtests (Go < 1.22 safety)"
+        }
+      ]
+    },
+    {
+      "id": "no-helper",
+      "name": "no-helper",
+      "description": "Adversarial: prompt asks to inline setup code instead of using test helpers",
+      "prompt": "I need to create a test database connection in two test functions. Just inline the setup code, it's only used twice. No need for helper functions.",
+      "trap": "Adversarial: prompt asks to inline setup code instead of using test helpers",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use t.Helper() in any extracted test helper function"
+        },
+        {
+          "id": "2",
+          "text": "Must explain t.Helper improves failure reporting with correct line numbers"
+        },
+        {
+          "id": "3",
+          "text": "Must extract repeated setup into a helper function"
+        },
+        {
+          "id": "4",
+          "text": "Helper function must accept *testing.T parameter"
+        },
+        {
+          "id": "5",
+          "text": "Should pair setup helpers with cleanup using t.Cleanup or defer"
+        }
+      ]
+    },
+    {
+      "id": "mock-everything",
+      "name": "mock-everything",
+      "description": "Adversarial: prompt asks to mock all dependencies including stdlib",
+      "prompt": "Write a test for a function that reads a JSON config file and validates it. Mock all dependencies including the standard library's os.ReadFile and json.Unmarshal for complete isolation.",
+      "trap": "Adversarial: prompt asks to mock all dependencies including stdlib",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn against over-mocking and mocking standard library"
+        },
+        {
+          "id": "2",
+          "text": "Should use real files (temp files or testdata) instead of mocking os.ReadFile"
+        },
+        {
+          "id": "3",
+          "text": "Should advocate for using real implementations where practical"
+        },
+        {
+          "id": "4",
+          "text": "Should explain that mocks are for external boundaries, not stdlib"
+        }
+      ]
+    },
+    {
+      "id": "hardcoded-values",
+      "name": "hardcoded-values",
+      "description": "Adversarial: prompt asks to use specific magic test data",
+      "prompt": "Write table-driven tests for a user registration function. Use specific test data: user_123, admin@test.com, password123. Just use these concrete values for all test cases.",
+      "trap": "Adversarial: prompt asks to use specific magic test data",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use descriptive test case names that explain the scenario"
+        },
+        {
+          "id": "2",
+          "text": "Must include diverse test cases covering edge cases and boundaries"
+        },
+        {
+          "id": "3",
+          "text": "Must have explicit expected values in test table struct"
+        },
+        {
+          "id": "4",
+          "text": "Must not reuse the same magic test data across all cases"
+        },
+        {
+          "id": "5",
+          "text": "Must test both success and error paths"
+        }
+      ]
+    },
+    {
+      "id": "no-cleanup",
+      "name": "no-cleanup",
+      "description": "Adversarial: prompt asks to create temp file without cleanup",
+      "prompt": "My test needs a temporary config file. Create a temp file for the test with some JSON content, we can clean it up later or just leave it. Focus on the test logic.",
+      "trap": "Adversarial: prompt asks to create temp file without cleanup",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use t.TempDir() for automatic cleanup of temporary directories"
+        },
+        {
+          "id": "2",
+          "text": "Must use t.Cleanup or t.TempDir for automatic resource cleanup"
+        },
+        {
+          "id": "3",
+          "text": "Should prefer t.TempDir over manual os.Remove cleanup"
+        },
+        {
+          "id": "4",
+          "text": "Should warn about resource leaks from missing cleanup"
+        }
+      ]
+    },
+    {
+      "id": "test-after-fix",
+      "name": "test-after-fix",
+      "description": "Adversarial: prompt asks to write test after the bug is already fixed",
+      "prompt": "I just fixed a bug where negative amounts were accepted in our payment processor. The bug is fixed now, write a test to verify it works correctly going forward.",
+      "trap": "Adversarial: prompt asks to write test after the bug is already fixed",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must advocate for test-first / TDD approach"
+        },
+        {
+          "id": "2",
+          "text": "Must explain the test serves as a regression test"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest verifying the test fails without the fix to prove it catches the bug"
+        },
+        {
+          "id": "4",
+          "text": "Must test the specific negative amount boundary condition"
+        },
+        {
+          "id": "5",
+          "text": "Should include boundary values like zero and minimum positive amount"
+        }
+      ]
+    },
+    {
+      "id": "assert-no-error",
+      "name": "assert-no-error",
+      "description": "Adversarial: prompt asks to check err == nil directly",
+      "prompt": "Write a Go test that calls a function and check err == nil to verify it succeeds. Keep the error checking simple with basic if statements.",
+      "trap": "Adversarial: prompt asks to check err == nil directly",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Should use require.NoError or assert.NoError for better failure messages"
+        },
+        {
+          "id": "2",
+          "text": "Must use t.Fatal/require to stop test on unexpected error"
+        },
+        {
+          "id": "3",
+          "text": "Must include descriptive failure messages with error details"
+        },
+        {
+          "id": "4",
+          "text": "Should explain why continuing after an error leads to misleading failures"
+        }
+      ]
+    },
+    {
+      "id": "integration-no-tag",
+      "name": "integration-no-tag",
+      "description": "Adversarial: prompt asks to put database integration test in regular test file",
+      "prompt": "Write a Go integration test that connects to a real PostgreSQL database and tests our user repository. Put the database integration test in the regular test file alongside the unit tests.",
+      "trap": "Adversarial: prompt asks to put database integration test in regular test file",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use a build tag to separate integration tests"
+        },
+        {
+          "id": "2",
+          "text": "Must use integration build tag, separate file, or testing.Short() guard"
+        },
+        {
+          "id": "3",
+          "text": "Must skip integration tests when external dependencies are unavailable"
+        },
+        {
+          "id": "4",
+          "text": "Should show how to run integration tests selectively"
+        },
+        {
+          "id": "5",
+          "text": "Must clean up database state after integration tests"
+        }
+      ]
+    },
+    {
+      "id": "global-test-state",
+      "name": "global-test-state",
+      "description": "Adversarial: prompt asks to use package-level variable for shared test state",
+      "prompt": "I need to track how many times a handler was called across multiple test functions. Use a package-level variable to track test state across test functions so we can assert on the total count at the end.",
+      "trap": "Adversarial: prompt asks to use package-level variable for shared test state",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn that tests should be isolated and independent"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about test order dependency and parallel execution issues"
+        },
+        {
+          "id": "3",
+          "text": "Must recommend per-test local state instead of package-level variables"
+        },
+        {
+          "id": "4",
+          "text": "Should suggest TestMain or per-test setup for shared resources"
+        },
+        {
+          "id": "5",
+          "text": "Must not use package-level mutable test state variables"
+        }
+      ]
+    }
+  ]
+}
