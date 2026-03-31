@@ -1,0 +1,229 @@
+{
+  "skill_name": "go-best-practices",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-1",
+      "description": "The model should identify and resist multiple anti-patterns: global state, init() abuse, and stuttering names.",
+      "prompt": "Write a Go HTTP server that uses a global database connection initialized in init(), with a UserService type in the user package, and uses init() to register routes. Make sure the config is stored in a package-level variable so handlers can access it.",
+      "trap": "The model should identify and resist multiple anti-patterns: global state, init() abuse, and stuttering names.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response identifies the stuttering user.UserService name and suggests an alternative"
+        },
+        {
+          "id": "2",
+          "text": "The response discourages using init() for database initialization and route registration"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends dependency injection instead of package-level config variables"
+        },
+        {
+          "id": "4",
+          "text": "The response provides an alternative architecture using explicit initialization"
+        },
+        {
+          "id": "5",
+          "text": "The response explains why each suggested change improves testability and maintainability"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "eval-2",
+      "description": "The model should warn against premature abstraction and recommend defining interfaces only when needed.",
+      "prompt": "Create interfaces for the User repository, the User service, the email sender, the logger, and the config loader so we can swap implementations later if needed",
+      "trap": "The model should warn against premature abstraction and recommend defining interfaces only when needed.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against creating interfaces before there are multiple implementations"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends starting with concrete types and extracting interfaces when needed"
+        },
+        {
+          "id": "3",
+          "text": "The response explains Go's implicit interfaces make premature abstraction unnecessary"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests defining interfaces at the consumer rather than preemptively"
+        },
+        {
+          "id": "5",
+          "text": "The response references the YAGNI principle or Go's preference for concrete types first"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "eval-3",
+      "description": "The model should prioritize clear, safe code over clever optimizations unless profiling data justifies it.",
+      "prompt": "Optimize this string processing function by using bit manipulation for character checks and unsafe pointer casts to avoid string-to-byte-slice copies for maximum speed",
+      "trap": "The model should prioritize clear, safe code over clever optimizations unless profiling data justifies it.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response discourages using unsafe pointer casts without proven need from profiling"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends measuring with benchmarks before optimizing"
+        },
+        {
+          "id": "3",
+          "text": "The response prioritizes readability and safety over clever tricks"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests standard library alternatives that are both clear and performant"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that premature optimization is counterproductive"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "eval-4",
+      "description": "The model should insist on checking the Close() error or at minimum logging it.",
+      "prompt": "The error from Close() on this file handle doesn't matter since we already read all the data. Just ignore it with an underscore assignment.",
+      "trap": "The model should insist on checking the Close() error or at minimum logging it.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response insists on not ignoring the Close() error"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that Close() can fail for meaningful reasons like flushing buffers or network errors"
+        },
+        {
+          "id": "3",
+          "text": "The response shows a pattern for handling Close() errors such as defer with error check"
+        },
+        {
+          "id": "4",
+          "text": "The response mentions that for writable files Close() errors are especially important"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "eval-5",
+      "description": "The model should recommend specific types or generics over any for type safety.",
+      "prompt": "Use any (interface{}) for all function parameters so the functions are maximally reusable across different types",
+      "trap": "The model should recommend specific types or generics over any for type safety.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response discourages using any for function parameters as a general practice"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends specific types for type safety and self-documenting code"
+        },
+        {
+          "id": "3",
+          "text": "The response suggests generics as an alternative when true polymorphism is needed"
+        },
+        {
+          "id": "4",
+          "text": "The response explains that any loses compile-time type checking"
+        },
+        {
+          "id": "5",
+          "text": "The response shows a concrete example using specific types or generics instead of any"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "eval-6",
+      "description": "The model should recommend the functional options pattern for constructors with many parameters.",
+      "prompt": "Create a NewServer constructor that takes the host, port, read timeout, write timeout, idle timeout, max header bytes, TLS config, logger, database, cache, and metrics client as individual parameters",
+      "trap": "The model should recommend the functional options pattern for constructors with many parameters.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recommends the functional options pattern instead of many parameters"
+        },
+        {
+          "id": "2",
+          "text": "The response shows an example using Option functions like WithTimeout, WithLogger, etc."
+        },
+        {
+          "id": "3",
+          "text": "The response explains that long parameter lists are hard to read and maintain"
+        },
+        {
+          "id": "4",
+          "text": "The response provides sensible defaults for optional parameters"
+        },
+        {
+          "id": "5",
+          "text": "The response keeps required parameters as direct arguments and optional ones as options"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "eval-7",
+      "description": "The model should explain the single error handling rule: handle or return, never both.",
+      "prompt": "Log the error with full context and then return it to the caller so both the logs and the caller have the error information",
+      "trap": "The model should explain the single error handling rule: handle or return, never both.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response explains the rule: handle an error OR return it, never both"
+        },
+        {
+          "id": "2",
+          "text": "The response warns that logging and returning causes duplicate error messages in logs"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends either wrapping with fmt.Errorf and returning, or logging and handling locally"
+        },
+        {
+          "id": "4",
+          "text": "The response shows the correct pattern using fmt.Errorf with %w for wrapping"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "eval-8",
+      "description": "The model should recommend proper synchronization primitives instead of sleep.",
+      "prompt": "Add a time.Sleep(100ms) after launching the goroutine to wait for it to finish processing before we check the result",
+      "trap": "The model should recommend proper synchronization primitives instead of sleep.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response strongly discourages using sleep for goroutine synchronization"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends sync.WaitGroup, errgroup, or channels for coordination"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that sleep is unreliable and creates race conditions"
+        },
+        {
+          "id": "4",
+          "text": "The response shows a concrete example using proper synchronization"
+        },
+        {
+          "id": "5",
+          "text": "The response mentions that sleep-based synchronization wastes time or fails under load"
+        }
+      ]
+    }
+  ]
+}

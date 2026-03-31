@@ -1,0 +1,295 @@
+{
+  "skill_name": "systematic-debugging",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-1",
+      "description": "The model should investigate the root cause rather than blindly updating test expectations.",
+      "prompt": "Just change this expected value in the test assertion to match the actual output. Don't overthink it, the test will pass.",
+      "trap": "The model should investigate the root cause rather than blindly updating test expectations.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response refuses to blindly change the test expectation without understanding why it fails"
+        },
+        {
+          "id": "2",
+          "text": "The response insists on investigating the root cause of the test failure"
+        },
+        {
+          "id": "3",
+          "text": "The response asks what the correct expected behavior should be"
+        },
+        {
+          "id": "4",
+          "text": "The response explains that changing assertions to match output can mask real bugs"
+        },
+        {
+          "id": "5",
+          "text": "The response follows the systematic debugging approach: understand the expected behavior first"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "eval-2",
+      "description": "The model should insist on reproducing the bug with a test before fixing it.",
+      "prompt": "I can see the bug in the code on line 42 where the slice index is wrong. Just fix it to use the correct index, no need to run tests first.",
+      "trap": "The model should insist on reproducing the bug with a test before fixing it.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response insists on writing or running a test to reproduce the bug first"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that reproduction confirms the bug exists and the fix works"
+        },
+        {
+          "id": "3",
+          "text": "The response creates a failing test that demonstrates the incorrect behavior"
+        },
+        {
+          "id": "4",
+          "text": "The response only applies the fix after the reproduction test is in place"
+        },
+        {
+          "id": "5",
+          "text": "The response runs the test after the fix to verify it passes"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "eval-3",
+      "description": "The model should fix one issue at a time with separate test-verify cycles.",
+      "prompt": "Fix all three issues at once: the nil pointer in the handler, the race condition in the cache, and the off-by-one in the pagination. It will save time to do them together.",
+      "trap": "The model should fix one issue at a time with separate test-verify cycles.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recommends fixing one issue at a time"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that changing multiple things at once makes it impossible to isolate which fix resolved which problem"
+        },
+        {
+          "id": "3",
+          "text": "The response proposes an order for addressing the issues"
+        },
+        {
+          "id": "4",
+          "text": "The response verifies each fix independently before moving to the next"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that batch fixes risk introducing new bugs that are harder to trace"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "eval-4",
+      "description": "The model should gather evidence before guessing the root cause.",
+      "prompt": "It's probably a nil pointer dereference. Just add a nil check before the access and return an error.",
+      "trap": "The model should gather evidence before guessing the root cause.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response does not immediately add a nil check based on a guess"
+        },
+        {
+          "id": "2",
+          "text": "The response asks for or examines the actual error, stack trace, or failing test output"
+        },
+        {
+          "id": "3",
+          "text": "The response investigates why the value might be nil rather than just guarding against it"
+        },
+        {
+          "id": "4",
+          "text": "The response explains that adding nil checks without understanding the cause can mask deeper bugs"
+        },
+        {
+          "id": "5",
+          "text": "The response follows evidence-based debugging: observe, hypothesize, test"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "eval-5",
+      "description": "The model should use proper synchronization instead of sleep.",
+      "prompt": "Add a time.Sleep(200ms) after the goroutine write to fix the race condition in the test. The sleep gives the goroutine enough time to finish.",
+      "trap": "The model should use proper synchronization instead of sleep.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response rejects using sleep as a fix for race conditions"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that sleep is not synchronization and will fail under different loads"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends proper synchronization: channels, sync.WaitGroup, sync.Mutex, or errgroup"
+        },
+        {
+          "id": "4",
+          "text": "The response identifies the actual data race and proposes a correct synchronization fix"
+        },
+        {
+          "id": "5",
+          "text": "The response suggests running with -race flag to verify the race condition is resolved"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "eval-6",
+      "description": "The model should read the full stack trace to understand the call chain.",
+      "prompt": "The stack trace is too long and confusing. Just look at the error message 'index out of range [5] with length 3' and fix the indexing.",
+      "trap": "The model should read the full stack trace to understand the call chain.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response insists on reading the full stack trace"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that the stack trace shows the exact call chain and source locations"
+        },
+        {
+          "id": "3",
+          "text": "The response identifies which function and line number triggered the panic"
+        },
+        {
+          "id": "4",
+          "text": "The response traces the data flow to understand how the invalid index was reached"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that the error message alone does not reveal why the index was wrong"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "eval-7",
+      "description": "The model should insist every bug fix needs a regression test.",
+      "prompt": "The fix is a one-line change to the comparison operator. It's so simple we don't need a regression test for it.",
+      "trap": "The model should insist every bug fix needs a regression test.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response insists on writing a regression test for the fix"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that regression tests prevent the same bug from recurring"
+        },
+        {
+          "id": "3",
+          "text": "The response notes that simple fixes are often for bugs that were missed precisely because they seemed too simple to test"
+        },
+        {
+          "id": "4",
+          "text": "The response writes a test that would fail without the fix and pass with it"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that the test documents the bug for future developers"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "eval-8",
+      "description": "The model should stop and reassess after three failed fix attempts rather than trying a fourth.",
+      "prompt": "The previous three approaches to fix this flaky test didn't work. Let's try adding a mutex around the shared map access.",
+      "trap": "The model should stop and reassess after three failed fix attempts rather than trying a fourth.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recognizes that three failed attempts signals a need to step back and reassess"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends re-examining the assumptions rather than trying another fix"
+        },
+        {
+          "id": "3",
+          "text": "The response suggests discussing the problem with a broader view before continuing"
+        },
+        {
+          "id": "4",
+          "text": "The response asks what evidence led to each previous attempt to identify faulty assumptions"
+        },
+        {
+          "id": "5",
+          "text": "The response does not blindly apply a fourth fix without deeper analysis"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "eval-9",
+      "description": "The model should refuse to comment out or skip failing tests.",
+      "prompt": "Comment out the failing test for now with a TODO comment. We'll come back to fix it later when we have more time.",
+      "trap": "The model should refuse to comment out or skip failing tests.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response refuses to comment out the failing test"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that commented-out tests hide failures and are rarely revisited"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends investigating why the test fails instead"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests using t.Skip with a clear reason and a linked issue as a last resort"
+        },
+        {
+          "id": "5",
+          "text": "The response warns that disabling tests erodes confidence in the test suite"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "eval-10",
+      "description": "The model should investigate why the real database returns unexpected data instead of masking it with mocks.",
+      "prompt": "Mock the database dependency to make the integration test pass. The real database returns unexpected data but the mock will return what we expect.",
+      "trap": "The model should investigate why the real database returns unexpected data instead of masking it with mocks.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against using mocks to hide real behavior differences"
+        },
+        {
+          "id": "2",
+          "text": "The response investigates why the real database returns unexpected data"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that replacing a failing real dependency with a mock masks the actual bug"
+        },
+        {
+          "id": "4",
+          "text": "The response recommends fixing the data or query rather than mocking around it"
+        },
+        {
+          "id": "5",
+          "text": "The response distinguishes between legitimate use of mocks (isolation) and misuse (hiding bugs)"
+        }
+      ]
+    }
+  ]
+}

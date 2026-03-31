@@ -1,0 +1,325 @@
+{
+  "skill_name": "go-error-handling",
+  "evals": [
+    {
+      "id": 1,
+      "name": "log-and-return",
+      "description": "Tests whether the model resists the anti-pattern of both logging and returning the same error, which violates the single error handling rule",
+      "prompt": "Write a Go function that reads a config file. If the file can't be opened, log the error AND return it for the caller to handle. I want both so we never miss errors in the logs.",
+      "trap": "Logging and returning the same error violates Go's single error handling rule, causing duplicate error reports up the call stack",
+      "assertions": [
+        {
+          "id": "1.1",
+          "text": "Model explains that errors should be handled exactly once: either logged or returned, not both"
+        },
+        {
+          "id": "1.2",
+          "text": "Model warns that logging and returning causes duplicate error reports as callers may also log"
+        },
+        {
+          "id": "1.3",
+          "text": "Model recommends returning a wrapped error with context and letting the top-level caller decide whether to log"
+        },
+        {
+          "id": "1.4",
+          "text": "Model provides code that uses fmt.Errorf with %w to wrap the error instead of logging it"
+        },
+        {
+          "id": "1.5",
+          "text": "Model mentions that the application boundary (main, HTTP handler) is the appropriate place to log errors"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "uppercase-errors",
+      "description": "Tests whether the model resists capitalizing error messages, which violates Go conventions",
+      "prompt": "Write a Go function that validates user input. Make the error messages descriptive with proper capitalization so they read well in logs, like 'Error: Invalid email address provided'.",
+      "trap": "Go convention requires error strings to be lowercase and not end with punctuation, since they are often composed with other messages",
+      "assertions": [
+        {
+          "id": "2.1",
+          "text": "Model explains that Go error strings should start with a lowercase letter"
+        },
+        {
+          "id": "2.2",
+          "text": "Model explains that error strings should not end with punctuation"
+        },
+        {
+          "id": "2.3",
+          "text": "Model explains that errors are often wrapped or combined, so capitalization breaks composability"
+        },
+        {
+          "id": "2.4",
+          "text": "Model provides error messages like 'invalid email address' instead of 'Invalid email address provided'"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "discard-error",
+      "description": "Tests whether the model resists discarding errors with the blank identifier",
+      "prompt": "Write a Go function that copies a file. We don't need error checking for the Close() call since the file was already written successfully. Just use _ to discard it and keep the code clean.",
+      "trap": "Discarding errors with _ can hide real failures; Close() on a writable file can fail if data hasn't been flushed to disk",
+      "assertions": [
+        {
+          "id": "3.1",
+          "text": "Model explains that Close() on writable files can fail due to unflushed buffers or filesystem errors"
+        },
+        {
+          "id": "3.2",
+          "text": "Model warns that discarding errors with _ hides real data loss scenarios"
+        },
+        {
+          "id": "3.3",
+          "text": "Model provides code that checks the Close() error and returns or handles it"
+        },
+        {
+          "id": "3.4",
+          "text": "Model may demonstrate the defer-with-named-return pattern for safely capturing Close() errors"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "bare-return-err",
+      "description": "Tests whether the model resists returning errors without adding wrapping context",
+      "prompt": "Write a Go service that loads user preferences from a database. Keep error handling simple - just return the error directly with 'return err'. No need to wrap it, that's just noise.",
+      "trap": "Returning bare errors without context loses the call chain information needed for debugging",
+      "assertions": [
+        {
+          "id": "4.1",
+          "text": "Model explains that bare 'return err' loses context about where and why the error occurred"
+        },
+        {
+          "id": "4.2",
+          "text": "Model demonstrates using fmt.Errorf with %w to add context while preserving the error chain"
+        },
+        {
+          "id": "4.3",
+          "text": "Model shows that wrapping adds a human-readable trail like 'load preferences: query user 42: connection refused'"
+        },
+        {
+          "id": "4.4",
+          "text": "Model explains that wrapped errors still support errors.Is and errors.As for programmatic checking"
+        },
+        {
+          "id": "4.5",
+          "text": "Model keeps wrapping messages concise and lowercase, describing the failed operation"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "panic-for-validation",
+      "description": "Tests whether the model resists using panic for expected error conditions like input validation",
+      "prompt": "Write a Go function that validates a payment amount. If the amount is negative or zero, use panic since that should never happen in production. It's a programmer error.",
+      "trap": "Using panic for input validation conflates expected runtime conditions with unrecoverable programmer errors",
+      "assertions": [
+        {
+          "id": "5.1",
+          "text": "Model explains that panic is reserved for truly unrecoverable situations like nil dereferences in code that should be unreachable"
+        },
+        {
+          "id": "5.2",
+          "text": "Model explains that invalid payment amounts are expected runtime conditions from user input, not programmer errors"
+        },
+        {
+          "id": "5.3",
+          "text": "Model returns an error value instead of panicking for validation failures"
+        },
+        {
+          "id": "5.4",
+          "text": "Model notes that panics cross API boundaries and crash the entire program or goroutine unless recovered"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "direct-comparison",
+      "description": "Tests whether the model resists using == for error comparison instead of errors.Is",
+      "prompt": "Write a Go function that opens a file and returns a default config if the file doesn't exist. Check if the error equals os.ErrNotExist using == to keep it straightforward.",
+      "trap": "Direct == comparison fails when errors are wrapped with fmt.Errorf %w; errors.Is traverses the chain",
+      "assertions": [
+        {
+          "id": "6.1",
+          "text": "Model explains that == comparison breaks when errors are wrapped with fmt.Errorf and %w"
+        },
+        {
+          "id": "6.2",
+          "text": "Model uses errors.Is(err, os.ErrNotExist) instead of err == os.ErrNotExist"
+        },
+        {
+          "id": "6.3",
+          "text": "Model explains that errors.Is traverses the entire error chain to find a match"
+        },
+        {
+          "id": "6.4",
+          "text": "Model notes that errors.Is also supports custom Is() methods for sentinel comparison"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "type-assertion-error",
+      "description": "Tests whether the model resists using direct type assertions for error type checking instead of errors.As",
+      "prompt": "Write a Go function that handles file operations and extracts the path from PathError. Cast the error to *os.PathError using a type assertion to get the details.",
+      "trap": "Direct type assertions fail on wrapped errors; errors.As unwraps the chain to find the target type",
+      "assertions": [
+        {
+          "id": "7.1",
+          "text": "Model explains that type assertions fail when the error has been wrapped"
+        },
+        {
+          "id": "7.2",
+          "text": "Model uses errors.As with a target variable instead of a direct type assertion"
+        },
+        {
+          "id": "7.3",
+          "text": "Model explains that errors.As unwraps the error chain to find the first matching type"
+        },
+        {
+          "id": "7.4",
+          "text": "Model shows the correct pattern: var pathErr *os.PathError; if errors.As(err, &pathErr) { ... }"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "interpolate-ids",
+      "description": "Tests whether the model resists embedding high-cardinality values directly into error message strings",
+      "prompt": "Write a Go function that processes orders. Include the user ID and request ID in every error message string for debugging, like fmt.Errorf(\"user %s request %s: failed to process order\", userID, reqID).",
+      "trap": "Embedding high-cardinality IDs in error strings prevents error aggregation and creates unbounded unique error messages",
+      "assertions": [
+        {
+          "id": "8.1",
+          "text": "Model explains that high-cardinality values in error strings create unbounded unique messages that defeat error aggregation"
+        },
+        {
+          "id": "8.2",
+          "text": "Model recommends using structured logging with fields (e.g., slog.Error with attributes) instead of string interpolation"
+        },
+        {
+          "id": "8.3",
+          "text": "Model suggests keeping error messages as static templates and passing IDs as structured context"
+        },
+        {
+          "id": "8.4",
+          "text": "Model may suggest using context.Context to carry request-scoped values like user ID and request ID"
+        },
+        {
+          "id": "8.5",
+          "text": "Model keeps the error string itself stable for grouping: 'process order: database timeout' rather than 'user abc123 request xyz789: database timeout'"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "log-fatal",
+      "description": "Tests whether the model resists using log.Fatal for recoverable error conditions",
+      "prompt": "Write a Go web server that connects to a database on startup. If the database connection fails, use log.Fatal to exit immediately since there's no point running without a database.",
+      "trap": "log.Fatal calls os.Exit(1) which prevents deferred cleanup, graceful shutdown of connections, and proper signal handling",
+      "assertions": [
+        {
+          "id": "9.1",
+          "text": "Model explains that log.Fatal calls os.Exit(1) which skips all deferred functions"
+        },
+        {
+          "id": "9.2",
+          "text": "Model warns that skipping defers prevents graceful shutdown of open connections, temp files, and resources"
+        },
+        {
+          "id": "9.3",
+          "text": "Model recommends returning an error from main's setup logic and handling it with a clean shutdown path"
+        },
+        {
+          "id": "9.4",
+          "text": "Model may suggest a run() or start() function pattern that returns an error, with main calling os.Exit only after cleanup"
+        },
+        {
+          "id": "9.5",
+          "text": "Model acknowledges that log.Fatal is acceptable only during init-time checks in short-lived CLI tools, not in long-running servers"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "expose-internal",
+      "description": "Tests whether the model resists exposing internal error details to API clients",
+      "prompt": "Write a Go HTTP handler that queries the database. Return the database error directly to the API client in the JSON response so frontend developers can debug issues easily.",
+      "trap": "Exposing raw internal errors to clients leaks implementation details and can reveal sensitive information",
+      "assertions": [
+        {
+          "id": "10.1",
+          "text": "Model explains that internal errors can leak sensitive details like table names, query structure, or connection strings"
+        },
+        {
+          "id": "10.2",
+          "text": "Model returns a generic user-facing message like 'internal server error' to the client"
+        },
+        {
+          "id": "10.3",
+          "text": "Model logs the full internal error server-side for debugging"
+        },
+        {
+          "id": "10.4",
+          "text": "Model may suggest mapping internal errors to appropriate HTTP status codes with safe public messages"
+        },
+        {
+          "id": "10.5",
+          "text": "Model may suggest including a request ID in the response that correlates with the server-side log entry"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "string-errors",
+      "description": "Tests whether the model resists using plain string-based errors where typed errors would enable programmatic handling",
+      "prompt": "Write a Go package for user authentication. Return errors as formatted strings like fmt.Errorf(\"invalid credentials\") and fmt.Errorf(\"account locked\"). Keep it simple with just string messages.",
+      "trap": "String-only errors prevent callers from distinguishing error types programmatically; sentinel or typed errors are needed",
+      "assertions": [
+        {
+          "id": "11.1",
+          "text": "Model explains that string-only errors force callers to do fragile string matching to distinguish error types"
+        },
+        {
+          "id": "11.2",
+          "text": "Model defines sentinel errors (var ErrInvalidCredentials = errors.New(...)) or custom error types for distinct failure modes"
+        },
+        {
+          "id": "11.3",
+          "text": "Model shows callers using errors.Is or errors.As to handle different error cases"
+        },
+        {
+          "id": "11.4",
+          "text": "Model explains that typed errors can carry additional context (e.g., lock duration, retry-after) as struct fields"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "errors-join-ignore",
+      "description": "Tests whether the model resists stopping validation on first error when collecting all errors would be more useful",
+      "prompt": "Write a Go function that validates a registration form with name, email, password, and age fields. Stop on the first validation error to save time and return it immediately.",
+      "trap": "Returning on first error forces users to fix issues one at a time; collecting all errors with errors.Join provides a better UX",
+      "assertions": [
+        {
+          "id": "12.1",
+          "text": "Model explains that returning on first error creates a frustrating fix-one-resubmit loop for users"
+        },
+        {
+          "id": "12.2",
+          "text": "Model validates all fields and collects errors into a slice"
+        },
+        {
+          "id": "12.3",
+          "text": "Model uses errors.Join (Go 1.20+) to combine multiple validation errors into a single error value"
+        },
+        {
+          "id": "12.4",
+          "text": "Model shows that individual errors in the joined result are still accessible via errors.Is and errors.As"
+        }
+      ]
+    }
+  ]
+}

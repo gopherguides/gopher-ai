@@ -1,0 +1,295 @@
+{
+  "skill_name": "go-profiling-optimization",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-1",
+      "description": "The model should insist on profiling before optimizing and reject unsafe without data.",
+      "prompt": "This function is slow. Optimize it by using unsafe pointers to avoid interface boxing and reduce allocations.",
+      "trap": "The model should insist on profiling before optimizing and reject unsafe without data.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response insists on profiling the function first before making any optimizations"
+        },
+        {
+          "id": "2",
+          "text": "The response refuses to use unsafe without benchmark evidence showing it is the bottleneck"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends running pprof or benchmarks to identify the actual bottleneck"
+        },
+        {
+          "id": "4",
+          "text": "The response explains the profiling workflow: benchmark, profile, identify, optimize, verify"
+        },
+        {
+          "id": "5",
+          "text": "The response warns that optimizing without data often makes the wrong thing faster"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "eval-2",
+      "description": "The model should require multiple benchmark runs with -count flag for statistical validity.",
+      "prompt": "Run the benchmark once to check if the new implementation is faster than the old one",
+      "trap": "The model should require multiple benchmark runs with -count flag for statistical validity.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response requires multiple benchmark iterations, not a single run"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends -count=6 or higher for statistical significance"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends using benchstat to compare results statistically"
+        },
+        {
+          "id": "4",
+          "text": "The response explains that a single benchmark run has high variance and proves nothing"
+        },
+        {
+          "id": "5",
+          "text": "The response shows the correct benchmarking workflow with -count and benchstat"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "eval-3",
+      "description": "The model should explain that sync.Pool is only beneficial for hot-path frequent allocations.",
+      "prompt": "Use sync.Pool for all object creation in the application to reduce garbage collection pressure",
+      "trap": "The model should explain that sync.Pool is only beneficial for hot-path frequent allocations.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against using sync.Pool for all allocations indiscriminately"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that sync.Pool is only beneficial for hot-path, high-frequency allocations"
+        },
+        {
+          "id": "3",
+          "text": "The response notes that Pool adds complexity and objects can be collected between GC cycles"
+        },
+        {
+          "id": "4",
+          "text": "The response recommends profiling to identify which allocations actually matter"
+        },
+        {
+          "id": "5",
+          "text": "The response explains when sync.Pool is appropriate versus when simple allocation is fine"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "eval-4",
+      "description": "The model should insist on profiling release/production-like builds, not debug builds.",
+      "prompt": "Profile the application in debug mode with race detection enabled to see where the performance bottlenecks are",
+      "trap": "The model should insist on profiling release/production-like builds, not debug builds.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns that debug builds have different performance characteristics"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends profiling with production-like build flags"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that race detector adds significant overhead that skews profiling results"
+        },
+        {
+          "id": "4",
+          "text": "The response recommends separate runs: one for race detection, another for profiling"
+        },
+        {
+          "id": "5",
+          "text": "The response shows the correct build flags for profiling"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "eval-5",
+      "description": "The model should explain that PGO requires production workload profiles, not synthetic benchmarks.",
+      "prompt": "Run the benchmark suite and use that profile for PGO (profile-guided optimization) to improve production performance",
+      "trap": "The model should explain that PGO requires production workload profiles, not synthetic benchmarks.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response explains that PGO profiles should come from production or realistic workloads"
+        },
+        {
+          "id": "2",
+          "text": "The response warns that benchmark profiles may not represent actual production hot paths"
+        },
+        {
+          "id": "3",
+          "text": "The response describes how to collect a production profile for PGO"
+        },
+        {
+          "id": "4",
+          "text": "The response mentions using the default.pgo file placement convention"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that synthetic benchmarks can cause PGO to optimize the wrong code paths"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "eval-6",
+      "description": "The model should recommend strings.Builder for loop concatenation due to O(n^2) allocation cost.",
+      "prompt": "Concatenate strings in the loop using += because it's more readable than using a builder",
+      "trap": "The model should recommend strings.Builder for loop concatenation due to O(n^2) allocation cost.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recommends strings.Builder instead of += in loops"
+        },
+        {
+          "id": "2",
+          "text": "The response explains the O(n^2) allocation cost of string concatenation in loops"
+        },
+        {
+          "id": "3",
+          "text": "The response shows a concrete example using strings.Builder"
+        },
+        {
+          "id": "4",
+          "text": "The response notes that single or few concatenations with + are fine, but loops are not"
+        },
+        {
+          "id": "5",
+          "text": "The response suggests using Grow() to pre-allocate if the final size is known"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "eval-7",
+      "description": "The model should explain that allocations in hot loops are the primary source of GC pressure.",
+      "prompt": "Don't worry about allocations in this function, the garbage collector handles memory management automatically",
+      "trap": "The model should explain that allocations in hot loops are the primary source of GC pressure.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response explains that allocations in hot paths are the most common performance bottleneck in Go"
+        },
+        {
+          "id": "2",
+          "text": "The response distinguishes between cold-path allocations (fine) and hot-path allocations (problematic)"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends checking escape analysis to understand where allocations happen"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests profiling with -benchmem or pprof allocs to measure allocation impact"
+        },
+        {
+          "id": "5",
+          "text": "The response provides concrete techniques to reduce allocations: pre-allocation, reuse, stack allocation"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "eval-8",
+      "description": "The model should warn that ReadMemStats causes stop-the-world pauses and should not be called frequently.",
+      "prompt": "Call runtime.ReadMemStats on every HTTP request to monitor memory usage and expose it as a metric",
+      "trap": "The model should warn that ReadMemStats causes stop-the-world pauses and should not be called frequently.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns that runtime.ReadMemStats causes a stop-the-world pause"
+        },
+        {
+          "id": "2",
+          "text": "The response strongly discourages calling it on every request"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends calling it on a timer interval instead, such as every 10-30 seconds"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests alternatives like runtime/metrics package or expvar for lower-overhead monitoring"
+        },
+        {
+          "id": "5",
+          "text": "The response explains the impact of STW pauses on request latency"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "eval-9",
+      "description": "The model should warn about interface boxing overhead from fmt.Sprintf in hot paths.",
+      "prompt": "Use fmt.Sprintf for all string formatting in the hot loop since it handles all types cleanly",
+      "trap": "The model should warn about interface boxing overhead from fmt.Sprintf in hot paths.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns about the performance cost of fmt.Sprintf in hot loops"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that fmt functions use interface{} parameters causing boxing and allocations"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends strconv or strings.Builder for hot-path string construction"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests benchmarking the specific case to quantify the difference"
+        },
+        {
+          "id": "5",
+          "text": "The response distinguishes between hot-path formatting (avoid fmt) and cold-path formatting (fmt is fine)"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "eval-10",
+      "description": "The model should warn that GOGC=off is only safe for short-lived batch processes, not long-running servers.",
+      "prompt": "Set GOGC=off for our long-running API server to eliminate all garbage collection pauses",
+      "trap": "The model should warn that GOGC=off is only safe for short-lived batch processes, not long-running servers.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns that GOGC=off disables GC and will cause unbounded memory growth in a long-running server"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that GOGC=off is only appropriate for short-lived batch jobs that exit quickly"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends tuning GOGC to a value like 200 or using GOMEMLIMIT instead"
+        },
+        {
+          "id": "4",
+          "text": "The response explains how GOMEMLIMIT provides a memory ceiling while still allowing GC"
+        },
+        {
+          "id": "5",
+          "text": "The response suggests profiling GC overhead before changing GC settings"
+        }
+      ]
+    }
+  ]
+}
