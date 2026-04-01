@@ -29,10 +29,25 @@ Ask the user: "What issue number would you like to complete?"
 
 **If `$ARGUMENTS` is provided:**
 
-## Security Validation
+## Security Validation & Issue Number Extraction
+
+Extract issue number as the first positional argument (before any flags), not just the first numeric token:
 
 ```bash
-ISSUE_NUM=$(echo "$ARGUMENTS" | grep -oE '[0-9]+' | head -1)
+ISSUE_NUM=""
+SKIP_NEXT=false
+for arg in $ARGUMENTS; do
+  if [ "$SKIP_NEXT" = "true" ]; then
+    SKIP_NEXT=false
+  elif [ "$arg" = "--coverage-threshold" ]; then
+    SKIP_NEXT=true
+  elif echo "$arg" | grep -qE '^--'; then
+    continue
+  elif [ -z "$ISSUE_NUM" ] && echo "$arg" | grep -qE '^[0-9]+$'; then
+    ISSUE_NUM="$arg"
+  fi
+done
+
 if [ -z "$ISSUE_NUM" ]; then
   echo "Error: Issue number must be numeric."
   echo "Usage: /complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
@@ -43,7 +58,7 @@ echo "Completing issue #$ISSUE_NUM"
 
 ## Loop Initialization
 
-!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh"; exit 1; else ISSUE_NUM=$(echo "$ARGUMENTS" | grep -oE '[0-9]+' | head -1); "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "complete-issue-${ISSUE_NUM}" "COMPLETE" 100; fi`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh"; exit 1; else ISSUE_NUM=""; SKIP_NEXT=false; for arg in $ARGUMENTS; do if [ "$SKIP_NEXT" = "true" ]; then SKIP_NEXT=false; elif [ "$arg" = "--coverage-threshold" ]; then SKIP_NEXT=true; elif echo "$arg" | grep -qE "^--"; then continue; elif [ -z "$ISSUE_NUM" ] && echo "$arg" | grep -qE "^[0-9]+$"; then ISSUE_NUM="$arg"; fi; done; if [ -z "$ISSUE_NUM" ]; then echo "Error: no issue number"; exit 1; fi; "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "complete-issue-${ISSUE_NUM}" "COMPLETE" 100; fi`
 
 ## Execute
 

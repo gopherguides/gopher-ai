@@ -158,6 +158,18 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow **Steps 2
 
 After addressing review feedback, create a descriptive fix commit and push.
 
+### Re-verify after fixes
+
+**CRITICAL:** Since Step 3 modified code, re-run build verification before proceeding to E2E:
+
+```bash
+go build ./...
+go test ./...
+golangci-lint run 2>/dev/null || true
+```
+
+Update `BUILD_RESULT` based on these fresh results. If the build fails after fixes, stop and fix before continuing.
+
 ---
 
 ## Step 4: Investigate (conditional)

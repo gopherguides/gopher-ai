@@ -42,7 +42,23 @@ Detect the server port:
 - Check `.env` or `.envrc` for PORT
 - Default: `8080` for Go, `3000` for Node, `5173` for Vite
 
-## 5c. Start Dev Server (if not already running)
+## 5c. Run Database Migrations (if applicable)
+
+**Run migrations BEFORE starting the dev server.** Many apps require up-to-date schema to boot successfully.
+
+```bash
+if [ -f Makefile ] && make -qp 2>/dev/null | grep -q '^migrate-up:'; then
+  make migrate-up
+elif command -v goose >/dev/null 2>&1; then
+  goose up
+elif command -v migrate >/dev/null 2>&1; then
+  migrate -path ./migrations -database "$DATABASE_URL" up
+else
+  echo "No migration tool detected — skipping migrations"
+fi
+```
+
+## 5d. Start Dev Server (if not already running)
 
 Check if the port is already in use before starting:
 
@@ -67,22 +83,6 @@ done
 ```
 
 If server fails to start within 30 seconds → warn ("Dev server failed to start, skipping E2E tests"), set `E2E_RESULT="skipped-server-failed"`, and skip remaining steps. Do NOT block the workflow.
-
-## 5d. Run Database Migrations (if applicable)
-
-Detect and run migrations if a migration tool is available:
-
-```bash
-if [ -f Makefile ] && make -qp 2>/dev/null | grep -q '^migrate-up:'; then
-  make migrate-up
-elif command -v goose >/dev/null 2>&1; then
-  goose up
-elif command -v migrate >/dev/null 2>&1; then
-  migrate -path ./migrations -database "$DATABASE_URL" up
-else
-  echo "No migration tool detected — skipping migrations"
-fi
-```
 
 ## 5e. Login Flow (if applicable)
 

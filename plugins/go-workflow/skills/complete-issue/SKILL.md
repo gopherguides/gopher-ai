@@ -106,14 +106,27 @@ This runs the full start-issue workflow:
 10. Commit, push, create PR
 11. Watch CI
 
-After `/start-issue` completes, detect the PR number:
+After `/start-issue` completes, detect the PR number and worktree context:
 
 ```bash
 PR_NUM=$(gh pr view --json number --jq '.number' 2>/dev/null)
+
+# Detect if start-issue created a worktree (CWD may have changed)
+GIT_DIR_ABS=$(cd "$(git rev-parse --git-dir 2>/dev/null)" && pwd)
+GIT_COMMON_ABS=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd)
+if [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
+  WORKTREE_PATH=$(pwd)
+  echo "Running in worktree: $WORKTREE_PATH"
+fi
+
 TMP="$STATE_FILE.tmp"
-jq --arg pr_number "$PR_NUM" '.pr_number = $pr_number' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+jq --arg pr_number "$PR_NUM" --arg worktree_path "${WORKTREE_PATH:-}" \
+   '.pr_number = $pr_number | .worktree_path = $worktree_path' \
+   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 echo "PR #$PR_NUM created"
 ```
+
+**If a worktree was created:** All subsequent phases MUST operate from `$WORKTREE_PATH`. Prefix every Bash command with `cd "$WORKTREE_PATH" &&` and use `$WORKTREE_PATH` as the base for all Read/Edit/Write file paths. The pre-tool-use hook will block tool calls targeting the wrong directory.
 
 ---
 

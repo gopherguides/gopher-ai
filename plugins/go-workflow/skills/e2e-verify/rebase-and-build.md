@@ -2,10 +2,23 @@
 
 ## Step 1: Rebase onto Base Branch
 
-### 1a. Detect PR and Base Branch
+### 1a. Checkout PR Branch
+
+Ensure we are on the correct PR branch before rebasing. This handles the case where `/e2e-verify 42` is run from a different branch:
 
 ```bash
 PR_NUM="${PR_NUM:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"
+CURRENT_BRANCH=$(git branch --show-current)
+PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName' 2>/dev/null)
+if [ "$CURRENT_BRANCH" != "$PR_HEAD_BRANCH" ]; then
+  echo "Not on PR branch ($PR_HEAD_BRANCH) — checking out..."
+  gh pr checkout "$PR_NUM"
+fi
+```
+
+### 1b. Detect Base Branch
+
+```bash
 BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
 BASE_OWNER_REPO=$(gh repo view --json owner,name --jq '"\(.owner.login)/\(.name)"')
 
@@ -27,7 +40,7 @@ fi
 echo "PR #$PR_NUM targets $BASE_REMOTE/$BASE_BRANCH"
 ```
 
-### 1b. Fetch and Rebase
+### 1c. Fetch and Rebase
 
 ```bash
 git fetch "$BASE_REMOTE" "$BASE_BRANCH"
@@ -47,7 +60,7 @@ echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
    git push --force-with-lease "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
    ```
 
-### 1c. Wait for CI After Rebase (only if rebased)
+### 1d. Wait for CI After Rebase (only if rebased)
 
 ```bash
 for i in 1 2 3 4 5; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
