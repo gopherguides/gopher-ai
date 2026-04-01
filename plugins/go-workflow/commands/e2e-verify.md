@@ -35,9 +35,27 @@ Ask the user: "What PR would you like to verify? (or provide a PR number and mod
 
 **If `$ARGUMENTS` is provided:**
 
+## Validate PR Context
+
+First, resolve the PR number and validate it exists before creating loop state:
+
+```bash
+PR_NUM=$(echo "$ARGUMENTS" | grep -oE '[0-9]+' | head -1)
+PR_NUM="${PR_NUM:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"
+
+if [ -z "$PR_NUM" ]; then
+  echo "Error: No PR found for current branch and no PR number provided."
+  echo "Usage: /e2e-verify [PR-number] [mode]"
+  exit 1
+fi
+
+gh pr view "$PR_NUM" --json number >/dev/null 2>&1 || { echo "Error: PR #$PR_NUM does not exist"; exit 1; }
+echo "Verified PR #$PR_NUM exists"
+```
+
 ## Loop Initialization
 
-!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh"; exit 1; else PR_NUM=$(echo "$ARGUMENTS" | grep -oE '[0-9]+' | head -1); PR_NUM="${PR_NUM:-$(gh pr view --json number --jq '.number' 2>/dev/null || echo 'unknown')}"; "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "e2e-verify-${PR_NUM}" "VERIFIED"; fi`
+!`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh"; exit 1; else PR_NUM=$(echo "$ARGUMENTS" | grep -oE '[0-9]+' | head -1); PR_NUM="${PR_NUM:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"; if [ -z "$PR_NUM" ]; then echo "No PR found — skipping loop init"; exit 1; fi; "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "e2e-verify-${PR_NUM}" "VERIFIED" 30; fi`
 
 ## Execute
 

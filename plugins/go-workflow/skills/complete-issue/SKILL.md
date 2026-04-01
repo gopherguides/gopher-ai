@@ -21,8 +21,17 @@ Chains: `/start-issue` → codex review → `/e2e-verify fix-and-ship`
 ```bash
 ISSUE_NUM=""
 FLAGS=""
+SKIP_NEXT=false
 for arg in $ARGUMENTS; do
-  if echo "$arg" | grep -qE '^[0-9]+$'; then
+  if [ "$SKIP_NEXT" = "true" ]; then
+    FLAGS="$FLAGS $arg"
+    SKIP_NEXT=false
+  elif [ "$arg" = "--coverage-threshold" ]; then
+    FLAGS="$FLAGS $arg"
+    SKIP_NEXT=true
+  elif echo "$arg" | grep -qE '^--'; then
+    FLAGS="$FLAGS $arg"
+  elif [ -z "$ISSUE_NUM" ] && echo "$arg" | grep -qE '^[0-9]+$'; then
     ISSUE_NUM="$arg"
   else
     FLAGS="$FLAGS $arg"
