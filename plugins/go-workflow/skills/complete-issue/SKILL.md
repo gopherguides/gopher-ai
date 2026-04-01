@@ -119,6 +119,9 @@ if [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
   echo "Running in worktree: $WORKTREE_PATH"
 fi
 
+# Reassign STATE_FILE to absolute path so it resolves correctly after CWD changes
+STATE_FILE="$(pwd)/.claude/complete-issue-${ISSUE_NUM}.loop.local.json"
+
 TMP="$STATE_FILE.tmp"
 jq --arg pr_number "$PR_NUM" --arg worktree_path "${WORKTREE_PATH:-}" \
    '.pr_number = $pr_number | .worktree_path = $worktree_path' \
@@ -126,7 +129,7 @@ jq --arg pr_number "$PR_NUM" --arg worktree_path "${WORKTREE_PATH:-}" \
 echo "PR #$PR_NUM created"
 ```
 
-**If a worktree was created:** All subsequent phases MUST operate from `$WORKTREE_PATH`. Prefix every Bash command with `cd "$WORKTREE_PATH" &&` and use `$WORKTREE_PATH` as the base for all Read/Edit/Write file paths. The pre-tool-use hook will block tool calls targeting the wrong directory.
+**If a worktree was created:** All subsequent phases MUST operate from `$WORKTREE_PATH`. Prefix every Bash command with `cd "$WORKTREE_PATH" &&` and use `$WORKTREE_PATH` as the base for all Read/Edit/Write file paths. The pre-tool-use hook will block tool calls targeting the wrong directory. The `STATE_FILE` variable has been reassigned to an absolute path so `set_loop_phase` calls resolve correctly regardless of CWD.
 
 ---
 

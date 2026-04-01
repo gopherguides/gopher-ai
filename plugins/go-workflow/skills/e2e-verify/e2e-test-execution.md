@@ -22,7 +22,7 @@ if [ -z "$CHANGED_FILES" ]; then
   CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...HEAD")
 fi
 WEB_CHANGES=$(echo "$CHANGED_FILES" | grep -E '\.(templ|html|tsx|vue|jsx)$' || true)
-HANDLER_CHANGES=$(echo "$CHANGED_FILES" | grep '\.go$' | while read f; do
+HANDLER_CHANGES=$(echo "$CHANGED_FILES" | grep '\.go$' | while IFS= read -r f; do
   grep -l -E 'http\.Handler|echo\.Context|gin\.Context|chi\.Router|http\.HandleFunc|http\.ServeMux' "$f" 2>/dev/null
 done || true)
 ```
