@@ -63,7 +63,7 @@ fi
 Check if the port is already in use before starting:
 
 ```bash
-if curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[23]'; then
+if curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[1234]'; then
   echo "Server already running on port $PORT — reusing"
   SERVER_ALREADY_RUNNING=true
 else
@@ -77,7 +77,7 @@ Wait for server readiness (poll up to 30 seconds):
 
 ```bash
 for i in $(seq 1 30); do
-  curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[23]' && break
+  curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[1234]' && break
   sleep 1
 done
 ```
