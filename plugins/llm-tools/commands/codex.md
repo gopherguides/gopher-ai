@@ -42,6 +42,20 @@ Ask the user: "What would you like Codex to do?"
 
 Run a task using OpenAI Codex CLI with the prompt: $ARGUMENTS
 
+## 0. Detect Codex CLI
+
+Resolve the correct command for invoking Codex. This avoids exit code 127 on systems where `codex` is only available via `npx`:
+
+```bash
+if command -v codex &>/dev/null; then
+  CODEX_CMD="codex"
+else
+  CODEX_CMD="npx codex"
+fi
+```
+
+**Use `$CODEX_CMD` in place of bare `codex` for ALL commands below.**
+
 ## 1. Detect Review Mode
 
 Check if the prompt contains "review" (case-insensitive). Then determine routing:
@@ -341,14 +355,14 @@ Write the assembled prompt to a temp file to avoid heredoc expansion issues with
 ```bash
 PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
-REVIEW_JSON=$(codex exec -m <model> -s read-only \
+REVIEW_JSON=$($CODEX_CMD exec -m <model> -s read-only \
   --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
   - < "$PROMPT_FILE")
 # Strip codex exec headers (version/config info printed before JSON)
 REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
 # Guard: if stripping removed all output, codex exec returned no JSON
 if [ -z "$REVIEW_JSON" ]; then
-  echo "WARNING: codex exec produced no JSON output after header stripping"
+  echo "WARNING: $CODEX_CMD exec produced no JSON output after header stripping"
   REVIEW_JSON='{"error":"no JSON output"}'
 fi
 rm -f "$PROMPT_FILE"
@@ -370,19 +384,19 @@ Use standard codex review commands:
 **For uncommitted changes:**
 
 ```bash
-codex review --uncommitted -c model=<model>
+$CODEX_CMD review --uncommitted -c model=<model>
 ```
 
 **For changes vs branch:**
 
 ```bash
-codex review --base <branch> -c model=<model>
+$CODEX_CMD review --base <branch> -c model=<model>
 ```
 
 **For specific commit:**
 
 ```bash
-codex review --commit <sha> -c model=<model>
+$CODEX_CMD review --commit <sha> -c model=<model>
 ```
 
 Capture output as `FINDINGS`. Skip to R4 (or multi-pass loop below).
@@ -546,7 +560,7 @@ Review these changes against the requirements above. Ensure the implementation a
 #### Single Pass (or no multi-pass selected)
 
 ```bash
-codex review -c model=<model> - <<'EOF'
+$CODEX_CMD review -c model=<model> - <<'EOF'
 <constructed context block with diff>
 EOF
 ```
@@ -590,7 +604,7 @@ If there are no new findings to report, respond with exactly: NO_NEW_FINDINGS
 Execute:
 
 ```bash
-codex review -c model=<model> - <<'EOF'
+$CODEX_CMD review -c model=<model> - <<'EOF'
 <augmented context block>
 EOF
 ```
@@ -656,7 +670,7 @@ Ask what to do next:
 
 | Option | Description |
 |--------|-------------|
-| Follow-up | Run `codex resume --last` for additional questions |
+| Follow-up | Run `$CODEX_CMD resume --last` for additional questions |
 | Address feedback | Switch to exec mode to implement suggested changes |
 | Post to PR | Add review findings as a PR comment via `gh pr comment` |
 | Done | Exit the review |
@@ -675,7 +689,7 @@ gh pr comment <pr_number> --body "<formatted FINDINGS>"
 
 Ask if they want to run a follow-up review or switch to exec mode.
 
-For follow-ups, use: `codex resume --last`
+For follow-ups, use: `$CODEX_CMD resume --last`
 
 ---
 
@@ -755,7 +769,7 @@ Default: `read-only`
 Assemble and execute the command:
 
 ```bash
-codex exec -m <model> -s <mode> --skip-git-repo-check "<prompt>"
+$CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check "<prompt>"
 ```
 
 **If context WAS requested:**
@@ -763,7 +777,7 @@ codex exec -m <model> -s <mode> --skip-git-repo-check "<prompt>"
 Construct a combined prompt and execute using heredoc:
 
 ```bash
-codex exec -m <model> -s <mode> --skip-git-repo-check - <<'EOF'
+$CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check - <<'EOF'
 [CONTEXT BLOCK FROM STEP 2]
 
 ---
@@ -785,7 +799,7 @@ After execution completes:
 
 - Show the output to the user
 - Ask if they want to continue with a follow-up prompt
-- For follow-ups, use: `codex resume --last`
+- For follow-ups, use: `$CODEX_CMD resume --last`
 
 ### Error Handling
 
