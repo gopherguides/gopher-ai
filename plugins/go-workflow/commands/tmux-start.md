@@ -19,7 +19,7 @@ This command creates a git worktree for an issue, opens a new tmux window, launc
 **What it does:**
 
 1. Validates prerequisites (tmux session, gh CLI, git repo)
-2. Pulls latest code from the primary branch
+2. Fetches latest code from the primary branch
 3. Creates a worktree (or reuses an existing one)
 4. Opens a new named tmux window
 5. Launches Claude Code with `--dangerously-skip-permissions`
@@ -84,14 +84,14 @@ Clear any stale worktree state so the pre-tool-use hook doesn't block setup comm
    echo "Main repo root: $MAIN_REPO_ROOT"
    ```
 
-5. **Pull latest primary branch**
+5. **Fetch latest primary branch**
 
-   Detect and pull from the primary branch at the main repo root:
+   Fetch (not pull) from the primary branch to avoid mutating the main checkout:
    ```bash
    DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //' | tr -cd '[:alnum:]-._/'`
    if [ -z "$DEFAULT_BRANCH" ]; then echo "Error: Could not determine default branch"; exit 1; fi
-   cd "$MAIN_REPO_ROOT" && git pull origin "$DEFAULT_BRANCH"
-   echo "Pulled latest $DEFAULT_BRANCH"
+   cd "$MAIN_REPO_ROOT" && git fetch origin "$DEFAULT_BRANCH"
+   echo "Fetched latest origin/$DEFAULT_BRANCH"
    ```
 
 6. **Build worktree naming variables**
@@ -135,6 +135,12 @@ Clear any stale worktree state so the pre-tool-use hook doesn't block setup comm
    cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
    WORKTREE_ABS_PATH=`cd "$WORKTREE_PATH" && pwd`
    echo "Created worktree at: $WORKTREE_ABS_PATH"
+   ```
+
+   **Register worktree state** (enables hook-based path enforcement in the spawned session):
+   ```bash
+   REPO_ROOT=`cd "$WORKTREE_ABS_PATH" && git rev-parse --show-toplevel`
+   "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ISSUE_NUM"
    ```
 
    **Search for environment files** in the main repo:
@@ -191,16 +197,28 @@ Clear any stale worktree state so the pre-tool-use hook doesn't block setup comm
 
     ```bash
     tmux new-window -n "$WINDOW_NAME"
-    tmux send-keys -t "$WINDOW_NAME" "cd $WORKTREE_ABS_PATH && claude --dangerously-skip-permissions" Enter
+    tmux send-keys -t "$WINDOW_NAME" "cd \"$WORKTREE_ABS_PATH\" && claude --dangerously-skip-permissions" Enter
     echo "Created tmux window: $WINDOW_NAME"
     echo "Launching Claude Code in: $WORKTREE_ABS_PATH"
     ```
 
 12. **Send start-issue command after Claude boots**
 
-    Wait for Claude Code to finish initializing, then send the command:
+    Wait for Claude Code to finish initializing, then send the command.
+    Poll the tmux pane for the Claude prompt indicator (retry up to 30 seconds):
     ```bash
-    sleep 8
+    READY=false
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+      sleep 2
+      PANE_CONTENT=`tmux capture-pane -t "$WINDOW_NAME" -p 2>/dev/null`
+      if echo "$PANE_CONTENT" | grep -qE '(>|claude|Claude Code)'; then
+        READY=true
+        break
+      fi
+    done
+    if [ "$READY" = "false" ]; then
+      echo "Warning: Claude Code may not be ready yet. Sending command anyway."
+    fi
     tmux send-keys -t "$WINDOW_NAME" "/go-workflow:start-issue $ISSUE_NUM" Enter
     echo "Sent /go-workflow:start-issue $ISSUE_NUM to window $WINDOW_NAME"
     ```
