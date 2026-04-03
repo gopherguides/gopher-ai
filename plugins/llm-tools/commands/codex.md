@@ -50,7 +50,7 @@ Resolve the correct command for invoking Codex. This avoids exit code 127 on sys
 if command -v codex &>/dev/null; then
   CODEX_CMD="codex"
 else
-  CODEX_CMD="npx codex"
+  CODEX_CMD="npx -y codex"
 fi
 ```
 
@@ -670,7 +670,7 @@ Ask what to do next:
 
 | Option | Description |
 |--------|-------------|
-| Follow-up | Run `$CODEX_CMD resume --last` for additional questions |
+| Follow-up | Run `codex resume --last` for additional questions |
 | Address feedback | Switch to exec mode to implement suggested changes |
 | Post to PR | Add review findings as a PR comment via `gh pr comment` |
 | Done | Exit the review |
@@ -689,7 +689,7 @@ gh pr comment <pr_number> --body "<formatted FINDINGS>"
 
 Ask if they want to run a follow-up review or switch to exec mode.
 
-For follow-ups, use: `$CODEX_CMD resume --last`
+For follow-ups, use: `codex resume --last`
 
 ---
 
@@ -799,7 +799,7 @@ After execution completes:
 
 - Show the output to the user
 - Ask if they want to continue with a follow-up prompt
-- For follow-ups, use: `$CODEX_CMD resume --last`
+- For follow-ups, use: `codex resume --last`
 
 ### Error Handling
 
