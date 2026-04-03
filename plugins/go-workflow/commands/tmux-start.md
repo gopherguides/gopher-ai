@@ -119,7 +119,13 @@ Clear any stale worktree state so the pre-tool-use hook doesn't block setup comm
    fi
    ```
 
-   **If `WORKTREE_EXISTS`:** Set `WORKTREE_ABS_PATH="$EXISTING_PATH"` and skip to **Step 9**.
+   **If `WORKTREE_EXISTS`:** Set `WORKTREE_ABS_PATH="$EXISTING_PATH"` and register worktree state:
+   ```bash
+   WORKTREE_ABS_PATH="$EXISTING_PATH"
+   REPO_ROOT=`cd "$WORKTREE_ABS_PATH" && git rev-parse --show-toplevel`
+   "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ISSUE_NUM"
+   ```
+   Then skip to **Step 9**.
 
    **If `WORKTREE_NOT_FOUND`:** Continue to Step 8.
 
@@ -205,13 +211,14 @@ Clear any stale worktree state so the pre-tool-use hook doesn't block setup comm
 12. **Send start-issue command after Claude boots**
 
     Wait for Claude Code to finish initializing, then send the command.
-    Poll the tmux pane for the Claude prompt indicator (retry up to 30 seconds):
+    Wait for the shell command to be consumed, then poll for Claude's input prompt:
     ```bash
+    sleep 5
     READY=false
     for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
       sleep 2
       PANE_CONTENT=`tmux capture-pane -t "$WINDOW_NAME" -p 2>/dev/null`
-      if echo "$PANE_CONTENT" | grep -qE '(>|claude|Claude Code)'; then
+      if echo "$PANE_CONTENT" | grep -qE '^\s*>\s*$'; then
         READY=true
         break
       fi

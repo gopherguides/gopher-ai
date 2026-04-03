@@ -29,9 +29,9 @@ $tmux-start <issue-number>
 
 Confirm inside a git repo, running inside tmux, `gh` CLI available and authenticated, and the issue number is valid.
 
-### Step 2: Pull Latest Code
+### Step 2: Fetch Latest Code
 
-Detect the primary branch and pull latest from the main repo root (not from a worktree).
+Fetch the latest primary branch from origin (does not mutate the main checkout).
 
 ### Step 3: Create or Reuse Worktree
 
