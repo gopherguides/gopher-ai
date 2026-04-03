@@ -175,14 +175,15 @@ Clear any stale worktree state so the pre-tool-use hook doesn't block setup comm
    Create a descriptive but compact window name:
    ```bash
    SLUG=`echo "$ITEM_TITLE" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g; s/^-//; s/-$//' | cut -c1-40 | sed 's/-$//'`
-   WINDOW_NAME="issue-${ISSUE_NUM}-${SLUG}"
+   WINDOW_NAME="${REPO_NAME}-issue-${ISSUE_NUM}-${SLUG}"
    echo "tmux window name: $WINDOW_NAME"
    ```
 
 10. **Check for existing tmux window**
 
+    Scope the lookup to this repo by including the repo name in the match:
     ```bash
-    EXISTING_WINDOW=`tmux list-windows -F '#{window_name}' 2>/dev/null | grep -F "issue-${ISSUE_NUM}-" | head -1`
+    EXISTING_WINDOW=`tmux list-windows -F '#{window_name}' 2>/dev/null | grep -F "${REPO_NAME}-issue-${ISSUE_NUM}" | head -1`
     if [ -n "$EXISTING_WINDOW" ]; then
       echo "WINDOW_EXISTS: $EXISTING_WINDOW"
     else
