@@ -11,14 +11,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  discover:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      plugin_dirs: ${{ steps.find.outputs.dirs }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - id: find
+        run: |
+          DIRS=$(find plugins -name plugin.json -path '*/.codex-plugin/*' -exec dirname {} \; | sed 's|/\.codex-plugin||' | sort)
+          echo "dirs=$(echo $DIRS | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+
   scan:
+    needs: discover
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+    strategy:
+      matrix:
+        plugin_dir: ${{ fromJson(needs.discover.outputs.plugin_dirs) }}
+      fail-fast: false
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Codex plugin scanner
+      - name: Scan ${{ matrix.plugin_dir }}
         uses: hashgraph-online/hol-codex-plugin-scanner-action@b45d6b583afe05819b24edc8e6418c9ad2e1f1d0 # v1
         with:
-          plugin_dir: "."
+          plugin_dir: "${{ matrix.plugin_dir }}"
