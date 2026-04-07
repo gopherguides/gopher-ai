@@ -1,5 +1,5 @@
 ---
-argument-hint: "[--llm codex|gemini|ollama] [--max-passes <n>] [--quick] [scope hint]"
+argument-hint: "[--llm codex|gemini|ollama] [--max-passes <n>] [--quick] [--tier flex|standard|priority] [scope hint]"
 description: "Iterative LLM review loop: review, fix, verify, repeat until clean"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---
@@ -15,17 +15,18 @@ Parse `$ARGUMENTS` to extract:
 - `--llm <value>`: LLM to use for reviews. Options: `codex` (default), `gemini`, `ollama`
 - `--max-passes <n>`: Maximum review passes before stopping (default: 5)
 - `--quick`: Use lightweight `codex review` instead of exhaustive `codex exec` (faster but limited to 2-3 findings per pass). Only applies when `--llm codex`.
+- `--tier <value>`: Gemini service tier. Options: `flex`, `standard`, `priority`. Only applies when `--llm gemini`. Default: not set (standard behavior).
 - Remaining text: scope hint (e.g., "focus on error handling")
 
-Store as `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE` (default: `false`), and `SCOPE_HINT`.
+Store as `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE` (default: `false`), `GEMINI_TIER`, and `SCOPE_HINT`.
 
 **Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.claude/review-loop.loop.local.json` using `jq`:
 
 ```bash
 STATE_FILE=".claude/review-loop.loop.local.json"
 TMP="$STATE_FILE.tmp"
-jq --arg args "$ARGUMENTS" --argjson pass 0 --arg quick_mode "$QUICK_MODE" \
-   '. + {args: $args, pass: $pass, quick_mode: $quick_mode}' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+jq --arg args "$ARGUMENTS" --argjson pass 0 --arg quick_mode "$QUICK_MODE" --arg gemini_tier "$GEMINI_TIER" \
+   '. + {args: $args, pass: $pass, quick_mode: $quick_mode, gemini_tier: $gemini_tier}' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
 This ensures stop-hook re-entry can restore the original configuration (including `QUICK_MODE`).
@@ -69,7 +70,7 @@ If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover st
 
 1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE`, `SCOPE_HINT`
 2. Read `pass` field via `jq -r '.pass // 0' "$STATE_FILE"` to restore the current pass count
-3. Read `scope`, `base_branch`, `model`, `file_paths`, `quick_mode` fields via `jq -r '.field // empty' "$STATE_FILE"` to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`, `QUICK_MODE`
+3. Read `scope`, `base_branch`, `model`, `file_paths`, `quick_mode`, `gemini_tier` fields via `jq -r '.field // empty' "$STATE_FILE"` to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`, `QUICK_MODE`, `GEMINI_TIER`
 
 Then skip to the corresponding phase:
 
@@ -285,6 +286,10 @@ Capture output as free-text `FINDINGS`.
 **Gemini:**
 
 Use the `DIFF` generated in Step 5a (scope-aware), not a hardcoded branch diff.
+
+If `GEMINI_TIER` is set and non-empty, display a warning before running:
+
+> **Note:** `--tier $GEMINI_TIER` was specified but the Gemini CLI does not support service tiers. The tier setting will be ignored for this review. When Gemini CLI adds `--service-tier` support, it will be applied automatically. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for updates.
 
 ```bash
 gemini -m "$MODEL" <<EOF

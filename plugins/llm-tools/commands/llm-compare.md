@@ -1,5 +1,5 @@
 ---
-argument-hint: "<prompt>"
+argument-hint: "[--tier flex|standard|priority] <prompt>"
 description: "Compare responses from multiple LLMs"
 allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 ---
@@ -99,17 +99,30 @@ Execute each LLM. Where possible, run in parallel for speed.
 
 **OpenAI:**
 ```bash
-codex exec -m <model> -s read-only --skip-git-repo-check "<prompt>"
+codex exec -m <model> -s read-only --skip-git-repo-check "$CLEAN_PROMPT"
 ```
 
 **Gemini:**
+
+If `--tier` was provided in `$ARGUMENTS`, strip it from the prompt **before passing to any LLM** (including Codex and Ollama, so they don't see the flag as part of the question):
+
 ```bash
-gemini "<prompt>" -m <model>
+CLEAN_PROMPT=$(echo "$ARGUMENTS" | sed 's/--tier  *[^ ]*//g' | sed 's/^  *//;s/  *$//')
+```
+
+If Gemini is selected, display a warning:
+
+> **Note:** `--tier` is accepted but the Gemini CLI does not currently support service tiers. The tier will be ignored for the Gemini comparison. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for updates.
+
+Use `CLEAN_PROMPT` in all LLM invocations below:
+
+```bash
+gemini "$CLEAN_PROMPT" -m <model>
 ```
 
 **Ollama:**
 ```bash
-ollama run <model> "<prompt>"
+ollama run <model> "$CLEAN_PROMPT"
 ```
 
 Capture output from each.

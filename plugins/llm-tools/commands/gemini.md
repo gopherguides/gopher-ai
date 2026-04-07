@@ -1,5 +1,5 @@
 ---
-argument-hint: "<prompt>"
+argument-hint: "[--tier flex|standard|priority] <prompt>"
 description: "Delegate a task to Google Gemini CLI"
 allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 ---
@@ -107,24 +107,40 @@ Append to the Gemini prompt:
 For every testable fix, write a corresponding test. A fix is testable if it changes observable behavior (return values, errors, side effects, HTTP responses). Skip tests for cosmetic changes (comments, formatting, renames, log changes). Add cases to existing table-driven tests when possible, or create new table-driven tests following the package's conventions.
 ```
 
+## 4.5. Service Tier (Future)
+
+If `--tier` was provided in `$ARGUMENTS`, parse and validate the value (must be `flex`, `standard`, or `priority`). Strip `--tier <value>` from the prompt text and store the cleaned result as `CLEAN_PROMPT`:
+
+```bash
+CLEAN_PROMPT=$(echo "$ARGUMENTS" | sed 's/--tier  *[^ ]*//g' | sed 's/^  *//;s/  *$//')
+```
+
+**Current limitation:** The Gemini CLI (`gemini` command) does not support a `serviceTier` parameter. If `--tier` is specified, display this warning:
+
+> **Note:** `--tier` was specified but the Gemini CLI does not yet support service tiers. The tier setting will be ignored. To use service tiers now, use `/gemini-image` which calls the REST API directly. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for updates.
+
+Proceed with the normal Gemini CLI invocation using `CLEAN_PROMPT` (without tier).
+
 ## 5. Run Gemini
+
+**IMPORTANT:** In all commands below, `<prompt>` refers to `CLEAN_PROMPT` — the user's prompt with `--tier <value>` stripped (from Step 4.5). If `--tier` was not provided, `CLEAN_PROMPT` equals the original `$ARGUMENTS`.
 
 **Without context:**
 
 ```bash
-gemini "<prompt>" -m <model>
+gemini "$CLEAN_PROMPT" -m <model>
 ```
 
 **With file context:**
 
 ```bash
-cat <file> | gemini "Given this code, <prompt>" -m <model>
+cat <file> | gemini "Given this code, $CLEAN_PROMPT" -m <model>
 ```
 
 **With diff context:**
 
 ```bash
-git diff <scope> | gemini "Review these changes: <prompt>" -m <model>
+git diff <scope> | gemini "Review these changes: $CLEAN_PROMPT" -m <model>
 ```
 
 **With session context:**
@@ -139,7 +155,7 @@ gemini "$(cat <<'EOF'
 
 ## Task
 
-<prompt>
+$CLEAN_PROMPT
 EOF
 )" -m <model>
 ```
@@ -167,3 +183,4 @@ After Gemini completes, check if its response includes test code (look for `func
 - Gemini CLI requires `GEMINI_API_KEY` environment variable or OAuth login (run `gemini` to authenticate)
 - Install with: `npm install -g @google/gemini-cli`
 - For private/sensitive code, consider `/ollama` which keeps data local
+- The `--tier` flag is accepted but currently ignored — the Gemini CLI does not support `serviceTier`. Use `/gemini-image` (REST API) for immediate tier support. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for CLI updates.
