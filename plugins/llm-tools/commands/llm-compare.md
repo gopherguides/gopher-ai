@@ -1,5 +1,5 @@
 ---
-argument-hint: "<prompt>"
+argument-hint: "[--tier flex|standard|priority] <prompt>"
 description: "Compare responses from multiple LLMs"
 allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 ---
@@ -103,6 +103,13 @@ codex exec -m <model> -s read-only --skip-git-repo-check "<prompt>"
 ```
 
 **Gemini:**
+
+If `--tier` was provided in `$ARGUMENTS` and Gemini is selected, display a warning:
+
+> **Note:** `--tier` is accepted but the Gemini CLI does not currently support service tiers. The tier will be ignored for the Gemini comparison. This flag has no effect on Codex or Ollama. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for updates.
+
+Strip `--tier <value>` from the prompt text before passing to any LLM.
+
 ```bash
 gemini "<prompt>" -m <model>
 ```

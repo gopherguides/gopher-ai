@@ -1,5 +1,5 @@
 ---
-argument-hint: "[--llm codex|gemini|ollama] [--passes <n>] [--no-merge] [--skip-coverage] [--coverage-threshold <n>]"
+argument-hint: "[--llm codex|gemini|ollama] [--passes <n>] [--no-merge] [--skip-coverage] [--coverage-threshold <n>] [--tier flex|standard|priority]"
 description: "Ship a PR: LLM review, coverage gate, e2e tests, push, CI watch, bot approval, merge"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page"]
 ---
@@ -34,9 +34,10 @@ Parse `$ARGUMENTS` to extract:
 - `--no-merge`: Stop after bot approval, don't auto-merge
 - `--skip-coverage`: Skip the coverage verification and e2e testing phases entirely
 - `--coverage-threshold <n>`: Override default 60% threshold for changed-file coverage
+- `--tier <value>`: Gemini service tier. Options: `flex`, `standard`, `priority`. Only applies when `--llm gemini`. Default: not set (standard behavior).
 - Remaining text: ignored
 
-Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD` (default: 60).
+Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD` (default: 60), `GEMINI_TIER`.
 
 **Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.claude/ship.loop.local.json` using `jq`:
 
@@ -49,8 +50,8 @@ jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
    --arg skip_coverage "$SKIP_COVERAGE" --arg coverage_threshold "$COVERAGE_THRESHOLD" \
    --arg coverage_result "" --argjson coverage_tests_generated 0 \
    --arg e2e_attempted "" --arg e2e_result "" --argjson e2e_pages_tested 0 \
-   --arg review_clean "" --arg head_sha "" \
-   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, head_sha: $head_sha}' \
+   --arg review_clean "" --arg head_sha "" --arg gemini_tier "$GEMINI_TIER" \
+   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, head_sha: $head_sha, gemini_tier: $gemini_tier}' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
@@ -68,8 +69,8 @@ fi
 
 If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from persisted fields using `jq`:
 
-1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD`
-2. Read `pass`, `pr_number`, `base_branch`, `bot_review_baseline`, `llm`, `discovered_bots`, `has_ci`, `skip_coverage`, `coverage_threshold`, `coverage_result`, `coverage_tests_generated`, `e2e_attempted`, `e2e_result`, `e2e_pages_tested`, `review_clean`, `head_sha` fields via `jq -r '.field // empty' "$STATE_FILE"`
+1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD`, `GEMINI_TIER`
+2. Read `pass`, `pr_number`, `base_branch`, `bot_review_baseline`, `llm`, `discovered_bots`, `has_ci`, `skip_coverage`, `coverage_threshold`, `coverage_result`, `coverage_tests_generated`, `e2e_attempted`, `e2e_result`, `e2e_pages_tested`, `review_clean`, `head_sha`, `gemini_tier` fields via `jq -r '.field // empty' "$STATE_FILE"`
 3. If `review_clean` is `"true"`, set `REVIEW_CLEAN=true` to preserve the clean-review fast path after re-entry
 
 Then skip to the corresponding phase:
@@ -233,6 +234,10 @@ Rules:
 4. Validate JSON. If invalid or empty, this is a review failure — do NOT fall through to the free-text clean-review path. Warn the user: "Codex exec returned invalid output. Review did not complete." Ask whether to retry, fall back to `codex review --base`, or abort.
 
 **Gemini:**
+
+If `GEMINI_TIER` is set and non-empty and `LLM_CHOICE` is `gemini`, display a warning:
+
+> **Note:** `--tier $GEMINI_TIER` was specified but the Gemini CLI does not support service tiers. The tier setting will be ignored for this review pass. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for updates.
 
 ```bash
 gemini <<EOF

@@ -93,6 +93,26 @@ Default: `1K`
 
 If user selects `512` with a model other than `gemini-3.1-flash-image-preview`, warn them and switch to `1K`.
 
+### Service Tier
+
+Infer from context when possible:
+
+| Context Clue | Suggested Tier |
+|--------------|----------------|
+| "background", "batch", "non-urgent", "cheap" | `flex` (~50% cheaper, may queue 1-15 min) |
+| "urgent", "production", "priority", "fast" | `priority` (~80% more, fastest) |
+| No urgency clue | `standard` (default — omits field) |
+
+Ask the user to confirm if inferred, or select if no context clue:
+
+> | Tier | Cost | Speed | Best For |
+> |------|------|-------|----------|
+> | `standard` | Normal pricing | Normal | Default behavior **(default)** |
+> | `flex` | **~50% cheaper** | May queue (1-15 min) | Background/batch work, non-urgent |
+> | `priority` | ~80% more | Fastest | Time-sensitive, production assets |
+
+Store as `GEMINI_SERVICE_TIER`. Empty string for `standard` (field omitted from request).
+
 ### Reference Image (Optional)
 
 Ask if they want to include a reference image (path to file). Default: no.
@@ -114,6 +134,7 @@ export GEMINI_ASPECT_RATIO='<selected ratio, e.g. 1:1>'
 export GEMINI_IMAGE_SIZE='<selected resolution, e.g. 1K>'
 export GEMINI_REF_IMAGE='<path to reference image, or empty>'
 export GEMINI_OUTPUT_PATH='<output file path>'
+export GEMINI_SERVICE_TIER='<selected tier: FLEX, PRIORITY, or empty for standard>'
 ```
 
 Then run the builder:
@@ -127,6 +148,7 @@ model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-image-preview")
 aspect_ratio = os.environ.get("GEMINI_ASPECT_RATIO", "1:1")
 image_size = os.environ.get("GEMINI_IMAGE_SIZE", "1K")
 ref_image_path = os.environ.get("GEMINI_REF_IMAGE", "")
+service_tier = os.environ.get("GEMINI_SERVICE_TIER", "")
 pid = os.getpid()
 
 parts = []
@@ -153,6 +175,9 @@ payload = {
 
 if image_size != "1K":
     payload["generationConfig"]["imageConfig"]["imageSize"] = image_size
+
+if service_tier:
+    payload["serviceTier"] = service_tier
 
 outfile = f"/tmp/gemini-image-request-{pid}.json"
 with open(outfile, "w") as f:
@@ -275,6 +300,7 @@ Prompt: ${GEMINI_PROMPT}
 Model: ${GEMINI_MODEL}
 Aspect Ratio: ${GEMINI_ASPECT_RATIO}
 Resolution: ${GEMINI_IMAGE_SIZE}
+Service Tier: ${GEMINI_SERVICE_TIER:-standard}
 Reference Image: ${GEMINI_REF_IMAGE:-none}
 Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 EOF
@@ -306,3 +332,4 @@ Ask: "Would you like to regenerate with different settings, adjust the prompt, o
 | JPEG when PNG requested | Auto-convert: Pillow → magick → .jpg fallback |
 | No image in response | Show model text, suggest rephrasing |
 | `imageSize` lowercase value | Warn about case sensitivity before sending request |
+| Invalid service tier value | Warn user, show valid options (`flex`, `standard`, `priority`), ask again |

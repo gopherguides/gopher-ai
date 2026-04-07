@@ -1,5 +1,5 @@
 ---
-argument-hint: "<description of image to generate>"
+argument-hint: "[--tier flex|standard|priority] <description of image to generate>"
 description: "Generate images using Google Gemini AI"
 allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 ---
@@ -62,7 +62,35 @@ Ask the user which model to use:
 
 Default: `gemini-3.1-flash-image-preview`
 
-## 3. Select Aspect Ratio
+## 3. Select Service Tier
+
+**If `--tier` was provided in `$ARGUMENTS`**, extract and validate the value:
+
+```bash
+TIER_VALUE=$(echo "$ARGUMENTS" | grep -oE '\-\-tier (flex|standard|priority)' | awk '{print $2}')
+# Strip --tier <value> from the prompt text
+CLEAN_ARGS=$(echo "$ARGUMENTS" | sed 's/--tier  *\(flex\|standard\|priority\)//g' | sed 's/^  *//;s/  *$//')
+```
+
+Normalize to uppercase: `FLEX`, `STANDARD`, or `PRIORITY`.
+
+If `--tier` was provided with an invalid value, warn the user and ask them to choose from: `flex`, `standard`, `priority`.
+
+**If `--tier` was NOT provided**, ask the user:
+
+> **Service Tier:** How should this request be prioritized?
+>
+> | Tier | Cost | Speed | Best For |
+> |------|------|-------|----------|
+> | `standard` | Normal pricing | Normal | Default behavior **(default)** |
+> | `flex` | **~50% cheaper** | May queue (1-15 min) | Background/batch work, non-urgent |
+> | `priority` | ~80% more | Fastest | Time-sensitive, production assets |
+>
+> Default: `standard`
+
+Store the selected tier. If `standard` or no selection, set `GEMINI_SERVICE_TIER=""` (empty — the `serviceTier` field will be omitted from the API request, which gives Google's default behavior). Otherwise set to `FLEX` or `PRIORITY` (uppercase).
+
+## 4. Select Aspect Ratio
 
 Ask the user which aspect ratio to use:
 
@@ -82,7 +110,7 @@ Default: `1:1`
 
 > **Note:** On `gemini-3.1-flash-image-preview`, `aspectRatio` may be silently ignored during image editing or background replacement operations. If aspect ratio is critical for an edit operation, consider using `gemini-2.5-flash-image` instead.
 
-## 4. Select Image Resolution
+## 5. Select Image Resolution
 
 Ask the user which resolution to use:
 
@@ -99,7 +127,7 @@ Default: `1K`
 
 If user selects `512` with a model other than `gemini-3.1-flash-image-preview`, warn them and switch to `1K`.
 
-## 5. Reference Image (Optional)
+## 6. Reference Image (Optional)
 
 Ask the user: "Do you want to include a reference image? (path to file, or 'no')"
 
@@ -107,13 +135,13 @@ Default: No reference image.
 
 If a path is provided, verify the file exists using `Read` tool. Supported formats: PNG, JPEG, WebP, GIF.
 
-## 6. Output Path
+## 7. Output Path
 
 Ask the user where to save the image, or auto-generate a descriptive filename in the current directory.
 
 Suggested naming: `{descriptive-name}.png` (e.g., `mountain-sunset.png`, `coffee-shop-logo.png`)
 
-## 7. Build Request JSON
+## 8. Build Request JSON
 
 Use python3 to construct the request payload. This handles base64 encoding of reference images which can be too large for shell.
 
@@ -127,7 +155,8 @@ export GEMINI_MODEL='<selected model, e.g. gemini-3.1-flash-image-preview>'
 export GEMINI_ASPECT_RATIO='<selected ratio, e.g. 1:1>'
 export GEMINI_IMAGE_SIZE='<selected resolution, e.g. 1K>'
 export GEMINI_REF_IMAGE='<path to reference image, or empty>'
-export GEMINI_OUTPUT_PATH='<output file path from Step 6>'
+export GEMINI_OUTPUT_PATH='<output file path from Step 7>'
+export GEMINI_SERVICE_TIER='<selected tier: FLEX, PRIORITY, or empty for standard>'
 ```
 
 Then run the builder:
@@ -141,6 +170,7 @@ model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-image-preview")
 aspect_ratio = os.environ.get("GEMINI_ASPECT_RATIO", "1:1")
 image_size = os.environ.get("GEMINI_IMAGE_SIZE", "1K")
 ref_image_path = os.environ.get("GEMINI_REF_IMAGE", "")
+service_tier = os.environ.get("GEMINI_SERVICE_TIER", "")
 pid = os.getpid()
 
 parts = []
@@ -168,6 +198,9 @@ payload = {
 if image_size != "1K":
     payload["generationConfig"]["imageConfig"]["imageSize"] = image_size
 
+if service_tier:
+    payload["serviceTier"] = service_tier
+
 outfile = f"/tmp/gemini-image-request-{pid}.json"
 with open(outfile, "w") as f:
     json.dump(payload, f)
@@ -178,9 +211,9 @@ PYEOF
 
 Capture the printed path as `REQUEST_FILE`. The python3 script prints the request file path to stdout.
 
-## 8. API Call
+## 9. API Call
 
-Use the `REQUEST_FILE` path from Step 7 and the `GEMINI_MODEL` env var:
+Use the `REQUEST_FILE` path from Step 8 and the `GEMINI_MODEL` env var:
 
 ```bash
 RESPONSE_FILE="/tmp/gemini-image-response-$$.json"
@@ -192,7 +225,7 @@ export GEMINI_RESPONSE_FILE="$RESPONSE_FILE"
 echo "HTTP status: $HTTP_STATUS"
 ```
 
-If `HTTP_STATUS` is 429, wait 30 seconds and retry the curl command once. If 400 or 403, display the error from the response body and suggest fixes. Only proceed to Step 9 if status is 200.
+If `HTTP_STATUS` is 429, wait 30 seconds and retry the curl command once. If 400 or 403, display the error from the response body and suggest fixes. Only proceed to Step 10 if status is 200.
 
 Check for errors in the response:
 - HTTP errors or empty response → show error, suggest simpler prompt
@@ -200,7 +233,7 @@ Check for errors in the response:
 - Status 429 → rate limited, wait 30s and retry once
 - Status 400/403 → show error details, suggest simplifying the prompt or checking the API key
 
-## 9. Extract and Save Image
+## 10. Extract and Save Image
 
 Use python3 to parse the response, find the image data, and save it:
 
@@ -284,7 +317,7 @@ if text_parts:
 PYEOF
 ```
 
-## 10. Save Prompt File
+## 11. Save Prompt File
 
 Write a `{name}_prompt.txt` file alongside the image for reproducibility:
 
@@ -295,12 +328,13 @@ Prompt: ${GEMINI_PROMPT}
 Model: ${GEMINI_MODEL}
 Aspect Ratio: ${GEMINI_ASPECT_RATIO}
 Resolution: ${GEMINI_IMAGE_SIZE}
+Service Tier: ${GEMINI_SERVICE_TIER:-standard}
 Reference Image: ${GEMINI_REF_IMAGE:-none}
 Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 EOF
 ```
 
-## 11. Cleanup and Report
+## 12. Cleanup and Report
 
 ```bash
 rm -f "${REQUEST_FILE}" "${RESPONSE_FILE}"
@@ -327,6 +361,7 @@ Then ask: "Would you like to regenerate with different settings, adjust the prom
 | No image in response | Show model's text response, suggest rephrasing |
 | Reference image not found | Warn and proceed without it |
 | `imageSize` lowercase value | Warn about case sensitivity before sending request |
+| `--tier` with invalid value | Warn user, show valid options (`flex`, `standard`, `priority`), ask again |
 
 ## Notes
 
