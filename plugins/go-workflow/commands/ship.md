@@ -125,12 +125,20 @@ If there are uncommitted changes, ask the user: "There are uncommitted changes. 
 
 ## 4. Prerequisite Check
 
-Verify the selected LLM CLI is installed. If not found, **fall back to agent-based review** instead of aborting.
+Verify the selected LLM CLI is installed. **CRITICAL: Never silently fall back** — always present the user with options.
+
+### 4a. Detect LLM CLI
 
 ```bash
 LLM_AVAILABLE=true
 if [ "$LLM_CHOICE" = "codex" ]; then
-  command -v codex >/dev/null 2>&1 || LLM_AVAILABLE=false
+  if command -v codex &>/dev/null; then
+    CODEX_CMD="codex"
+  elif npx -y codex --version &>/dev/null 2>&1; then
+    CODEX_CMD="npx -y codex"
+  else
+    LLM_AVAILABLE=false
+  fi
 elif [ "$LLM_CHOICE" = "gemini" ]; then
   command -v gemini >/dev/null 2>&1 || LLM_AVAILABLE=false
 elif [ "$LLM_CHOICE" = "ollama" ]; then
@@ -138,13 +146,55 @@ elif [ "$LLM_CHOICE" = "ollama" ]; then
 fi
 ```
 
-If `LLM_AVAILABLE` is `false`:
-- Set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`
-- **Persist to state file** for re-entry recovery: `jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`
-- Inform the user: "`$LLM_CHOICE` CLI not found — falling back to agent-based code review."
-- Continue to Step 5 (do NOT abort)
+### 4b. Handle CLI Not Found
 
-**On re-entry (Step 2):** Also restore `USE_AGENT_REVIEW` from state file: `USE_AGENT_REVIEW=$(jq -r '.use_agent_review // empty' "$STATE_FILE")`. If `"true"`, set `CODEX_EXEC_FALLBACK=true`.
+If `LLM_AVAILABLE` is `false`:
+
+1. Run diagnostics and display them:
+   ```bash
+   echo "=== LLM CLI Diagnostic ==="
+   echo "LLM selected: $LLM_CHOICE"
+   if [ "$LLM_CHOICE" = "codex" ]; then
+     echo "codex in PATH: $(command -v codex 2>/dev/null || echo 'NOT FOUND')"
+     echo "npx codex: $(npx -y codex --version 2>/dev/null || echo 'FAILED')"
+     echo "OPENAI_API_KEY set: $([ -n "${OPENAI_API_KEY:-}" ] && echo 'yes' || echo 'NO')"
+   elif [ "$LLM_CHOICE" = "gemini" ]; then
+     echo "gemini in PATH: $(command -v gemini 2>/dev/null || echo 'NOT FOUND')"
+   elif [ "$LLM_CHOICE" = "ollama" ]; then
+     echo "ollama in PATH: $(command -v ollama 2>/dev/null || echo 'NOT FOUND')"
+     echo "ollama serve running: $(curl -s http://localhost:11434/api/version 2>/dev/null || echo 'NOT RUNNING')"
+   fi
+   echo "========================="
+   ```
+
+2. Persist `llm_check_failed=true` to state file (for re-entry):
+   ```bash
+   TMP="$STATE_FILE.tmp"
+   jq '.llm_check_failed = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+   ```
+
+3. Use `AskUserQuestion` — **do NOT proceed without user input**:
+
+   **"`$LLM_CHOICE` CLI not found. How would you like to proceed?"**
+
+   | Option | Description |
+   |--------|-------------|
+   | **Retry** | Check again (after you install or fix `$LLM_CHOICE`) |
+   | **Debug / Install instructions** | Show install steps and help troubleshoot |
+   | **Use agent-based review** | Fall back to Claude agent review (no external LLM) |
+   | **Abort** | Stop the `/ship` workflow entirely |
+
+4. Handle the user's choice:
+   - **Retry** → Re-run the `command -v` / `npx` check from Step 4a. If the check succeeds, clear `llm_check_failed` from state file (`jq 'del(.llm_check_failed)' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`), set `LLM_AVAILABLE=true`, and continue to Step 5. If still fails, present options again.
+   - **Debug / Install instructions** → Display:
+     - codex: `npm install -g @openai/codex` or ensure `OPENAI_API_KEY` is set
+     - gemini: `npm install -g @google/gemini-cli`
+     - ollama: `brew install ollama && ollama serve`
+     After the user says they've fixed it, re-run the check from Step 4a. If still fails, present options again.
+   - **Use agent-based review** → Set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, persist to state file (`jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`), continue to Step 5.
+   - **Abort** → Run cleanup (`${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh ship`), stop.
+
+**On re-entry (Step 2):** Restore `USE_AGENT_REVIEW` from state file: `USE_AGENT_REVIEW=$(jq -r '.use_agent_review // empty' "$STATE_FILE")`. If `"true"`, set `CODEX_EXEC_FALLBACK=true` — do NOT re-ask (user already chose). Also check `llm_check_failed`: if `"true"` and `USE_AGENT_REVIEW` is not `"true"`, re-present the `AskUserQuestion` from Step 4b.3.
 
 ---
 
@@ -162,6 +212,18 @@ PASS=$(jq -r '.pass // 0' ".claude/ship.loop.local.json")
 
 **Note:** The pass counter is incremented in Step 8 (after the review completes and findings are committed), not here. This prevents burning a pass number if the session exits during the review and re-enters.
 
+**Re-detect `$CODEX_CMD` on re-entry:** Re-entry from the stop-hook jumps directly to Step 5, skipping Step 4a where `$CODEX_CMD` is set. Re-run detection here to ensure the variable is populated:
+
+```bash
+if [ "$LLM_CHOICE" = "codex" ] && [ -z "${CODEX_CMD:-}" ]; then
+  if command -v codex &>/dev/null; then
+    CODEX_CMD="codex"
+  elif npx -y codex --version &>/dev/null 2>&1; then
+    CODEX_CMD="npx -y codex"
+  fi
+fi
+```
+
 #### 5a. Generate Diff
 
 Fetch the base branch to ensure the ref exists locally (handles cases where the base branch has never been checked out):
@@ -178,6 +240,49 @@ If the diff is empty, skip the review loop entirely — nothing to review. Proce
 <!-- SYNC: codex-exec-review — keep aligned with review-loop.md Step 5b -->
 
 Execute review based on `LLM_CHOICE`:
+
+**Codex — Diff Size Estimation and Adaptive Timeout:**
+
+Before running `codex exec`, detect the timeout command and estimate diff size:
+
+```bash
+# Detect timeout command (macOS does not ship GNU timeout)
+if command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="gtimeout"
+elif command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout"
+else
+  TIMEOUT_CMD=""
+fi
+
+DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
+DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git' || echo 0)
+echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
+
+# Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
+CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
+if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
+if [ -n "$TIMEOUT_CMD" ]; then
+  echo "Codex exec timeout: ${CODEX_TIMEOUT}s (via $TIMEOUT_CMD)"
+else
+  echo "No timeout command available — codex exec will run without timeout"
+fi
+```
+
+If the diff exceeds 3000 lines, warn the user and offer options **before** starting the review:
+
+Use `AskUserQuestion`:
+
+**"Large diff detected ($DIFF_LINES lines, $DIFF_FILES files). Codex exec may timeout on diffs this large. How would you like to proceed?"**
+
+| Option | Description |
+|--------|-------------|
+| **Proceed with codex exec** | Run with extended timeout (${CODEX_TIMEOUT}s) — may still timeout |
+| **Use `codex review --base`** | Faster but limited to 2-3 findings per pass (no structured output) |
+| **Use agent-based review** | Claude agent review (no external LLM) |
+| **Skip review** | Proceed to push without LLM review |
+
+If the user chooses `codex review --base`, set `QUICK_MODE=true` and use the quick-mode codex review path below. If agent-based review, set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`.
 
 **Codex (exhaustive mode via `codex exec`):**
 
@@ -197,23 +302,72 @@ cat > "$SCHEMA_FILE" <<'SCHEMA_EOF'
 SCHEMA_EOF
 ```
 
-3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs), then execute:
+3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs), then execute with adaptive timeout:
 
 ```bash
 PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
-REVIEW_JSON=$(codex exec -m "${MODEL:-gpt-5.4}" -s read-only \
-  --output-schema "$SCHEMA_FILE" \
-  - < "$PROMPT_FILE")
+
+# Use adaptive timeout from diff size estimation (default 120s if not set)
+CODEX_TIMEOUT="${CODEX_TIMEOUT:-120}"
+
+set +e
+if [ -n "$TIMEOUT_CMD" ]; then
+  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "${MODEL:-gpt-5.4}" -s read-only \
+    --output-schema "$SCHEMA_FILE" \
+    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
+else
+  REVIEW_JSON=$($CODEX_CMD exec -m "${MODEL:-gpt-5.4}" -s read-only \
+    --output-schema "$SCHEMA_FILE" \
+    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
+fi
+CODEX_EXIT_CODE=$?
+CODEX_STDERR=$(cat "/tmp/codex-review-stderr-$$" 2>/dev/null)
+rm -f "/tmp/codex-review-stderr-$$"
+set -e
+
 # Strip codex exec headers (version/config info printed before JSON)
 REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
 # Guard: if stripping removed all output, codex exec returned no JSON
-if [ -z "$REVIEW_JSON" ]; then
-  echo "WARNING: codex exec produced no JSON output after header stripping"
+if [ -z "$REVIEW_JSON" ] && [ "$CODEX_EXIT_CODE" -eq 0 ]; then
+  echo "WARNING: $CODEX_CMD exec produced no JSON output after header stripping"
   REVIEW_JSON='{"error":"no JSON output"}'
 fi
 rm -f "$PROMPT_FILE" "$SCHEMA_FILE"
 ```
+
+**If `CODEX_EXIT_CODE` is non-zero**, do NOT silently fall back. Handle based on exit code:
+
+- **Exit code 124 (timeout):** This is a known issue with large diffs. Compute the doubled timeout and display:
+  ```bash
+  DOUBLED_TIMEOUT=$(( CODEX_TIMEOUT * 2 ))
+  if [ "$DOUBLED_TIMEOUT" -gt 900 ]; then DOUBLED_TIMEOUT=900; fi
+  ```
+  ```
+  ## Codex exec timed out (${CODEX_TIMEOUT}s)
+
+  - **Diff size:** $DIFF_LINES lines across $DIFF_FILES files
+  - **Timeout used:** ${CODEX_TIMEOUT}s
+  - **Partial output:** (first 200 chars of any captured output, or "none")
+  - **Stderr:** (first 500 chars of $CODEX_STDERR)
+  ```
+
+  Use `AskUserQuestion`:
+
+  **"Codex exec timed out after ${CODEX_TIMEOUT}s. This typically happens with large diffs. How would you like to proceed?"**
+
+  | Option | Description |
+  |--------|-------------|
+  | **Retry with longer timeout** | Double the timeout to ${DOUBLED_TIMEOUT}s |
+  | **Use `codex review --base`** | Faster mode, limited to 2-3 findings per pass |
+  | **Drop `--output-schema`** | Run codex exec without structured output (faster, parse response manually) |
+  | **Use agent-based review** | Fall back to Claude agent review |
+  | **Abort** | Stop the `/ship` workflow |
+
+  For "Retry with longer timeout": set `CODEX_TIMEOUT=$DOUBLED_TIMEOUT` and re-run from Step 5b.3.
+  For "Drop `--output-schema`": re-run without the schema flag and parse the free-text response using the free-text parsing path in Step 5c. Set `CODEX_EXEC_FALLBACK=true`.
+
+- **Other non-zero exit codes:** Follow the general error handling below (Step 5b error handling).
 
 The review prompt must include these instructions:
 
@@ -231,7 +385,34 @@ Rules:
 6. Do NOT stop after finding a few issues — review the ENTIRE diff.
 ```
 
-4. Validate JSON. If invalid or empty, this is a review failure — do NOT fall through to the free-text clean-review path. Warn the user: "Codex exec returned invalid output. Review did not complete." Ask whether to retry, fall back to `codex review --base`, or abort.
+4. Validate JSON. If invalid or empty, this is a review failure — do NOT fall through to the free-text clean-review path (which would treat empty output as `NO_ISSUES_FOUND`). Display the raw output (first 500 chars) so the user can see what went wrong. Use `AskUserQuestion`:
+
+   **"Codex exec returned invalid output. Review did not complete."**
+
+   | Option | Description |
+   |--------|-------------|
+   | **Retry** | Run `$CODEX_CMD exec` again |
+   | **Debug / Fix** | Investigate (show codex version, API key status, raw output) |
+   | **Use `codex review --base`** | Use the simpler codex review mode for this pass |
+   | **Use agent-based review** | Fall back to Claude agent review |
+   | **Abort** | Stop the `/ship` workflow |
+
+   Handle the user's choice accordingly. For "Use agent-based review", set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, persist to state file.
+
+**Codex (quick mode — `codex review --base`):**
+
+When the user selects `codex review --base` (from large-diff warning or timeout recovery), use the simpler review command. This is faster but limited to 2-3 findings per pass:
+
+```bash
+$CODEX_CMD review --base "$BASE_BRANCH" -c model="${MODEL:-gpt-5.4}"
+```
+
+Capture output as free-text `FINDINGS`. Set `CODEX_EXEC_FALLBACK=true` (tells Step 5c to skip JSON parsing and use free-text path). Persist `quick_mode=true` to state file for re-entry:
+
+```bash
+TMP="$STATE_FILE.tmp"
+jq '.quick_mode = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+```
 
 **Gemini:**
 
@@ -269,11 +450,66 @@ EOF
 
 Capture the output as `FINDINGS` (for gemini/ollama) or `REVIEW_JSON` (for codex).
 
-**Error handling for LLM exec:** If the codex/gemini/ollama command exits with a non-zero status or produces no output, set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, **persist to state file** (`jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`), then fall through to the agent-based review below instead of aborting.
+**Error handling for gemini/ollama exec:** The codex path already captures exit codes via the `set +e` block in Step 5b.3 above. For gemini and ollama, wrap the command similarly:
 
-**Agent-based review (when `USE_AGENT_REVIEW` is `true` or LLM exec fails):**
+```bash
+set +e
+if [ "$LLM_CHOICE" = "gemini" ]; then
+  FINDINGS=$(gemini <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
+elif [ "$LLM_CHOICE" = "ollama" ]; then
+  FINDINGS=$(ollama run codellama <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
+fi
+LLM_EXIT_CODE=$?
+LLM_STDERR=$(cat "/tmp/llm-review-stderr-$$" 2>/dev/null)
+rm -f "/tmp/llm-review-stderr-$$"
+set -e
+```
 
-If the selected LLM CLI is not installed (detected in Step 4) or the exec command fails at runtime (non-zero exit), use the agent-based review:
+If exit code is non-zero or output is empty, **do NOT silently fall back**. Instead:
+
+1. Display diagnostic information:
+   ```
+   ## LLM Review Failed
+
+   - **Command:** `$LLM_CHOICE ...`
+   - **Exit code:** $LLM_EXIT_CODE
+   - **Stderr:** (first 500 chars of $LLM_STDERR)
+   - **Output:** (first 200 chars, or "empty")
+   ```
+
+3. Use `AskUserQuestion` — **do NOT proceed without user input**:
+
+   **"`$LLM_CHOICE` exec failed (exit code $LLM_EXIT_CODE). How would you like to proceed?"**
+
+   | Option | Description |
+   |--------|-------------|
+   | **Retry** | Run the LLM review command again |
+   | **Debug / Fix** | Show diagnostics (version, API key, auth, network) and help troubleshoot |
+   | **Use agent-based review** | Fall back to Claude agent review for this pass |
+   | **Abort** | Stop the `/ship` workflow entirely |
+
+4. Handle the user's choice:
+   - **Retry** → Re-run the LLM review command from the beginning of Step 5b. If it fails again, present options again.
+   - **Debug / Fix** → Run diagnostics:
+     ```bash
+     echo "=== LLM Exec Diagnostic ==="
+     echo "Exit code: $LLM_EXIT_CODE"
+     echo "Stderr: $LLM_STDERR"
+     if [ "$LLM_CHOICE" = "codex" ]; then
+       echo "codex version: $($CODEX_CMD --version 2>/dev/null || echo 'UNKNOWN')"
+       echo "OPENAI_API_KEY set: $([ -n "${OPENAI_API_KEY:-}" ] && echo 'yes' || echo 'NO')"
+       echo "Auth file: $(ls -la ~/.codex/auth.json 2>/dev/null || echo 'NOT FOUND')"
+       echo "Network test: $(curl -s -o /dev/null -w '%{http_code}' https://api.openai.com/v1/models 2>/dev/null || echo 'FAILED')"
+     fi
+     echo "========================="
+     ```
+     After showing diagnostics, present the 4 options again.
+   - **Use agent-based review** → Set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, persist to state file (`jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`), continue to agent-based review section below.
+   - **Abort** → Run cleanup (`${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh ship`), stop.
+
+**Agent-based review (ONLY when `USE_AGENT_REVIEW` is `true`):**
+
+This section executes **ONLY** when the user has explicitly chosen agent-based review via `AskUserQuestion` in Step 4b or the error handling above. It **NEVER** activates automatically.
 
 1. Set `CODEX_EXEC_FALLBACK=true` (tells Step 5c to skip JSON parsing)
 2. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md` as a base template. **Adapt for the detected project language** — if the project is not Go (no go.mod), replace Go-specific review criteria (Go idioms, `go test -race`, etc.) with language-appropriate equivalents. The prompt's structure (VERDICT, FINDINGS, SUMMARY) remains the same regardless of language.
@@ -287,8 +523,6 @@ If the selected LLM CLI is not installed (detected in Step 4) or the exec comman
 5. Parse the agent's structured response directly (skip Step 5c JSON parsing):
    - `CLEAN` verdict → set `REVIEW_CLEAN=true`, persist to state file, skip Step 6
    - `HAS_FINDINGS` → extract findings from the agent's FINDINGS section, use as free-text findings for Step 6
-
-This ensures `/ship` can always complete a review pass even without codex/gemini/ollama installed.
 
 #### 5c. Parse Findings
 

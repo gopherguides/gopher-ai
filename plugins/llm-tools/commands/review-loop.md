@@ -33,26 +33,70 @@ This ensures stop-hook re-entry can restore the original configuration (includin
 
 ## 2. Prerequisite Check
 
-Verify the selected LLM CLI is installed. Fail fast with install instructions if not found.
+Verify the selected LLM CLI is installed. **CRITICAL: Never silently fail or fall back** — always present the user with options.
+
+### 2a. Detect LLM CLI
 
 ```bash
-# Check based on LLM_CHOICE
+LLM_AVAILABLE=true
 if [ "$LLM_CHOICE" = "codex" ]; then
-  command -v codex >/dev/null 2>&1 || { echo "codex not found. Install: npm install -g @openai/codex"; exit 1; }
+  if command -v codex &>/dev/null; then
+    CODEX_CMD="codex"
+  elif npx -y codex --version &>/dev/null 2>&1; then
+    CODEX_CMD="npx -y codex"
+  else
+    LLM_AVAILABLE=false
+  fi
 elif [ "$LLM_CHOICE" = "gemini" ]; then
-  command -v gemini >/dev/null 2>&1 || { echo "gemini not found. Install: npm install -g @google/gemini-cli"; exit 1; }
+  command -v gemini >/dev/null 2>&1 || LLM_AVAILABLE=false
 elif [ "$LLM_CHOICE" = "ollama" ]; then
-  command -v ollama >/dev/null 2>&1 || { echo "ollama not found. Install: brew install ollama"; exit 1; }
+  command -v ollama >/dev/null 2>&1 || LLM_AVAILABLE=false
 fi
 ```
 
-If the check fails, report the error, clean up the loop state file to prevent stale re-entry, and stop:
+### 2b. Handle CLI Not Found
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "review-loop"
-```
+If `LLM_AVAILABLE` is `false`:
 
-Do NOT continue the loop. Output `<done>REVIEW_CLEAN</done>` to signal completion.
+1. Run diagnostics and display them:
+   ```bash
+   echo "=== LLM CLI Diagnostic ==="
+   echo "LLM selected: $LLM_CHOICE"
+   if [ "$LLM_CHOICE" = "codex" ]; then
+     echo "codex in PATH: $(command -v codex 2>/dev/null || echo 'NOT FOUND')"
+     echo "npx codex: $(npx -y codex --version 2>/dev/null || echo 'FAILED')"
+     echo "OPENAI_API_KEY set: $([ -n "${OPENAI_API_KEY:-}" ] && echo 'yes' || echo 'NO')"
+   elif [ "$LLM_CHOICE" = "gemini" ]; then
+     echo "gemini in PATH: $(command -v gemini 2>/dev/null || echo 'NOT FOUND')"
+   elif [ "$LLM_CHOICE" = "ollama" ]; then
+     echo "ollama in PATH: $(command -v ollama 2>/dev/null || echo 'NOT FOUND')"
+     echo "ollama serve running: $(curl -s http://localhost:11434/api/version 2>/dev/null || echo 'NOT RUNNING')"
+   fi
+   echo "========================="
+   ```
+
+2. Use `AskUserQuestion` — **do NOT proceed or silently exit**:
+
+   **"`$LLM_CHOICE` CLI not found. How would you like to proceed?"**
+
+   | Option | Description |
+   |--------|-------------|
+   | **Retry** | Check again (after you install or fix `$LLM_CHOICE`) |
+   | **Debug / Install instructions** | Show install steps and help troubleshoot |
+   | **Abort** | Stop the review loop entirely |
+
+3. Handle the user's choice:
+   - **Retry** → Re-run the check from Step 2a. If still fails, present options again.
+   - **Debug / Install instructions** → Display:
+     - codex: `npm install -g @openai/codex` or ensure `OPENAI_API_KEY` is set
+     - gemini: `npm install -g @google/gemini-cli`
+     - ollama: `brew install ollama && ollama serve`
+     After the user says they've fixed it, re-run the check from Step 2a. If still fails, present options again.
+   - **Abort** → Clean up the loop state file and stop:
+     ```bash
+     "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "review-loop"
+     ```
+     Output `<done>REVIEW_CLEAN</done>` to signal completion.
 
 ## 3. Re-entry Check
 
@@ -238,25 +282,120 @@ PROMPT_TEMPLATE=$(cat "${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md")
 - `{REPO_GUIDELINES}` ← auto-detect `AGENTS.md` in repo root; if found, render as `## Repository Review Guidelines\n$(cat AGENTS.md)`; else check `CLAUDE.md`; otherwise empty string
 - `{PR_CONTEXT}` ← if PR was detected in Step 4a, render PR number, title, body, and linked issues; otherwise empty string
 
-3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs):
+3. Detect timeout command and estimate diff size:
+
+```bash
+# Detect timeout command (macOS does not ship GNU timeout)
+if command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="gtimeout"
+elif command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout"
+else
+  TIMEOUT_CMD=""
+fi
+
+DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
+DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git' || echo 0)
+echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
+
+# Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
+CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
+if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
+```
+
+If the diff exceeds 3000 lines, warn the user **before** starting:
+
+Use `AskUserQuestion`:
+
+**"Large diff detected ($DIFF_LINES lines, $DIFF_FILES files). Codex exec may timeout on diffs this large. How would you like to proceed?"**
+
+| Option | Description |
+|--------|-------------|
+| **Proceed with codex exec** | Run with extended timeout (${CODEX_TIMEOUT}s) — may still timeout |
+| **Use `codex review --base`** | Faster but limited to 2-3 findings per pass (no structured output) |
+| **Skip review** | Stop the review loop |
+
+If the user chooses `codex review --base`, set `QUICK_MODE=true` and persist to state file for re-entry:
+
+```bash
+TMP="$STATE_FILE.tmp"
+jq '.quick_mode = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+```
+
+Then use the quick-mode path below.
+
+4. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs), then execute with adaptive timeout:
 
 ```bash
 PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
-REVIEW_JSON=$(codex exec -m "$MODEL" -s read-only \
-  --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
-  - < "$PROMPT_FILE")
+
+set +e
+if [ -n "$TIMEOUT_CMD" ]; then
+  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "$MODEL" -s read-only \
+    --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
+    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
+else
+  REVIEW_JSON=$($CODEX_CMD exec -m "$MODEL" -s read-only \
+    --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
+    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
+fi
+CODEX_EXIT_CODE=$?
+CODEX_STDERR=$(cat "/tmp/codex-review-stderr-$$" 2>/dev/null)
+rm -f "/tmp/codex-review-stderr-$$"
+set -e
+
 # Strip codex exec headers (version/config info printed before JSON)
 REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
 # Guard: if stripping removed all output, codex exec returned no JSON
-if [ -z "$REVIEW_JSON" ]; then
-  echo "WARNING: codex exec produced no JSON output after header stripping"
+if [ -z "$REVIEW_JSON" ] && [ "$CODEX_EXIT_CODE" -eq 0 ]; then
+  echo "WARNING: $CODEX_CMD exec produced no JSON output after header stripping"
   REVIEW_JSON='{"error":"no JSON output"}'
 fi
 rm -f "$PROMPT_FILE"
 ```
 
-4. Validate JSON was returned. If `codex exec` returns non-JSON or empty output, this is a review failure — do NOT fall through to the free-text clean-review path (which would treat empty output as `NO_ISSUES_FOUND`). Instead, warn the user: "Codex exec returned invalid output. Review did not complete." Ask whether to retry the pass, fall back to `codex review` for this pass, or skip the review.
+**If `CODEX_EXIT_CODE` is non-zero**, do NOT silently fail. Handle based on exit code:
+
+- **Exit code 124 (timeout):** Compute doubled timeout and display diagnostics:
+  ```bash
+  DOUBLED_TIMEOUT=$(( CODEX_TIMEOUT * 2 ))
+  if [ "$DOUBLED_TIMEOUT" -gt 900 ]; then DOUBLED_TIMEOUT=900; fi
+  ```
+  Display diff size, timeout used, partial output, and stderr. Use `AskUserQuestion`:
+
+  **"Codex exec timed out after ${CODEX_TIMEOUT}s. How would you like to proceed?"**
+
+  | Option | Description |
+  |--------|-------------|
+  | **Retry with longer timeout** | Double the timeout to ${DOUBLED_TIMEOUT}s |
+  | **Use `codex review --base`** | Faster mode, limited to 2-3 findings per pass |
+  | **Drop `--output-schema`** | Run codex exec without structured output (faster, parse free-text) |
+  | **Skip review** | Stop the review loop |
+
+  For "Retry with longer timeout": set `CODEX_TIMEOUT=$DOUBLED_TIMEOUT` and re-run from Step 5b.4.
+  For "Drop `--output-schema`": re-run without the schema flag and parse the free-text response. Set `CODEX_EXEC_FALLBACK=true`.
+
+- **Other non-zero exit codes:** Display exit code, stderr, and any output. Use `AskUserQuestion`:
+
+  **"`$LLM_CHOICE` exec failed (exit code $CODEX_EXIT_CODE). How would you like to proceed?"**
+
+  | Option | Description |
+  |--------|-------------|
+  | **Retry** | Run the command again |
+  | **Debug / Fix** | Show diagnostics (version, API key, auth, network) |
+  | **Skip review** | Stop the review loop |
+
+5. Validate JSON was returned. If `codex exec` returns non-JSON or empty output, this is a review failure — do NOT fall through to the free-text clean-review path (which would treat empty output as `NO_ISSUES_FOUND`). Display the raw output (first 500 chars). Use `AskUserQuestion`:
+
+   **"Codex exec returned invalid output. Review did not complete."**
+
+   | Option | Description |
+   |--------|-------------|
+   | **Retry** | Run `$CODEX_CMD exec` again |
+   | **Debug / Fix** | Investigate (show codex version, API key status, raw output) |
+   | **Use `codex review --base`** | Use the simpler codex review mode for this pass |
+   | **Skip review** | Stop the review loop |
 
 **Codex (quick mode — `--quick` flag):**
 
@@ -264,14 +403,14 @@ When `QUICK_MODE` is `true`, use the standard `codex review` command. This is fa
 
 ```bash
 # For changes vs branch:
-codex review --base "$BASE_BRANCH" -c model="$MODEL"
+$CODEX_CMD review --base "$BASE_BRANCH" -c model="$MODEL"
 
 # For uncommitted:
-codex review --uncommitted -c model="$MODEL"
+$CODEX_CMD review --uncommitted -c model="$MODEL"
 
 # For specific files or when scope hint is provided, use stdin:
 DIFF=$(git diff ${BASE_BRANCH}...HEAD -- <files>)
-codex review -c model="$MODEL" - <<EOF
+$CODEX_CMD review -c model="$MODEL" - <<EOF
 $DIFF
 
 ## Review Instructions
