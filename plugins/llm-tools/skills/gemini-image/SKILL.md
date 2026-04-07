@@ -128,7 +128,7 @@ Ask or auto-generate a descriptive filename in the current directory (e.g., `her
 **Important:** Always single-quote user-provided values to prevent shell injection (quotes, backticks, `$` in prompts):
 
 ```bash
-export GEMINI_PROMPT='<the user'"'"'s image description — single-quote wrapped>'
+export GEMINI_PROMPT='<the user'"'"'s image description from cleaned input (with --tier stripped) — single-quote wrapped>'
 export GEMINI_MODEL='<selected model, e.g. gemini-3.1-flash-image-preview>'
 export GEMINI_ASPECT_RATIO='<selected ratio, e.g. 1:1>'
 export GEMINI_IMAGE_SIZE='<selected resolution, e.g. 1K>'

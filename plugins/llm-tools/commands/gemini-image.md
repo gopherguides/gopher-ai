@@ -64,19 +64,26 @@ Default: `gemini-3.1-flash-image-preview`
 
 ## 3. Select Service Tier
 
-**If `--tier` was provided in `$ARGUMENTS`**, extract and validate the value:
+First, check if `--tier` appears in `$ARGUMENTS` and extract + strip it:
 
 ```bash
-TIER_VALUE=$(echo "$ARGUMENTS" | grep -oE '\-\-tier (flex|standard|priority)' | awk '{print $2}')
-# Strip --tier <value> from the prompt text
-CLEAN_ARGS=$(echo "$ARGUMENTS" | sed 's/--tier  *\(flex\|standard\|priority\)//g' | sed 's/^  *//;s/  *$//')
+# Detect if --tier flag is present at all
+HAS_TIER=$(echo "$ARGUMENTS" | grep -q '\-\-tier' && echo "true" || echo "false")
+# Extract the value (may be valid or invalid)
+TIER_RAW=$(echo "$ARGUMENTS" | grep -oE '\-\-tier  *[^ ]+' | awk '{print $2}')
+# Check if value is valid
+TIER_VALID=$(echo "$TIER_RAW" | grep -qiE '^(flex|standard|priority)$' && echo "true" || echo "false")
+# Strip --tier <value> from the prompt text regardless of validity
+CLEAN_ARGS=$(echo "$ARGUMENTS" | sed 's/--tier  *[^ ]*//g' | sed 's/^  *//;s/  *$//')
 ```
 
-Normalize to uppercase: `FLEX`, `STANDARD`, or `PRIORITY`.
+**IMPORTANT:** Use `CLEAN_ARGS` (not `$ARGUMENTS`) as the image prompt from this point forward. The `--tier` flag text must not leak into `GEMINI_PROMPT`.
 
-If `--tier` was provided with an invalid value, warn the user and ask them to choose from: `flex`, `standard`, `priority`.
+**If `HAS_TIER` is `true` and `TIER_VALID` is `true`:** Normalize `TIER_RAW` to uppercase (`FLEX`, `STANDARD`, or `PRIORITY`).
 
-**If `--tier` was NOT provided**, ask the user:
+**If `HAS_TIER` is `true` but `TIER_VALID` is `false`:** Warn the user that the provided value is invalid and ask them to choose from: `flex`, `standard`, `priority`.
+
+**If `HAS_TIER` is `false`**, ask the user:
 
 > **Service Tier:** How should this request be prioritized?
 >
@@ -150,7 +157,7 @@ Use python3 to construct the request payload. This handles base64 encoding of re
 **Important:** Always single-quote user-provided values to prevent shell injection (quotes, backticks, `$` in prompts):
 
 ```bash
-export GEMINI_PROMPT='<the user'"'"'s prompt from $ARGUMENTS — single-quote wrapped>'
+export GEMINI_PROMPT='<the user'"'"'s prompt from CLEAN_ARGS (NOT raw $ARGUMENTS) — single-quote wrapped>'
 export GEMINI_MODEL='<selected model, e.g. gemini-3.1-flash-image-preview>'
 export GEMINI_ASPECT_RATIO='<selected ratio, e.g. 1:1>'
 export GEMINI_IMAGE_SIZE='<selected resolution, e.g. 1K>'
