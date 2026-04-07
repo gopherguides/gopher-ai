@@ -212,6 +212,18 @@ PASS=$(jq -r '.pass // 0' ".claude/ship.loop.local.json")
 
 **Note:** The pass counter is incremented in Step 8 (after the review completes and findings are committed), not here. This prevents burning a pass number if the session exits during the review and re-enters.
 
+**Re-detect `$CODEX_CMD` on re-entry:** Re-entry from the stop-hook jumps directly to Step 5, skipping Step 4a where `$CODEX_CMD` is set. Re-run detection here to ensure the variable is populated:
+
+```bash
+if [ "$LLM_CHOICE" = "codex" ] && [ -z "${CODEX_CMD:-}" ]; then
+  if command -v codex &>/dev/null; then
+    CODEX_CMD="codex"
+  elif npx -y codex --version &>/dev/null 2>&1; then
+    CODEX_CMD="npx -y codex"
+  fi
+fi
+```
+
 #### 5a. Generate Diff
 
 Fetch the base branch to ensure the ref exists locally (handles cases where the base branch has never been checked out):
