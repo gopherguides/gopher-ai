@@ -185,7 +185,7 @@ If `LLM_AVAILABLE` is `false`:
    | **Abort** | Stop the `/ship` workflow entirely |
 
 4. Handle the user's choice:
-   - **Retry** → Re-run the `command -v` / `npx` check from Step 4a. If still fails, present options again.
+   - **Retry** → Re-run the `command -v` / `npx` check from Step 4a. If the check succeeds, clear `llm_check_failed` from state file (`jq 'del(.llm_check_failed)' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`), set `LLM_AVAILABLE=true`, and continue to Step 5. If still fails, present options again.
    - **Debug / Install instructions** → Display:
      - codex: `npm install -g @openai/codex` or ensure `OPENAI_API_KEY` is set
      - gemini: `npm install -g @google/gemini-cli`
@@ -231,9 +231,18 @@ Execute review based on `LLM_CHOICE`:
 
 **Codex — Diff Size Estimation and Adaptive Timeout:**
 
-Before running `codex exec`, estimate the diff size to set an appropriate timeout and warn on very large diffs:
+Before running `codex exec`, detect the timeout command and estimate diff size:
 
 ```bash
+# Detect timeout command (macOS does not ship GNU timeout)
+if command -v gtimeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="gtimeout"
+elif command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_CMD="timeout"
+else
+  TIMEOUT_CMD=""
+fi
+
 DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
 DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git' || echo 0)
 echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
@@ -241,7 +250,11 @@ echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
 # Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
 CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
 if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
-echo "Codex exec timeout: ${CODEX_TIMEOUT}s"
+if [ -n "$TIMEOUT_CMD" ]; then
+  echo "Codex exec timeout: ${CODEX_TIMEOUT}s (via $TIMEOUT_CMD)"
+else
+  echo "No timeout command available — codex exec will run without timeout"
+fi
 ```
 
 If the diff exceeds 3000 lines, warn the user and offer options **before** starting the review:
@@ -287,9 +300,15 @@ echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 CODEX_TIMEOUT="${CODEX_TIMEOUT:-120}"
 
 set +e
-REVIEW_JSON=$(timeout "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "${MODEL:-gpt-5.4}" -s read-only \
-  --output-schema "$SCHEMA_FILE" \
-  - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
+if [ -n "$TIMEOUT_CMD" ]; then
+  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "${MODEL:-gpt-5.4}" -s read-only \
+    --output-schema "$SCHEMA_FILE" \
+    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
+else
+  REVIEW_JSON=$($CODEX_CMD exec -m "${MODEL:-gpt-5.4}" -s read-only \
+    --output-schema "$SCHEMA_FILE" \
+    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
+fi
 CODEX_EXIT_CODE=$?
 CODEX_STDERR=$(cat "/tmp/codex-review-stderr-$$" 2>/dev/null)
 rm -f "/tmp/codex-review-stderr-$$"
@@ -307,7 +326,11 @@ rm -f "$PROMPT_FILE" "$SCHEMA_FILE"
 
 **If `CODEX_EXIT_CODE` is non-zero**, do NOT silently fall back. Handle based on exit code:
 
-- **Exit code 124 (timeout):** This is a known issue with large diffs. Display:
+- **Exit code 124 (timeout):** This is a known issue with large diffs. Compute the doubled timeout and display:
+  ```bash
+  DOUBLED_TIMEOUT=$(( CODEX_TIMEOUT * 2 ))
+  if [ "$DOUBLED_TIMEOUT" -gt 900 ]; then DOUBLED_TIMEOUT=900; fi
+  ```
   ```
   ## Codex exec timed out (${CODEX_TIMEOUT}s)
 
@@ -323,12 +346,13 @@ rm -f "$PROMPT_FILE" "$SCHEMA_FILE"
 
   | Option | Description |
   |--------|-------------|
-  | **Retry with longer timeout** | Double the timeout to ${doubled_timeout}s |
+  | **Retry with longer timeout** | Double the timeout to ${DOUBLED_TIMEOUT}s |
   | **Use `codex review --base`** | Faster mode, limited to 2-3 findings per pass |
   | **Drop `--output-schema`** | Run codex exec without structured output (faster, parse response manually) |
   | **Use agent-based review** | Fall back to Claude agent review |
   | **Abort** | Stop the `/ship` workflow |
 
+  For "Retry with longer timeout": set `CODEX_TIMEOUT=$DOUBLED_TIMEOUT` and re-run from Step 5b.3.
   For "Drop `--output-schema`": re-run without the schema flag and parse the free-text response using the free-text parsing path in Step 5c. Set `CODEX_EXEC_FALLBACK=true`.
 
 - **Other non-zero exit codes:** Follow the general error handling below (Step 5b error handling).
@@ -362,6 +386,21 @@ Rules:
    | **Abort** | Stop the `/ship` workflow |
 
    Handle the user's choice accordingly. For "Use agent-based review", set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, persist to state file.
+
+**Codex (quick mode — `codex review --base`):**
+
+When the user selects `codex review --base` (from large-diff warning or timeout recovery), use the simpler review command. This is faster but limited to 2-3 findings per pass:
+
+```bash
+$CODEX_CMD review --base "$BASE_BRANCH" -c model="${MODEL:-gpt-5.4}"
+```
+
+Capture output as free-text `FINDINGS`. Set `CODEX_EXEC_FALLBACK=true` (tells Step 5c to skip JSON parsing and use free-text path). Persist `quick_mode=true` to state file for re-entry:
+
+```bash
+TMP="$STATE_FILE.tmp"
+jq '.quick_mode = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+```
 
 **Gemini:**
 
@@ -399,23 +438,28 @@ EOF
 
 Capture the output as `FINDINGS` (for gemini/ollama) or `REVIEW_JSON` (for codex).
 
-**Error handling for LLM exec:** If the codex/gemini/ollama command exits with a non-zero status or produces no output, **do NOT silently fall back**. Instead:
+**Error handling for gemini/ollama exec:** The codex path already captures exit codes via the `set +e` block in Step 5b.3 above. For gemini and ollama, wrap the command similarly:
 
-1. Capture the exit code and stderr:
-   ```bash
-   set +e
-   REVIEW_OUTPUT=$($LLM_EXEC_COMMAND 2>"/tmp/llm-review-stderr-$$")
-   LLM_EXIT_CODE=$?
-   LLM_STDERR=$(cat "/tmp/llm-review-stderr-$$" 2>/dev/null)
-   rm -f "/tmp/llm-review-stderr-$$"
-   set -e
-   ```
+```bash
+set +e
+if [ "$LLM_CHOICE" = "gemini" ]; then
+  FINDINGS=$(gemini <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
+elif [ "$LLM_CHOICE" = "ollama" ]; then
+  FINDINGS=$(ollama run codellama <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
+fi
+LLM_EXIT_CODE=$?
+LLM_STDERR=$(cat "/tmp/llm-review-stderr-$$" 2>/dev/null)
+rm -f "/tmp/llm-review-stderr-$$"
+set -e
+```
 
-2. Display diagnostic information:
+If exit code is non-zero or output is empty, **do NOT silently fall back**. Instead:
+
+1. Display diagnostic information:
    ```
    ## LLM Review Failed
 
-   - **Command:** `$LLM_CHOICE exec ...`
+   - **Command:** `$LLM_CHOICE ...`
    - **Exit code:** $LLM_EXIT_CODE
    - **Stderr:** (first 500 chars of $LLM_STDERR)
    - **Output:** (first 200 chars, or "empty")

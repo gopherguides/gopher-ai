@@ -178,8 +178,12 @@ Run an LLM review to catch issues before E2E verification. **CRITICAL: Never sil
    # Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
    CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
    if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
+   # Detect timeout command (macOS does not ship GNU timeout)
+   if command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout"
+   elif command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout"
+   else TIMEOUT_CMD=""; fi
    ```
-   Use `timeout $CODEX_TIMEOUT $CODEX_CMD exec` with structured output to get all findings at once (avoids the 2-3 finding per-pass limit of interactive mode).
+   If `$TIMEOUT_CMD` is available, use `$TIMEOUT_CMD $CODEX_TIMEOUT $CODEX_CMD exec` with structured output. If no timeout command is available, run `$CODEX_CMD exec` without a timeout wrapper.
 
    If the diff exceeds 3000 lines, warn the user via `AskUserQuestion` before starting: "Large diff ($DIFF_LINES lines) — codex exec may timeout. Proceed / Use `codex review --base` / Agent review / Skip?"
 
