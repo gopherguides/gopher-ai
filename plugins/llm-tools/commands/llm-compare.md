@@ -52,11 +52,35 @@ Ask the user which LLMs to include (select 2-3):
 Default: All available LLMs
 
 For each selected LLM, verify it's available:
-- `which codex` for OpenAI
-- `which gemini` for Gemini
-- `ollama ps` for Ollama
 
-Skip unavailable LLMs with a note.
+```bash
+# Codex detection with npx fallback
+CODEX_AVAILABLE=false
+if command -v codex &>/dev/null; then
+  CODEX_CMD="codex"
+  CODEX_AVAILABLE=true
+elif npx -y codex --version &>/dev/null 2>&1; then
+  CODEX_CMD="npx -y codex"
+  CODEX_AVAILABLE=true
+fi
+# Gemini
+command -v gemini >/dev/null 2>&1 && GEMINI_AVAILABLE=true || GEMINI_AVAILABLE=false
+# Ollama
+command -v ollama >/dev/null 2>&1 && OLLAMA_AVAILABLE=true || OLLAMA_AVAILABLE=false
+```
+
+**If a user-selected LLM is not available**, do NOT silently skip it. Use `AskUserQuestion`:
+
+**"`$LLM_NAME` CLI not found. How would you like to proceed?"**
+
+| Option | Description |
+|--------|-------------|
+| **Retry** | Check again (after installing) |
+| **Install instructions** | Show how to install the missing CLI |
+| **Skip this LLM** | Continue comparison without this LLM |
+| **Abort** | Stop the comparison entirely |
+
+Only skip an unavailable LLM if the user explicitly chooses "Skip this LLM".
 
 ## 2. Select Models (Optional)
 
@@ -97,10 +121,12 @@ For every testable fix, write a corresponding test. A fix is testable if it chan
 
 Execute each LLM. Where possible, run in parallel for speed.
 
-**OpenAI:**
+**OpenAI (only if `CODEX_AVAILABLE` is `true` — user was already prompted in Step 1 if unavailable):**
 ```bash
-codex exec -m <model> -s read-only --skip-git-repo-check "$CLEAN_PROMPT"
+$CODEX_CMD exec -m <model> -s read-only --skip-git-repo-check "$CLEAN_PROMPT"
 ```
+
+**If `codex exec` fails** (non-zero exit or no output), do NOT silently skip. Display exit code and stderr, then use `AskUserQuestion` with options: Retry / Debug / Skip this LLM / Abort.
 
 **Gemini:**
 

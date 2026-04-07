@@ -139,29 +139,58 @@ echo "PR #$PR_NUM created"
 set_loop_phase "$STATE_FILE" "reviewing"
 ```
 
-Run an LLM review to catch issues before E2E verification:
+Run an LLM review to catch issues before E2E verification. **CRITICAL: Never silently fall back** — always present the user with options if codex fails.
 
-1. **Check codex availability:**
+1. **Detect codex availability:**
    ```bash
-   if command -v codex >/dev/null 2>&1; then
-     echo "Using codex for review"
-   else
-     echo "Codex not available — using agent-based review"
+   CODEX_AVAILABLE=false
+   if command -v codex &>/dev/null; then
+     CODEX_CMD="codex"
+     CODEX_AVAILABLE=true
+   elif npx -y codex --version &>/dev/null 2>&1; then
+     CODEX_CMD="npx -y codex"
+     CODEX_AVAILABLE=true
    fi
    ```
 
-2. **If codex available:** Run codex review on the PR diff:
+2. **If codex NOT available:** Do NOT silently fall back. Use `AskUserQuestion`:
+
+   **"Codex CLI is not available for self-review. How would you like to proceed?"**
+
+   | Option | Description |
+   |--------|-------------|
+   | **Retry** | Check again (after you install codex) |
+   | **Install instructions** | Show how to install: `npm install -g @openai/codex` |
+   | **Use agent-based review** | Fall back to Claude agent review |
+   | **Skip review** | Proceed to Phase 3 without review (with warning) |
+
+   Handle the user's choice:
+   - **Retry** → Re-run the availability check from step 1.
+   - **Install instructions** → Display: `npm install -g @openai/codex` and ensure `OPENAI_API_KEY` is set. Then re-check.
+   - **Use agent-based review** → Use an Agent subagent to review the diff for correctness, security, and Go idioms.
+   - **Skip review** → Warn "Self-review skipped — proceeding to E2E verification without code review." and go directly to Phase 3.
+
+3. **If codex available:** Run codex review on the PR diff:
    ```bash
    DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
    DIFF=$(git diff "origin/${DEFAULT_BRANCH}...HEAD")
+   DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
+   # Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
+   CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
+   if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
    ```
-   Use `codex exec` with structured output to get all findings at once (avoids the 2-3 finding per-pass limit of interactive mode).
+   Use `timeout $CODEX_TIMEOUT $CODEX_CMD exec` with structured output to get all findings at once (avoids the 2-3 finding per-pass limit of interactive mode).
 
-3. **If codex NOT available:** Use an Agent subagent to review the diff for correctness, security, and Go idioms.
+   If the diff exceeds 3000 lines, warn the user via `AskUserQuestion` before starting: "Large diff ($DIFF_LINES lines) — codex exec may timeout. Proceed / Use `codex review --base` / Agent review / Skip?"
 
-4. **Address findings:** For each valid finding, make the fix. Skip findings that are false positives or cosmetic-only.
+4. **If codex exec fails at runtime** (non-zero exit or no output): Do NOT silently fall back. Display the exit code and stderr, then use `AskUserQuestion`:
+   - **Exit code 124 (timeout):** Offer: Retry with longer timeout / Use `codex review --base` / Drop `--output-schema` / Agent review / Skip review
+   - **Other exit codes:** Offer: Retry / Debug / Agent review / Skip review
+   The user must choose.
 
-5. **Commit fixes** (if any changes were made):
+5. **Address findings:** For each valid finding, make the fix. Skip findings that are false positives or cosmetic-only.
+
+6. **Commit fixes** (if any changes were made):
    ```bash
    git add -A
    git commit -m "fix: address codex review findings"
