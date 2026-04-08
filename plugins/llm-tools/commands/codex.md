@@ -62,10 +62,10 @@ fi
 
 ## 0.5. Parse Flags
 
-Check if `$ARGUMENTS` contains `--ask`. If it does, set `INTERACTIVE_MODE=true` and strip the flag from the prompt:
+Check if `$ARGUMENTS` contains `--ask` as a standalone token (not as a substring of another word like `--asking`). If it does, set `INTERACTIVE_MODE=true` and strip the flag from the prompt:
 
 ```bash
-CODEX_PROMPT=$(echo "$ARGUMENTS" | sed 's/--ask//g' | sed 's/^  *//;s/  *$//')
+CODEX_PROMPT=$(echo "$ARGUMENTS" | sed 's/\(^\| \)--ask\( \|$\)/\1\2/g' | sed 's/^  *//;s/  *$//')
 ```
 
 If `$ARGUMENTS` does not contain `--ask`, set `INTERACTIVE_MODE=false` and `CODEX_PROMPT="$ARGUMENTS"`.
@@ -756,10 +756,10 @@ Use recommended defaults without prompting. Display a brief configuration summar
 Exec config (defaults — add --ask to customize):
   Model:    gpt-5.4
   Context:  None
-  Sandbox:  read-only
+  Sandbox:  workspace-write
 ```
 
-Store selections: model = "gpt-5.4", context = "No", sandbox = "read-only". Proceed directly to Step 4 (Run Codex).
+Store selections: model = "gpt-5.4", context = "No", sandbox = "workspace-write". Proceed directly to Step 4 (Run Codex).
 
 #### If `INTERACTIVE_MODE` is `true` (`--ask` flag provided)
 
@@ -842,8 +842,11 @@ $CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check "$CODEX_PROMPT"
 
 Construct a combined prompt and execute using heredoc:
 
+Write the full prompt (context block + task) to a temp file first, then pipe it to avoid heredoc expansion issues:
+
 ```bash
-$CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check - <<'EOF'
+PROMPT_FILE=$(mktemp /tmp/codex-exec-prompt-XXXXXX)
+cat > "$PROMPT_FILE" <<PROMPT_EOF
 [CONTEXT BLOCK FROM STEP 2]
 
 ---
@@ -856,7 +859,10 @@ $CODEX_PROMPT
 
 Use the session context above to inform your review/analysis. The context describes what was
 being worked on in a previous AI coding session.
-EOF
+PROMPT_EOF
+
+$CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check - < "$PROMPT_FILE"
+rm -f "$PROMPT_FILE"
 ```
 
 ### 5. Report Results
