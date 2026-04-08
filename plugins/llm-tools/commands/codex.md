@@ -301,7 +301,7 @@ CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
 DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main")
 ```
 
-If `$CURRENT_BRANCH` equals `$DEFAULT_BRANCH`: skip the automatic strategies (they would match unrelated merged PRs). Instead, ask the user via `AskUserQuestion`: "On default branch — auto-detect skipped. Enter a PR number (e.g. `123`), issue number (e.g. `#45`), or press Enter to proceed without context." If the user provides input prefixed with `#`, strip the `#` and use the "Provide issue number" path. Otherwise validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
+If `$CURRENT_BRANCH` equals `$DEFAULT_BRANCH`: skip the automatic strategies (they would match unrelated merged PRs). **If `INTERACTIVE_MODE` is `false`:** silently set `PR_DETECTED=false` and proceed to R3 without prompting. **If `INTERACTIVE_MODE` is `true`:** ask the user via `AskUserQuestion`: "On default branch — auto-detect skipped. Enter a PR number (e.g. `123`), issue number (e.g. `#45`), or press Enter to proceed without context." If the user provides input prefixed with `#`, strip the `#` and use the "Provide issue number" path. Otherwise validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
 
 **If NOT on the default branch, run detection strategies.** Each strategy is tried only if the previous one returned empty. All output is silenced with `2>/dev/null`.
 
@@ -335,7 +335,7 @@ if [ -z "$PR_JSON" ]; then
 fi
 ```
 
-**If no PR found after all strategies:** Ask the user via `AskUserQuestion`: "No PR found for current branch. Enter a PR number (e.g. `123`), issue number (e.g. `#45`), or press Enter to proceed without context." If the user provides input prefixed with `#`, strip the `#` and use the "Provide issue number" path. Otherwise validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
+**If no PR found after all strategies:** **If `INTERACTIVE_MODE` is `false`:** silently set `PR_DETECTED=false` and proceed to R3 without prompting. **If `INTERACTIVE_MODE` is `true`:** ask the user via `AskUserQuestion`: "No PR found for current branch. Enter a PR number (e.g. `123`), issue number (e.g. `#45`), or press Enter to proceed without context." If the user provides input prefixed with `#`, strip the `#` and use the "Provide issue number" path. Otherwise validate it is numeric (`echo "$INPUT" | grep -qE '^[0-9]+$'`). If invalid, re-prompt. If valid, fetch it (same as "Provide PR number" path). If empty/Enter, set `PR_DETECTED=false`.
 
 #### Fetch PR details (shared by Auto-detect and Provide PR number)
 
@@ -868,7 +868,7 @@ ${CODEX_PROMPT}
 Use the session context above to inform your review/analysis. The context describes what was
 being worked on in a previous AI coding session."
 
-echo "$EXEC_PROMPT" > "$PROMPT_FILE"
+printf '%s\n' "$EXEC_PROMPT" > "$PROMPT_FILE"
 $CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check - < "$PROMPT_FILE"
 rm -f "$PROMPT_FILE"
 trap - EXIT
