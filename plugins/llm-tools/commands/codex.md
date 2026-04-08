@@ -62,13 +62,20 @@ fi
 
 ## 0.5. Parse Flags
 
-Check if `$ARGUMENTS` contains `--ask` as a standalone token (not as a substring of another word like `--asking`). If it does, set `INTERACTIVE_MODE=true` and strip the flag from the prompt:
+Check if `$ARGUMENTS` starts or ends with `--ask` (as a standalone flag, not embedded in the prompt text). Only strip `--ask` from the leading or trailing position — if it appears mid-prompt (e.g., "explain what --ask does"), leave it intact and do NOT enable interactive mode:
 
 ```bash
-CODEX_PROMPT=$(echo "$ARGUMENTS" | sed 's/\(^\| \)--ask\( \|$\)/\1\2/g' | sed 's/^  *//;s/  *$//')
+# Only match --ask at the very start or very end of the arguments
+if echo "$ARGUMENTS" | grep -qE '(^--ask( |$)|( |^)--ask$)'; then
+  INTERACTIVE_MODE=true
+  CODEX_PROMPT=$(echo "$ARGUMENTS" | sed 's/^--ask //;s/ --ask$//' | sed 's/^--ask$//' | sed 's/^  *//;s/  *$//')
+else
+  INTERACTIVE_MODE=false
+  CODEX_PROMPT="$ARGUMENTS"
+fi
 ```
 
-If `$ARGUMENTS` does not contain `--ask`, set `INTERACTIVE_MODE=false` and `CODEX_PROMPT="$ARGUMENTS"`.
+If `$ARGUMENTS` does not start or end with `--ask`, set `INTERACTIVE_MODE=false` and `CODEX_PROMPT="$ARGUMENTS"`.
 
 If `$CODEX_PROMPT` is empty after stripping (e.g., user ran `/codex --ask`), fall through to the "If `$ARGUMENTS` is empty" branch above (display usage and ask what to do). Once the user provides input, `INTERACTIVE_MODE` remains `true`, so interactive questions will be asked.
 
@@ -842,27 +849,29 @@ $CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check "$CODEX_PROMPT"
 
 Construct a combined prompt and execute using heredoc:
 
-Write the full prompt (context block + task) to a temp file first, then pipe it to avoid heredoc expansion issues:
+Assemble the full prompt as a variable first (to safely include `$CODEX_PROMPT` without shell expansion risks from the context block), write it to a temp file, then pipe it:
 
 ```bash
 PROMPT_FILE=$(mktemp /tmp/codex-exec-prompt-XXXXXX)
-cat > "$PROMPT_FILE" <<PROMPT_EOF
-[CONTEXT BLOCK FROM STEP 2]
+trap 'rm -f "$PROMPT_FILE"' EXIT
+
+EXEC_PROMPT="[CONTEXT BLOCK FROM STEP 2]
 
 ---
 
 ## Task
 
-$CODEX_PROMPT
+${CODEX_PROMPT}
 
 ---
 
 Use the session context above to inform your review/analysis. The context describes what was
-being worked on in a previous AI coding session.
-PROMPT_EOF
+being worked on in a previous AI coding session."
 
+echo "$EXEC_PROMPT" > "$PROMPT_FILE"
 $CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check - < "$PROMPT_FILE"
 rm -f "$PROMPT_FILE"
+trap - EXIT
 ```
 
 ### 5. Report Results
