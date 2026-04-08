@@ -1,5 +1,5 @@
 ---
-argument-hint: "<prompt>"
+argument-hint: "[--ask] <prompt>"
 description: "Delegate a task to OpenAI Codex CLI"
 allowed-tools: ["Bash", "Read", "AskUserQuestion"]
 ---
@@ -12,18 +12,22 @@ Display usage information and ask for input:
 
 This command delegates tasks to OpenAI Codex CLI for autonomous execution.
 
-**Usage:** `/codex <prompt>`
+**Usage:** `/codex [--ask] <prompt>`
+
+All commands use recommended defaults automatically. Add `--ask` to customize model, review depth, context, and other options interactively.
 
 **Examples:**
 
 | Command | Description |
 |---------|-------------|
-| `/codex refactor the auth module` | Refactor existing code |
-| `/codex write tests for utils.ts` | Generate test files |
-| `/codex fix the bug in checkout flow` | Debug and fix issues |
-| `/codex explain how the API routes work` | Code explanation |
-| `/codex add dark mode support` | Implement new features |
-| `/codex review the auth changes` | Review with session context |
+| `/codex refactor the auth module` | Refactor existing code (uses defaults) |
+| `/codex write tests for utils.ts` | Generate test files (uses defaults) |
+| `/codex fix the bug in checkout flow` | Debug and fix issues (uses defaults) |
+| `/codex explain how the API routes work` | Code explanation (uses defaults) |
+| `/codex add dark mode support` | Implement new features (uses defaults) |
+| `/codex review the auth changes` | Review with recommended defaults |
+| `/codex review the auth changes --ask` | Review with interactive configuration |
+| `/codex refactor the module --ask` | Exec with interactive model/sandbox selection |
 
 **Available Models:**
 
@@ -40,7 +44,7 @@ Ask the user: "What would you like Codex to do?"
 
 **If `$ARGUMENTS` is provided:**
 
-Run a task using OpenAI Codex CLI with the prompt: $ARGUMENTS
+Run a task using OpenAI Codex CLI with the prompt: $CODEX_PROMPT
 
 ## 0. Detect Codex CLI
 
@@ -56,17 +60,31 @@ fi
 
 **Use `$CODEX_CMD` in place of bare `codex` for ALL commands below.**
 
+## 0.5. Parse Flags
+
+Check if `$ARGUMENTS` contains `--ask`. If it does, set `INTERACTIVE_MODE=true` and strip the flag from the prompt:
+
+```bash
+CODEX_PROMPT=$(echo "$ARGUMENTS" | sed 's/--ask//g' | sed 's/^  *//;s/  *$//')
+```
+
+If `$ARGUMENTS` does not contain `--ask`, set `INTERACTIVE_MODE=false` and `CODEX_PROMPT="$ARGUMENTS"`.
+
+If `$CODEX_PROMPT` is empty after stripping (e.g., user ran `/codex --ask`), fall through to the "If `$ARGUMENTS` is empty" branch above (display usage and ask what to do). Once the user provides input, `INTERACTIVE_MODE` remains `true`, so interactive questions will be asked.
+
+**Use `$CODEX_PROMPT` in place of `$ARGUMENTS` for all prompt text references below.**
+
 ## 1. Detect Review Mode
 
-Check if the prompt contains "review" (case-insensitive). Then determine routing:
+Check if `$CODEX_PROMPT` contains "review" (case-insensitive). Then determine routing:
 
-- If the prompt is **fix-oriented** (contains action words like "fix", "address", "resolve", "update" alongside "review" — e.g., "fix review comment", "address review feedback"), route to **Exec Flow**. These prompts need to modify files, which Review Flow cannot do.
-- If the prompt is **review-oriented** (e.g., "review the auth changes", "review this PR"), route to **Review Flow**.
+- If `$CODEX_PROMPT` is **fix-oriented** (contains action words like "fix", "address", "resolve", "update" alongside "review" — e.g., "fix review comment", "address review feedback"), route to **Exec Flow**. These prompts need to modify files, which Review Flow cannot do.
+- If `$CODEX_PROMPT` is **review-oriented** (e.g., "review the auth changes", "review this PR"), route to **Review Flow**.
 - Otherwise, continue with **Exec Flow**.
 
 ## 2. Review Fix Detection (applies to both flows)
 
-Before running Codex in either flow, detect if the prompt is addressing review feedback (e.g., contains phrases like "fix review comment", "address feedback", "fix the issue from review", or the prompt originates from an `/address-review` context). If a review-fix prompt is detected:
+Before running Codex in either flow, detect if `$CODEX_PROMPT` is addressing review feedback (e.g., contains phrases like "fix review comment", "address feedback", "fix the issue from review", or the prompt originates from an `/address-review` context). If a review-fix prompt is detected:
 
 **Capture baseline before running Codex:**
 
@@ -131,7 +149,23 @@ If no test files were created or modified by this Codex run AND the fix modified
 
 Use this flow when the prompt contains "review".
 
-### R1. Batched Questions (single AskUserQuestion call — NO commands run yet)
+### R1. Review Configuration
+
+#### If `INTERACTIVE_MODE` is `false` (default — no `--ask` flag)
+
+Use recommended defaults without prompting. Display a brief configuration summary:
+
+```
+Review config (defaults — add --ask to customize):
+  Review type:  Changes vs branch
+  Context:      Auto-detect
+  Model:        gpt-5.4
+  Depth:        Exhaustive
+```
+
+Store these selections: review type = "Changes vs branch", context = "Auto-detect", model = "gpt-5.4", depth = "Exhaustive". Proceed directly to R1.5.
+
+#### If `INTERACTIVE_MODE` is `true` (`--ask` flag provided)
 
 **Do NOT run any `gh` or `git` commands before asking the user questions.** PR detection is deferred until after the user requests context. This avoids wasting tokens on `gh pr view` calls when the user doesn't need PR context. Exception: lightweight branch detection (`gh pr view --json baseRefName`, `git remote show origin`) is permitted in R1.5 after R1 answers are collected — these are fast, single-field queries that avoid blocking the user.
 
@@ -174,7 +208,24 @@ Ask all review configuration questions in a **single `AskUserQuestion` call** wi
 
 Note: Exhaustive mode uses `codex exec --output-schema` to bypass the 2-3 finding limit of `codex review`. Multi-pass is available as a fallback but is less effective than exhaustive mode.
 
-### R1.5. Conditional Follow-Up (only if needed)
+### R1.5. Conditional Follow-Up
+
+#### If `INTERACTIVE_MODE` is `false` (default)
+
+Since defaults are "Changes vs branch" + "Auto-detect" + "Exhaustive", the only follow-up needed is base branch auto-detection. Run silently:
+
+```bash
+PR_JSON=`gh pr view --json baseRefName --jq '.' 2>/dev/null || echo ""`
+if [ -n "$PR_JSON" ] && [ "$PR_JSON" != "" ]; then
+  BASE_BRANCH=`echo "$PR_JSON" | jq -r '.baseRefName'`
+else
+  BASE_BRANCH=`(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' | grep .) || (git remote show -n origin 2>/dev/null | rg 'HEAD branch' | sed 's/.*: //' | grep .) || echo "main"`
+fi
+```
+
+Display: "Detected base branch: `$BASE_BRANCH`". Proceed directly to R2.
+
+#### If `INTERACTIVE_MODE` is `true`
 
 After processing answers from R1, check if any selections require additional input. If so, ask all follow-ups in a **single `AskUserQuestion` call** (up to 4 questions):
 
@@ -697,6 +748,21 @@ For follow-ups, use: `codex resume --last`
 
 Use this flow for non-review tasks.
 
+#### If `INTERACTIVE_MODE` is `false` (default — no `--ask` flag)
+
+Use recommended defaults without prompting. Display a brief configuration summary:
+
+```
+Exec config (defaults — add --ask to customize):
+  Model:    gpt-5.4
+  Context:  None
+  Sandbox:  read-only
+```
+
+Store selections: model = "gpt-5.4", context = "No", sandbox = "read-only". Proceed directly to Step 4 (Run Codex).
+
+#### If `INTERACTIVE_MODE` is `true` (`--ask` flag provided)
+
 ### 1. Select Model
 
 Ask the user which model to use:
@@ -769,7 +835,7 @@ Default: `read-only`
 Assemble and execute the command:
 
 ```bash
-$CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check "<prompt>"
+$CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check "$CODEX_PROMPT"
 ```
 
 **If context WAS requested:**
@@ -784,7 +850,7 @@ $CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check - <<'EOF'
 
 ## Task
 
-<prompt>
+$CODEX_PROMPT
 
 ---
 
