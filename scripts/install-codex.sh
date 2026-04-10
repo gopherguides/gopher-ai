@@ -4,6 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist/codex"
+REPO_SLUG="${GOPHER_AI_REPO:-gopherguides/gopher-ai}"
+REPO_REF="${GOPHER_AI_REF:-main}"
+ARCHIVE_URL="${GOPHER_AI_ARCHIVE_URL:-https://codeload.github.com/${REPO_SLUG}/tar.gz/refs/heads/${REPO_REF}}"
+BOOTSTRAP_DIR=""
 
 usage() {
     cat <<'EOF'
@@ -20,6 +24,14 @@ Options:
 EOF
 }
 
+cleanup() {
+    if [[ -n "$BOOTSTRAP_DIR" && -d "$BOOTSTRAP_DIR" ]]; then
+        rm -rf "$BOOTSTRAP_DIR"
+    fi
+}
+
+trap cleanup EXIT
+
 require_cmd() {
     local cmd="$1"
     if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -28,7 +40,31 @@ require_cmd() {
     fi
 }
 
+bootstrap_repo() {
+    if [[ -f "$ROOT_DIR/scripts/build-universal.sh" ]]; then
+        return
+    fi
+
+    require_cmd curl
+    require_cmd tar
+
+    BOOTSTRAP_DIR="$(mktemp -d)"
+    curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$BOOTSTRAP_DIR"
+
+    local extracted_root
+    extracted_root="$(find "$BOOTSTRAP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    if [[ -z "$extracted_root" || ! -f "$extracted_root/scripts/build-universal.sh" ]]; then
+        echo "error: failed to bootstrap gopher-ai from $ARCHIVE_URL" >&2
+        exit 1
+    fi
+
+    ROOT_DIR="$extracted_root"
+    DIST_DIR="$ROOT_DIR/dist/codex"
+}
+
 ensure_dist() {
+    bootstrap_repo
+
     if [[ ! -f "$DIST_DIR/plugins/marketplace.json" ]]; then
         "$ROOT_DIR/scripts/build-universal.sh"
     fi
@@ -87,50 +123,11 @@ write_user_marketplace() {
 build_repo_marketplace() {
     local output_file="$1"
 
-    jq -n '
-        {
-          name: "gopher-ai",
-          interface: { displayName: "Gopher AI" },
-          plugins: [
-            {
-              name: "go-workflow",
-              source: { source: "local", path: "./plugins/go-workflow" },
-              policy: { installation: "AVAILABLE", authentication: "ON_USE" },
-              category: "Development"
-            },
-            {
-              name: "go-dev",
-              source: { source: "local", path: "./plugins/go-dev" },
-              policy: { installation: "AVAILABLE", authentication: "ON_USE" },
-              category: "Development"
-            },
-            {
-              name: "gopher-guides",
-              source: { source: "local", path: "./plugins/gopher-guides" },
-              policy: { installation: "AVAILABLE", authentication: "ON_USE" },
-              category: "Development"
-            },
-            {
-              name: "llm-tools",
-              source: { source: "local", path: "./plugins/llm-tools" },
-              policy: { installation: "AVAILABLE", authentication: "ON_USE" },
-              category: "Productivity"
-            },
-            {
-              name: "go-web",
-              source: { source: "local", path: "./plugins/go-web" },
-              policy: { installation: "AVAILABLE", authentication: "ON_USE" },
-              category: "Development"
-            },
-            {
-              name: "tailwind",
-              source: { source: "local", path: "./plugins/tailwind" },
-              policy: { installation: "AVAILABLE", authentication: "ON_USE" },
-              category: "Development"
-            }
-          ]
-        }
-    ' >"$output_file"
+    jq '
+        .plugins |= map(
+            .source.path |= sub("^\\./\\.codex/plugins/"; "./plugins/")
+        )
+    ' "$DIST_DIR/plugins/marketplace.json" >"$output_file"
 }
 
 copy_repo_plugins() {

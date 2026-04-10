@@ -112,6 +112,86 @@ else
   echo "OK"
 fi
 
+echo -n "Codex distribution builds... "
+if ! "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-build.log 2>&1; then
+  echo "FAIL"
+  sed -n '1,120p' /tmp/gopher-ai-build.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+CODEX_MARKETPLACE="$ROOT_DIR/dist/codex/plugins/marketplace.json"
+echo -n "Codex marketplace is valid JSON... "
+if ! jq . "$CODEX_MARKETPLACE" >/dev/null 2>&1; then
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+CODEX_PLUGIN_COUNT=$(jq '.plugins | length' "$CODEX_MARKETPLACE")
+echo -n "Codex repo install writes matching marketplace entries... "
+TMP_REPO=$(mktemp -d)
+if ! "$ROOT_DIR/scripts/install-codex.sh" --repo "$TMP_REPO" >/tmp/gopher-ai-install-repo.log 2>&1; then
+  echo "FAIL"
+  sed -n '1,120p' /tmp/gopher-ai-install-repo.log
+  ERRORS=$((ERRORS + 1))
+else
+  REPO_MARKETPLACE="$TMP_REPO/.agents/plugins/marketplace.json"
+  ACTUAL_COUNT=$(jq '.plugins | length' "$REPO_MARKETPLACE")
+  BAD_PATHS=$(jq -r '.plugins[] | select(.source.path | startswith("./plugins/") | not) | .source.path' "$REPO_MARKETPLACE")
+  MISSING_DIRS=""
+  for i in $(seq 0 $((ACTUAL_COUNT - 1))); do
+    PLUGIN_PATH=$(jq -r ".plugins[$i].source.path" "$REPO_MARKETPLACE")
+    if [ ! -d "$TMP_REPO/${PLUGIN_PATH#./}" ]; then
+      MISSING_DIRS="$MISSING_DIRS $PLUGIN_PATH"
+    fi
+  done
+  if [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] || [ -n "$BAD_PATHS" ] || [ -n "$MISSING_DIRS" ]; then
+    echo "FAIL"
+    [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] && echo "expected $CODEX_PLUGIN_COUNT plugins, got $ACTUAL_COUNT"
+    [ -n "$BAD_PATHS" ] && echo "bad plugin paths:$BAD_PATHS"
+    [ -n "$MISSING_DIRS" ] && echo "missing plugin dirs:$MISSING_DIRS"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+rm -rf "$TMP_REPO"
+
+echo -n "Standalone Codex installer bootstraps correctly... "
+TMP_HOME=$(mktemp -d)
+TMP_SCRIPT_DIR=$(mktemp -d)
+TMP_ARCHIVE_DIR=$(mktemp -d)
+cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_SCRIPT_DIR/install-codex.sh"
+cp -R "$ROOT_DIR" "$TMP_ARCHIVE_DIR/gopher-ai-main"
+tar -czf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" -C "$TMP_ARCHIVE_DIR" gopher-ai-main
+if ! HOME="$TMP_HOME" GOPHER_AI_ARCHIVE_URL="file://$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" bash "$TMP_SCRIPT_DIR/install-codex.sh" --user >/tmp/gopher-ai-install-user.log 2>&1; then
+  echo "FAIL"
+  sed -n '1,120p' /tmp/gopher-ai-install-user.log
+  ERRORS=$((ERRORS + 1))
+else
+  USER_MARKETPLACE="$TMP_HOME/.agents/plugins/marketplace.json"
+  ACTUAL_COUNT=$(jq '.plugins | length' "$USER_MARKETPLACE")
+  MISSING_DIRS=""
+  for i in $(seq 0 $((ACTUAL_COUNT - 1))); do
+    PLUGIN_PATH=$(jq -r ".plugins[$i].source.path" "$USER_MARKETPLACE")
+    if [ ! -d "$TMP_HOME/${PLUGIN_PATH#./}" ]; then
+      MISSING_DIRS="$MISSING_DIRS $PLUGIN_PATH"
+    fi
+  done
+  if [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] || [ -n "$MISSING_DIRS" ]; then
+    echo "FAIL"
+    [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] && echo "expected $CODEX_PLUGIN_COUNT plugins, got $ACTUAL_COUNT"
+    [ -n "$MISSING_DIRS" ] && echo "missing plugin dirs:$MISSING_DIRS"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+rm -rf "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
+
 echo ""
 if [ $ERRORS -gt 0 ]; then
   echo "FAILED: $ERRORS test(s) failed"
