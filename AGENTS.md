@@ -6,6 +6,8 @@ Project instructions for OpenAI Codex CLI.
 
 gopher-ai is a Go-focused development toolkit distributed as both Claude Code plugins and Codex plugins. Each plugin bundles related skills that activate automatically or can be invoked explicitly.
 
+The Codex plugin set currently includes `go-workflow`, `go-dev`, `gopher-guides`, `llm-tools`, `go-web`, and `tailwind`. The repo's `productivity` module is currently Claude-only.
+
 ## Plugins
 
 | Plugin | Description | Skills |
@@ -74,6 +76,8 @@ Or as a one-liner from GitHub:
 bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
 ```
 
+The one-liner bootstraps a temporary checkout of the latest `main` branch, builds the Codex distribution, and installs it into your user-space Codex directories.
+
 Restart Codex after installation or update. Use `/plugins` to verify they appear.
 
 ### Flat Skills (Legacy)
@@ -100,7 +104,7 @@ plugins/
     .claude-plugin/
       plugin.json        # Claude Code manifest
     .codex-plugin/
-      plugin.json        # Codex manifest
+      plugin.json        # Codex manifest when the plugin is packaged for Codex
     commands/            # Claude Code slash commands
     skills/              # Skills (shared by both platforms)
     agents/              # Claude Code agent definitions

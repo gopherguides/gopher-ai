@@ -22,12 +22,14 @@ build_codex() {
     mkdir -p "$codex_dir/plugins" "$codex_dir/skills"
 
     # Build Codex plugin packages for plugins with .codex-plugin/plugin.json
-    for plugin_dir in "$ROOT_DIR"/plugins/*/; do
+    for plugin_dir in "$ROOT_DIR"/plugins/*; do
+        [[ -d "$plugin_dir" ]] || continue
         plugin_name=$(basename "$plugin_dir")
-        if [[ -f "${plugin_dir}.codex-plugin/plugin.json" ]]; then
+        if [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]]; then
             echo "  - Building plugin: $plugin_name"
             local dest="$codex_dir/plugins/$plugin_name"
-            cp -R "$plugin_dir" "$codex_dir/plugins/"
+            mkdir -p "$dest"
+            cp -R "$plugin_dir"/. "$dest/"
             rm -rf "$dest/.claude-plugin"
         fi
     done
@@ -81,7 +83,10 @@ generate_codex_marketplace() {
 }
 
 generate_agents_md() {
-    cat << 'EOF'
+    if [[ -f "$ROOT_DIR/AGENTS.md" ]]; then
+        cat "$ROOT_DIR/AGENTS.md"
+    else
+        cat << 'EOF'
 # AGENTS.md
 
 Project instructions for OpenAI Codex CLI.
@@ -202,6 +207,7 @@ plugins/
 - [Gopher Guides](https://gopherguides.com) - Official Go training
 - [GitHub Repository](https://github.com/gopherguides/gopher-ai)
 EOF
+    fi
 }
 
 build_gemini() {

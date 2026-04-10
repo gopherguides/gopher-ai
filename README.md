@@ -50,7 +50,7 @@ codex   # Plugins load automatically from .agents/plugins/marketplace.json
 ./scripts/install-codex.sh --user
 # Restart Codex — use /plugins to verify
 
-# Or one-liner install from GitHub
+# Or one-liner install from GitHub (bootstraps latest main, then installs)
 bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
 ```
 
@@ -256,9 +256,11 @@ SHELL=/bin/bash claude
 
 Plugins are distributed via the [Codex plugin system](https://developers.openai.com/codex/plugins). Each plugin contains skills that activate automatically or can be invoked explicitly.
 
-**Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse and manage installed plugins. Each plugin has both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` — the same plugin directory serves both platforms.
+**Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse and manage installed plugins. Plugins with `.codex-plugin/plugin.json` are packaged for Codex. Today that set is `go-workflow`, `go-dev`, `gopher-guides`, `llm-tools`, `go-web`, and `tailwind`. The repo's `productivity` module remains Claude-only.
 
 **Global install or update:** Build the distribution and run `./scripts/install-codex.sh --user`. The installer replaces the current gopher-ai plugins in `~/.codex/plugins/` and merges the marketplace entries into `~/.agents/plugins/marketplace.json` without removing unrelated plugin entries.
+
+**GitHub one-liner:** `bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user` bootstraps a temporary checkout of the latest `main` branch, builds the Codex distribution, and installs it into your user-space Codex directories.
 
 **Install into another repo:** Use `./scripts/install-codex.sh --repo /path/to/your-repo` to copy the current plugin set into another repository and update that repo's `.agents/plugins/marketplace.json`.
 
