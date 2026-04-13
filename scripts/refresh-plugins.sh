@@ -62,12 +62,16 @@ else
 fi
 
 # Track which plugins we updated (for installed_plugins.json)
-UPDATED_PLUGINS=""
+UPDATED_PLUGINS=()
 
 for plugin_dir in "$MARKETPLACE_DIR"/plugins/*/; do
     [ -d "$plugin_dir" ] || continue
     plugin_name=$(basename "$plugin_dir")
     version=$(jq -r '.version' "$plugin_dir/.claude-plugin/plugin.json")
+    if [ -z "$version" ] || [ "$version" = "null" ]; then
+        echo "  Error: missing version in $plugin_dir/.claude-plugin/plugin.json — skipping"
+        continue
+    fi
     dest="$CACHE_DIR/$plugin_name/$version"
 
     # Remove any OTHER versions of this plugin (stale)
@@ -90,7 +94,7 @@ for plugin_dir in "$MARKETPLACE_DIR"/plugins/*/; do
         cp -a "$plugin_dir" "$dest"
     fi
     echo "  Updated: $plugin_name/$version"
-    UPDATED_PLUGINS="$UPDATED_PLUGINS $plugin_name:$version"
+    UPDATED_PLUGINS+=("$plugin_name:$version")
 done
 
 # Remove plugins from cache that no longer exist in marketplace
@@ -107,17 +111,21 @@ fi
 
 # Step 3: Re-register plugins in installed_plugins.json
 if command -v jq &> /dev/null; then
+    TMPFILE=$(mktemp)
+    TMPFILE2=$(mktemp)
+    trap 'rm -f "$TMPFILE" "$TMPFILE2"' EXIT
+
     # Start with existing file or empty structure
     if [ -f "$INSTALLED_FILE" ]; then
         # Remove old gopher-ai entries first
         jq '.plugins |= with_entries(select(.key | endswith("@gopher-ai") | not))' \
-            "$INSTALLED_FILE" > /tmp/installed_plugins.json.tmp
+            "$INSTALLED_FILE" > "$TMPFILE"
     else
-        echo '{"version":2,"plugins":{}}' > /tmp/installed_plugins.json.tmp
+        echo '{"version":2,"plugins":{}}' > "$TMPFILE"
     fi
 
     # Add fresh entries for each updated plugin
-    for entry in $UPDATED_PLUGINS; do
+    for entry in "${UPDATED_PLUGINS[@]}"; do
         p_name="${entry%%:*}"
         p_version="${entry##*:}"
         jq --arg name "${p_name}@gopher-ai" \
@@ -133,10 +141,10 @@ if command -v jq &> /dev/null; then
                 "lastUpdated": $ts,
                 "gitCommitSha": $sha,
                 "projectPath": env.HOME
-            }]' /tmp/installed_plugins.json.tmp > /tmp/installed_plugins2.json.tmp \
-            && mv /tmp/installed_plugins2.json.tmp /tmp/installed_plugins.json.tmp
+            }]' "$TMPFILE" > "$TMPFILE2" \
+            && mv "$TMPFILE2" "$TMPFILE"
     done
-    mv /tmp/installed_plugins.json.tmp "$INSTALLED_FILE"
+    mv "$TMPFILE" "$INSTALLED_FILE"
     echo "- Updated plugin registrations"
 else
     echo "Warning: jq not found - cannot update installed_plugins.json"
