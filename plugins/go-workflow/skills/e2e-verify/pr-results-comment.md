@@ -28,7 +28,9 @@ Construct a structured markdown comment using the results from Steps 1-5:
 | /dashboard | Layout issue | No — missing sidebar | None | None |
 | ... | ... | ... | ... | ... |
 
-**Pages tested:** $PAGES_TESTED | **Spec matched:** $PAGES_MATCHED | **Discrepancies:** $PAGES_DISCREPANT
+**Pages tested:** $PAGES_TESTED
+
+*Count spec matches and discrepancies from the Visual Verification Findings below.*
 
 ### Visual Verification Findings
 

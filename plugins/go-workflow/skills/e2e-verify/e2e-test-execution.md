@@ -39,13 +39,20 @@ Before touching the browser, understand what you're verifying against. Read the 
 gh pr view "$PR_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"'
 ```
 
-If the PR links to an issue, read that too:
+If the PR links to an issue, read those too. Use the GitHub API's structured closing references first (most reliable), then fall back to text parsing:
 
 ```bash
-ISSUE_NUM=$(gh pr view "$PR_NUM" --json body --jq '.body' | grep -oE '(closes|fixes|resolves) #[0-9]+' | grep -oE '[0-9]+' | head -1)
-if [ -n "$ISSUE_NUM" ]; then
-  gh issue view "$ISSUE_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"'
+# Strategy 1: GitHub's structured closing references (catches all linking methods)
+ISSUE_NUMS=$(gh pr view "$PR_NUM" --json closingIssuesReferences --jq '.closingIssuesReferences[].number' 2>/dev/null)
+
+# Strategy 2: Fallback to text parsing (case-insensitive, handles owner/repo#N format)
+if [ -z "$ISSUE_NUMS" ]; then
+  ISSUE_NUMS=$(gh pr view "$PR_NUM" --json body --jq '.body' | grep -ioE '(closes|fixes|resolves|close|fix|resolve)\s+([a-z0-9/_-]+)?#[0-9]+' | grep -oE '[0-9]+$')
 fi
+
+for ISSUE_NUM in $ISSUE_NUMS; do
+  gh issue view "$ISSUE_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"' 2>/dev/null
+done
 ```
 
 **Build a checklist** of what the spec says should be visible:
@@ -140,11 +147,21 @@ Detect if the app requires authentication:
 
 ## 5g. Visual Stabilization Protocol
 
-**Before every screenshot**, execute this stabilization sequence to ensure deterministic, accurate captures:
+**Before every screenshot**, execute this stabilization sequence to ensure deterministic, accurate captures. Use `mcp__chrome-devtools-mcp__evaluate_script` to run the JavaScript snippets below. If `evaluate_script` is not available, at minimum use `wait_for` with a reasonable timeout before capturing.
 
-1. **Wait for network idle** — no pending requests:
-   ```
-   mcp__chrome-devtools-mcp__wait_for selector="body" timeout=5000
+1. **Wait for network idle and DOM stability** — inject and execute:
+   ```javascript
+   // Wait for no in-flight fetch/XHR requests for 500ms
+   await new Promise(resolve => {
+     let timer = setTimeout(resolve, 500);
+     const observer = new PerformanceObserver(() => {
+       clearTimeout(timer);
+       timer = setTimeout(resolve, 500);
+     });
+     observer.observe({ entryTypes: ['resource'] });
+     // Fallback: resolve after 5s regardless
+     setTimeout(resolve, 5000);
+   });
    ```
 
 2. **Wait for fonts and images** — inject and execute:
@@ -160,12 +177,13 @@ Detect if the app requires authentication:
 3. **Disable animations** — inject CSS to freeze all motion:
    ```javascript
    const style = document.createElement('style');
-   style.textContent = '*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; caret-color: transparent !important; scroll-behavior: auto !important; }';
+   style.textContent = '*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; }';
    document.head.appendChild(style);
    ```
 
-4. **Blur active element** — prevent cursor blink artifacts:
+4. **Conditionally blur active element** — only blur if you are NOT testing a focus-dependent state (e.g., form validation errors, keyboard navigation, active input fields). If the current test is verifying a focused state, skip this step:
    ```javascript
+   // Skip this if you're testing focus/validation states
    document.activeElement?.blur();
    ```
 
@@ -173,8 +191,6 @@ Detect if the app requires authentication:
    ```javascript
    await new Promise(resolve => setTimeout(resolve, 300));
    ```
-
-Use `mcp__chrome-devtools-mcp__evaluate_script` to run these JavaScript snippets. If `evaluate_script` is not available, at minimum use `wait_for` with a reasonable timeout before capturing.
 
 ## 5h. Route Testing (the core of E2E)
 
