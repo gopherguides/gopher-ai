@@ -2,6 +2,8 @@
 
 This step performs browser-based E2E testing of web-facing changes. It is optional and silently skips when conditions are not met.
 
+**CRITICAL PRINCIPLE: Screenshots must be READ, not just captured.** A screenshot you don't look at is worthless. After every `take_screenshot`, you MUST read the image with your vision capabilities, describe what you see, and compare it against the spec/issue requirements. DOM-only checks (console errors, network requests) are supplementary — they do NOT substitute for visual verification.
+
 ## 5a. Skip Conditions
 
 Skip this entire step (set `E2E_RESULT="skipped"`) if ANY of these are true:
@@ -29,7 +31,33 @@ done || true)
 
 If both `WEB_CHANGES` and `HANDLER_CHANGES` are empty → skip E2E testing.
 
-## 5b. Detect Dev Server
+## 5b. Load the Spec (REQUIRED — do this BEFORE any browser testing)
+
+Before touching the browser, understand what you're verifying against. Read the PR description and linked issue to build a mental model of expected visual state:
+
+```bash
+gh pr view "$PR_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"'
+```
+
+If the PR links to an issue, read that too:
+
+```bash
+ISSUE_NUM=$(gh pr view "$PR_NUM" --json body --jq '.body' | grep -oE '(closes|fixes|resolves) #[0-9]+' | grep -oE '[0-9]+' | head -1)
+if [ -n "$ISSUE_NUM" ]; then
+  gh issue view "$ISSUE_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"'
+fi
+```
+
+**Build a checklist** of what the spec says should be visible:
+- What pages/routes were added or changed?
+- What should they look like? (layout, components, text, styling)
+- What user flows were added? (forms, buttons, navigation)
+- What acceptance criteria are listed?
+- Are there mockups, wireframes, or design descriptions?
+
+This checklist is what you verify screenshots against. If you can't articulate what you expect to see, you can't verify it.
+
+## 5c. Detect Dev Server
 
 1. Check for Air config: `.air.toml` or `air.toml` → command: `air`
 2. Check `Makefile` for targets: `run`, `serve`, `dev` → command: `make <target>`
@@ -42,7 +70,7 @@ Detect the server port:
 - Check `.env` or `.envrc` for PORT
 - Default: `8080` for Go, `3000` for Node, `5173` for Vite
 
-## 5c. Run Database Migrations (if applicable)
+## 5d. Run Database Migrations (if applicable)
 
 **Run migrations BEFORE starting the dev server.** Many apps require up-to-date schema to boot successfully.
 
@@ -58,7 +86,7 @@ else
 fi
 ```
 
-## 5d. Start Dev Server (if not already running)
+## 5e. Start Dev Server (if not already running)
 
 Check if the port is already in use before starting:
 
@@ -84,7 +112,7 @@ done
 
 If server fails to start within 30 seconds → warn ("Dev server failed to start, skipping E2E tests"), set `E2E_RESULT="skipped-server-failed"`, and skip remaining steps. Do NOT block the workflow.
 
-## 5e. Login Flow (if applicable)
+## 5f. Login Flow (if applicable)
 
 Detect if the app requires authentication:
 
@@ -107,9 +135,48 @@ Detect if the app requires authentication:
    - Use `mcp__chrome-devtools-mcp__click` on the submit/login button
    - Use `mcp__chrome-devtools-mcp__wait_for` to confirm navigation after login
    - Use `mcp__chrome-devtools-mcp__take_screenshot` to capture post-login state
+   - **READ the screenshot** — verify you're logged in and see the expected post-login page
 3. If no credentials found: skip login, test only public routes
 
-## 5f. Route Testing
+## 5g. Visual Stabilization Protocol
+
+**Before every screenshot**, execute this stabilization sequence to ensure deterministic, accurate captures:
+
+1. **Wait for network idle** — no pending requests:
+   ```
+   mcp__chrome-devtools-mcp__wait_for selector="body" timeout=5000
+   ```
+
+2. **Wait for fonts and images** — inject and execute:
+   ```javascript
+   await document.fonts.ready;
+   await Promise.all(
+     Array.from(document.images)
+       .filter(img => !img.complete)
+       .map(img => new Promise(resolve => { img.onload = img.onerror = resolve; }))
+   );
+   ```
+
+3. **Disable animations** — inject CSS to freeze all motion:
+   ```javascript
+   const style = document.createElement('style');
+   style.textContent = '*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; caret-color: transparent !important; scroll-behavior: auto !important; }';
+   document.head.appendChild(style);
+   ```
+
+4. **Blur active element** — prevent cursor blink artifacts:
+   ```javascript
+   document.activeElement?.blur();
+   ```
+
+5. **Brief settle** — allow a final paint:
+   ```javascript
+   await new Promise(resolve => setTimeout(resolve, 300));
+   ```
+
+Use `mcp__chrome-devtools-mcp__evaluate_script` to run these JavaScript snippets. If `evaluate_script` is not available, at minimum use `wait_for` with a reasonable timeout before capturing.
+
+## 5h. Route Testing (the core of E2E)
 
 Identify routes from changed files:
 
@@ -117,33 +184,67 @@ Identify routes from changed files:
 2. Parse templ file names to infer page routes
 3. If route detection fails, test the root path (`/`) as a baseline
 
-**For each route, execute the test:**
+**For each route, execute the FULL test sequence:**
 
-1. **Navigate:** `mcp__chrome-devtools-mcp__navigate_page` to `http://localhost:$PORT<route>`
-2. **Screenshot:** `mcp__chrome-devtools-mcp__take_screenshot` to capture the rendered page
-3. **Console check:** `mcp__chrome-devtools-mcp__list_console_messages` — check for JavaScript errors
-4. **Network check:** `mcp__chrome-devtools-mcp__list_network_requests` — verify no failed requests (5xx responses)
-5. **Form interaction** (if the page contains forms related to changed code):
-   - Use `mcp__chrome-devtools-mcp__fill` to populate form fields with test data
-   - Use `mcp__chrome-devtools-mcp__click` to submit
-   - Verify no errors after submission
+### 1. Navigate
+`mcp__chrome-devtools-mcp__navigate_page` to `http://localhost:$PORT<route>`
 
-**Record results** for each page tested: URL, HTTP status, console errors (if any), network failures, screenshot captured.
+### 2. Stabilize
+Run the Visual Stabilization Protocol (section 5g) to ensure the page is fully rendered.
 
-## 5g. Edge Case Testing
+### 3. Screenshot
+`mcp__chrome-devtools-mcp__take_screenshot` to capture the rendered page.
+
+### 4. READ THE SCREENSHOT (MANDATORY)
+
+**This is the most important step.** Use your multimodal vision to read the screenshot image and verify:
+
+- **Layout correctness:** Are elements positioned correctly? Is spacing reasonable? Are there overlapping elements or broken layouts?
+- **Content presence:** Is the expected text, data, and imagery visible? Are headings, labels, and body text present and readable?
+- **Styling:** Are colors, fonts, and visual hierarchy consistent? Does it look like a finished page or a broken one?
+- **Component rendering:** Are UI components (buttons, forms, tables, cards, navigation) rendered properly? No missing borders, broken icons, or placeholder text?
+- **Image/asset loading:** Are images displayed (not broken image icons)? Are SVGs and icons rendering?
+- **Responsive behavior:** Does the layout make sense at the current viewport width? Is anything overflowing or clipped?
+
+**Compare against the spec:** Check each item on the checklist you built in step 5b. If the spec says "add a user table with name and email columns" — verify you see a table with those columns. If the spec says "add a login form" — verify the form fields are visible and labeled correctly.
+
+**Document what you see in detail.** Not just "looks good" — describe the actual visual state:
+- "The dashboard shows a navigation sidebar on the left, main content area with a table of 3 users showing name and email columns, header with the app logo"
+- "The login form has email and password fields, a 'Sign In' button, and a 'Forgot Password' link below"
+
+**Flag any discrepancies** between what you see and what the spec requires. This is the output that matters.
+
+### 5. Console Check
+`mcp__chrome-devtools-mcp__list_console_messages` — check for JavaScript errors. Note: console errors are supplementary to visual verification, not a replacement.
+
+### 6. Network Check
+`mcp__chrome-devtools-mcp__list_network_requests` — verify no failed requests (5xx responses). Again, supplementary.
+
+### 7. Form Interaction (if the page contains forms related to changed code)
+- Use `mcp__chrome-devtools-mcp__fill` to populate form fields with test data
+- Use `mcp__chrome-devtools-mcp__click` to submit
+- **Take another screenshot AFTER submission**
+- **READ that screenshot** — verify the success/error state matches expectations
+- Check console/network for errors
+
+**Record results** for each page tested: URL, visual verification findings (what you saw vs. what was expected), console errors (if any), network failures, spec compliance (pass/fail with explanation).
+
+## 5i. Edge Case Testing
 
 After testing the primary routes, look for edge cases related to the changed code:
 
 1. **Old/new code paths:** If the PR adds a migration or schema change, insert test data that exercises both the old format and new format to verify backwards compatibility
 2. **Empty states:** Navigate to pages that may render differently with no data (empty lists, first-time user views)
+   - **Screenshot and READ** — verify empty state messaging is present and looks correct
 3. **Error states:** If the PR changes validation or error handling, submit invalid inputs to verify error messages render correctly
+   - **Screenshot and READ** — verify error messages are visible, properly styled, and informative
 4. **Boundary values:** If the PR adds pagination, filters, or limits, test with values at the boundary (0 items, 1 item, max items)
 
-For each edge case tested, record: description, expected behavior, actual behavior, pass/fail.
+For each edge case tested, record: description, expected behavior, **what you actually saw in the screenshot**, pass/fail.
 
 If test data was inserted for edge case testing, clean it up afterwards to avoid polluting the database.
 
-## 5h. Cleanup
+## 5j. Cleanup
 
 Kill the dev server (only if we started it):
 
@@ -156,10 +257,25 @@ fi
 Collect results:
 - `E2E_RESULT`: `pass`, `fail`, `partial`, or `skipped`
 - `PAGES_TESTED`: count of routes tested
-- Per-route results for the PR comment
+- Per-route results for the PR comment including **visual verification findings**
 
 **E2E failure handling:**
+- Visual discrepancy from spec → report as finding with description of what was expected vs. what was seen
 - Pages returning 500/404 → report as finding but do NOT block
 - Console JavaScript errors → report but do NOT block
 - MCP tool call fails mid-test → warn and skip remaining E2E tests
 - All results are informational — E2E issues are warnings, not gates
+
+## Visual Verification Checklist (self-check before completing Step 5)
+
+Before marking E2E testing as complete, confirm ALL of these:
+
+- [ ] I read the PR/issue spec BEFORE starting browser tests
+- [ ] I built a checklist of expected visual state from the spec
+- [ ] For EVERY screenshot I took, I READ the screenshot image (not just captured it)
+- [ ] For EVERY screenshot, I described what I saw in concrete terms
+- [ ] I compared what I saw against the spec checklist and noted matches/discrepancies
+- [ ] My results include visual findings, not just "screenshot captured"
+- [ ] If I found visual discrepancies, I documented them with specific details
+
+**If you cannot check all of these boxes, you have not completed E2E testing.**

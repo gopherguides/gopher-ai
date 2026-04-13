@@ -7,10 +7,25 @@ description: |
   WHEN NOT: User only wants to run unit tests ($verify), only ship without verification ($ship),
   only address review comments ($address-review), or only run coverage ($coverage).
 argument-hint: "[PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page", "mcp__chrome-devtools-mcp__fill_form", "mcp__chrome-devtools-mcp__wait_for"]
+allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page", "mcp__chrome-devtools-mcp__fill_form", "mcp__chrome-devtools-mcp__wait_for", "mcp__chrome-devtools-mcp__evaluate_script"]
 ---
 
 # E2E Verify
+
+## Core Principle: Visual Verification is Non-Negotiable
+
+**Every screenshot you take MUST be read and visually inspected.** Taking a screenshot without reading it is useless. The entire point of E2E testing is to verify what the USER sees, not just what the DOM contains.
+
+After every `mcp__chrome-devtools-mcp__take_screenshot`, you MUST:
+
+1. **Read the screenshot** using your multimodal vision capabilities
+2. **Compare it to the spec** — read the issue/PR description and verify the screenshot matches what was requested
+3. **Describe what you see** — document the visual state in your results (layout, content, styling, errors)
+4. **Flag discrepancies** — if what you see doesn't match the spec, report it as a finding
+
+DOM checks (console errors, network requests) supplement visual verification — they do NOT replace it. A page can have zero console errors and zero network failures but still look completely wrong.
+
+---
 
 ## Parse Arguments
 
@@ -212,13 +227,21 @@ Set phase to `e2e-testing`:
 set_loop_phase "$STATE_FILE" "e2e-testing"
 ```
 
+Read the PR/issue description first to understand what the change is supposed to look like:
+
+```bash
+gh pr view "$PR_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"'
+```
+
 Read `e2e-test-execution.md` for the full E2E test procedure:
 - Check MCP availability and web component indicators
 - Detect and start dev server (reuse if already running)
 - Run database migrations if applicable
 - Perform login flow if authentication is required
-- Test each changed route: navigate, screenshot, console check, network check
+- **For each route: navigate → stabilize → screenshot → READ screenshot → compare to spec → document findings**
 - Clean up and collect results
+
+**CRITICAL:** Every screenshot MUST be read and visually compared against the PR/issue spec. If you take a screenshot but don't read it, you have not tested anything.
 
 After E2E testing, persist results:
 
