@@ -149,18 +149,28 @@ Detect if the app requires authentication:
 
 **Before every screenshot**, execute this stabilization sequence to ensure deterministic, accurate captures. Use `mcp__chrome-devtools-mcp__evaluate_script` to run the JavaScript snippets below. If `evaluate_script` is not available, at minimum use `wait_for` with a reasonable timeout before capturing.
 
-1. **Wait for network idle and DOM stability** — inject and execute:
+1. **Wait for network idle** — inject and execute:
    ```javascript
-   // Wait for no in-flight fetch/XHR requests for 500ms
+   // Poll-based: wait until no new resource entries appear for 500ms
+   // This catches both existing in-flight and new requests
    await new Promise(resolve => {
-     let timer = setTimeout(resolve, 500);
-     const observer = new PerformanceObserver(() => {
-       clearTimeout(timer);
-       timer = setTimeout(resolve, 500);
-     });
-     observer.observe({ entryTypes: ['resource'] });
+     let lastCount = performance.getEntriesByType('resource').length;
+     let stableChecks = 0;
+     const interval = setInterval(() => {
+       const currentCount = performance.getEntriesByType('resource').length;
+       if (currentCount === lastCount) {
+         stableChecks++;
+         if (stableChecks >= 5) { // 5 × 100ms = 500ms stable
+           clearInterval(interval);
+           resolve();
+         }
+       } else {
+         lastCount = currentCount;
+         stableChecks = 0;
+       }
+     }, 100);
      // Fallback: resolve after 5s regardless
-     setTimeout(resolve, 5000);
+     setTimeout(() => { clearInterval(interval); resolve(); }, 5000);
    });
    ```
 
@@ -170,7 +180,11 @@ Detect if the app requires authentication:
    await Promise.all(
      Array.from(document.images)
        .filter(img => !img.complete)
-       .map(img => new Promise(resolve => { img.onload = img.onerror = resolve; }))
+       .map(img => new Promise(resolve => {
+         // Use addEventListener to avoid clobbering app handlers
+         img.addEventListener('load', resolve, { once: true });
+         img.addEventListener('error', resolve, { once: true });
+       }))
    );
    ```
 
