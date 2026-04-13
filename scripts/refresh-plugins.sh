@@ -47,28 +47,102 @@ else
     exit 1
 fi
 
-# Step 2: Clear plugin cache (forces fresh install)
-if [ -d "$CACHE_DIR" ]; then
-    rm -rf "$CACHE_DIR"
-    echo "- Cleared plugin cache"
+# Step 2: Update plugin cache in-place (keeps hooks working in current session)
+# Instead of deleting the cache (which breaks hooks mid-session), we sync
+# the latest plugin content directly into the cache directories.
+echo "- Updating plugin cache..."
+GIT_SHA=$(git -C "$MARKETPLACE_DIR" rev-parse HEAD)
+NOW=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+
+# Determine copy command (prefer rsync, fall back to cp)
+if command -v rsync &> /dev/null; then
+    copy_cmd="rsync"
+else
+    copy_cmd="cp"
 fi
 
-# Step 3: Remove ALL @gopher-ai plugins from installed_plugins.json
-# This handles renamed/removed/added plugins automatically
-if command -v jq &> /dev/null && [ -f "$INSTALLED_FILE" ]; then
-    jq '.plugins |= with_entries(select(.key | endswith("@gopher-ai") | not))' \
-        "$INSTALLED_FILE" > /tmp/installed_plugins.json.tmp \
-        && mv /tmp/installed_plugins.json.tmp "$INSTALLED_FILE"
-    echo "- Cleared all gopher-ai plugin registrations"
+# Track which plugins we updated (for installed_plugins.json)
+UPDATED_PLUGINS=""
+
+for plugin_dir in "$MARKETPLACE_DIR"/plugins/*/; do
+    [ -d "$plugin_dir" ] || continue
+    plugin_name=$(basename "$plugin_dir")
+    version=$(jq -r '.version' "$plugin_dir/.claude-plugin/plugin.json")
+    dest="$CACHE_DIR/$plugin_name/$version"
+
+    # Remove any OTHER versions of this plugin (stale)
+    if [ -d "$CACHE_DIR/$plugin_name" ]; then
+        for old_ver in "$CACHE_DIR/$plugin_name"/*/; do
+            [ -d "$old_ver" ] || continue
+            if [ "$(basename "$old_ver")" != "$version" ]; then
+                rm -rf "$old_ver"
+                echo "  Removed stale: $plugin_name/$(basename "$old_ver")"
+            fi
+        done
+    fi
+
+    # Copy current version into cache
+    mkdir -p "$dest"
+    if [ "$copy_cmd" = "rsync" ]; then
+        rsync -a --delete "$plugin_dir/" "$dest/"
+    else
+        rm -rf "$dest"
+        cp -a "$plugin_dir" "$dest"
+    fi
+    echo "  Updated: $plugin_name/$version"
+    UPDATED_PLUGINS="$UPDATED_PLUGINS $plugin_name:$version"
+done
+
+# Remove plugins from cache that no longer exist in marketplace
+if [ -d "$CACHE_DIR" ]; then
+    for cached_plugin in "$CACHE_DIR"/*/; do
+        [ -d "$cached_plugin" ] || continue
+        cached_name=$(basename "$cached_plugin")
+        if [ ! -d "$MARKETPLACE_DIR/plugins/$cached_name" ]; then
+            rm -rf "$cached_plugin"
+            echo "  Removed orphan: $cached_name"
+        fi
+    done
+fi
+
+# Step 3: Re-register plugins in installed_plugins.json
+if command -v jq &> /dev/null; then
+    # Start with existing file or empty structure
+    if [ -f "$INSTALLED_FILE" ]; then
+        # Remove old gopher-ai entries first
+        jq '.plugins |= with_entries(select(.key | endswith("@gopher-ai") | not))' \
+            "$INSTALLED_FILE" > /tmp/installed_plugins.json.tmp
+    else
+        echo '{"version":2,"plugins":{}}' > /tmp/installed_plugins.json.tmp
+    fi
+
+    # Add fresh entries for each updated plugin
+    for entry in $UPDATED_PLUGINS; do
+        p_name="${entry%%:*}"
+        p_version="${entry##*:}"
+        jq --arg name "${p_name}@gopher-ai" \
+           --arg path "$CACHE_DIR/$p_name/$p_version" \
+           --arg ver "$p_version" \
+           --arg ts "$NOW" \
+           --arg sha "$GIT_SHA" \
+           '.plugins[$name] = [{
+                "scope": "project",
+                "installPath": $path,
+                "version": $ver,
+                "installedAt": $ts,
+                "lastUpdated": $ts,
+                "gitCommitSha": $sha,
+                "projectPath": env.HOME
+            }]' /tmp/installed_plugins.json.tmp > /tmp/installed_plugins2.json.tmp \
+            && mv /tmp/installed_plugins2.json.tmp /tmp/installed_plugins.json.tmp
+    done
+    mv /tmp/installed_plugins.json.tmp "$INSTALLED_FILE"
+    echo "- Updated plugin registrations"
 else
-    echo "Warning: jq not found - cannot clean installed_plugins.json"
+    echo "Warning: jq not found - cannot update installed_plugins.json"
     echo "   Install jq: brew install jq"
 fi
 
 echo ""
-echo "Done! Restart Claude Code to load updated plugins."
-echo ""
-echo "To install new plugins, run in Claude Code:"
-echo "   /plugin install <plugin-name>@gopher-ai"
-echo ""
-echo "Available plugins: go-workflow, go-dev, productivity, gopher-guides, llm-tools, go-web, tailwind"
+echo "Done! Plugins updated in-place — hooks remain functional."
+echo "Restart Claude Code to fully reload plugin definitions."

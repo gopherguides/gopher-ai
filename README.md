@@ -22,11 +22,21 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 
 ### Claude Code
 
+**First-time install:**
+
 ```bash
-# Add marketplace
+# 1. Add marketplace (in Claude Code)
 /plugin marketplace add gopherguides/gopher-ai
 
-# Install all modules
+# 2. Install all plugins at once (from your terminal)
+~/.claude/plugins/marketplaces/gopher-ai/scripts/refresh-plugins.sh
+
+# 3. Restart Claude Code — all 7 plugins are loaded
+```
+
+If you prefer to install plugins individually, you can use `/plugin install` instead:
+
+```bash
 /plugin install go-workflow@gopher-ai
 /plugin install go-dev@gopher-ai
 /plugin install productivity@gopher-ai
@@ -35,6 +45,16 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 /plugin install go-web@gopher-ai
 /plugin install tailwind@gopher-ai
 ```
+
+**Updating plugins:**
+
+Once installed, use the refresh command from within Claude Code:
+
+```
+/productivity:gopher-ai-refresh
+```
+
+This pulls the latest changes, updates all plugins in-place, and re-registers them. Restart Claude Code afterward to fully reload plugin definitions.
 
 ### OpenAI Codex CLI
 
@@ -218,14 +238,6 @@ See [`agent-skills/README.md`](agent-skills/README.md) for details.
 ## Platform-Specific Notes
 
 ### Claude Code
-
-**Updating plugins:**
-
-Due to a [known bug](https://github.com/anthropics/claude-code/issues/14061), use this script to refresh:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/refresh-plugins.sh | bash
-```
 
 **Team installation:**
 
