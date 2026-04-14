@@ -108,15 +108,31 @@ copy_user_plugins() {
     done
 }
 
+build_user_marketplace() {
+    local output_file="$1"
+    local plugins_home="$HOME/.codex/plugins"
+
+    jq --arg prefix "$plugins_home" '
+        .plugins |= map(
+            .source.path |= sub("^\\./\\.codex/plugins/"; ($prefix + "/"))
+        )
+    ' "$DIST_DIR/plugins/marketplace.json" >"$output_file"
+}
+
 write_user_marketplace() {
     local marketplace_dir="$HOME/.agents/plugins"
     local marketplace_file="$marketplace_dir/marketplace.json"
-    local tmp_file
-    tmp_file="$(mktemp)"
+    local incoming_file
+    local merged_file
+
+    incoming_file="$(mktemp)"
+    merged_file="$(mktemp)"
 
     mkdir -p "$marketplace_dir"
-    merge_marketplace "$marketplace_file" "$DIST_DIR/plugins/marketplace.json" "$tmp_file"
-    mv "$tmp_file" "$marketplace_file"
+    build_user_marketplace "$incoming_file"
+    merge_marketplace "$marketplace_file" "$incoming_file" "$merged_file"
+    mv "$merged_file" "$marketplace_file"
+    rm -f "$incoming_file"
     echo "updated marketplace: $marketplace_file"
 }
 
