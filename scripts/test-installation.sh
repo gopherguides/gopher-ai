@@ -175,15 +175,20 @@ else
   USER_MARKETPLACE="$TMP_HOME/.agents/plugins/marketplace.json"
   ACTUAL_COUNT=$(jq '.plugins | length' "$USER_MARKETPLACE")
   MISSING_DIRS=""
+  BAD_RELATIVE=""
   for i in $(seq 0 $((ACTUAL_COUNT - 1))); do
     PLUGIN_PATH=$(jq -r ".plugins[$i].source.path" "$USER_MARKETPLACE")
-    if [ ! -d "$TMP_HOME/${PLUGIN_PATH#./}" ]; then
+    # User-level paths must be absolute (not relative) so they resolve from any CWD
+    if [[ "$PLUGIN_PATH" == ./* ]]; then
+      BAD_RELATIVE="$BAD_RELATIVE $PLUGIN_PATH"
+    elif [ ! -d "$PLUGIN_PATH" ]; then
       MISSING_DIRS="$MISSING_DIRS $PLUGIN_PATH"
     fi
   done
-  if [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] || [ -n "$MISSING_DIRS" ]; then
+  if [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] || [ -n "$MISSING_DIRS" ] || [ -n "$BAD_RELATIVE" ]; then
     echo "FAIL"
     [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] && echo "expected $CODEX_PLUGIN_COUNT plugins, got $ACTUAL_COUNT"
+    [ -n "$BAD_RELATIVE" ] && echo "relative paths in user marketplace (must be absolute):$BAD_RELATIVE"
     [ -n "$MISSING_DIRS" ] && echo "missing plugin dirs:$MISSING_DIRS"
     ERRORS=$((ERRORS + 1))
   else
