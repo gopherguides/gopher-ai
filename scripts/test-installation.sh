@@ -172,27 +172,25 @@ if ! HOME="$TMP_HOME" GOPHER_AI_ARCHIVE_URL="file://$TMP_ARCHIVE_DIR/gopher-ai-m
   sed -n '1,120p' /tmp/gopher-ai-install-user.log
   ERRORS=$((ERRORS + 1))
 else
-  USER_MARKETPLACE="$TMP_HOME/.agents/plugins/marketplace.json"
-  ACTUAL_COUNT=$(jq '.plugins | length' "$USER_MARKETPLACE")
-  MISSING_DIRS=""
-  BAD_RELATIVE=""
-  for i in $(seq 0 $((ACTUAL_COUNT - 1))); do
-    PLUGIN_PATH=$(jq -r ".plugins[$i].source.path" "$USER_MARKETPLACE")
-    # User-level paths must be absolute (not relative) so they resolve from any CWD
-    if [[ "$PLUGIN_PATH" == ./* ]]; then
-      BAD_RELATIVE="$BAD_RELATIVE $PLUGIN_PATH"
-    elif [ ! -d "$PLUGIN_PATH" ]; then
-      MISSING_DIRS="$MISSING_DIRS $PLUGIN_PATH"
+  SKILLS_DIR="$TMP_HOME/.codex/skills"
+  CODEX_DIST_DIR="$ROOT_DIR/dist/codex"
+  # Check that dist skills were copied to ~/.codex/skills/
+  DIST_SKILL_COUNT=$(find "$CODEX_DIST_DIR/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+  INSTALLED_SKILL_COUNT=$(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
+  MISSING_SKILLS=""
+  for skill_dir in "$CODEX_DIST_DIR"/skills/*/; do
+    skill_name=$(basename "$skill_dir")
+    if [ ! -f "$SKILLS_DIR/$skill_name/SKILL.md" ]; then
+      MISSING_SKILLS="$MISSING_SKILLS $skill_name"
     fi
   done
-  if [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] || [ -n "$MISSING_DIRS" ] || [ -n "$BAD_RELATIVE" ]; then
+  if [ "$INSTALLED_SKILL_COUNT" -lt "$DIST_SKILL_COUNT" ] || [ -n "$MISSING_SKILLS" ]; then
     echo "FAIL"
-    [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] && echo "expected $CODEX_PLUGIN_COUNT plugins, got $ACTUAL_COUNT"
-    [ -n "$BAD_RELATIVE" ] && echo "relative paths in user marketplace (must be absolute):$BAD_RELATIVE"
-    [ -n "$MISSING_DIRS" ] && echo "missing plugin dirs:$MISSING_DIRS"
+    [ "$INSTALLED_SKILL_COUNT" -lt "$DIST_SKILL_COUNT" ] && echo "expected $DIST_SKILL_COUNT skills, got $INSTALLED_SKILL_COUNT"
+    [ -n "$MISSING_SKILLS" ] && echo "missing skills:$MISSING_SKILLS"
     ERRORS=$((ERRORS + 1))
   else
-    echo "OK"
+    echo "OK ($INSTALLED_SKILL_COUNT skills)"
   fi
 fi
 rm -rf "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"

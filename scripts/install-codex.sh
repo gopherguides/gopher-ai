@@ -18,7 +18,7 @@ Usage:
 Installs or updates gopher-ai Codex plugins using the current plugin-based layout.
 
 Options:
-  --user        Install into ~/.codex/plugins and merge entries into ~/.agents/plugins/marketplace.json
+  --user        Install skills into ~/.codex/skills/ for global availability
   --repo PATH   Install into PATH/plugins and merge entries into PATH/.agents/plugins/marketplace.json
   --help        Show this help text
 EOF
@@ -93,47 +93,19 @@ merge_marketplace() {
     fi
 }
 
-copy_user_plugins() {
-    local plugins_home="$HOME/.codex/plugins"
-    mkdir -p "$plugins_home"
+install_user_skills() {
+    local skills_home="$HOME/.codex/skills"
+    mkdir -p "$skills_home"
 
-    local plugin_path
-    for plugin_path in "$DIST_DIR"/plugins/*; do
-        [[ -d "$plugin_path" ]] || continue
-        local plugin_name
-        plugin_name="$(basename "$plugin_path")"
-        rm -rf "${plugins_home:?}/$plugin_name"
-        cp -R "$plugin_path" "$plugins_home/"
-        echo "installed plugin: $plugins_home/$plugin_name"
+    local skill_dir
+    for skill_dir in "$DIST_DIR"/skills/*; do
+        [[ -d "$skill_dir" ]] || continue
+        local skill_name
+        skill_name="$(basename "$skill_dir")"
+        rm -rf "${skills_home:?}/$skill_name"
+        cp -R "$skill_dir" "$skills_home/"
+        echo "installed skill: $skills_home/$skill_name"
     done
-}
-
-build_user_marketplace() {
-    local output_file="$1"
-    local plugins_home="$HOME/.codex/plugins"
-
-    jq --arg prefix "$plugins_home" '
-        .plugins |= map(
-            .source.path |= sub("^\\./\\.codex/plugins/"; ($prefix + "/"))
-        )
-    ' "$DIST_DIR/plugins/marketplace.json" >"$output_file"
-}
-
-write_user_marketplace() {
-    local marketplace_dir="$HOME/.agents/plugins"
-    local marketplace_file="$marketplace_dir/marketplace.json"
-    local incoming_file
-    local merged_file
-
-    incoming_file="$(mktemp)"
-    merged_file="$(mktemp)"
-
-    mkdir -p "$marketplace_dir"
-    build_user_marketplace "$incoming_file"
-    merge_marketplace "$marketplace_file" "$incoming_file" "$merged_file"
-    mv "$merged_file" "$marketplace_file"
-    rm -f "$incoming_file"
-    echo "updated marketplace: $marketplace_file"
 }
 
 build_repo_marketplace() {
@@ -190,8 +162,7 @@ main() {
             ;;
         --user)
             ensure_dist
-            copy_user_plugins
-            write_user_marketplace
+            install_user_skills
             ;;
         --repo)
             if [[ $# -lt 2 ]]; then
