@@ -24,6 +24,7 @@ REPO_SLUG="${GOPHER_AI_REPO:-gopherguides/gopher-ai}"
 REPO_REF="${GOPHER_AI_REF:-main}"
 ARCHIVE_URL="${GOPHER_AI_ARCHIVE_URL:-https://codeload.github.com/${REPO_SLUG}/tar.gz/refs/heads/${REPO_REF}}"
 BOOTSTRAP_DIR=""
+BOOTSTRAPPED=false
 FORCE=false
 
 # Auto-force when stdin is not a terminal (curl pipe, CI, etc.)
@@ -61,8 +62,30 @@ bootstrap_if_needed() {
     ROOT_DIR="$extracted"
     SCRIPT_DIR="$ROOT_DIR/scripts"
     DIST_DIR="$ROOT_DIR/dist"
+    BOOTSTRAPPED=true
     echo "Bootstrapped from: $REPO_SLUG@$REPO_REF"
     echo ""
+}
+
+# Check that required tools are available before building
+check_prerequisites() {
+    local missing=()
+
+    if ! command -v jq >/dev/null 2>&1; then
+        missing+=("jq (brew install jq / apt install jq)")
+    fi
+
+    if ! command -v git >/dev/null 2>&1; then
+        missing+=("git")
+    fi
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "error: missing required tools:" >&2
+        for tool in "${missing[@]}"; do
+            echo "  - $tool" >&2
+        done
+        exit 1
+    fi
 }
 
 # Detect which platforms are available
@@ -75,6 +98,7 @@ detect_platforms() {
         HAVE_CLAUDE=true
     fi
 
+    # Codex needs jq for install-codex.sh (already checked in prerequisites)
     if command -v jq >/dev/null 2>&1; then
         HAVE_CODEX=true
     fi
@@ -128,13 +152,6 @@ install_claude() {
 
 install_codex() {
     echo "=== Codex CLI ==="
-
-    # Build if not already built
-    if [[ ! -f "$DIST_DIR/codex/plugins/marketplace.json" ]]; then
-        echo "  Building distribution..."
-        "$ROOT_DIR/scripts/build-universal.sh" >/dev/null 2>&1
-    fi
-
     "$ROOT_DIR/scripts/install-codex.sh" --user
     echo ""
 }
@@ -142,28 +159,44 @@ install_codex() {
 install_gemini() {
     echo "=== Gemini CLI ==="
 
-    # Build if not already built
-    if [[ ! -d "$DIST_DIR/gemini" ]]; then
-        echo "  Building distribution..."
-        "$ROOT_DIR/scripts/build-universal.sh" >/dev/null 2>&1
+    # Gemini extensions reference their source path after install.
+    # When bootstrapped from a curl pipe, the source is a temp dir that gets
+    # cleaned up on exit. Stage extensions to a permanent location first.
+    local gemini_src="$DIST_DIR/gemini"
+    if $BOOTSTRAPPED; then
+        local permanent_dir="$HOME/.local/share/gopher-ai/gemini"
+        echo "  Staging extensions to $permanent_dir (persistent across updates)..."
+        rm -rf "$permanent_dir"
+        mkdir -p "$permanent_dir"
+        cp -R "$gemini_src"/gopher-ai-* "$permanent_dir/" 2>/dev/null || true
+        gemini_src="$permanent_dir"
     fi
 
     local installed=0
-    for ext_dir in "$DIST_DIR"/gemini/gopher-ai-*/; do
+    local failed=0
+    for ext_dir in "$gemini_src"/gopher-ai-*/; do
         [[ -d "$ext_dir" ]] || continue
         local ext_name
         ext_name="$(basename "$ext_dir")"
         echo "  Installing extension: $ext_name"
-        gemini extensions install "$ext_dir" 2>/dev/null || {
-            echo "  Warning: failed to install $ext_name (gemini extensions install may not be supported yet)"
-            continue
-        }
-        installed=$((installed + 1))
+        if gemini extensions install "$ext_dir"; then
+            installed=$((installed + 1))
+        else
+            echo "  Warning: failed to install $ext_name"
+            failed=$((failed + 1))
+        fi
     done
 
-    if [[ $installed -eq 0 ]]; then
-        echo "  No extensions installed. You can install manually:"
-        echo "    gemini extensions install ./dist/gemini/gopher-ai-<module>"
+    if [[ $installed -gt 0 ]]; then
+        echo "  Installed $installed extension(s)."
+    fi
+    if [[ $failed -gt 0 ]]; then
+        echo ""
+        echo "  $failed extension(s) failed. Gemini CLI extensions API may have changed."
+        echo "  Try manually: gemini extensions install $gemini_src/gopher-ai-<module>"
+    fi
+    if [[ $installed -eq 0 && $failed -eq 0 ]]; then
+        echo "  No extensions found to install."
     fi
     echo ""
 }
@@ -192,6 +225,7 @@ main() {
     echo ""
 
     bootstrap_if_needed
+    check_prerequisites
     detect_platforms
 
     if ! $HAVE_CLAUDE && ! $HAVE_CODEX && ! $HAVE_GEMINI; then
@@ -224,7 +258,14 @@ main() {
 
     # Build once, install everywhere
     echo "Building distribution..."
-    "$ROOT_DIR/scripts/build-universal.sh" >/dev/null 2>&1
+    if ! "$ROOT_DIR/scripts/build-universal.sh" > /dev/null; then
+        echo ""
+        echo "error: build failed. Check the output above for details." >&2
+        echo "Common fixes:" >&2
+        echo "  - Install jq: brew install jq (macOS) / sudo apt install jq (Linux)" >&2
+        echo "  - Ensure git is installed and available" >&2
+        exit 1
+    fi
     echo "Build complete."
     echo ""
 
