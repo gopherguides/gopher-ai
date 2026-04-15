@@ -71,13 +71,13 @@ To make plugins available across all your repos:
 ./scripts/install-codex.sh --user
 ```
 
-Or as a one-liner from GitHub:
+Or as a one-liner from GitHub (installs for all detected platforms):
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"
 ```
 
-The one-liner bootstraps a temporary checkout of the latest `main` branch, builds the Codex distribution, and installs it into your user-space Codex directories.
+This downloads the repo to a temp directory, builds, installs for every platform it detects (Claude Code, Codex, Gemini), and cleans up.
 
 Restart Codex after installation or update. Use `/plugins` to verify they appear.
 

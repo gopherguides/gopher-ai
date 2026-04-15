@@ -32,10 +32,10 @@ cd gopher-ai
 
 This auto-detects which platforms are available (Claude Code, Codex CLI, Gemini CLI) and installs for all of them. Run it again anytime to update.
 
-**Or install from GitHub without cloning:**
+**Or install from GitHub without cloning** (downloads to tmp, installs, cleans up):
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"
 ```
 
 **Updating:** Just re-run `./scripts/install-all.sh` from the repo (or the one-liner). It rebuilds and reinstalls everything.
@@ -74,8 +74,8 @@ codex   # Plugins load automatically from .agents/plugins/marketplace.json
 ./scripts/install-codex.sh --user
 # Restart Codex — use /plugins to verify
 
-# Or one-liner install from GitHub
-bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+# Or one-liner install from GitHub (Codex only)
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh)" -- --user
 ```
 
 #### Google Gemini CLI
@@ -282,7 +282,7 @@ Plugins are distributed via the [Codex plugin system](https://developers.openai.
 
 **Global install or update:** Build the distribution and run `./scripts/install-codex.sh --user`. The installer replaces the current gopher-ai plugins in `~/.codex/plugins/` and merges the marketplace entries into `~/.agents/plugins/marketplace.json` without removing unrelated plugin entries.
 
-**GitHub one-liner:** `bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user` bootstraps a temporary checkout of the latest `main` branch, builds the Codex distribution, and installs it into your user-space Codex directories.
+**GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms and installs everything. For Codex-only: `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh)" -- --user`.
 
 **Install into another repo:** Use `./scripts/install-codex.sh --repo /path/to/your-repo` to copy the current plugin set into another repository and update that repo's `.agents/plugins/marketplace.json`.
 

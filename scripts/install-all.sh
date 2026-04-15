@@ -10,18 +10,26 @@
 #   - Codex CLI:   installs flat skills to ~/.codex/skills/ (requires jq)
 #   - Gemini CLI:  installs extensions (requires gemini command)
 #
-# One-liner from GitHub:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)
+# Remote install (no clone needed — downloads to tmp, installs, cleans up):
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Resolve script location. When run via curl pipe or process substitution,
+# BASH_SOURCE[0] won't point to a real file — that's fine, bootstrap_if_needed
+# handles it by downloading the repo to a temp directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || echo "/tmp")"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd || echo "/tmp")"
 DIST_DIR="$ROOT_DIR/dist"
 REPO_SLUG="${GOPHER_AI_REPO:-gopherguides/gopher-ai}"
 REPO_REF="${GOPHER_AI_REF:-main}"
 ARCHIVE_URL="${GOPHER_AI_ARCHIVE_URL:-https://codeload.github.com/${REPO_SLUG}/tar.gz/refs/heads/${REPO_REF}}"
 BOOTSTRAP_DIR=""
 FORCE=false
+
+# Auto-force when stdin is not a terminal (curl pipe, CI, etc.)
+if [[ ! -t 0 ]]; then
+    FORCE=true
+fi
 
 cleanup() {
     if [[ -n "$BOOTSTRAP_DIR" && -d "$BOOTSTRAP_DIR" ]]; then
