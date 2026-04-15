@@ -15,14 +15,36 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 **What's included:**
 - 7 modules (go-workflow, go-dev, productivity, gopher-guides, llm-tools, go-web, tailwind)
 - 6 auto-invoked reference skills for Go best practices, second opinions, and more
-- 7 workflow skills for issue-to-PR automation (via Codex plugins and Claude Code commands)
+- 8 workflow skills for issue-to-PR automation (via Codex plugins and Claude Code commands)
 - 20+ slash commands for development workflows
 
 ## Quick Start
 
-### Claude Code
+### Install Everything (Recommended)
 
-**First-time install:**
+One command to build and install for every platform you have:
+
+```bash
+git clone https://github.com/gopherguides/gopher-ai
+cd gopher-ai
+./scripts/install-all.sh
+```
+
+This auto-detects which platforms are available (Claude Code, Codex CLI, Gemini CLI) and installs for all of them. Run it again anytime to update.
+
+**Or install from GitHub without cloning:**
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)
+```
+
+**Updating:** Just re-run `./scripts/install-all.sh` from the repo (or the one-liner). It rebuilds and reinstalls everything.
+
+### Platform-Specific Install
+
+If you only want one platform, or need first-time setup for Claude Code:
+
+#### Claude Code
 
 ```bash
 # 1. Add marketplace (in Claude Code)
@@ -34,29 +56,11 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 # 3. Restart Claude Code — all 7 plugins are loaded
 ```
 
-If you prefer to install plugins individually, you can use `/plugin install` instead:
+To install plugins individually: `/plugin install go-workflow@gopher-ai`, etc.
 
-```bash
-/plugin install go-workflow@gopher-ai
-/plugin install go-dev@gopher-ai
-/plugin install productivity@gopher-ai
-/plugin install gopher-guides@gopher-ai
-/plugin install llm-tools@gopher-ai
-/plugin install go-web@gopher-ai
-/plugin install tailwind@gopher-ai
-```
+**Updating:** Run `/productivity:gopher-ai-refresh` inside Claude Code, or `./scripts/install-all.sh` from the repo.
 
-**Updating plugins:**
-
-Once installed, use the refresh command from within Claude Code:
-
-```
-/productivity:gopher-ai-refresh
-```
-
-This pulls the latest changes, updates all plugins in-place, and re-registers them. Restart Claude Code afterward to fully reload plugin definitions.
-
-### OpenAI Codex CLI
+#### OpenAI Codex CLI
 
 ```bash
 # Repo-local (auto-discovered — just clone and run Codex)
@@ -70,11 +74,11 @@ codex   # Plugins load automatically from .agents/plugins/marketplace.json
 ./scripts/install-codex.sh --user
 # Restart Codex — use /plugins to verify
 
-# Or one-liner install from GitHub (bootstraps latest main, then installs)
+# Or one-liner install from GitHub
 bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
 ```
 
-### Google Gemini CLI
+#### Google Gemini CLI
 
 ```bash
 git clone https://github.com/gopherguides/gopher-ai
@@ -122,6 +126,7 @@ Issue-to-PR workflow automation with git worktree management.
 |---------|-------------|
 | `/start-issue <number>` | Start working on an issue (auto-detects bug vs feature) |
 | `/address-review [PR]` | Address PR review comments, make fixes, reply, and resolve |
+| `/review-deep [PR]` | Deep code review with full PR/issue context, then fix findings |
 | `/create-worktree <number>` | Create a new git worktree for a GitHub issue |
 | `/commit` | Create a git commit with auto-generated message |
 | `/remove-worktree` | Interactively select and remove a git worktree |
@@ -132,6 +137,11 @@ The `/start-issue` command handles the full issue-to-PR workflow:
 2. Offers worktree creation for isolated work
 3. Auto-detects issue type (bug → `fix/` branch, feature → `feat/` branch)
 4. Routes to appropriate TDD or implementation workflow
+
+The `/review-deep` skill performs a thorough code review with full context:
+1. Gathers PR metadata, linked issues, review threads, and inline comments
+2. Reviews against Go idioms, correctness, security, performance, and spec compliance
+3. Fixes all actionable findings, generates tests, and commits
 
 The `/address-review` command automates PR review handling:
 1. Addresses feedback from human and bot reviewers
@@ -282,6 +292,7 @@ Plugins are distributed via the [Codex plugin system](https://developers.openai.
 
 ```
 $start-issue 42    # Full issue-to-PR workflow
+$review-deep       # Deep review with full PR/issue context + fix
 $create-worktree 42  # Create isolated worktree
 $commit            # Auto-generate commit message
 $create-pr         # Create PR with template
@@ -395,7 +406,13 @@ cd gopher-ai
 ./scripts/install-hooks.sh  # Install pre-commit hooks
 ```
 
-**Building for all platforms:**
+**Building and installing for all platforms:**
+
+```bash
+./scripts/install-all.sh    # Build + install for all detected platforms
+```
+
+Or build only (without installing):
 
 ```bash
 ./scripts/build-universal.sh

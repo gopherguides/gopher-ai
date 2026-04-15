@@ -12,7 +12,7 @@ The Codex plugin set currently includes `go-workflow`, `go-dev`, `gopher-guides`
 
 | Plugin | Description | Skills |
 |--------|-------------|--------|
-| `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review |
+| `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review, review-deep |
 | `go-dev` | Go development tools and best practices | go-best-practices, go-profiling-optimization, systematic-debugging, validate-skills |
 | `gopher-guides` | Gopher Guides training materials | gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | second-opinion, gemini-image |
@@ -32,6 +32,7 @@ Invoke explicitly with `$skill-name`:
 | `$ship` | Ship a PR: verify, push, create PR, watch CI, merge |
 | `$remove-worktree` | Interactively remove a single worktree |
 | `$prune-worktree` | Batch cleanup of completed worktrees |
+| `$review-deep [PR]` | Deep code review with full PR/issue context, then fix findings |
 
 ### Example Workflow
 
