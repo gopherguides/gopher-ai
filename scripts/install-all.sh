@@ -179,7 +179,8 @@ install_gemini() {
         local ext_name
         ext_name="$(basename "$ext_dir")"
         echo "  Installing extension: $ext_name"
-        if gemini extensions install "$ext_dir"; then
+        # --consent skips the interactive trust prompt per extension
+        if gemini extensions install "$ext_dir" --consent 2>&1; then
             installed=$((installed + 1))
         else
             echo "  Warning: failed to install $ext_name"
@@ -193,7 +194,7 @@ install_gemini() {
     if [[ $failed -gt 0 ]]; then
         echo ""
         echo "  $failed extension(s) failed. Gemini CLI extensions API may have changed."
-        echo "  Try manually: gemini extensions install $gemini_src/gopher-ai-<module>"
+        echo "  Try manually: gemini extensions install $gemini_src/gopher-ai-<module> --consent"
     fi
     if [[ $installed -eq 0 && $failed -eq 0 ]]; then
         echo "  No extensions found to install."
