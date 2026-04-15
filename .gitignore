@@ -6,3 +6,6 @@ dist/
 
 # Loop debug logs
 .claude/loop-debug.log
+
+# Codex local config
+.codex
