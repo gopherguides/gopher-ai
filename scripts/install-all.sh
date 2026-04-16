@@ -259,15 +259,15 @@ main() {
 
     # Build once, install everywhere
     echo "Building distribution..."
-    if ! "$ROOT_DIR/scripts/build-universal.sh" > /dev/null; then
+    echo ""
+    if ! "$ROOT_DIR/scripts/build-universal.sh"; then
         echo ""
-        echo "error: build failed. Check the output above for details." >&2
+        echo "error: build failed." >&2
         echo "Common fixes:" >&2
         echo "  - Install jq: brew install jq (macOS) / sudo apt install jq (Linux)" >&2
         echo "  - Ensure git is installed and available" >&2
         exit 1
     fi
-    echo "Build complete."
     echo ""
 
     $HAVE_CLAUDE && install_claude
