@@ -413,9 +413,10 @@ print_summary() {
     echo "Distribution structure:"
     echo ""
     if command -v tree &> /dev/null; then
-        tree -L 3 "$DIST_DIR" 2>/dev/null || find "$DIST_DIR" -type f | head -20
+        tree -L 3 "$DIST_DIR" 2>/dev/null || true
     else
-        find "$DIST_DIR" -type f | head -20
+        # Avoid SIGPIPE from head closing early with set -o pipefail active
+        find "$DIST_DIR" -type f 2>/dev/null | head -30 || true
     fi
     echo ""
     echo "Installation instructions:"
