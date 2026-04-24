@@ -20,10 +20,10 @@ Parse `$ARGUMENTS` to extract:
 
 Store as `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE` (default: `false`), `GEMINI_TIER`, and `SCOPE_HINT`.
 
-**Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.claude/review-loop.loop.local.json` using `jq`:
+**Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.local/state/review-loop.loop.local.json` using `jq`:
 
 ```bash
-STATE_FILE=".claude/review-loop.loop.local.json"
+STATE_FILE=".local/state/review-loop.loop.local.json"
 TMP="$STATE_FILE.tmp"
 jq --arg args "$ARGUMENTS" --argjson pass 0 --arg quick_mode "$QUICK_MODE" --arg gemini_tier "$GEMINI_TIER" \
    '. + {args: $args, pass: $pass, quick_mode: $quick_mode, gemini_tier: $gemini_tier}' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
@@ -100,11 +100,11 @@ If `LLM_AVAILABLE` is `false`:
 
 ## 3. Re-entry Check
 
-Read the loop state file at `.claude/review-loop.loop.local.json`:
+Read the loop state file at `.local/state/review-loop.loop.local.json`:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-STATE_FILE=".claude/review-loop.loop.local.json"
+STATE_FILE=".local/state/review-loop.loop.local.json"
 if [ -f "$STATE_FILE" ]; then
   read_loop_state "$STATE_FILE"
 fi
@@ -182,8 +182,8 @@ Show model options based on `LLM_CHOICE`:
 
 | Model | Description |
 |-------|-------------|
-| gpt-5.4 (Recommended) | Latest frontier model, best overall |
-| gpt-5.4-pro | Maximum performance on complex tasks |
+| gpt-5.5 (Recommended) | Latest frontier model, best overall |
+| gpt-5.5-pro | Maximum performance on complex tasks |
 | gpt-5.3-codex | Previous generation frontier model |
 | gpt-5.1-codex-mini | Cost-efficient |
 
@@ -228,10 +228,10 @@ Display: "Detected base branch: `$BASE_BRANCH`". If the user corrects it (e.g., 
 
 Store all selections: `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`.
 
-**Persist scope/model to state file** for re-entry recovery. Merge these fields into `.claude/review-loop.loop.local.json`:
+**Persist scope/model to state file** for re-entry recovery. Merge these fields into `.local/state/review-loop.loop.local.json`:
 
 ```bash
-STATE_FILE=".claude/review-loop.loop.local.json"
+STATE_FILE=".local/state/review-loop.loop.local.json"
 TMP="$STATE_FILE.tmp"
 jq --arg scope "$REVIEW_SCOPE" --arg base_branch "$BASE_BRANCH" \
    --arg model "$MODEL" --arg file_paths "${FILE_PATHS:-}" \
@@ -247,7 +247,7 @@ Set phase to `reviewing` and increment the `pass:` field in the state file:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_phase ".claude/review-loop.loop.local.json" "reviewing"
+set_loop_phase ".local/state/review-loop.loop.local.json" "reviewing"
 # Increment pass counter in state file (read current value, increment, write back)
 ```
 
@@ -541,7 +541,7 @@ After capturing the LLM review output as `FINDINGS`:
 Set phase to `fixing`:
 
 ```bash
-set_loop_phase ".claude/review-loop.loop.local.json" "fixing"
+set_loop_phase ".local/state/review-loop.loop.local.json" "fixing"
 ```
 
 ### Parallel Fix Dispatch (when 3+ findings target different files)
@@ -614,7 +614,7 @@ Track counts: `FIXED`, `SKIPPED` (with reasons).
 Set phase to `verifying`:
 
 ```bash
-set_loop_phase ".claude/review-loop.loop.local.json" "verifying"
+set_loop_phase ".local/state/review-loop.loop.local.json" "verifying"
 ```
 
 Auto-detect project type and run appropriate verification:

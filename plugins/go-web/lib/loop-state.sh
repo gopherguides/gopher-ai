@@ -3,15 +3,16 @@
 # Used by stop-hook.sh and other loop-related scripts
 # Requires: jq
 
-# Debug log file location
-LOOP_DEBUG_LOG=".claude/loop-debug.log"
+# Debug log file location. Lives outside .claude/ so writes work under
+# Claude Code's bypassPermissions mode (which still guards .claude/).
+LOOP_DEBUG_LOG=".local/state/loop-debug.log"
 
 # Write a timestamped entry to the debug log
 loop_log() {
   local msg="$1"
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  mkdir -p .claude
+  mkdir -p .local/state
   echo "[$ts] $msg" >> "$LOOP_DEBUG_LOG"
 }
 
@@ -123,7 +124,7 @@ check_completion_promise() {
 
 # Find all active loop state files
 find_active_loops() {
-  find .claude -name "*.loop.local.json" 2>/dev/null
+  find .local/state -name "*.loop.local.json" 2>/dev/null
 }
 
 # Get the count of active loops

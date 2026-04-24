@@ -13,7 +13,7 @@
 - **If `CURRENT_PHASE` is `fixing` AND `WATCH_MODE` is `true` AND bots detected:** Set phase to `watching`, skip to Step 12:
   ```bash
   SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-  LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
+  LOOP_STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
   if [ -f "$LOOP_STATE_FILE" ]; then
     source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
     set_loop_phase "$LOOP_STATE_FILE" "watching"
@@ -36,7 +36,7 @@ Address feedback, but note: "This PR has pending review feedback that cannot be 
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
+LOOP_STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
   set_loop_phase "$LOOP_STATE_FILE" "fixing"

@@ -12,7 +12,7 @@ Before calling setup-loop, check if a state file already exists with a non-empty
 If so, **skip** setup-loop to preserve custom fields (`args`, `pass`, `pr_number`, `base_branch`, `no_merge`, `llm`, `discovered_bots`).
 
 ```bash
-STATE_FILE=".claude/ship.loop.local.json"
+STATE_FILE=".local/state/ship.loop.local.json"
 if [ -f "$STATE_FILE" ]; then
   EXISTING_PHASE=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null || true)
   if [ -n "$EXISTING_PHASE" ]; then
@@ -23,7 +23,7 @@ fi
 
 **Only call setup-loop on fresh starts** (no state file or empty phase):
 
-!`if [ -f ".claude/ship.loop.local.json" ] && [ -n "$(jq -r '.phase // empty' .claude/ship.loop.local.json 2>/dev/null)" ]; then echo "Re-entry detected — skipping setup-loop."; elif [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" '{"reviewing":"Resume LLM review pass.","fixing":"Continue fixing LLM review findings.","verifying":"Re-run verification: build, test, lint.","coverage-check":"Resume coverage analysis for changed files.","e2e-testing":"Resume e2e testing. Restart dev server if needed.","pushing":"Resume push and PR creation.","ci-watch":"Resume CI monitoring. Run gh pr checks and fix any failures.","bot-watching":"Resume bot approval polling (Step 11). Check discovered bots for approval status. If bots request changes, go to Step 12. If all approved, go to Step 13.","addressing":"Resume addressing bot review feedback (Steps 2-11 of address-review). After fixes, return to CI watch.","merging":"Verify CI green and bot approval, then merge the PR."}'; fi`
+!`if [ -f ".local/state/ship.loop.local.json" ] && [ -n "$(jq -r '.phase // empty' .local/state/ship.loop.local.json 2>/dev/null)" ]; then echo "Re-entry detected — skipping setup-loop."; elif [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" '{"reviewing":"Resume LLM review pass.","fixing":"Continue fixing LLM review findings.","verifying":"Re-run verification: build, test, lint.","coverage-check":"Resume coverage analysis for changed files.","e2e-testing":"Resume e2e testing. Restart dev server if needed.","pushing":"Resume push and PR creation.","ci-watch":"Resume CI monitoring. Run gh pr checks and fix any failures.","bot-watching":"Resume bot approval polling (Step 11). Check discovered bots for approval status. If bots request changes, go to Step 12. If all approved, go to Step 13.","addressing":"Resume addressing bot review feedback (Steps 2-11 of address-review). After fixes, return to CI watch.","merging":"Verify CI green and bot approval, then merge the PR."}'; fi`
 
 ## 1. Parse Arguments
 
@@ -39,10 +39,10 @@ Parse `$ARGUMENTS` to extract:
 
 Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD` (default: 60), `GEMINI_TIER`.
 
-**Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.claude/ship.loop.local.json` using `jq`:
+**Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.local/state/ship.loop.local.json` using `jq`:
 
 ```bash
-STATE_FILE=".claude/ship.loop.local.json"
+STATE_FILE=".local/state/ship.loop.local.json"
 TMP="$STATE_FILE.tmp"
 jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
    --arg no_merge "$NO_MERGE" --arg pr_number "" --arg base_branch "" \
@@ -61,7 +61,7 @@ Read the loop state file:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-STATE_FILE=".claude/ship.loop.local.json"
+STATE_FILE=".local/state/ship.loop.local.json"
 if [ -f "$STATE_FILE" ]; then
   read_loop_state "$STATE_FILE"
 fi
@@ -206,8 +206,8 @@ Set phase to `reviewing`:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_phase ".claude/ship.loop.local.json" "reviewing"
-PASS=$(jq -r '.pass // 0' ".claude/ship.loop.local.json")
+set_loop_phase ".local/state/ship.loop.local.json" "reviewing"
+PASS=$(jq -r '.pass // 0' ".local/state/ship.loop.local.json")
 ```
 
 **Note:** The pass counter is incremented in Step 8 (after the review completes and findings are committed), not here. This prevents burning a pass number if the session exits during the review and re-enters.
@@ -313,11 +313,11 @@ CODEX_TIMEOUT="${CODEX_TIMEOUT:-120}"
 
 set +e
 if [ -n "$TIMEOUT_CMD" ]; then
-  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "${MODEL:-gpt-5.4}" -s read-only \
+  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "${MODEL:-gpt-5.5}" -s read-only \
     --output-schema "$SCHEMA_FILE" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
 else
-  REVIEW_JSON=$($CODEX_CMD exec -m "${MODEL:-gpt-5.4}" -s read-only \
+  REVIEW_JSON=$($CODEX_CMD exec -m "${MODEL:-gpt-5.5}" -s read-only \
     --output-schema "$SCHEMA_FILE" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
 fi
@@ -404,7 +404,7 @@ Rules:
 When the user selects `codex review --base` (from large-diff warning or timeout recovery), use the simpler review command. This is faster but limited to 2-3 findings per pass:
 
 ```bash
-$CODEX_CMD review --base "$BASE_BRANCH" -c model="${MODEL:-gpt-5.4}"
+$CODEX_CMD review --base "$BASE_BRANCH" -c model="${MODEL:-gpt-5.5}"
 ```
 
 Capture output as free-text `FINDINGS`. Set `CODEX_EXEC_FALLBACK=true` (tells Step 5c to skip JSON parsing and use free-text path). Persist `quick_mode=true` to state file for re-entry:
@@ -550,7 +550,7 @@ When `LLM_CHOICE` is `codex` and `CODEX_EXEC_FALLBACK` is not `true`:
 Set phase to `fixing`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.json" "fixing"
+set_loop_phase ".local/state/ship.loop.local.json" "fixing"
 ```
 
 For each finding from Step 5c:
@@ -572,7 +572,7 @@ Track counts: `FIXED`, `SKIPPED` (with reasons).
 Set phase to `verifying`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.json" "verifying"
+set_loop_phase ".local/state/ship.loop.local.json" "verifying"
 ```
 
 Auto-detect project type and run appropriate verification:
@@ -660,7 +660,7 @@ If any verification fails: analyze, fix, re-run until all pass.
 Set phase to `coverage-check`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.json" "coverage-check"
+set_loop_phase ".local/state/ship.loop.local.json" "coverage-check"
 ```
 
 **Ship-specific skip condition:** Also skip this entire step if this is NOT the final pass (`PASS < MAX_PASSES - 1` AND findings were not clean). Proceed to Step 7.6.
@@ -670,7 +670,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
 | Variable | Value |
 |----------|-------|
 | `BASE_BRANCH` | `origin/${BASE_BRANCH}` (from Step 3) |
-| `STATE_FILE` | `.claude/ship.loop.local.json` |
+| `STATE_FILE` | `.local/state/ship.loop.local.json` |
 | `SKIP_COVERAGE` | from parsed arguments |
 | `COVERAGE_THRESHOLD` | from parsed arguments (default: 60) |
 
@@ -714,7 +714,7 @@ If both `WEB_CHANGES` and `HANDLER_CHANGES` are empty → skip to Step 8.
 Set phase to `e2e-testing`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.json" "e2e-testing"
+set_loop_phase ".local/state/ship.loop.local.json" "e2e-testing"
 ```
 
 Detect the dev server command:
@@ -783,10 +783,10 @@ kill $SERVER_PID 2>/dev/null || true
 Persist e2e results in state file:
 
 ```bash
-TMP=".claude/ship.loop.local.json.tmp"
+TMP=".local/state/ship.loop.local.json.tmp"
 jq --arg attempted "true" --arg result "$E2E_RESULT" --argjson pages "$PAGES_TESTED" \
    '.e2e_attempted = $attempted | .e2e_result = $result | .e2e_pages_tested = $pages' \
-   ".claude/ship.loop.local.json" > "$TMP" && mv "$TMP" ".claude/ship.loop.local.json"
+   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
 ```
 
 Display e2e results:
@@ -812,7 +812,7 @@ Pages tested: 3 | Passed: 2 | Errors: 1
 Clean up transient files:
 
 ```bash
-rm -f .claude/coverage.out .claude/coverage.json 2>/dev/null || true
+rm -f .local/state/coverage.out .local/state/coverage.json 2>/dev/null || true
 ```
 
 ### Step 8: Commit, Increment Pass, and Loop Decision
@@ -827,17 +827,17 @@ git add <list of test files generated in Step 7.5f, if any>
 **Increment the pass counter** now that the review-fix-verify-coverage cycle is complete:
 
 ```bash
-CURRENT_PASS=$(jq -r '.pass // 0' ".claude/ship.loop.local.json")
+CURRENT_PASS=$(jq -r '.pass // 0' ".local/state/ship.loop.local.json")
 NEW_PASS=$((CURRENT_PASS + 1))
-TMP=".claude/ship.loop.local.json.tmp"
-jq --argjson p "$NEW_PASS" '.pass = $p' ".claude/ship.loop.local.json" > "$TMP" && mv "$TMP" ".claude/ship.loop.local.json"
+TMP=".local/state/ship.loop.local.json.tmp"
+jq --argjson p "$NEW_PASS" '.pass = $p' ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
 PASS=$NEW_PASS
 ```
 
 Only commit if there are staged changes:
 
 ```bash
-TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".claude/ship.loop.local.json")
+TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".local/state/ship.loop.local.json")
 if ! git diff --cached --quiet; then
   if [ "$TESTS_GEN" -gt 0 ] 2>/dev/null; then
     git commit -m "$(cat <<EOF
@@ -867,7 +867,7 @@ Check if we should continue reviewing:
 Set phase to `pushing`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.json" "pushing"
+set_loop_phase ".local/state/ship.loop.local.json" "pushing"
 ```
 
 #### 9a. Push to remote
@@ -928,7 +928,7 @@ Persist both `head_sha` and `bot_review_baseline` in state file.
 Set phase to `ci-watch`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.json" "ci-watch"
+set_loop_phase ".local/state/ship.loop.local.json" "ci-watch"
 ```
 
 First, check if CI workflow files exist:
@@ -954,7 +954,7 @@ The ENTIRE purpose of CI is to validate the EXACT code being merged. Stale check
 Read `head_sha` from state file (set during push in Step 9a, 10 retry, or 12c):
 
 ```bash
-HEAD_SHA=$(jq -r '.head_sha // empty' ".claude/ship.loop.local.json")
+HEAD_SHA=$(jq -r '.head_sha // empty' ".local/state/ship.loop.local.json")
 if [ -z "$HEAD_SHA" ]; then
   HEAD_SHA=$(git rev-parse HEAD)
 fi
@@ -1009,10 +1009,10 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   git checkout "$PR_HEAD_BRANCH"
   git reset --hard "$BRANCH_REMOTE/$PR_HEAD_BRANCH"
   # Persist new HEAD SHA, reset pass counter, and set phase to reviewing for correct re-entry
-  TMP=".claude/ship.loop.local.json.tmp"
+  TMP=".local/state/ship.loop.local.json.tmp"
   jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "reviewing" \
     '.head_sha = $sha | .pass = $pass | .review_clean = $rc | .phase = $phase' \
-    ".claude/ship.loop.local.json" > "$TMP" && mv "$TMP" ".claude/ship.loop.local.json"
+    ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
   # Go back to Step 5 (reviewing)
 fi
 ```
@@ -1037,7 +1037,7 @@ If CI fails:
 Set phase to `bot-watching` (distinct from address-review's `watching` phase to get ship-specific re-entry messages):
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.json" "bot-watching"
+set_loop_phase ".local/state/ship.loop.local.json" "bot-watching"
 ```
 
 #### 11a. Discover review bots
@@ -1126,7 +1126,7 @@ Follow Steps 12a-12d from watch-loop.md:
 Set phase to `addressing` (distinct from `fixing` to ensure correct re-entry routing):
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.json" "addressing"
+set_loop_phase ".local/state/ship.loop.local.json" "addressing"
 ```
 
 #### 12a. Fetch and rebase against base branch
@@ -1177,7 +1177,7 @@ Return to Step 10 (ci-watch) — set phase and re-watch CI for the new HEAD SHA 
 Set phase to `merging`:
 
 ```bash
-set_loop_phase ".claude/ship.loop.local.json" "merging"
+set_loop_phase ".local/state/ship.loop.local.json" "merging"
 ```
 
 #### 13a. Final checks
@@ -1317,12 +1317,12 @@ If the merge command fails (non-zero exit code):
 Read coverage and e2e results from state file:
 
 ```bash
-COV_RESULT=$(jq -r '.coverage_result // "skipped"' ".claude/ship.loop.local.json")
-COV_THRESHOLD=$(jq -r '.coverage_threshold // "60"' ".claude/ship.loop.local.json")
-TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".claude/ship.loop.local.json")
-E2E_ATTEMPTED=$(jq -r '.e2e_attempted // ""' ".claude/ship.loop.local.json")
-E2E_RESULT=$(jq -r '.e2e_result // "skipped"' ".claude/ship.loop.local.json")
-E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".claude/ship.loop.local.json")
+COV_RESULT=$(jq -r '.coverage_result // "skipped"' ".local/state/ship.loop.local.json")
+COV_THRESHOLD=$(jq -r '.coverage_threshold // "60"' ".local/state/ship.loop.local.json")
+TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".local/state/ship.loop.local.json")
+E2E_ATTEMPTED=$(jq -r '.e2e_attempted // ""' ".local/state/ship.loop.local.json")
+E2E_RESULT=$(jq -r '.e2e_result // "skipped"' ".local/state/ship.loop.local.json")
+E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
 ```
 
 ```

@@ -33,8 +33,8 @@ All commands use recommended defaults automatically. Add `--ask` to customize mo
 
 | Model | Best For |
 |-------|----------|
-| `gpt-5.4` | Latest frontier model, best overall (default) |
-| `gpt-5.4-pro` | Maximum performance on complex tasks |
+| `gpt-5.5` | Latest frontier model, best overall (default) |
+| `gpt-5.5-pro` | Maximum performance on complex tasks |
 | `gpt-5.3-codex` | Previous generation frontier model |
 | `gpt-5.1-codex-mini` | Simple tasks, cost-efficient |
 
@@ -166,11 +166,11 @@ Use recommended defaults without prompting. Display a brief configuration summar
 Review config (defaults — add --ask to customize):
   Review type:  Changes vs branch
   Context:      Auto-detect
-  Model:        gpt-5.4
+  Model:        gpt-5.5
   Depth:        Exhaustive
 ```
 
-Store these selections: review type = "Changes vs branch", context = "Auto-detect", model = "gpt-5.4", depth = "Exhaustive". Proceed directly to R1.5.
+Store these selections: review type = "Changes vs branch", context = "Auto-detect", model = "gpt-5.5", depth = "Exhaustive". Proceed directly to R1.5.
 
 #### If `INTERACTIVE_MODE` is `true` (`--ask` flag provided)
 
@@ -199,8 +199,8 @@ Ask all review configuration questions in a **single `AskUserQuestion` call** wi
 
 | Option | Description |
 |--------|-------------|
-| gpt-5.4 (Recommended) | Latest frontier model, best overall |
-| gpt-5.4-pro | Maximum performance on complex tasks |
+| gpt-5.5 (Recommended) | Latest frontier model, best overall |
+| gpt-5.5-pro | Maximum performance on complex tasks |
 | gpt-5.3-codex | Previous generation frontier model |
 | gpt-5.1-codex-mini | Simple tasks, cost-efficient |
 
@@ -761,12 +761,12 @@ Use recommended defaults without prompting. Display a brief configuration summar
 
 ```
 Exec config (defaults — add --ask to customize):
-  Model:    gpt-5.4
+  Model:    gpt-5.5
   Context:  None
   Sandbox:  workspace-write
 ```
 
-Store selections: model = "gpt-5.4", context = "No", sandbox = "workspace-write". Proceed directly to Step 4 (Run Codex).
+Store selections: model = "gpt-5.5", context = "No", sandbox = "workspace-write". Proceed directly to Step 4 (Run Codex).
 
 #### If `INTERACTIVE_MODE` is `true` (`--ask` flag provided)
 
@@ -776,12 +776,12 @@ Ask the user which model to use:
 
 | Model | Best For |
 |-------|----------|
-| gpt-5.4 | Latest frontier model, best overall |
-| gpt-5.4-pro | Maximum performance on complex tasks |
+| gpt-5.5 | Latest frontier model, best overall |
+| gpt-5.5-pro | Maximum performance on complex tasks |
 | gpt-5.3-codex | Previous generation frontier model |
 | gpt-5.1-codex-mini | Simple tasks, cost-efficient |
 
-Default: `gpt-5.4`
+Default: `gpt-5.5`
 
 ### 2. Include Session Context (Optional)
 
