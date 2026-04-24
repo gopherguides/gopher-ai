@@ -6,7 +6,7 @@ Before entering the watch loop, update the loop state phase so that any stop-hoo
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
+LOOP_STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
   set_loop_phase "$LOOP_STATE_FILE" "watching"
@@ -83,7 +83,7 @@ After the quiet period ends and new unresolved comments/threads exist:
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
+LOOP_STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
   set_loop_phase "$LOOP_STATE_FILE" "fixing"

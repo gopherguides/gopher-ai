@@ -461,7 +461,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
 | Variable | Value |
 |----------|-------|
 | `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (compute DEFAULT_BRANCH if not already set: `git remote show origin 2>/dev/null \| grep 'HEAD branch' \| sed 's/.*: //' \|\| echo "main"`) |
-| `STATE_FILE` | Absolute path to `.claude/start-issue-$ISSUE_NUM.loop.local.json` (in the original repo, not the worktree) |
+| `STATE_FILE` | Absolute path to `.local/state/start-issue-$ISSUE_NUM.loop.local.json` (in the original repo, not the worktree) |
 | `SKIP_COVERAGE` | from parsed flags (default: `false`) |
 | `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
 

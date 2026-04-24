@@ -50,7 +50,7 @@ echo "Issue: $ISSUE_NUM | Flags: $FLAGS"
 ## Loop Initialization & Re-entry
 
 ```bash
-STATE_FILE=".claude/complete-issue-${ISSUE_NUM}.loop.local.json"
+STATE_FILE=".local/state/complete-issue-${ISSUE_NUM}.loop.local.json"
 if [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
   echo "Re-entry detected — skipping setup-loop."
 else
@@ -120,7 +120,8 @@ if [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
 fi
 
 # Reassign STATE_FILE to absolute path so it resolves correctly after CWD changes
-STATE_FILE="$(pwd)/.claude/complete-issue-${ISSUE_NUM}.loop.local.json"
+STATE_FILE="$(pwd)/.local/state/complete-issue-${ISSUE_NUM}.loop.local.json"
+mkdir -p "$(dirname "$STATE_FILE")"
 
 TMP="$STATE_FILE.tmp"
 jq --arg pr_number "$PR_NUM" --arg worktree_path "${WORKTREE_PATH:-}" \

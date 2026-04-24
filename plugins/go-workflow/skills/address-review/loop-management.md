@@ -10,7 +10,7 @@ Check if resuming from a previous watching phase:
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
+LOOP_STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
 CURRENT_PHASE=""
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"

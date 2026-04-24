@@ -9,11 +9,11 @@ The calling command MUST set these variables before invoking this workflow:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `BASE_BRANCH` | Branch to diff against | `origin/main` |
-| `STATE_FILE` | **Absolute path** to the loop state JSON file | `/path/to/.claude/ship.loop.local.json` |
+| `STATE_FILE` | **Absolute path** to the loop state JSON file | `/path/to/.local/state/ship.loop.local.json` |
 | `SKIP_COVERAGE` | Whether to skip coverage entirely | `true` or `false` |
 | `COVERAGE_THRESHOLD` | Minimum coverage percentage for changed files | `60` |
 
-**Worktree note:** When running in a worktree, `STATE_FILE` MUST be an absolute path to the state file (which lives in the original repo's `.claude/` directory, not the worktree). Coverage artifacts (`.claude/coverage.out`) are written relative to the current working directory — ensure `.claude/` exists via `mkdir -p .claude` before running coverage commands.
+**Worktree note:** When running in a worktree, `STATE_FILE` MUST be an absolute path to the state file (which lives in the original repo's `.local/state/` directory, not the worktree). Coverage artifacts (`.local/state/coverage.out`) are written relative to the current working directory — ensure `.local/state/` exists via `mkdir -p .local/state` before running coverage commands.
 
 ## Step A: Skip Conditions
 
@@ -27,8 +27,8 @@ Skip this entire workflow (return to the calling command's next step) if ANY of 
 Detect changed files including committed, uncommitted, staged, and untracked files (uncommitted/untracked changes are common when called from `/start-issue` before the commit step):
 
 ```bash
-mkdir -p .claude
-rm -f .claude/coverage.out .claude/coverage.json 2>/dev/null
+mkdir -p .local/state
+rm -f .local/state/coverage.out .local/state/coverage.json 2>/dev/null
 CHANGED_FILES=$( (git diff --name-only "${BASE_BRANCH}...HEAD" 2>/dev/null; git diff --name-only HEAD 2>/dev/null; git diff --name-only --cached HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null) | sort -u )
 ```
 
@@ -79,15 +79,15 @@ Run the coverage tool appropriate for the detected project type. Store coverage 
 
 **Go** (built-in — always available):
 ```bash
-go test -coverprofile=.claude/coverage.out ./... 2>/dev/null || true
-go tool cover -func=.claude/coverage.out 2>/dev/null
+go test -coverprofile=.local/state/coverage.out ./... 2>/dev/null || true
+go tool cover -func=.local/state/coverage.out 2>/dev/null
 ```
 
 Then extract coverage for changed files specifically:
 
 ```bash
 for f in $CHANGED_SRC; do
-  grep "^${f}:" .claude/coverage.out 2>/dev/null
+  grep "^${f}:" .local/state/coverage.out 2>/dev/null
 done
 ```
 
@@ -120,18 +120,18 @@ Extract `lines.pct` for each changed file to compute per-file and aggregate cove
 **Rust**:
 ```bash
 if command -v cargo-llvm-cov >/dev/null 2>&1; then
-  cargo llvm-cov --json > .claude/coverage.json 2>/dev/null || true
+  cargo llvm-cov --json > .local/state/coverage.json 2>/dev/null || true
 elif command -v cargo-tarpaulin >/dev/null 2>&1; then
-  cargo tarpaulin --out Json --output-dir .claude 2>/dev/null || true
+  cargo tarpaulin --out Json --output-dir .local/state 2>/dev/null || true
 fi
 ```
 
 **Python**:
 ```bash
 if command -v pytest >/dev/null 2>&1 && python3 -c "import pytest_cov" 2>/dev/null; then
-  pytest --cov --cov-report=json:.claude/coverage.json 2>/dev/null || true
+  pytest --cov --cov-report=json:.local/state/coverage.json 2>/dev/null || true
 elif command -v coverage >/dev/null 2>&1; then
-  coverage run -m pytest 2>/dev/null && coverage json -o .claude/coverage.json 2>/dev/null || true
+  coverage run -m pytest 2>/dev/null && coverage json -o .local/state/coverage.json 2>/dev/null || true
 fi
 ```
 
@@ -154,7 +154,7 @@ file.go:startLine.startCol,endLine.endCol numStatements hitCount
 Use statement counts weighted by whether they were hit:
 
 ```bash
-COVERAGE_FUNC=$(go tool cover -func=.claude/coverage.out 2>/dev/null)
+COVERAGE_FUNC=$(go tool cover -func=.local/state/coverage.out 2>/dev/null)
 AGGREGATE_COVERAGE=""
 FILE_REPORT=""
 UNCOVERED_FUNCS=""
@@ -162,7 +162,7 @@ TOTAL_STMTS=0
 TOTAL_COVERED=0
 
 for f in $CHANGED_SRC; do
-  FILE_STMTS=$(grep "^${f}:" .claude/coverage.out 2>/dev/null | awk '{
+  FILE_STMTS=$(grep "^${f}:" .local/state/coverage.out 2>/dev/null | awk '{
     split($2, a, " "); stmts=$2; hit=$3
     total+=stmts; if(hit>0) covered+=stmts
   } END {printf "%d %d", total, covered}')
@@ -319,7 +319,7 @@ Generate tests appropriate for the detected project type. For each target uncove
 - Detect: stdlib `testing` vs `testify`, table-driven patterns (`tests := []struct`), naming conventions
 - Generate table-driven tests with `t.Run()`, `t.Parallel()`, following `test-gen.md` patterns
 - Verify: `go test ./path/to/package/... -run "TestFunctionName" -v`
-- Re-run coverage: `go test -coverprofile=.claude/coverage.out ./... 2>/dev/null || true`
+- Re-run coverage: `go test -coverprofile=.local/state/coverage.out ./... 2>/dev/null || true`
 
 **Node/TypeScript:**
 - Check for existing test files: `*.test.ts`, `*.spec.ts`, `__tests__/*.ts`

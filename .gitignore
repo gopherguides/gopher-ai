@@ -4,8 +4,8 @@
 # Build artifacts
 dist/
 
-# Loop debug logs
-.claude/loop-debug.log
+# Loop state & debug (lives outside .claude/ to bypass Claude Code's protected-path guard)
+/.local/state/
 
 # Codex local config
 .codex

@@ -24,10 +24,11 @@ fi
 
 # Sanitize loop name for use in filename
 SAFE_LOOP_NAME=$(echo "$LOOP_NAME" | sed 's/[^a-zA-Z0-9_-]/-/g')
-STATE_FILE=".claude/${SAFE_LOOP_NAME}.loop.local.json"
+# Loop state lives outside .claude/ to avoid Claude Code's protected-path
+# guard (.claude, .git, .vscode still prompt even under bypassPermissions).
+STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
 
-# Create .claude directory if it doesn't exist
-mkdir -p .claude
+mkdir -p .local/state
 
 # Check for existing loop — preserve phase and bot_review_baseline if re-initializing
 EXISTING_PHASE=""

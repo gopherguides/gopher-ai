@@ -60,7 +60,7 @@ echo "Working on PR #$PR_NUM in mode: $MODE"
 ### State File Bootstrap
 
 ```bash
-STATE_FILE=".claude/e2e-verify-${PR_NUM}.loop.local.json"
+STATE_FILE=".local/state/e2e-verify-${PR_NUM}.loop.local.json"
 if [ -f "$STATE_FILE" ]; then
   EXISTING_PHASE=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null || true)
   if [ -n "$EXISTING_PHASE" ]; then
@@ -83,7 +83,7 @@ fi
 ### Persist Arguments
 
 ```bash
-STATE_FILE=".claude/e2e-verify-${PR_NUM}.loop.local.json"
+STATE_FILE=".local/state/e2e-verify-${PR_NUM}.loop.local.json"
 TMP="$STATE_FILE.tmp"
 jq --arg mode "$MODE" --arg pr_number "$PR_NUM" --arg build_result "" \
    --arg e2e_result "" --argjson pages_tested 0 --arg base_branch "" \

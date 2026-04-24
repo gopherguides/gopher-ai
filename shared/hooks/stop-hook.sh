@@ -4,7 +4,7 @@
 #
 # How it works:
 # 1. Read hook input from stdin to get transcript path
-# 2. Check for any active loop state files (.claude/*.loop.local.json)
+# 2. Check for any active loop state files (.local/state/*.loop.local.json)
 # 3. If no active loop, allow normal exit
 # 4. If loop active, check for completion (max iterations or completion promise in transcript)
 # 5. If not complete, block exit and re-feed the prompt
