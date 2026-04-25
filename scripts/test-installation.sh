@@ -389,12 +389,18 @@ AGENT_ERRORS=""
 for f in "$ROOT_DIR"/plugins/*/agents/*.md; do
   [ -f "$f" ] || continue
   if ! head -1 "$f" | grep -q '^---$'; then
-    AGENT_ERRORS="$AGENT_ERRORS $f"
+    AGENT_ERRORS="$AGENT_ERRORS $f(no-opening)"
     continue
   fi
-  # Must have a closing --- and a name field.
-  if ! awk '/^---$/{c++} c==1 && /^name:[[:space:]]/{found=1} END{exit found?0:1}' "$f"; then
-    AGENT_ERRORS="$AGENT_ERRORS $f(no-name)"
+  # Frontmatter must be a closed YAML block with a `name:` line inside it.
+  # Require at least two `---` markers AND a `name:` line that appears within
+  # the first block (between the opening and closing delimiter).
+  if ! awk '
+    /^---$/ { c++; next }
+    c == 1 && /^name:[[:space:]]/ { found = 1 }
+    END { exit (found && c >= 2) ? 0 : 1 }
+  ' "$f"; then
+    AGENT_ERRORS="$AGENT_ERRORS $f(invalid-frontmatter)"
   fi
 done
 if [ -n "$AGENT_ERRORS" ]; then
