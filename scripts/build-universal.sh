@@ -137,22 +137,17 @@ To add these plugins to another repo:
 ./scripts/install-codex.sh --repo /path/to/your-repo
 ```
 
-### Global (Personal) Installation and Update
+### Global (Personal) Use
 
-To install or replace the current gopher-ai plugins in your personal Codex setup:
+For Codex, "global" means cloning this repo and running Codex inside it — Codex auto-discovers `.agents/plugins/marketplace.json` and offers the plugins through `/plugins`. There is no flat-skills install path; the previous `--user` mode was removed because it double-loaded skills alongside the marketplace and overflowed Codex's skill metadata budget.
 
-```bash
-./scripts/build-universal.sh
-./scripts/install-codex.sh --user
-```
-
-Or as a one-liner from GitHub:
+If you previously ran `--user`, clean up the legacy entries once:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+./scripts/install-codex.sh --cleanup
 ```
 
-Restart Codex after installation or update. Use `/plugins` to verify.
+Restart Codex after cleanup. Use `/plugins` to verify.
 
 ## Architecture
 

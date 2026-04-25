@@ -99,8 +99,10 @@ detect_platforms() {
         HAVE_CLAUDE=true
     fi
 
-    # Codex needs jq for install-codex.sh (already checked in prerequisites)
-    if command -v jq >/dev/null 2>&1; then
+    # Codex --cleanup doesn't require jq; treat ~/.codex/ as the signal so
+    # the migration runs even on minimal machines. (--repo would require jq,
+    # but install-all.sh only invokes --cleanup.)
+    if [[ -d "$HOME/.codex" ]]; then
         HAVE_CODEX=true
     fi
 
@@ -118,9 +120,9 @@ print_detection() {
     fi
 
     if $HAVE_CODEX; then
-        echo "  Codex CLI ...... found (jq available for install)"
+        echo "  Codex CLI ...... found (~/.codex/ exists — will run cleanup migration only)"
     else
-        echo "  Codex CLI ...... skipped (jq not found — install with: brew install jq)"
+        echo "  Codex CLI ...... skipped (no ~/.codex/ directory)"
     fi
 
     if $HAVE_GEMINI; then
@@ -287,7 +289,10 @@ main() {
     echo ""
     echo "Next steps:"
     $HAVE_CLAUDE && echo "  Claude Code: Restart Claude Code to reload plugins"
-    $HAVE_CODEX && echo "  Codex CLI:   Restart Codex — use /plugins to verify"
+    $HAVE_CODEX && echo "  Codex CLI:   Migration only — no plugins were installed."
+    $HAVE_CODEX && echo "               To use gopher-ai with Codex: clone this repo and"
+    $HAVE_CODEX && echo "               run 'codex' inside it (auto-discovers the marketplace),"
+    $HAVE_CODEX && echo "               or run scripts/install-codex.sh --repo <target-repo>"
     $HAVE_GEMINI && echo "  Gemini CLI:  Restart Gemini to load extensions"
 }
 
