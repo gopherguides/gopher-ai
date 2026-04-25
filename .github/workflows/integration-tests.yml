@@ -11,6 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history is required: the "legacy-skill-hashes.txt matches git
+          # history exactly" test compares the committed manifest against
+          # `git rev-list --objects --all`. Shallow checkouts only see current
+          # commits, so the test would (correctly) flag every historical pair
+          # in the manifest as "extra" and fail.
+          fetch-depth: 0
 
       - name: Test plugin installation
         run: ./scripts/test-installation.sh
