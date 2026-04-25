@@ -1,11 +1,6 @@
 ---
 name: e2e-verify
-description: |
-  WHEN: User wants to verify a PR end-to-end before merging, run E2E browser tests on a PR,
-  investigate implementation gaps, or fix review comments and verify. Trigger on "e2e verify",
-  "verify PR", "e2e test", "fix and verify", "fix and ship", "ship prep", or $e2e-verify invocation.
-  WHEN NOT: User only wants to run unit tests ($verify), only ship without verification ($ship),
-  only address review comments ($address-review), or only run coverage ($coverage).
+description: "End-to-end PR verification: rebase, build, browser test, post results. Use to verify a PR before merging or to fix and ship."
 argument-hint: "[PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page", "mcp__chrome-devtools-mcp__fill_form", "mcp__chrome-devtools-mcp__wait_for", "mcp__chrome-devtools-mcp__evaluate_script"]
 ---

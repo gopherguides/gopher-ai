@@ -1,15 +1,6 @@
 ---
 name: htmx
-description: |
-  Use for htmx. If the user's message contains "htmx" or any "hx-" prefixed attribute,
-  activate this skill — no exceptions. Also activate whenever htmx is in the project
-  dependencies or HTML/templ templates contain hx-* attributes, even for follow-up questions
-  that don't explicitly mention htmx (e.g., "why does this swap return 422?", "should this
-  handler return HX-Redirect?"). Provides htmx patterns, Go/templ server integration, swap
-  strategies, triggers, OOB updates, SSE, WebSockets, forms, error handling, redirects,
-  debounce, inline editing, and extensions. Works with html/template + htmx and hybrid
-  SPA setups that use hx-* attributes.
-  WHEN NOT: Pure client-side SPA frameworks (React/Vue/Svelte) without any htmx involvement
+description: "htmx for Go/templ apps: hx-* attributes, swap strategies, triggers, OOB updates, SSE, WebSockets, forms, redirects, debounce, server integration."
 ---
 
 # htmx Best Practices & Go/Templ Integration

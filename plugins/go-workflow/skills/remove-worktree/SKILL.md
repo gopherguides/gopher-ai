@@ -1,10 +1,6 @@
 ---
 name: remove-worktree
-description: |
-  WHEN: User wants to remove a specific git worktree, says "remove worktree", "delete worktree",
-  "clean up worktree", or invokes $remove-worktree.
-  WHEN NOT: User wants to batch-remove all completed worktrees (use $prune-worktree) or
-  create a new worktree (use $create-worktree).
+description: "Remove a specific git worktree interactively. Trigger on 'remove worktree', 'delete worktree'."
 ---
 
 # Remove Worktree

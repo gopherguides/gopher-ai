@@ -1,15 +1,6 @@
 ---
 name: review-deep
-description: |
-  WHEN: User wants a thorough code review with full PR/issue context. Trigger on "review",
-  "deep review", "review my changes", "review this PR", "review from issue", "code review",
-  "check my changes", "what do you think of this code?", or $review-deep invocation. Also
-  auto-trigger when user finishes implementing a feature or bug fix and wants feedback before
-  shipping.
-  WHEN NOT: User wants to address/fix existing review comments from reviewers (use $address-review).
-  User wants to delegate review to another LLM ($codex, /review-loop). User only wants linting
-  ($verify, $lint-fix). User wants to review someone else's PR. User is already mid-fix from
-  a previous review-deep run.
+description: "Deep code review with full PR/issue context, then fix findings. Trigger for 'review', 'review my changes', 'check this PR', or after finishing a feature/fix."
 argument-hint: "[PR-number|--issue <N>] [--post] [--scope <hint>]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---

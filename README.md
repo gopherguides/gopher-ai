@@ -69,13 +69,14 @@ cd gopher-ai
 codex   # Plugins load automatically from .agents/plugins/marketplace.json
 # Use /plugins to browse, $start-issue 42 to invoke workflow skills
 
-# Global install or update (all repos)
-./scripts/build-universal.sh
-./scripts/install-codex.sh --user
-# Restart Codex — use /plugins to verify
+# Add to another repo (so its Codex sessions discover gopher-ai too)
+./scripts/install-codex.sh --repo /path/to/your-repo
 
-# Or one-liner install from GitHub (Codex only)
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh)" -- --user
+# Migrating from older versions: clean up legacy ~/.codex/skills/ entries
+./scripts/install-codex.sh --cleanup
+# Older versions installed flat skills into ~/.codex/skills/ via --user mode.
+# That double-loaded skills alongside the marketplace and overflowed Codex's
+# skill metadata budget. The marketplace is the only delivery path now.
 ```
 
 #### Google Gemini CLI
@@ -280,13 +281,11 @@ Plugins are distributed via the [Codex plugin system](https://developers.openai.
 
 **Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse and manage installed plugins. Plugins with `.codex-plugin/plugin.json` are packaged for Codex. Today that set is `go-workflow`, `go-dev`, `gopher-guides`, `llm-tools`, `go-web`, and `tailwind`. The repo's `productivity` module remains Claude-only.
 
-**Global install or update:** Build the distribution and run `./scripts/install-codex.sh --user`. The installer replaces the current gopher-ai plugins in `~/.codex/plugins/` and merges the marketplace entries into `~/.agents/plugins/marketplace.json` without removing unrelated plugin entries.
+**Install into another repo:** `./scripts/install-codex.sh --repo /path/to/your-repo` copies the current plugin set and merges entries into that repo's `.agents/plugins/marketplace.json` without removing unrelated plugin entries.
 
-**GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms and installs everything. For Codex-only: `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh)" -- --user`.
+**GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms — installs Claude Code and Gemini, and runs the Codex `--cleanup --yes` migration. It does **not** install Codex plugins, since Codex now discovers gopher-ai through the in-repo marketplace. Either clone this repo and run Codex inside it, or use `--repo` to add the marketplace to another repo.
 
-**Install into another repo:** Use `./scripts/install-codex.sh --repo /path/to/your-repo` to copy the current plugin set into another repository and update that repo's `.agents/plugins/marketplace.json`.
-
-**Manual install:** Copy `dist/codex/plugins/` to `~/.codex/plugins/` and `marketplace.json` to `~/.agents/plugins/` if you prefer manual steps.
+**Migration from older versions:** Older releases offered a `--user` mode that copied flat skills into `~/.codex/skills/`. That conflicted with the plugin marketplace — Codex saw every gopher-ai skill twice and the duplicated metadata overflowed Codex's [skill metadata budget](https://developers.openai.com/codex/skills) (~2% of the context window). The flat layout is gone; run `./scripts/install-codex.sh --cleanup` once on machines that used `--user` previously. The marketplace is the only delivery path now.
 
 **Workflow skills** (from `go-workflow` plugin):
 
@@ -300,8 +299,6 @@ $ship              # Verify, push, CI watch, merge
 $remove-worktree   # Remove a single worktree
 $prune-worktree    # Batch cleanup completed worktrees
 ```
-
-**Flat skills (legacy):** Individual skills can also be installed to `~/.codex/skills/` or via `$skill-installer`.
 
 ### Google Gemini CLI
 
@@ -420,7 +417,6 @@ Or build only (without installing):
 
 This generates:
 - `dist/codex/plugins/` - Codex plugin packages
-- `dist/codex/skills/` - Flat skills (legacy/backward-compatible)
 - `dist/gemini/` - Gemini extensions
 - `dist/*.tar.gz` - Release archives
 

@@ -1,12 +1,6 @@
 ---
 name: go-code-organization
-description: |
-  WHEN: User is organizing Go code, asking about package structure, naming conventions,
-  project layout, import organization, file organization, or asking "where should I put this?",
-  "how should I name this package?", "should I split this file?". Also when reviewing
-  code organization in PRs or refactoring package boundaries.
-  WHEN NOT: Non-Go languages. Interface design specifics (use go-interfaces).
-  Concurrency patterns (use go-concurrency).
+description: "Organize Go code: package structure, naming, project layout, import grouping, file splitting. Use when deciding 'where should I put this?'."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

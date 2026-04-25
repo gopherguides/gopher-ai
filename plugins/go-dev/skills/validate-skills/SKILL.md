@@ -1,13 +1,6 @@
 ---
 name: validate-skills
-description: |
-  WHEN: User is editing .md files in commands/ or skills/ directories, creating new slash commands
-  or skills, modifying fenced bash/shell code blocks in markdown plugin files, asking about
-  validating command files, or discussing shell code correctness in plugin markdown.
-  Also activate when user mentions "shellcheck", "bash -n", "code block validation",
-  "portability check", or has just finished writing/editing a command or skill markdown file.
-  WHEN NOT: Editing Go source code, working with non-markdown files, writing general
-  documentation or README files, questions unrelated to plugin command/skill development
+description: "Validate bash/shell code blocks in plugin commands and skills .md files. Trigger when editing markdown plugin files or new commands/skills."
 ---
 
 # Validate Skills

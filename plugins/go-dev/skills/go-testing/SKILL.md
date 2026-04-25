@@ -1,12 +1,6 @@
 ---
 name: go-testing
-description: |
-  WHEN: User is writing tests, asking about testing patterns, using table-driven tests,
-  subtests, t.Parallel, t.Helper, t.Cleanup, testify, mocks, stubs, integration tests,
-  benchmarks, fuzzing, or test organization. Also when reviewing test code in PRs or
-  asking "how should I test this?", "what should I test?", or "is this test good enough?".
-  WHEN NOT: Non-Go languages. Debugging test failures (use systematic-debugging).
-  Performance benchmarking methodology (use go-profiling-optimization).
+description: "Write Go tests: table-driven patterns, subtests, t.Parallel/Helper/Cleanup, testify, mocks, integration tests, benchmarks, fuzzing."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

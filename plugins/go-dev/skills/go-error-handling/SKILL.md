@@ -1,11 +1,6 @@
 ---
 name: go-error-handling
-description: |
-  WHEN: User is creating, wrapping, inspecting, or logging errors in Go code. Also when
-  reviewing error handling in PRs, asking about error patterns, using fmt.Errorf, errors.Is,
-  errors.As, errors.Join, sentinel errors, custom error types, or panic/recover.
-  WHEN NOT: Non-Go languages. Performance profiling (use go-profiling-optimization).
-  General debugging (use systematic-debugging).
+description: "Go error handling: fmt.Errorf, errors.Is/As/Join, sentinels, custom error types, panic/recover, wrapping, logging."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

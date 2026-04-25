@@ -1,14 +1,6 @@
 ---
 name: systematic-debugging
-description: |
-  WHEN: User is debugging Go code, investigating bugs, analyzing test failures, encountering
-  unexpected behavior, reading stack traces, diagnosing race conditions, fixing flaky tests,
-  or saying "why is this broken", "this doesn't work", "test is failing", "getting an error".
-  Also activate when investigating panics, goroutine deadlocks, data corruption, or any
-  situation where the root cause is not immediately obvious.
-  Trigger this skill liberally for ANY debugging or bug investigation work in Go.
-  WHEN NOT: Writing new features from scratch, code review without a specific bug,
-  questions entirely unrelated to debugging or troubleshooting
+description: "Debug Go code: investigate bugs, analyze test failures, race conditions, panics, deadlocks, stack traces. Trigger for 'why is this broken', 'test failing', 'getting an error'."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Bash(dlv:*) Agent
 ---
 

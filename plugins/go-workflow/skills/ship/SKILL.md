@@ -1,10 +1,6 @@
 ---
 name: ship
-description: |
-  WHEN: User wants to ship a PR end-to-end: verify, push, create PR, watch CI, and optionally
-  merge. Trigger on "ship", "ship it", "ship this PR", "push and merge", or $ship invocation.
-  WHEN NOT: User only wants to commit ($commit), only create a PR ($create-pr), or only
-  manage worktrees ($remove-worktree, $prune-worktree).
+description: "Ship a PR end-to-end: verify, push, create PR, watch CI, merge. Trigger on 'ship', 'ship it', 'push and merge'."
 ---
 
 # Ship

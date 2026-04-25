@@ -1,12 +1,6 @@
 ---
 name: go-concurrency
-description: |
-  WHEN: User is writing or reviewing concurrent Go code involving goroutines, channels, select,
-  locks, sync primitives, errgroup, singleflight, worker pools, or fan-out/fan-in pipelines.
-  Also when detecting goroutine leaks, race conditions, channel ownership issues, or choosing
-  between channels and mutexes.
-  WHEN NOT: Non-Go languages. Sequential code with no concurrency needs.
-  Performance profiling (use go-profiling-optimization). Debugging race conditions (use systematic-debugging).
+description: "Write/review concurrent Go: goroutines, channels, select, locks, sync, errgroup, singleflight, worker pools, fan-out/in. Catch leaks, races, channel ownership."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

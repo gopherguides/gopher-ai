@@ -7,7 +7,9 @@
 #
 # Platforms detected:
 #   - Claude Code: updates marketplace repo + plugin cache (requires ~/.claude/)
-#   - Codex CLI:   installs flat skills to ~/.codex/skills/ (requires jq)
+#   - Codex CLI:   cleans up legacy ~/.codex/skills/ entries (migration only);
+#                  plugins are discovered via .agents/plugins/marketplace.json
+#                  in the repo. Cleanup runs without jq or git.
 #   - Gemini CLI:  installs extensions (requires gemini command)
 #
 # Remote install (no clone needed — downloads to tmp, installs, cleans up):
@@ -67,16 +69,24 @@ bootstrap_if_needed() {
     echo ""
 }
 
-# Check that required tools are available before building
+# Check that the tools required for the platforms we're actually installing
+# are available. Codex --cleanup needs neither jq nor git nor the build step,
+# so we don't gate cleanup-only flows on those.
 check_prerequisites() {
     local missing=()
 
-    if ! command -v jq >/dev/null 2>&1; then
-        missing+=("jq (brew install jq / apt install jq)")
+    # jq is needed by build-universal.sh, which only runs for Claude/Gemini.
+    if $HAVE_CLAUDE || $HAVE_GEMINI; then
+        if ! command -v jq >/dev/null 2>&1; then
+            missing+=("jq (brew install jq / apt install jq)")
+        fi
     fi
 
-    if ! command -v git >/dev/null 2>&1; then
-        missing+=("git")
+    # git is needed for Claude marketplace updates.
+    if $HAVE_CLAUDE; then
+        if ! command -v git >/dev/null 2>&1; then
+            missing+=("git")
+        fi
     fi
 
     if [[ ${#missing[@]} -gt 0 ]]; then
@@ -98,8 +108,10 @@ detect_platforms() {
         HAVE_CLAUDE=true
     fi
 
-    # Codex needs jq for install-codex.sh (already checked in prerequisites)
-    if command -v jq >/dev/null 2>&1; then
+    # Codex --cleanup doesn't require jq; treat ~/.codex/ as the signal so
+    # the migration runs even on minimal machines. (--repo would require jq,
+    # but install-all.sh only invokes --cleanup.)
+    if [[ -d "$HOME/.codex" ]]; then
         HAVE_CODEX=true
     fi
 
@@ -117,9 +129,9 @@ print_detection() {
     fi
 
     if $HAVE_CODEX; then
-        echo "  Codex CLI ...... found (jq available for install)"
+        echo "  Codex CLI ...... found (~/.codex/ exists — will run cleanup migration only)"
     else
-        echo "  Codex CLI ...... skipped (jq not found — install with: brew install jq)"
+        echo "  Codex CLI ...... skipped (no ~/.codex/ directory)"
     fi
 
     if $HAVE_GEMINI; then
@@ -152,7 +164,14 @@ install_claude() {
 
 install_codex() {
     echo "=== Codex CLI ==="
-    "$ROOT_DIR/scripts/install-codex.sh" --user
+    echo "  Note: gopher-ai for Codex is delivered via the plugin marketplace,"
+    echo "  not via flat skills. This step only removes legacy ~/.codex/skills/"
+    echo "  entries from older --user installs. To use the plugins:"
+    echo "    - Run codex inside this repo (auto-discovered marketplace), OR"
+    echo "    - Run scripts/install-codex.sh --repo /path/to/your-repo to add"
+    echo "      the marketplace to another repo."
+    echo ""
+    "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes
     echo ""
 }
 
@@ -226,8 +245,8 @@ main() {
     echo ""
 
     bootstrap_if_needed
-    check_prerequisites
     detect_platforms
+    check_prerequisites
 
     if ! $HAVE_CLAUDE && ! $HAVE_CODEX && ! $HAVE_GEMINI; then
         echo "No supported platforms detected."
@@ -257,18 +276,21 @@ main() {
         echo ""
     fi
 
-    # Build once, install everywhere
-    echo "Building distribution..."
-    echo ""
-    if ! "$ROOT_DIR/scripts/build-universal.sh"; then
+    # Build is only needed for Claude and Gemini; Codex --cleanup walks
+    # plugins/*/skills/ directly and doesn't read dist/.
+    if $HAVE_CLAUDE || $HAVE_GEMINI; then
+        echo "Building distribution..."
         echo ""
-        echo "error: build failed." >&2
-        echo "Common fixes:" >&2
-        echo "  - Install jq: brew install jq (macOS) / sudo apt install jq (Linux)" >&2
-        echo "  - Ensure git is installed and available" >&2
-        exit 1
+        if ! "$ROOT_DIR/scripts/build-universal.sh"; then
+            echo ""
+            echo "error: build failed." >&2
+            echo "Common fixes:" >&2
+            echo "  - Install jq: brew install jq (macOS) / sudo apt install jq (Linux)" >&2
+            echo "  - Ensure git is installed and available" >&2
+            exit 1
+        fi
+        echo ""
     fi
-    echo ""
 
     $HAVE_CLAUDE && install_claude
     $HAVE_CODEX && install_codex
@@ -278,9 +300,18 @@ main() {
     echo "Done! Installed for: ${platforms[*]}"
     echo ""
     echo "Next steps:"
-    $HAVE_CLAUDE && echo "  Claude Code: Restart Claude Code to reload plugins"
-    $HAVE_CODEX && echo "  Codex CLI:   Restart Codex — use /plugins to verify"
-    $HAVE_GEMINI && echo "  Gemini CLI:  Restart Gemini to load extensions"
+    if $HAVE_CLAUDE; then
+        echo "  Claude Code: Restart Claude Code to reload plugins"
+    fi
+    if $HAVE_CODEX; then
+        echo "  Codex CLI:   Migration only — no plugins were installed."
+        echo "               To use gopher-ai with Codex: clone this repo and"
+        echo "               run 'codex' inside it (auto-discovers the marketplace),"
+        echo "               or run scripts/install-codex.sh --repo <target-repo>"
+    fi
+    if $HAVE_GEMINI; then
+        echo "  Gemini CLI:  Restart Gemini to load extensions"
+    fi
 }
 
 main "$@"

@@ -160,40 +160,180 @@ else
 fi
 rm -rf "$TMP_REPO"
 
-echo -n "Standalone Codex installer bootstraps correctly... "
+echo -n "Codex installer --cleanup --yes removes only owned skills... "
 TMP_HOME=$(mktemp -d)
-TMP_SCRIPT_DIR=$(mktemp -d)
-TMP_ARCHIVE_DIR=$(mktemp -d)
-cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_SCRIPT_DIR/install-codex.sh"
-cp -R "$ROOT_DIR" "$TMP_ARCHIVE_DIR/gopher-ai-main"
-tar -czf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" -C "$TMP_ARCHIVE_DIR" gopher-ai-main
-if ! HOME="$TMP_HOME" GOPHER_AI_ARCHIVE_URL="file://$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" bash "$TMP_SCRIPT_DIR/install-codex.sh" --user >/tmp/gopher-ai-install-user.log 2>&1; then
+SKILLS_DIR="$TMP_HOME/.codex/skills"
+mkdir -p "$SKILLS_DIR"
+# Seed four scenarios:
+#   1. SEEDED_OWNED         — gopher-ai name + matching content (gopher-ai SKILL.md verbatim)
+#                             → MUST be removed.
+#   2. SEEDED_NAME_DRIFT    — gopher-ai name + non-matching frontmatter name
+#                             → MUST be kept (frontmatter check is the first gate).
+#   3. SEEDED_CONTENT_DRIFT — gopher-ai name + matching frontmatter name + DIFFERENT content
+#                             → MUST be kept (content fingerprint catches user-authored
+#                             skills with generic names like `commit` or `ship`).
+#   4. user-custom-skill    — unrelated name
+#                             → MUST be kept.
+SEEDED_OWNED=""
+SEEDED_NAME_DRIFT=""
+SEEDED_CONTENT_DRIFT=""
+COUNT=0
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  skill_name=$(basename "$skill_dir")
+  COUNT=$((COUNT + 1))
+  if [ -z "$SEEDED_OWNED" ]; then
+    SEEDED_OWNED="$skill_name"
+    mkdir -p "$SKILLS_DIR/$skill_name"
+    # Copy verbatim so content matches a current shipped version.
+    cp "$skill_dir/SKILL.md" "$SKILLS_DIR/$skill_name/SKILL.md"
+  elif [ -z "$SEEDED_NAME_DRIFT" ]; then
+    SEEDED_NAME_DRIFT="$skill_name"
+    mkdir -p "$SKILLS_DIR/$skill_name"
+    printf -- "---\nname: my-personal-%s\ndescription: user override\n---\n\nbody\n" "$skill_name" > "$SKILLS_DIR/$skill_name/SKILL.md"
+  elif [ -z "$SEEDED_CONTENT_DRIFT" ]; then
+    SEEDED_CONTENT_DRIFT="$skill_name"
+    mkdir -p "$SKILLS_DIR/$skill_name"
+    # Frontmatter name matches dir name (a user could plausibly write this for
+    # a generic name like `commit`), but content is NOT any version we shipped.
+    printf -- "---\nname: %s\ndescription: my own custom skill\n---\n\n# My %s\n\nUnrelated body content.\n" "$skill_name" "$skill_name" > "$SKILLS_DIR/$skill_name/SKILL.md"
+    break
+  fi
+done
+mkdir -p "$SKILLS_DIR/user-custom-skill"
+printf -- "---\nname: user-custom-skill\ndescription: stays\n---\n" > "$SKILLS_DIR/user-custom-skill/SKILL.md"
+
+if ! HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes >/tmp/gopher-ai-install-cleanup.log 2>&1; then
   echo "FAIL"
-  sed -n '1,120p' /tmp/gopher-ai-install-user.log
+  sed -n '1,120p' /tmp/gopher-ai-install-cleanup.log
+  ERRORS=$((ERRORS + 1))
+elif [ -d "$SKILLS_DIR/$SEEDED_OWNED" ]; then
+  echo "FAIL (owned gopher-ai skill not removed: $SEEDED_OWNED)"
+  sed -n '1,40p' /tmp/gopher-ai-install-cleanup.log
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$SKILLS_DIR/$SEEDED_NAME_DRIFT" ]; then
+  echo "FAIL (cleanup wrongly removed name-drifted user skill: $SEEDED_NAME_DRIFT)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$SKILLS_DIR/$SEEDED_CONTENT_DRIFT" ]; then
+  echo "FAIL (cleanup wrongly removed content-drifted user skill: $SEEDED_CONTENT_DRIFT)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$SKILLS_DIR/user-custom-skill" ]; then
+  echo "FAIL (cleanup wrongly removed user-custom-skill)"
   ERRORS=$((ERRORS + 1))
 else
-  SKILLS_DIR="$TMP_HOME/.codex/skills"
-  CODEX_DIST_DIR="$ROOT_DIR/dist/codex"
-  # Check that dist skills were copied to ~/.codex/skills/
-  DIST_SKILL_COUNT=$(find "$CODEX_DIST_DIR/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-  INSTALLED_SKILL_COUNT=$(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-  MISSING_SKILLS=""
-  for skill_dir in "$CODEX_DIST_DIR"/skills/*/; do
-    skill_name=$(basename "$skill_dir")
-    if [ ! -f "$SKILLS_DIR/$skill_name/SKILL.md" ]; then
-      MISSING_SKILLS="$MISSING_SKILLS $skill_name"
-    fi
-  done
-  if [ "$INSTALLED_SKILL_COUNT" -lt "$DIST_SKILL_COUNT" ] || [ -n "$MISSING_SKILLS" ]; then
-    echo "FAIL"
-    [ "$INSTALLED_SKILL_COUNT" -lt "$DIST_SKILL_COUNT" ] && echo "expected $DIST_SKILL_COUNT skills, got $INSTALLED_SKILL_COUNT"
-    [ -n "$MISSING_SKILLS" ] && echo "missing skills:$MISSING_SKILLS"
-    ERRORS=$((ERRORS + 1))
-  else
-    echo "OK ($INSTALLED_SKILL_COUNT skills)"
-  fi
+  echo "OK"
 fi
-rm -rf "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
+rm -rf "$TMP_HOME"
+
+echo -n "Codex --cleanup without --yes refuses to delete on non-tty... "
+TMP_HOME=$(mktemp -d)
+SKILLS_DIR="$TMP_HOME/.codex/skills"
+mkdir -p "$SKILLS_DIR"
+SEEDED_OWNED=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  skill_name=$(basename "$skill_dir")
+  SEEDED_OWNED="$skill_name"
+  mkdir -p "$SKILLS_DIR/$skill_name"
+  # Verbatim copy so content fingerprint check recognizes it as gopher-ai-owned.
+  cp "$skill_dir/SKILL.md" "$SKILLS_DIR/$skill_name/SKILL.md"
+  break
+done
+# Pipe </dev/null so stdin is not a tty; expect non-zero exit and skill kept.
+if HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup </dev/null >/tmp/gopher-ai-cleanup-noconfirm.log 2>&1; then
+  echo "FAIL (should exit non-zero without --yes on non-tty)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$SKILLS_DIR/$SEEDED_OWNED" ]; then
+  echo "FAIL (deleted skill without confirmation)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "install-all.sh runs Codex cleanup without jq on minimal machine... "
+TMP_HOME=$(mktemp -d)
+mkdir -p "$TMP_HOME/.codex/skills"
+SEEDED_OWNED=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  skill_name=$(basename "$skill_dir")
+  SEEDED_OWNED="$skill_name"
+  mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
+  # Verbatim copy so content fingerprint check recognizes it as gopher-ai-owned.
+  cp "$skill_dir/SKILL.md" "$TMP_HOME/.codex/skills/$skill_name/SKILL.md"
+  break
+done
+JQ_PATH="$(command -v jq 2>/dev/null || true)"
+if [ -n "$JQ_PATH" ]; then
+  # Build a controlled PATH that contains only the directories required for
+  # the test — no jq, no gemini — so the test result reflects installer
+  # behavior rather than what else happens to be on the developer's PATH.
+  TMP_BIN=$(mktemp -d)
+  # Note: jq and gemini are intentionally excluded to simulate a minimal
+  # Codex-only machine. sha256sum, git, and sort are needed for the new
+  # content-fingerprint cleanup logic.
+  for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink; do
+    cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
+    [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
+  done
+  if HOME="$TMP_HOME" PATH="$TMP_BIN" bash "$ROOT_DIR/scripts/install-all.sh" --force </dev/null >/tmp/gopher-ai-installall-nojq.log 2>&1; then
+    if [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
+      echo "FAIL (cleanup did not run)"
+      ERRORS=$((ERRORS + 1))
+    else
+      echo "OK"
+    fi
+  else
+    echo "FAIL (install-all.sh exited non-zero on Codex-only/no-jq machine)"
+    sed -n '1,40p' /tmp/gopher-ai-installall-nojq.log
+    ERRORS=$((ERRORS + 1))
+  fi
+  rm -rf "$TMP_BIN"
+else
+  echo "SKIP (jq not installed)"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "Codex --cleanup works without jq installed... "
+TMP_HOME=$(mktemp -d)
+SKILLS_DIR="$TMP_HOME/.codex/skills"
+mkdir -p "$SKILLS_DIR"
+# Hide jq via a PATH that excludes it. We deliberately keep core utilities by
+# pointing PATH at the original location minus jq's directory.
+JQ_PATH="$(command -v jq 2>/dev/null || true)"
+if [ -n "$JQ_PATH" ]; then
+  # Rebuild a sanitized PATH without jq's bin dir.
+  JQ_DIR="$(dirname "$JQ_PATH")"
+  SAFE_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "^${JQ_DIR}\$" | tr '\n' ':' | sed 's/:$//')
+  if HOME="$TMP_HOME" PATH="$SAFE_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes >/tmp/gopher-ai-cleanup-nojq.log 2>&1; then
+    echo "OK"
+  else
+    echo "FAIL (cleanup should not require jq)"
+    sed -n '1,40p' /tmp/gopher-ai-cleanup-nojq.log
+    ERRORS=$((ERRORS + 1))
+  fi
+else
+  echo "SKIP (jq not installed locally)"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "Codex --user mode is rejected with migration message... "
+if HOME="$(mktemp -d)" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-rejected.log 2>&1; then
+  echo "FAIL (--user should exit non-zero)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q "removed" /tmp/gopher-ai-user-rejected.log; then
+  echo "FAIL (no migration message)"
+  sed -n '1,40p' /tmp/gopher-ai-user-rejected.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Build no longer emits dist/codex/skills/... "
+if [ -d "$ROOT_DIR/dist/codex/skills" ]; then
+  echo "FAIL (dist/codex/skills/ still exists after build)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
 
 echo ""
 if [ $ERRORS -gt 0 ]; then

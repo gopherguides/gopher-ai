@@ -1,10 +1,6 @@
 ---
 name: prune-worktree
-description: |
-  WHEN: User wants to batch-clean all completed git worktrees, says "prune worktrees",
-  "clean up worktrees", "remove old worktrees", or invokes $prune-worktree.
-  WHEN NOT: User wants to remove a single specific worktree (use $remove-worktree) or
-  create a new worktree (use $create-worktree).
+description: "Batch-clean all completed git worktrees. Trigger on 'prune worktrees', 'clean up worktrees'."
 ---
 
 # Prune Worktrees

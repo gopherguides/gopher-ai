@@ -1,15 +1,6 @@
 ---
 name: gemini-image
-description: |
-  WHEN: User asks to "generate an image", "create an image", "make a picture",
-  "create a graphic", "generate artwork", "make an illustration", "create a visual",
-  "generate a photo", "make a banner", "create a hero image", "generate a thumbnail",
-  "make a logo", "create an icon", "I need an image", or similar image generation
-  requests. Also trigger when user says "use Gemini to make", "AI-generated image",
-  or "image for my blog/site/project".
-  WHEN NOT: User is discussing image formats, image processing code, or asking about
-  image generation conceptually. Do not trigger for screenshots, editing existing
-  images, or when the user explicitly wants DALL-E, Midjourney, or Stable Diffusion.
+description: "Generate images via Google Gemini AI. Trigger for image/picture/graphic/illustration/banner/logo/icon generation requests."
 ---
 
 # Gemini Image Generation

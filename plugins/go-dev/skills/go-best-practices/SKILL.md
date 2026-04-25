@@ -1,11 +1,6 @@
 ---
 name: go-best-practices
-description: |
-  WHEN: User is writing Go code, asking about Go patterns, reviewing Go code, asking
-  "what's the best way to...", "how should I structure...", "is this idiomatic?",
-  or any general Go development question. Trigger this skill liberally for ANY Go-related
-  development work as a routing hub to specialized skills.
-  WHEN NOT: Non-Go languages, questions entirely unrelated to programming
+description: "Idiomatic Go patterns and routing hub to specialized Go skills (interfaces, concurrency, testing, errors, profiling, organization)."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

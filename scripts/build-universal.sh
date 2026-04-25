@@ -19,7 +19,7 @@ build_codex() {
     echo "-------------------------"
 
     local codex_dir="$DIST_DIR/codex"
-    mkdir -p "$codex_dir/plugins" "$codex_dir/skills"
+    mkdir -p "$codex_dir/plugins"
 
     # Build Codex plugin packages for plugins with .codex-plugin/plugin.json
     for plugin_dir in "$ROOT_DIR"/plugins/*; do
@@ -36,17 +36,6 @@ build_codex() {
 
     echo "  - Generating marketplace.json"
     generate_codex_marketplace > "$codex_dir/plugins/marketplace.json"
-
-    for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
-        if [[ -f "${skill_dir}SKILL.md" ]]; then
-            skill_name=$(basename "$skill_dir")
-            mkdir -p "$codex_dir/skills/$skill_name"
-            cp "${skill_dir}"*.md "$codex_dir/skills/$skill_name/"
-            if [[ -d "${skill_dir}references" ]]; then
-                cp -R "${skill_dir}references" "$codex_dir/skills/$skill_name/"
-            fi
-        fi
-    done
 
     echo "  - Generating AGENTS.md"
     generate_agents_md > "$codex_dir/AGENTS.md"
@@ -148,32 +137,17 @@ To add these plugins to another repo:
 ./scripts/install-codex.sh --repo /path/to/your-repo
 ```
 
-### Global (Personal) Installation and Update
+### Global (Personal) Use
 
-To install or replace the current gopher-ai plugins in your personal Codex setup:
+For Codex, "global" means cloning this repo and running Codex inside it — Codex auto-discovers `.agents/plugins/marketplace.json` and offers the plugins through `/plugins`. There is no flat-skills install path; the previous `--user` mode was removed because it double-loaded skills alongside the marketplace and overflowed Codex's skill metadata budget.
 
-```bash
-./scripts/build-universal.sh
-./scripts/install-codex.sh --user
-```
-
-Or as a one-liner from GitHub:
+If you previously ran `--user`, clean up the legacy entries once:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-codex.sh) --user
+./scripts/install-codex.sh --cleanup
 ```
 
-Restart Codex after installation or update. Use `/plugins` to verify.
-
-### Flat Skills (Legacy)
-
-Individual skills can also be installed without the plugin system:
-
-```bash
-cp -r dist/codex/skills/* ~/.codex/skills/
-```
-
-Or use the built-in `$skill-installer` for curated skills.
+Restart Codex after cleanup. Use `/plugins` to verify.
 
 ## Architecture
 
@@ -421,14 +395,11 @@ print_summary() {
     echo ""
     echo "Installation instructions:"
     echo ""
-    echo "  Codex CLI (user-level plugins):"
-    echo "    ./scripts/install-codex.sh --user"
-    echo ""
     echo "  Codex CLI (repo-level plugins):"
     echo "    ./scripts/install-codex.sh --repo /path/to/your-repo"
     echo ""
-    echo "  Codex CLI (flat skills, legacy):"
-    echo "    cp -r dist/codex/skills/* ~/.codex/skills/"
+    echo "  Codex CLI (clean up legacy ~/.codex/skills/ entries):"
+    echo "    ./scripts/install-codex.sh --cleanup"
     echo ""
     echo "  Gemini CLI:"
     echo "    gemini extensions install ./dist/gemini/gopher-ai-<plugin>"
