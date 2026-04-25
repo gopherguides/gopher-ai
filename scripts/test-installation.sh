@@ -424,7 +424,7 @@ else
   echo "OK"
 fi
 
-echo -n "legacy-skill-hashes.txt is in sync with git history... "
+echo -n "legacy-skill-hashes.txt matches git history exactly... "
 if [ ! -f "$ROOT_DIR/scripts/legacy-skill-hashes.txt" ]; then
   echo "FAIL (manifest missing — run scripts/regen-legacy-hashes.sh)"
   ERRORS=$((ERRORS + 1))
@@ -437,10 +437,18 @@ else
           [ -n "$h" ] && echo "$h $skill_name"
         done | sort -u)
   ACTUAL=$(awk '/^[[:space:]]*#/{next} /^[[:space:]]*$/{next} {print}' "$ROOT_DIR/scripts/legacy-skill-hashes.txt" | sort -u)
-  # The manifest must be a SUPERSET of expected (hash, skill_name) pairs.
+  # Exact equality — the manifest is the ownership oracle for `--cleanup`,
+  # so an extra (hash, skill_name) pair would expand what gets deleted.
+  # Both missing and extra pairs are failures.
   MISSING=$(comm -23 <(echo "$EXPECTED") <(echo "$ACTUAL"))
-  if [ -n "$MISSING" ]; then
-    echo "FAIL ($(echo "$MISSING" | wc -l | tr -d ' ') missing pairs — run scripts/regen-legacy-hashes.sh)"
+  EXTRA=$(comm -13 <(echo "$EXPECTED") <(echo "$ACTUAL"))
+  if [ -n "$MISSING" ] || [ -n "$EXTRA" ]; then
+    echo "FAIL"
+    [ -n "$MISSING" ] && echo "  missing $(echo "$MISSING" | wc -l | tr -d ' ') pair(s) — run scripts/regen-legacy-hashes.sh"
+    [ -n "$EXTRA" ] && {
+      echo "  $(echo "$EXTRA" | wc -l | tr -d ' ') extra pair(s) not in git history (potential ownership-oracle pollution):"
+      echo "$EXTRA" | head -3 | sed 's/^/    /'
+    }
     ERRORS=$((ERRORS + 1))
   else
     echo "OK ($(echo "$ACTUAL" | wc -l | tr -d ' ') pairs)"
@@ -555,6 +563,79 @@ else
   echo "OK"
 fi
 rm -rf "$TMP_HOME"
+
+echo -n "SessionStart hook works with shasum fallback (no sha256sum)... "
+# Stock macOS doesn't have sha256sum — only shasum. This test simulates that
+# environment by hiding sha256sum from PATH and verifying cleanup still works.
+TMP_HOME=$(mktemp -d)
+TMP_PLUGIN=$(mktemp -d)/go-workflow
+mkdir -p "$TMP_HOME/.codex/skills" "$TMP_PLUGIN/hooks" "$TMP_PLUGIN/.claude-plugin"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json" "$TMP_PLUGIN/.claude-plugin/"
+SEEDED_OWNED=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  [ -f "$skill_dir/SKILL.md" ] || continue
+  skill_name=$(basename "$skill_dir")
+  SEEDED_OWNED="$skill_name"
+  mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
+  cp "$skill_dir/SKILL.md" "$TMP_HOME/.codex/skills/$skill_name/SKILL.md"
+  break
+done
+# Build a controlled PATH that has shasum and openssl available, but NOT sha256sum.
+# This simulates stock macOS.
+SHASUM_PATH="$(command -v shasum 2>/dev/null || true)"
+if [ -z "$SHASUM_PATH" ]; then
+  echo "SKIP (shasum not installed locally — cannot simulate macOS)"
+else
+  TMP_BIN=$(mktemp -d)
+  for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail sort uniq stat shasum; do
+    cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
+    [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
+  done
+  # Deliberately do NOT link sha256sum.
+  if CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" PATH="$TMP_BIN" \
+     bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-shasum.log 2>&1; then
+    if [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
+      echo "FAIL (skill not removed when only shasum is available)"
+      cat /tmp/gopher-ai-hook-shasum.log
+      ERRORS=$((ERRORS + 1))
+    else
+      echo "OK"
+    fi
+  else
+    echo "FAIL (hook errored without sha256sum)"
+    cat /tmp/gopher-ai-hook-shasum.log
+    ERRORS=$((ERRORS + 1))
+  fi
+  rm -rf "$TMP_BIN"
+fi
+rm -rf "$TMP_HOME" "$(dirname "$TMP_PLUGIN")"
+
+echo -n "regen-legacy-hashes.sh refuses to run on a shallow clone... "
+TMP_REPO=$(mktemp -d)
+# Make a real shallow clone — --no-local disables git's local-clone optimization
+# that would otherwise hardlink the full object database and ignore --depth.
+if git clone --depth=1 --no-local --quiet "$ROOT_DIR" "$TMP_REPO/repo" 2>/dev/null; then
+  # Use the working-tree version of regen-legacy-hashes.sh (so the test sees
+  # uncommitted edits) but execute it against the shallow clone.
+  cp "$ROOT_DIR/scripts/regen-legacy-hashes.sh" "$TMP_REPO/repo/scripts/regen-legacy-hashes.sh"
+  if ! bash "$TMP_REPO/repo/scripts/regen-legacy-hashes.sh" >/tmp/gopher-ai-shallow.log 2>&1; then
+    if grep -q -i "shallow" /tmp/gopher-ai-shallow.log; then
+      echo "OK"
+    else
+      echo "FAIL (exited non-zero but didn't mention shallow)"
+      sed -n '1,15p' /tmp/gopher-ai-shallow.log
+      ERRORS=$((ERRORS + 1))
+    fi
+  else
+    echo "FAIL (regen succeeded on shallow clone — should have refused)"
+    ERRORS=$((ERRORS + 1))
+  fi
+else
+  echo "SKIP (could not create shallow test clone)"
+fi
+rm -rf "$TMP_REPO"
 
 echo -n "SessionStart hook short-circuits when ~/.codex/ missing... "
 TMP_HOME=$(mktemp -d)

@@ -33,10 +33,37 @@ PLUGIN_VERSION="$(awk -F'"' '/"version"/ {print $4; exit}' "$PLUGIN_ROOT/.claude
 MARKER="$HOME/.codex/.gopher-ai-cleanup-$PLUGIN_VERSION"
 [[ -f "$MARKER" ]] && exit 0
 
-# Don't depend on tools the user might not have. Need: sha256sum, awk, basename, rm.
-for cmd in sha256sum awk basename; do
+# Detect a portable sha256 implementation. macOS ships `shasum -a 256` but not
+# `sha256sum`; some minimal Linux installs and busybox-based systems ship
+# `sha256sum` but not `shasum`. Use whichever is available so the migration
+# actually runs on stock macOS (the majority case for gopher-ai users).
+SHA256_CMD=""
+if command -v sha256sum >/dev/null 2>&1; then
+    SHA256_CMD="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+    SHA256_CMD="shasum -a 256"
+elif command -v openssl >/dev/null 2>&1; then
+    # `openssl dgst -sha256` prints "SHA2-256(file)= <hash>" or "(stdin)= <hash>";
+    # we wrap it so the consumers downstream can `awk '{print $1}'` uniformly.
+    SHA256_CMD="openssl_sha256_compat"
+    openssl_sha256_compat() {
+        openssl dgst -sha256 "$@" 2>/dev/null | awk '{print $NF, "-"}'
+    }
+fi
+[[ -n "$SHA256_CMD" ]] || exit 0
+
+for cmd in awk basename; do
     command -v "$cmd" >/dev/null 2>&1 || exit 0
 done
+
+# Wrap the chosen hash command so call sites stay uniform.
+sha256_of() {
+    if [[ "$SHA256_CMD" == "openssl_sha256_compat" ]]; then
+        openssl_sha256_compat "$1" | awk '{print $1}'
+    else
+        $SHA256_CMD "$1" 2>/dev/null | awk '{print $1}'
+    fi
+}
 
 # Read the SKILL.md frontmatter `name:` field. Returns empty if missing or
 # malformed. Tolerant of single quotes, double quotes, and unquoted values.
@@ -81,7 +108,7 @@ while IFS= read -r skill_name; do
     [[ "$fm_name" == "$skill_name" ]] || continue
 
     # Check 2: SKILL.md content hash matches a (hash, skill_name) pair we shipped.
-    candidate_hash="$(sha256sum "$skill_md" 2>/dev/null | awk '{print $1}')"
+    candidate_hash="$(sha256_of "$skill_md")"
     [[ -n "$candidate_hash" ]] || continue
     if ! awk -v target_hash="$candidate_hash" -v target_skill="$skill_name" '
         /^[[:space:]]*#/ { next }

@@ -29,6 +29,25 @@ if [[ ! -d .git ]]; then
     exit 1
 fi
 
+# Refuse to run on a shallow clone — it would silently produce a manifest
+# missing historical SKILL.md hashes that are precisely what the migration
+# needs. CI runners (e.g. actions/checkout@v4) default to shallow.
+if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null)" == "true" ]]; then
+    cat >&2 <<'EOF'
+error: this is a shallow git clone. The manifest must be built from the FULL
+history because its purpose is to recognize OLD shipped versions of SKILL.md
+files left in users' ~/.codex/skills/. A shallow regen would write a partial
+manifest that silently fails to migrate older --user installs.
+
+Fix: fetch full history first, then re-run.
+
+  git fetch --unshallow
+
+(In CI: set fetch-depth: 0 on actions/checkout.)
+EOF
+    exit 1
+fi
+
 # Collect every blob OID that has ever existed at a path matching
 # plugins/<plugin>/skills/<skill>/SKILL.md, then emit <sha256> <skill_name>
 # pairs. The skill name is necessary to preserve per-skill ownership during
