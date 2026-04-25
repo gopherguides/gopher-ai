@@ -41,23 +41,37 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# If we're running from a curl pipe (no local repo), bootstrap from GitHub
+# If we're running from a curl pipe (no local repo), bootstrap from GitHub.
+# Prefers `git clone` so the Codex cleanup migration has full history access;
+# falls back to `curl | tar` if git is missing (the shipped legacy-skill-hashes
+# manifest covers ownership verification in that case).
 bootstrap_if_needed() {
     if [[ -f "$ROOT_DIR/scripts/build-universal.sh" ]]; then
         return
     fi
 
     echo "No local repo detected — bootstrapping from GitHub..."
-    command -v curl >/dev/null 2>&1 || { echo "error: curl required for remote install" >&2; exit 1; }
-    command -v tar >/dev/null 2>&1 || { echo "error: tar required for remote install" >&2; exit 1; }
-
     BOOTSTRAP_DIR="$(mktemp -d)"
-    curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$BOOTSTRAP_DIR"
+    local extracted=""
 
-    local extracted
-    extracted="$(find "$BOOTSTRAP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    if command -v git >/dev/null 2>&1; then
+        local clone_url="https://github.com/${REPO_SLUG}.git"
+        extracted="$BOOTSTRAP_DIR/gopher-ai"
+        if ! git clone --quiet --branch "$REPO_REF" --single-branch \
+                "$clone_url" "$extracted" 2>/dev/null; then
+            extracted=""
+        fi
+    fi
+
+    if [[ -z "$extracted" ]]; then
+        command -v curl >/dev/null 2>&1 || { echo "error: curl required for remote install" >&2; exit 1; }
+        command -v tar >/dev/null 2>&1 || { echo "error: tar required for remote install" >&2; exit 1; }
+        curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$BOOTSTRAP_DIR"
+        extracted="$(find "$BOOTSTRAP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    fi
+
     if [[ -z "$extracted" || ! -f "$extracted/scripts/build-universal.sh" ]]; then
-        echo "error: failed to bootstrap gopher-ai from $ARCHIVE_URL" >&2
+        echo "error: failed to bootstrap gopher-ai from $REPO_SLUG@$REPO_REF" >&2
         exit 1
     fi
 
@@ -197,14 +211,27 @@ install_gemini() {
         [[ -d "$ext_dir" ]] || continue
         local ext_name
         ext_name="$(basename "$ext_dir")"
+
+        # `gemini extensions install` refuses to run when an extension of the
+        # same name is already installed. Uninstall first so updates work.
+        # The uninstall failing (e.g. extension wasn't installed before) is fine.
+        gemini extensions uninstall "$ext_name" >/dev/null 2>&1 || true
+
         echo "  Installing extension: $ext_name"
-        # --consent skips the interactive trust prompt per extension
-        if gemini extensions install "$ext_dir" --consent 2>&1; then
+        # --consent skips the interactive trust prompt per extension. Suppress
+        # stderr from unrelated extensions (Gemini eagerly loads every other
+        # installed extension on each install command, so an unrelated extension
+        # with a malformed agent file spams errors here for every install).
+        if gemini extensions install "$ext_dir" --consent >/tmp/gemini-install-$$.out 2>/tmp/gemini-install-$$.err; then
             installed=$((installed + 1))
         else
             echo "  Warning: failed to install $ext_name"
+            echo "  --- gemini stderr ---"
+            tail -5 /tmp/gemini-install-$$.err
+            echo "  ---------------------"
             failed=$((failed + 1))
         fi
+        rm -f /tmp/gemini-install-$$.out /tmp/gemini-install-$$.err
     done
 
     if [[ $installed -gt 0 ]]; then

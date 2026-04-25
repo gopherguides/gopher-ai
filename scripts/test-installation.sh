@@ -315,6 +315,105 @@ else
 fi
 rm -rf "$TMP_HOME"
 
+echo -n "Codex --cleanup works in bootstrap mode (no .git, manifest only)... "
+# Reproduces Cory's failure: install via curl one-liner pulls a tarball with
+# no .git/. The skill content is from an OLD shipped version (pre-trim).
+# Without the manifest, current-source-hash check would fail; with the
+# manifest, the cleanup correctly identifies and removes the legacy install.
+TMP_HOME=$(mktemp -d)
+TMP_FAKE_ROOT=$(mktemp -d)
+SKILLS_DIR="$TMP_HOME/.codex/skills"
+mkdir -p "$SKILLS_DIR"
+# Build a fake bootstrap root (mirrors what curl|tar produces): plugins/, scripts/,
+# and the manifest, but NO .git/.
+mkdir -p "$TMP_FAKE_ROOT/plugins" "$TMP_FAKE_ROOT/scripts"
+cp -R "$ROOT_DIR/plugins"/. "$TMP_FAKE_ROOT/plugins/"
+cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_FAKE_ROOT/scripts/"
+cp "$ROOT_DIR/scripts/build-universal.sh" "$TMP_FAKE_ROOT/scripts/" 2>/dev/null || true
+cp "$ROOT_DIR/scripts/legacy-skill-hashes.txt" "$TMP_FAKE_ROOT/scripts/"
+SEEDED_OWNED=""
+# Pick a hash from the manifest that is NOT the current SKILL.md content for
+# any skill — that simulates a stale install. We do this by finding a skill
+# whose manifest entry differs from the current file hash.
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  skill_name=$(basename "$skill_dir")
+  CURRENT_HASH=$(sha256sum "$skill_dir/SKILL.md" | awk '{print $1}')
+  # Find a manifest hash that differs from current — that's a historical version.
+  HISTORICAL_HASH=$(grep -v '^#' "$ROOT_DIR/scripts/legacy-skill-hashes.txt" | grep -v '^$' | grep -v "^$CURRENT_HASH$" | head -1)
+  [ -n "$HISTORICAL_HASH" ] || continue
+  # Find a blob with this hash from git history and reconstruct it as a stale install.
+  STALE_BLOB=$(cd "$ROOT_DIR" && git rev-list --objects --all | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1, $2}' | while read blob path; do
+    h=$(git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
+    if [ "$h" = "$HISTORICAL_HASH" ] && [ "$(basename "$(dirname "$path")")" = "$skill_name" ]; then
+      echo "$blob"
+      break
+    fi
+  done | head -1)
+  if [ -n "$STALE_BLOB" ]; then
+    SEEDED_OWNED="$skill_name"
+    mkdir -p "$SKILLS_DIR/$skill_name"
+    (cd "$ROOT_DIR" && git cat-file blob "$STALE_BLOB") > "$SKILLS_DIR/$skill_name/SKILL.md"
+    break
+  fi
+done
+if [ -z "$SEEDED_OWNED" ]; then
+  echo "SKIP (no historical-but-not-current SKILL.md found in manifest)"
+else
+  if ! HOME="$TMP_HOME" bash "$TMP_FAKE_ROOT/scripts/install-codex.sh" --cleanup --yes >/tmp/gopher-ai-bootstrap-cleanup.log 2>&1; then
+    echo "FAIL"
+    sed -n '1,40p' /tmp/gopher-ai-bootstrap-cleanup.log
+    ERRORS=$((ERRORS + 1))
+  elif [ -d "$SKILLS_DIR/$SEEDED_OWNED" ]; then
+    echo "FAIL (stale gopher-ai skill not removed in bootstrap mode: $SEEDED_OWNED)"
+    sed -n '1,40p' /tmp/gopher-ai-bootstrap-cleanup.log
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+rm -rf "$TMP_HOME" "$TMP_FAKE_ROOT"
+
+echo -n "Gemini agent files have valid YAML frontmatter... "
+AGENT_ERRORS=""
+for f in "$ROOT_DIR"/plugins/*/agents/*.md; do
+  [ -f "$f" ] || continue
+  if ! head -1 "$f" | grep -q '^---$'; then
+    AGENT_ERRORS="$AGENT_ERRORS $f"
+    continue
+  fi
+  # Must have a closing --- and a name field.
+  if ! awk '/^---$/{c++} c==1 && /^name:[[:space:]]/{found=1} END{exit found?0:1}' "$f"; then
+    AGENT_ERRORS="$AGENT_ERRORS $f(no-name)"
+  fi
+done
+if [ -n "$AGENT_ERRORS" ]; then
+  echo "FAIL:$AGENT_ERRORS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "legacy-skill-hashes.txt is in sync with git history... "
+if [ ! -f "$ROOT_DIR/scripts/legacy-skill-hashes.txt" ]; then
+  echo "FAIL (manifest missing — run scripts/regen-legacy-hashes.sh)"
+  ERRORS=$((ERRORS + 1))
+else
+  EXPECTED=$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
+      | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1}' | sort -u \
+      | while read blob; do (cd "$ROOT_DIR" && git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}'); done \
+      | sort -u)
+  ACTUAL=$(grep -v '^#' "$ROOT_DIR/scripts/legacy-skill-hashes.txt" | grep -v '^$' | sort -u)
+  # The manifest must be a SUPERSET of expected — so newly committed SKILL.md
+  # versions are caught even if regen wasn't re-run for the absolute latest commit.
+  MISSING=$(comm -23 <(echo "$EXPECTED") <(echo "$ACTUAL"))
+  if [ -n "$MISSING" ]; then
+    echo "FAIL (missing $(echo "$MISSING" | wc -l | tr -d ' ') hashes — run scripts/regen-legacy-hashes.sh)"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK ($(echo "$ACTUAL" | wc -l | tr -d ' ') hashes)"
+  fi
+fi
+
 echo -n "Codex --user mode is rejected with migration message... "
 if HOME="$(mktemp -d)" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-rejected.log 2>&1; then
   echo "FAIL (--user should exit non-zero)"

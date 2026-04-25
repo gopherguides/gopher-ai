@@ -66,16 +66,30 @@ bootstrap_repo() {
         return
     fi
 
-    require_cmd curl
-    require_cmd tar
-
     BOOTSTRAP_DIR="$(mktemp -d)"
-    curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$BOOTSTRAP_DIR"
+    local extracted_root=""
 
-    local extracted_root
-    extracted_root="$(find "$BOOTSTRAP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    # Prefer git clone when available — gives the cleanup logic full history
+    # access. Falls back to curl|tar if git is missing, in which case the
+    # shipped legacy-skill-hashes.txt manifest covers ownership verification.
+    if command -v git >/dev/null 2>&1; then
+        local clone_url="https://github.com/${REPO_SLUG}.git"
+        extracted_root="$BOOTSTRAP_DIR/gopher-ai"
+        if ! git clone --quiet --branch "$REPO_REF" --single-branch \
+                "$clone_url" "$extracted_root" 2>/dev/null; then
+            extracted_root=""  # clone failed, fall through
+        fi
+    fi
+
+    if [[ -z "$extracted_root" ]]; then
+        require_cmd curl
+        require_cmd tar
+        curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$BOOTSTRAP_DIR"
+        extracted_root="$(find "$BOOTSTRAP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    fi
+
     if [[ -z "$extracted_root" || ! -f "$extracted_root/scripts/build-universal.sh" ]]; then
-        echo "error: failed to bootstrap gopher-ai from $ARCHIVE_URL" >&2
+        echo "error: failed to bootstrap gopher-ai from $REPO_SLUG@$REPO_REF" >&2
         exit 1
     fi
 
@@ -133,10 +147,16 @@ skill_md_name() {
 }
 
 # Returns 0 if the candidate file's content matches some historical or current
-# version of the corresponding gopher-ai SKILL.md. Uses git history when this
-# script is running from a real clone (with .git/), so old --user installs of
-# previous gopher-ai versions still match. In bootstrap mode (curl-piped tarball,
-# no .git/), falls back to comparing against just the current source.
+# version of a gopher-ai SKILL.md. Three sources are checked, in order:
+#
+# 1. Current source files (plugins/*/skills/<name>/SKILL.md) — always available.
+# 2. The shipped manifest (scripts/legacy-skill-hashes.txt) — sha256 hashes of
+#    every SKILL.md blob this repo has ever committed. Built by
+#    scripts/regen-legacy-hashes.sh and committed alongside the source. This
+#    is what makes --cleanup work in curl-piped bootstrap mode (where there
+#    is no .git/ directory at install time).
+# 3. Live git history when .git/ is available — covers commits made after
+#    the manifest was last regenerated.
 file_matches_known_skill_content() {
     local skill_name="$1"
     local candidate_file="$2"
@@ -146,8 +166,7 @@ file_matches_known_skill_content() {
     candidate_hash="$(sha256sum "$candidate_file" 2>/dev/null | awk '{print $1}')"
     [[ -n "$candidate_hash" ]] || return 1
 
-    # Always include current files (covers bootstrap mode and avoids requiring git
-    # for users who installed the latest version).
+    # 1. Current source files.
     local p
     for p in "$ROOT_DIR"/plugins/*/skills/"$skill_name"/SKILL.md; do
         [[ -f "$p" ]] || continue
@@ -156,8 +175,22 @@ file_matches_known_skill_content() {
         [[ "$h" == "$candidate_hash" ]] && return 0
     done
 
-    # If we have git history, also check every historical blob for any path
-    # matching plugins/*/skills/<name>/SKILL.md.
+    # 2. Shipped manifest of historical hashes (works without git history).
+    local manifest="$ROOT_DIR/scripts/legacy-skill-hashes.txt"
+    if [[ -f "$manifest" ]]; then
+        # The manifest stores one hash per non-comment line. Use awk for a
+        # single pass without spawning grep.
+        if awk -v target="$candidate_hash" '
+            /^[[:space:]]*#/ { next }
+            /^[[:space:]]*$/ { next }
+            $1 == target { found = 1; exit }
+            END { exit (found ? 0 : 1) }
+        ' "$manifest"; then
+            return 0
+        fi
+    fi
+
+    # 3. Live git history (covers blobs committed after the manifest was regen'd).
     if (cd "$ROOT_DIR" && [[ -d .git ]]) 2>/dev/null; then
         local blobs
         blobs="$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
@@ -233,9 +266,10 @@ cleanup_legacy_user_skills() {
         for entry in "${skipped_content_mismatch[@]}"; do
             echo "  $entry"
         done
-        if [[ "$has_git_history" == "false" ]]; then
-            echo "  (note: running without git history; only current sources were checked."
-            echo "   to migrate stale --user installs, clone the repo and run --cleanup from there.)"
+        if [[ "$has_git_history" == "false" ]] && [[ ! -f "$ROOT_DIR/scripts/legacy-skill-hashes.txt" ]]; then
+            echo "  (note: running without git history and no legacy-skill-hashes.txt manifest"
+            echo "   was found; only current sources were checked. To migrate older --user"
+            echo "   installs, clone the repo and run --cleanup from there.)"
         fi
     fi
 
