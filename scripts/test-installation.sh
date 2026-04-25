@@ -485,6 +485,102 @@ fi
 rm -rf "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
 rm -f "$LOG_FILE"
 
+echo -n "SessionStart hook auto-cleans legacy Codex skills... "
+TMP_HOME=$(mktemp -d)
+TMP_PLUGIN=$(mktemp -d)/go-workflow
+mkdir -p "$TMP_HOME/.codex/skills" "$TMP_PLUGIN/hooks" "$TMP_PLUGIN/.claude-plugin"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json" "$TMP_PLUGIN/.claude-plugin/"
+SEEDED_OWNED=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  [ -f "$skill_dir/SKILL.md" ] || continue
+  skill_name=$(basename "$skill_dir")
+  SEEDED_OWNED="$skill_name"
+  mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
+  cp "$skill_dir/SKILL.md" "$TMP_HOME/.codex/skills/$skill_name/SKILL.md"
+  break
+done
+mkdir -p "$TMP_HOME/.codex/skills/user-custom-skill"
+printf -- "---\nname: user-custom-skill\ndescription: stays\n---\n" > "$TMP_HOME/.codex/skills/user-custom-skill/SKILL.md"
+
+CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-1.log 2>&1
+HOOK_EXIT=$?
+if [ "$HOOK_EXIT" -ne 0 ]; then
+  echo "FAIL (hook exited $HOOK_EXIT)"
+  cat /tmp/gopher-ai-hook-1.log
+  ERRORS=$((ERRORS + 1))
+elif [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
+  echo "FAIL (owned skill not removed: $SEEDED_OWNED)"
+  cat /tmp/gopher-ai-hook-1.log
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$TMP_HOME/.codex/skills/user-custom-skill" ]; then
+  echo "FAIL (cleanup wrongly removed user-custom-skill)"
+  ERRORS=$((ERRORS + 1))
+elif ! ls "$TMP_HOME/.codex/.gopher-ai-cleanup-"* >/dev/null 2>&1; then
+  echo "FAIL (marker file not written)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q "🧹 gopher-ai: removed" /tmp/gopher-ai-hook-1.log; then
+  echo "FAIL (no summary printed to stderr)"
+  cat /tmp/gopher-ai-hook-1.log
+  ERRORS=$((ERRORS + 1))
+else
+  # Re-run: marker should gate; second run must produce no output and not re-scan.
+  CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-2.log 2>&1
+  if [ -s /tmp/gopher-ai-hook-2.log ]; then
+    echo "FAIL (second run was not gated by marker — output produced)"
+    cat /tmp/gopher-ai-hook-2.log
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+rm -rf "$TMP_HOME" "$(dirname "$TMP_PLUGIN")"
+
+echo -n "SessionStart hook is silent on clean ~/.codex/skills/... "
+TMP_HOME=$(mktemp -d)
+mkdir -p "$TMP_HOME/.codex/skills"
+mkdir -p "$TMP_HOME/.codex/skills/user-custom-skill"
+printf -- "---\nname: user-custom-skill\ndescription: stays\n---\n" > "$TMP_HOME/.codex/skills/user-custom-skill/SKILL.md"
+CLAUDE_PLUGIN_ROOT="$ROOT_DIR/plugins/go-workflow" HOME="$TMP_HOME" \
+  bash "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-clean.log 2>&1
+if [ ! -d "$TMP_HOME/.codex/skills/user-custom-skill" ]; then
+  echo "FAIL (cleanup wrongly removed user-custom-skill)"
+  ERRORS=$((ERRORS + 1))
+elif [ -s /tmp/gopher-ai-hook-clean.log ]; then
+  echo "FAIL (hook printed output when there was nothing to clean)"
+  cat /tmp/gopher-ai-hook-clean.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "SessionStart hook short-circuits when ~/.codex/ missing... "
+TMP_HOME=$(mktemp -d)
+# No ~/.codex/ at all — hook must exit 0 silently.
+CLAUDE_PLUGIN_ROOT="$ROOT_DIR/plugins/go-workflow" HOME="$TMP_HOME" \
+  bash "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-nocodex.log 2>&1
+HOOK_EXIT=$?
+if [ "$HOOK_EXIT" -ne 0 ]; then
+  echo "FAIL (hook should exit 0 on no ~/.codex/)"
+  ERRORS=$((ERRORS + 1))
+elif [ -s /tmp/gopher-ai-hook-nocodex.log ]; then
+  echo "FAIL (hook printed output when ~/.codex/ was missing)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "Plugin-side manifest is in sync with scripts/ copy... "
+if ! diff -q "$ROOT_DIR/scripts/legacy-skill-hashes.txt" "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" >/dev/null 2>&1; then
+  echo "FAIL (run scripts/regen-legacy-hashes.sh)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Codex --user mode is rejected with migration message... "
 if HOME="$(mktemp -d)" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-rejected.log 2>&1; then
   echo "FAIL (--user should exit non-zero)"

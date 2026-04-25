@@ -17,6 +17,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MANIFEST="$ROOT_DIR/scripts/legacy-skill-hashes.txt"
+# The hook ships its own copy because Claude Code installs the plugin to a
+# cache directory without the repo's scripts/. Both files are the source of
+# truth, kept identical by this regen.
+HOOK_MANIFEST="$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt"
 
 cd "$ROOT_DIR"
 
@@ -58,4 +62,10 @@ cat > "$MANIFEST" <<EOF
 EOF
 cat "$TMP" >> "$MANIFEST"
 
+# Mirror to the plugin so the SessionStart hook can read it without depending
+# on the repo's scripts/ directory.
+mkdir -p "$(dirname "$HOOK_MANIFEST")"
+cp "$MANIFEST" "$HOOK_MANIFEST"
+
 echo "regenerated: $MANIFEST ($count unique <hash skill_name> pairs)"
+echo "mirrored to: $HOOK_MANIFEST"
