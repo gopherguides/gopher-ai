@@ -428,38 +428,40 @@ fi
 echo -n "Bootstrap honors GOPHER_AI_ARCHIVE_URL override... "
 # Regression test for #146 review finding: setting GOPHER_AI_ARCHIVE_URL must
 # bypass the git-clone preference so callers can test PR tarballs / mirrors.
+# This test runs install-codex.sh from a path WITHOUT scripts/build-universal.sh
+# (so bootstrap_repo() runs), points GOPHER_AI_ARCHIVE_URL at a local tarball,
+# and asserts the script logs "Bootstrap source: curl <archive>" — proving the
+# archive path ran rather than the default git-clone path.
 TMP_HOME=$(mktemp -d)
 TMP_SCRIPT_DIR=$(mktemp -d)
 TMP_ARCHIVE_DIR=$(mktemp -d)
 cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_SCRIPT_DIR/install-codex.sh"
 cp -R "$ROOT_DIR" "$TMP_ARCHIVE_DIR/gopher-ai-main"
-# Mark this archive distinctly so we can confirm bootstrap pulled from it
-# rather than from the GitHub clone path.
-touch "$TMP_ARCHIVE_DIR/gopher-ai-main/SENTINEL_FROM_ARCHIVE"
 tar -czf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" -C "$TMP_ARCHIVE_DIR" gopher-ai-main
-# Patch the install-codex.sh copy to leave BOOTSTRAP_DIR in place so we can
-# inspect what was extracted. The trap on EXIT cleans it up otherwise.
 mkdir -p "$TMP_HOME/.codex/skills"
+LOG_FILE=$(mktemp)
 if HOME="$TMP_HOME" GOPHER_AI_ARCHIVE_URL="file://$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" \
-   bash -c '
-     # Disable the trap that wipes BOOTSTRAP_DIR so we can verify what was extracted.
-     export DEBUG_BOOTSTRAP=1
-     bash "$0" --cleanup --yes 2>&1
-   ' "$TMP_SCRIPT_DIR/install-codex.sh" >/tmp/gopher-ai-archive-override.log 2>&1; then
-  # Sanity: the script ran successfully (no candidates to clean from a fresh tmp HOME).
-  if grep -q "no legacy gopher-ai skills found\|no ~/.codex/skills/ directory" /tmp/gopher-ai-archive-override.log; then
+   bash "$TMP_SCRIPT_DIR/install-codex.sh" --cleanup --yes >"$LOG_FILE" 2>&1; then
+  # Strict assertion: the bootstrap log line must show the archive path was used,
+  # NOT the git-clone path. This guards against the regression from #146 round 1.
+  if grep -q "Bootstrap source: curl file://$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" "$LOG_FILE"; then
     echo "OK"
+  elif grep -q "Bootstrap source: git clone" "$LOG_FILE"; then
+    echo "FAIL (bootstrap silently cloned default repo, ignoring GOPHER_AI_ARCHIVE_URL)"
+    sed -n '1,30p' "$LOG_FILE"
+    ERRORS=$((ERRORS + 1))
   else
-    echo "FAIL (unexpected output)"
-    sed -n '1,30p' /tmp/gopher-ai-archive-override.log
+    echo "FAIL (no Bootstrap source log line found — install-codex.sh may have lost the trace echo)"
+    sed -n '1,30p' "$LOG_FILE"
     ERRORS=$((ERRORS + 1))
   fi
 else
   echo "FAIL (script exited non-zero with archive URL override)"
-  sed -n '1,30p' /tmp/gopher-ai-archive-override.log
+  sed -n '1,30p' "$LOG_FILE"
   ERRORS=$((ERRORS + 1))
 fi
 rm -rf "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
+rm -f "$LOG_FILE"
 
 echo -n "Codex --user mode is rejected with migration message... "
 if HOME="$(mktemp -d)" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-rejected.log 2>&1; then

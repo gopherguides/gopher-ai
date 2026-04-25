@@ -79,15 +79,20 @@ bootstrap_repo() {
     if [[ -z "${GOPHER_AI_ARCHIVE_URL:-}" ]] && command -v git >/dev/null 2>&1; then
         local clone_url="https://github.com/${REPO_SLUG}.git"
         extracted_root="$BOOTSTRAP_DIR/gopher-ai"
+        echo "Bootstrap source: git clone $clone_url@$REPO_REF" >&2
         if ! git clone --quiet --branch "$REPO_REF" --single-branch \
                 "$clone_url" "$extracted_root" 2>/dev/null; then
-            extracted_root=""  # clone failed, fall through
+            # Remove the partial clone so the tar fallback's `find` doesn't pick
+            # this broken directory over the freshly-extracted archive.
+            rm -rf "$extracted_root"
+            extracted_root=""
         fi
     fi
 
     if [[ -z "$extracted_root" ]]; then
         require_cmd curl
         require_cmd tar
+        echo "Bootstrap source: curl $ARCHIVE_URL" >&2
         curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$BOOTSTRAP_DIR"
         extracted_root="$(find "$BOOTSTRAP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
     fi

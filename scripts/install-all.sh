@@ -61,8 +61,12 @@ bootstrap_if_needed() {
     if [[ -z "${GOPHER_AI_ARCHIVE_URL:-}" ]] && command -v git >/dev/null 2>&1; then
         local clone_url="https://github.com/${REPO_SLUG}.git"
         extracted="$BOOTSTRAP_DIR/gopher-ai"
+        echo "Bootstrap source: git clone $clone_url@$REPO_REF"
         if ! git clone --quiet --branch "$REPO_REF" --single-branch \
                 "$clone_url" "$extracted" 2>/dev/null; then
+            # Remove the partial clone so the tar fallback's `find` doesn't pick
+            # this broken directory over the freshly-extracted archive.
+            rm -rf "$extracted"
             extracted=""
         fi
     fi
@@ -70,6 +74,7 @@ bootstrap_if_needed() {
     if [[ -z "$extracted" ]]; then
         command -v curl >/dev/null 2>&1 || { echo "error: curl required for remote install" >&2; exit 1; }
         command -v tar >/dev/null 2>&1 || { echo "error: tar required for remote install" >&2; exit 1; }
+        echo "Bootstrap source: curl $ARCHIVE_URL"
         curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$BOOTSTRAP_DIR"
         extracted="$(find "$BOOTSTRAP_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
     fi
@@ -211,6 +216,12 @@ install_gemini() {
 
     local installed=0
     local failed=0
+    local out_file err_file
+    out_file="$(mktemp)"
+    err_file="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$out_file' '$err_file'" RETURN
+
     for ext_dir in "$gemini_src"/gopher-ai-*/; do
         [[ -d "$ext_dir" ]] || continue
         local ext_name
@@ -222,20 +233,19 @@ install_gemini() {
         gemini extensions uninstall "$ext_name" >/dev/null 2>&1 || true
 
         echo "  Installing extension: $ext_name"
-        # --consent skips the interactive trust prompt per extension. Suppress
-        # stderr from unrelated extensions (Gemini eagerly loads every other
-        # installed extension on each install command, so an unrelated extension
-        # with a malformed agent file spams errors here for every install).
-        if gemini extensions install "$ext_dir" --consent >/tmp/gemini-install-$$.out 2>/tmp/gemini-install-$$.err; then
+        # --consent skips the interactive trust prompt per extension. Capture
+        # per-extension stdout/stderr to mktemp files so unrelated agent-load
+        # errors (Gemini eagerly loads every installed extension on each install
+        # command) don't flood the log unless this install actually fails.
+        if gemini extensions install "$ext_dir" --consent >"$out_file" 2>"$err_file"; then
             installed=$((installed + 1))
         else
             echo "  Warning: failed to install $ext_name"
             echo "  --- gemini stderr ---"
-            tail -5 /tmp/gemini-install-$$.err
+            tail -5 "$err_file"
             echo "  ---------------------"
             failed=$((failed + 1))
         fi
-        rm -f /tmp/gemini-install-$$.out /tmp/gemini-install-$$.err
     done
 
     if [[ $installed -gt 0 ]]; then
