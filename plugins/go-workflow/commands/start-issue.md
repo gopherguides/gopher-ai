@@ -339,16 +339,18 @@ Store the results: RELEVANT_FILES, PATTERNS, ROOT_CAUSE (bugs) or INTEGRATION_PO
 
 ### Step 4: Design Approach (Features Only)
 
-**HARD GATE: Do NOT start implementation until the user has confirmed the approach.**
+Present the plan before implementing. Plan approval is the gate — once the user accepts the plan, you have approval for everything in it (including data migrations, schema changes, and new packages). Do not stop again to re-confirm individual items that were already in the approved plan.
 
 Using the Explore results, propose 2-3 approaches with concrete trade-offs:
-- What it changes (files, types, APIs)
+- What it changes (files, types, APIs, schema/migrations)
 - Trade-offs (complexity vs simplicity, performance vs maintainability)
-- Why you would or wouldn't recommend it
+- Your recommendation and why
 
-**For trivial features** (single function, obvious implementation): "I'll implement X using Y pattern — proceeding unless you object" with a 5-second pause.
+**Surface migrations and schema changes explicitly in the plan** so the user can see them and approve in one shot. Do not treat migrations as a separate hard gate.
 
-**For non-trivial features** (new package, API changes, data model changes): present approaches and WAIT for explicit user approval via AskUserQuestion.
+**For trivial features** (single function, obvious implementation): state your plan and proceed unless the user objects.
+
+**For non-trivial features** (new package, API changes, data model changes): present approaches and recommend one. Use your judgment on whether to wait for an explicit reply — if the change is risky, irreversible, or you're genuinely uncertain which approach the user wants, ask. Otherwise, state the recommended plan and proceed unless the user objects.
 
 ### Step 5: Task Decomposition
 
