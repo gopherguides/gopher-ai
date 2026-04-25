@@ -85,16 +85,18 @@ Before writing any code:
 
 ### Step 6: Design Approach (Features Only)
 
-**Do not start coding until the user confirms the approach.**
+Present the plan before coding. Plan approval is the gate — once the user accepts the plan, everything inside it (including migrations, schema changes, new packages) is approved. Do not re-prompt for items that were already in the approved plan.
 
 Propose 2-3 approaches with concrete trade-offs:
-- What files/types/APIs each approach changes
+- What files/types/APIs/migrations each approach changes
 - Complexity vs simplicity, performance vs maintainability
 - Your recommendation and why
 
+Surface migrations and schema changes explicitly in the plan so they get approved in one shot. Do not treat migrations as a separate hard stop.
+
 For trivial features (single function, obvious implementation), state your plan and proceed unless the user objects.
 
-For non-trivial features (new package, API changes, data model), wait for explicit user approval.
+For non-trivial features (new package, API changes, data model), state the recommended plan and proceed unless the user objects. Use judgment: only wait for an explicit reply when the change is genuinely risky or you're uncertain which approach the user wants.
 
 ### Step 7: TDD Red — Write Failing Tests First
 
