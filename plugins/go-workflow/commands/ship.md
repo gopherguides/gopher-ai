@@ -1314,15 +1314,31 @@ If the merge command fails (non-zero exit code):
 
 #### 13f. Display summary
 
-Read coverage and e2e results from state file:
+Read coverage and e2e results from state file. The coverage workflow may
+have skipped the gate (e.g. all changed files were `package main`); in that
+case `coverage_skip_reason` is set and `coverage_result` is empty. Render a
+textual reason in the summary instead of `<COV_RESULT>%`:
 
 ```bash
-COV_RESULT=$(jq -r '.coverage_result // "skipped"' ".local/state/ship.loop.local.json")
+COV_RESULT=$(jq -r '.coverage_result // ""' ".local/state/ship.loop.local.json")
+COV_SKIP_REASON=$(jq -r '.coverage_skip_reason // ""' ".local/state/ship.loop.local.json")
 COV_THRESHOLD=$(jq -r '.coverage_threshold // "60"' ".local/state/ship.loop.local.json")
 TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".local/state/ship.loop.local.json")
 E2E_ATTEMPTED=$(jq -r '.e2e_attempted // ""' ".local/state/ship.loop.local.json")
 E2E_RESULT=$(jq -r '.e2e_result // "skipped"' ".local/state/ship.loop.local.json")
 E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
+
+# Coverage line: prefer skip_reason when present, then numeric value, else "skipped".
+if [ -n "$COV_SKIP_REASON" ]; then
+  case "$COV_SKIP_REASON" in
+    all-main) COV_LINE="skipped — all changed files are \`package main\`" ;;
+    *)        COV_LINE="skipped — $COV_SKIP_REASON" ;;
+  esac
+elif [ -n "$COV_RESULT" ]; then
+  COV_LINE="${COV_RESULT}% (threshold: ${COV_THRESHOLD}%)"
+else
+  COV_LINE="skipped"
+fi
 ```
 
 ```
@@ -1332,7 +1348,7 @@ E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
 - **LLM:** <llm>
 - **Review passes:** <n>
 - **Findings addressed:** <n>
-- **Coverage (changed files):** <COV_RESULT>% (threshold: <COV_THRESHOLD>%) — or "skipped"
+- **Coverage (changed files):** <COV_LINE>
 - **Tests generated:** <TESTS_GEN>
 - **E2E tests:** <E2E_PAGES> pages tested, <E2E_RESULT> — or "skipped — no web components" / "skipped — MCP unavailable"
 - **CI:** green
