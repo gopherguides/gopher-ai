@@ -7,8 +7,9 @@
 #
 # Platforms detected:
 #   - Claude Code: updates marketplace repo + plugin cache (requires ~/.claude/)
-#   - Codex CLI:   cleans up legacy ~/.codex/skills/ entries; plugins are
-#                  discovered via .agents/plugins/marketplace.json (requires jq)
+#   - Codex CLI:   cleans up legacy ~/.codex/skills/ entries (migration only);
+#                  plugins are discovered via .agents/plugins/marketplace.json
+#                  in the repo. Cleanup runs without jq or git.
 #   - Gemini CLI:  installs extensions (requires gemini command)
 #
 # Remote install (no clone needed — downloads to tmp, installs, cleans up):
@@ -299,12 +300,18 @@ main() {
     echo "Done! Installed for: ${platforms[*]}"
     echo ""
     echo "Next steps:"
-    $HAVE_CLAUDE && echo "  Claude Code: Restart Claude Code to reload plugins"
-    $HAVE_CODEX && echo "  Codex CLI:   Migration only — no plugins were installed."
-    $HAVE_CODEX && echo "               To use gopher-ai with Codex: clone this repo and"
-    $HAVE_CODEX && echo "               run 'codex' inside it (auto-discovers the marketplace),"
-    $HAVE_CODEX && echo "               or run scripts/install-codex.sh --repo <target-repo>"
-    $HAVE_GEMINI && echo "  Gemini CLI:  Restart Gemini to load extensions"
+    if $HAVE_CLAUDE; then
+        echo "  Claude Code: Restart Claude Code to reload plugins"
+    fi
+    if $HAVE_CODEX; then
+        echo "  Codex CLI:   Migration only — no plugins were installed."
+        echo "               To use gopher-ai with Codex: clone this repo and"
+        echo "               run 'codex' inside it (auto-discovers the marketplace),"
+        echo "               or run scripts/install-codex.sh --repo <target-repo>"
+    fi
+    if $HAVE_GEMINI; then
+        echo "  Gemini CLI:  Restart Gemini to load extensions"
+    fi
 }
 
 main "$@"

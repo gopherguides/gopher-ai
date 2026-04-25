@@ -242,10 +242,15 @@ for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
 done
 JQ_PATH="$(command -v jq 2>/dev/null || true)"
 if [ -n "$JQ_PATH" ]; then
-  JQ_DIR="$(dirname "$JQ_PATH")"
-  SAFE_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "^${JQ_DIR}\$" | tr '\n' ':' | sed 's/:$//')
-  # Force Codex-only: no ~/.claude/ in TMP_HOME, and gemini binary won't be reachable.
-  if HOME="$TMP_HOME" PATH="$SAFE_PATH" bash "$ROOT_DIR/scripts/install-all.sh" --force </dev/null >/tmp/gopher-ai-installall-nojq.log 2>&1; then
+  # Build a controlled PATH that contains only the directories required for
+  # the test — no jq, no gemini — so the test result reflects installer
+  # behavior rather than what else happens to be on the developer's PATH.
+  TMP_BIN=$(mktemp -d)
+  for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail xargs sleep date wc; do
+    cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
+    [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
+  done
+  if HOME="$TMP_HOME" PATH="$TMP_BIN" bash "$ROOT_DIR/scripts/install-all.sh" --force </dev/null >/tmp/gopher-ai-installall-nojq.log 2>&1; then
     if [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
       echo "FAIL (cleanup did not run)"
       ERRORS=$((ERRORS + 1))
@@ -257,6 +262,7 @@ if [ -n "$JQ_PATH" ]; then
     sed -n '1,40p' /tmp/gopher-ai-installall-nojq.log
     ERRORS=$((ERRORS + 1))
   fi
+  rm -rf "$TMP_BIN"
 else
   echo "SKIP (jq not installed)"
 fi
