@@ -51,16 +51,51 @@ CHANGED_SRC=$(echo "$CHANGED_FILES" | grep '\.go$' \
 Then partition `CHANGED_SRC` into **gated** files (counted toward the aggregate and the threshold) and **info** files (`package main` — shown in the report but excluded from the gate):
 
 ```bash
+# Comment-aware extractor: prints the actual Go package name (or empty).
+# Strips //-line-comments and /*..*/ block comments (handling unterminated
+# blocks across lines and inline blocks on the same line), then matches the
+# first non-blank `^package <name>` line. This avoids false positives from
+# `package main` text appearing inside doc comments.
+get_pkg() {
+  awk '
+    BEGIN { in_block=0 }
+    {
+      line = $0
+      if (in_block) { if (sub(/.*\*\//, "", line)) in_block=0; else next }
+      sub(/[[:space:]]*\/\/.*$/, "", line)
+      while (match(line, /\/\*/)) {
+        pre  = substr(line, 1, RSTART-1)
+        rest = substr(line, RSTART+RLENGTH)
+        if (match(rest, /\*\//)) {
+          line = pre substr(rest, RSTART+RLENGTH)
+        } else {
+          line = pre; in_block = 1; break
+        }
+      }
+      sub(/^[[:space:]]+/, "", line)
+      if (line == "") next
+      if (line ~ /^package[[:space:]]+[A-Za-z_]/) {
+        split(line, a, /[[:space:]]+/); print a[2]; exit
+      }
+    }
+  '
+}
+
 CHANGED_SRC_GATED=""
 CHANGED_SRC_INFO=""
 for f in $CHANGED_SRC; do
-  # Detection is by package clause, NOT filename.
-  # Any .go file declaring `package main` (cmd/foo/main.go, cmd/foo/server.go,
-  # cmd/foo/wire.go, internal/tools/run.go, ...) is excluded from the gate.
-  # Scan first 50 lines so leading copyright headers / //go:build tags don't
-  # hide the package clause. Deleted files (no longer on disk) fall through to
-  # the gated bucket where Step D's existing "N/A (no statements)" path handles them.
-  if [ -f "$f" ] && head -n 50 "$f" 2>/dev/null | grep -qE '^package[[:space:]]+main([[:space:]]|$)'; then
+  # Detection is by the file's package clause, NOT filename. Any .go file
+  # declaring `package main` (cmd/foo/main.go, cmd/foo/server.go, cmd/foo/wire.go,
+  # internal/tools/run.go, ...) is excluded from the gate. For deleted files
+  # (no longer on disk), read the blob from the base branch via `git show` so
+  # a diff that deletes only `cmd/foo/main.go` still triggers the all-main
+  # path in Step E.2 instead of producing a 0% gate prompt.
+  if [ -f "$f" ]; then
+    pkg=$(get_pkg < "$f" 2>/dev/null)
+  else
+    pkg=$(git show "${BASE_BRANCH}:${f}" 2>/dev/null | get_pkg)
+  fi
+  if [ "$pkg" = "main" ]; then
     CHANGED_SRC_INFO="${CHANGED_SRC_INFO}${f}
 "
   else
@@ -282,7 +317,7 @@ When coverage is below `COVERAGE_THRESHOLD`, you MUST call `AskUserQuestion` to 
 
 Output ONLY the coverage table and aggregate line. Do NOT add any analysis, explanation, or commentary. Do NOT discuss why coverage is low or whether the low coverage is justified.
 
-**Go format** — 4 columns; rows for `package main` files carry a Notes value of `excluded from gate (package main)`. The footer's "N file(s) shown for info only" suffix appears only when `INFO_COUNT > 0`. If `ALL_MAIN=true`, the footer reads `Changed-file coverage: N/A — all changed files are package main; gate skipped (see Step E.2 warning)`.
+**Go format** — 4 columns; rows for `package main` files carry a Notes value of `excluded from gate (package main)`. The footer is selected by the `ALL_MAIN` flag from Step D — never substitute `{AGGREGATE_COVERAGE}` directly into the gated-form footer when `ALL_MAIN=true`, or you'll render `N/A%`.
 
 ```
 ## Coverage Report (Changed Files)
@@ -291,8 +326,14 @@ Output ONLY the coverage table and aggregate line. Do NOT add any analysis, expl
 |------|----------|--------------------|-------|
 <one row per file from CHANGED_SRC_GATED, then CHANGED_SRC_INFO, using FILE_REPORT from Step D>
 
+# If ALL_MAIN=true:
+**Changed-file coverage: N/A — all changed files are `package main`; gate skipped (see Step E.2 warning)**
+
+# Else (ALL_MAIN=false):
 **Changed-file coverage: {AGGREGATE_COVERAGE}% (threshold: {COVERAGE_THRESHOLD}%)** [— {INFO_COUNT} file(s) shown for info only]
 ```
+
+Pick exactly one footer line; do not emit both. The `# If ... # Else` comments are for this skill's reader — they must not appear in the rendered report.
 
 **Non-Go formats** — keep the existing 3-column table (`File | Coverage | Uncovered Functions`); the `package main` carve-out is Go-specific and does not apply to Node/TS, Rust, or Python paths.
 
