@@ -345,7 +345,7 @@ Pick exactly one footer line; do not emit both. The `# If ... # Else` comments a
 
 Apply IMMEDIATELY after displaying the report — no intervening text or analysis:
 
-- **Go path, `ALL_MAIN=true`** (every changed file is `package main`) → emit this exact one-line warning, then return to the calling command's next step. Do NOT call `AskUserQuestion`; there is no signal to act on, and silently passing would hide the fact that no gate ran.
+- **Go path, `ALL_MAIN=true`** (every changed file is `package main`) → emit this exact one-line warning, **then run Step E.3 to persist the skip reason** (`coverage_skip_reason = "all-main"`, `coverage_result = ""`), and return to the calling command's next step. Do NOT call `AskUserQuestion`; there is no signal to act on, and silently passing would hide the fact that no gate ran. Skipping Step E.3 here would leave the calling command (e.g. `/ship`) unable to render the correct summary line.
 
   ```
   ⚠️  Coverage gate skipped: all changed files are in `package main` (typically bootstrap/wiring code that's untestable in practice). See issue #143 for rationale.
