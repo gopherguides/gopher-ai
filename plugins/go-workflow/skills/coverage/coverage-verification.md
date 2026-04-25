@@ -48,6 +48,32 @@ CHANGED_SRC=$(echo "$CHANGED_FILES" | grep '\.go$' \
   || true)
 ```
 
+Then partition `CHANGED_SRC` into **gated** files (counted toward the aggregate and the threshold) and **info** files (`package main` — shown in the report but excluded from the gate):
+
+```bash
+CHANGED_SRC_GATED=""
+CHANGED_SRC_INFO=""
+for f in $CHANGED_SRC; do
+  # Detection is by package clause, NOT filename.
+  # Any .go file declaring `package main` (cmd/foo/main.go, cmd/foo/server.go,
+  # cmd/foo/wire.go, internal/tools/run.go, ...) is excluded from the gate.
+  # Scan first 50 lines so leading copyright headers / //go:build tags don't
+  # hide the package clause. Deleted files (no longer on disk) fall through to
+  # the gated bucket where Step D's existing "N/A (no statements)" path handles them.
+  if [ -f "$f" ] && head -n 50 "$f" 2>/dev/null | grep -qE '^package[[:space:]]+main([[:space:]]|$)'; then
+    CHANGED_SRC_INFO="${CHANGED_SRC_INFO}${f}
+"
+  else
+    CHANGED_SRC_GATED="${CHANGED_SRC_GATED}${f}
+"
+  fi
+done
+CHANGED_SRC_GATED=$(printf '%s' "$CHANGED_SRC_GATED" | sed '/^$/d')
+CHANGED_SRC_INFO=$(printf '%s'  "$CHANGED_SRC_INFO"  | sed '/^$/d')
+```
+
+**Why exclude `package main`?** Idiomatic Go keeps `func main()` to a thin shim — argument parsing, dependency wiring, and a call into a testable package. There's little to assert against, and what's left (e.g. `os.Exit` paths) is awkward to test without refactoring purely to satisfy the metric. This is a **`package main`-only** carve-out — touching a hard-to-test middleware or handler file still trips the gate (the "if you touch it, you own it" rule is unchanged). See [#143](https://github.com/gopherguides/gopher-ai/issues/143) for full rationale and external references.
+
 **Node/TypeScript** (package.json exists):
 ```bash
 CHANGED_SRC=$(echo "$CHANGED_FILES" | grep -E '\.(ts|tsx|js|jsx)$' \
@@ -143,7 +169,7 @@ Parse the coverage output and compute per-file coverage for changed files only:
 
 1. For each file in `CHANGED_SRC`, extract its line or function coverage percentage
 2. Identify specific uncovered functions/methods in changed files
-3. Calculate the aggregate coverage percentage across all changed source files
+3. Calculate the aggregate coverage percentage across changed source files (Go: gated files only — `CHANGED_SRC_GATED`, excluding `package main`; other languages: all of `CHANGED_SRC`)
 
 For Go, parse the raw coverprofile to compute **statement-weighted** coverage (not function-average). The coverprofile format is:
 ```
@@ -151,7 +177,7 @@ mode: set
 file.go:startLine.startCol,endLine.endCol numStatements hitCount
 ```
 
-Use statement counts weighted by whether they were hit:
+Use statement counts weighted by whether they were hit. The loop runs twice: first over `CHANGED_SRC_GATED` (counted toward the aggregate), then over `CHANGED_SRC_INFO` (`package main` files — displayed but excluded from totals). Per-file row generation, uncovered-function extraction, and the `N/A (no statements)` short-circuit are identical in both passes; only the totals accumulation differs. The `Notes` column distinguishes the two: blank for gated rows, `excluded from gate (package main)` for info rows.
 
 ```bash
 COVERAGE_FUNC=$(go tool cover -func=.local/state/coverage.out 2>/dev/null)
@@ -160,8 +186,10 @@ FILE_REPORT=""
 UNCOVERED_FUNCS=""
 TOTAL_STMTS=0
 TOTAL_COVERED=0
+INFO_COUNT=0
 
-for f in $CHANGED_SRC; do
+# Pass 1: gated files — count toward TOTAL_STMTS / TOTAL_COVERED.
+for f in $CHANGED_SRC_GATED; do
   FILE_STMTS=$(grep "^${f}:" .local/state/coverage.out 2>/dev/null | awk '{
     split($2, a, " "); stmts=$2; hit=$3
     total+=stmts; if(hit>0) covered+=stmts
@@ -170,7 +198,7 @@ for f in $CHANGED_SRC; do
   FILE_COVERED=$(echo "$FILE_STMTS" | awk '{print $2}')
 
   if [ "$FILE_TOTAL" -eq 0 ] 2>/dev/null; then
-    FILE_REPORT="${FILE_REPORT}\n| ${f} | N/A (no statements) | — |"
+    FILE_REPORT="${FILE_REPORT}\n| ${f} | N/A (no statements) | — |  |"
     continue
   fi
 
@@ -181,15 +209,45 @@ for f in $CHANGED_SRC; do
   FILE_FUNC_LINES=$(echo "$COVERAGE_FUNC" | grep "^${f}:" | grep -v "^total:")
   UNCOV=$(echo "$FILE_FUNC_LINES" | awk '$NF == "0.0%" {print $2}' | paste -sd ", " -)
   UNCOV_DISPLAY="${UNCOV:-—}"
-  FILE_REPORT="${FILE_REPORT}\n| ${f} | ${FILE_COV}% | ${UNCOV_DISPLAY} |"
+  FILE_REPORT="${FILE_REPORT}\n| ${f} | ${FILE_COV}% | ${UNCOV_DISPLAY} |  |"
 
   if [ -n "$UNCOV" ]; then
     UNCOVERED_FUNCS="${UNCOVERED_FUNCS}\n${f}:${UNCOV}"
   fi
 done
 
+# Pass 2: info files (package main) — display only, do NOT touch totals.
+for f in $CHANGED_SRC_INFO; do
+  INFO_COUNT=$((INFO_COUNT + 1))
+  FILE_STMTS=$(grep "^${f}:" .local/state/coverage.out 2>/dev/null | awk '{
+    split($2, a, " "); stmts=$2; hit=$3
+    total+=stmts; if(hit>0) covered+=stmts
+  } END {printf "%d %d", total, covered}')
+  FILE_TOTAL=$(echo "$FILE_STMTS" | awk '{print $1}')
+  FILE_COVERED=$(echo "$FILE_STMTS" | awk '{print $2}')
+
+  NOTE="excluded from gate (package main)"
+
+  if [ "$FILE_TOTAL" -eq 0 ] 2>/dev/null; then
+    FILE_REPORT="${FILE_REPORT}\n| ${f} | N/A (no statements) | — | ${NOTE} |"
+    continue
+  fi
+
+  FILE_COV=$(awk "BEGIN {printf \"%.1f\", ($FILE_COVERED/$FILE_TOTAL)*100}")
+  FILE_FUNC_LINES=$(echo "$COVERAGE_FUNC" | grep "^${f}:" | grep -v "^total:")
+  UNCOV=$(echo "$FILE_FUNC_LINES" | awk '$NF == "0.0%" {print $2}' | paste -sd ", " -)
+  UNCOV_DISPLAY="${UNCOV:-—}"
+  FILE_REPORT="${FILE_REPORT}\n| ${f} | ${FILE_COV}% | ${UNCOV_DISPLAY} | ${NOTE} |"
+done
+
+# Aggregate is computed from gated files only. ALL_MAIN signals "every changed
+# file was package main" — Step E.2 emits a warning instead of running the gate.
+ALL_MAIN=false
 if [ "$TOTAL_STMTS" -gt 0 ]; then
   AGGREGATE_COVERAGE=$(awk "BEGIN {printf \"%.1f\", ($TOTAL_COVERED/$TOTAL_STMTS)*100}")
+elif [ -z "$CHANGED_SRC_GATED" ] && [ -n "$CHANGED_SRC_INFO" ]; then
+  AGGREGATE_COVERAGE="N/A"
+  ALL_MAIN=true
 else
   AGGREGATE_COVERAGE="0.0"
 fi
@@ -216,25 +274,37 @@ When coverage is below `COVERAGE_THRESHOLD`, you MUST call `AskUserQuestion` to 
 
 **Design philosophy: "if you touch it, you own it."** The entire file's coverage counts, regardless of which lines you changed or whether uncovered code existed before your changes. This is intentional. The purpose of this gate is to **improve coverage in the codebase over time** — every touched file is an opportunity. Only the USER can decide to proceed with low coverage. You cannot make that decision.
 
+**One narrow carve-out (Go only): `package main` files are excluded from the aggregate** because `func main()` is idiomatically a thin shim and not unit-testable in practice. The carve-out is detected by the package clause, not the filename — see Step B and issue #143. Hard-to-test middleware, handlers, and other non-main code still trip the gate as before.
+
 **If coverage < `COVERAGE_THRESHOLD`: your ONLY permitted action is to display the report (Step E.1) and then IMMEDIATELY call `AskUserQuestion` (Step E.2). Any other action is a violation of this workflow.**
 
 ### Step E.1: Display Coverage Report
 
 Output ONLY the coverage table and aggregate line. Do NOT add any analysis, explanation, or commentary. Do NOT discuss why coverage is low or whether the low coverage is justified.
 
+**Go format** — 4 columns; rows for `package main` files carry a Notes value of `excluded from gate (package main)`. The footer's "N file(s) shown for info only" suffix appears only when `INFO_COUNT > 0`. If `ALL_MAIN=true`, the footer reads `Changed-file coverage: N/A — all changed files are package main; gate skipped (see Step E.2 warning)`.
+
 ```
 ## Coverage Report (Changed Files)
 
-| File | Coverage | Uncovered Functions |
-|------|----------|-------------------|
-<one row per file from CHANGED_SRC, using FILE_REPORT from Step D>
+| File | Coverage | Uncovered Functions | Notes |
+|------|----------|--------------------|-------|
+<one row per file from CHANGED_SRC_GATED, then CHANGED_SRC_INFO, using FILE_REPORT from Step D>
 
-**Changed-file coverage: {AGGREGATE_COVERAGE}% (threshold: {COVERAGE_THRESHOLD}%)**
+**Changed-file coverage: {AGGREGATE_COVERAGE}% (threshold: {COVERAGE_THRESHOLD}%)** [— {INFO_COUNT} file(s) shown for info only]
 ```
+
+**Non-Go formats** — keep the existing 3-column table (`File | Coverage | Uncovered Functions`); the `package main` carve-out is Go-specific and does not apply to Node/TS, Rust, or Python paths.
 
 ### Step E.2: Gate Decision
 
 Apply IMMEDIATELY after displaying the report — no intervening text or analysis:
+
+- **Go path, `ALL_MAIN=true`** (every changed file is `package main`) → emit this exact one-line warning, then return to the calling command's next step. Do NOT call `AskUserQuestion`; there is no signal to act on, and silently passing would hide the fact that no gate ran.
+
+  ```
+  ⚠️  Coverage gate skipped: all changed files are in `package main` (typically bootstrap/wiring code that's untestable in practice). See issue #143 for rationale.
+  ```
 
 - **Coverage >= `COVERAGE_THRESHOLD`** → pass. Return to calling command's next step.
 - **Coverage < `COVERAGE_THRESHOLD`** → you MUST call `AskUserQuestion` with this exact question and options:
