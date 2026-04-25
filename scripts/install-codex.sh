@@ -185,14 +185,15 @@ file_matches_known_skill_content() {
     done
 
     # 2. Shipped manifest of historical hashes (works without git history).
+    # Each non-comment line is "<sha256> <skill_name>" — both fields must
+    # match so a hash from skill A is not accepted as proof of ownership for
+    # a candidate in skill B's directory.
     local manifest="$ROOT_DIR/scripts/legacy-skill-hashes.txt"
     if [[ -f "$manifest" ]]; then
-        # The manifest stores one hash per non-comment line. Use awk for a
-        # single pass without spawning grep.
-        if awk -v target="$candidate_hash" '
+        if awk -v target_hash="$candidate_hash" -v target_skill="$skill_name" '
             /^[[:space:]]*#/ { next }
             /^[[:space:]]*$/ { next }
-            $1 == target { found = 1; exit }
+            $1 == target_hash && $2 == target_skill { found = 1; exit }
             END { exit (found ? 0 : 1) }
         ' "$manifest"; then
             return 0

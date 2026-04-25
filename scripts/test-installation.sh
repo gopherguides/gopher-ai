@@ -350,13 +350,15 @@ for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
   [ -f "$skill_dir/SKILL.md" ] || continue
   CURRENT_HASH=$(sha256sum "$skill_dir/SKILL.md" | awk '{print $1}')
-  # Find a manifest hash that differs from current — that's a historical version.
-  # Use awk for first-match selection so the upstream pipe doesn't SIGPIPE under
-  # `set -o pipefail` (avoids `head -1` hazard).
-  HISTORICAL_HASH=$(awk -v cur="$CURRENT_HASH" '
+  # Find a manifest entry for THIS skill whose hash differs from current — a
+  # historical version of the same skill. Per-skill scoping matters: with the
+  # manifest format `<hash> <skill_name>`, the cleanup only accepts a hash if
+  # both fields match, so picking a hash from a different skill wouldn't
+  # exercise the bootstrap-mode lookup correctly.
+  HISTORICAL_HASH=$(awk -v cur="$CURRENT_HASH" -v sn="$skill_name" '
     /^[[:space:]]*#/ { next }
     /^[[:space:]]*$/ { next }
-    $1 != cur { print $1; exit }
+    $1 != cur && $2 == sn { print $1; exit }
   ' "$ROOT_DIR/scripts/legacy-skill-hashes.txt")
   [ -n "$HISTORICAL_HASH" ] || continue
   # Find a blob with this hash from git history and reconstruct it as a stale install.
@@ -428,18 +430,20 @@ if [ ! -f "$ROOT_DIR/scripts/legacy-skill-hashes.txt" ]; then
   ERRORS=$((ERRORS + 1))
 else
   EXPECTED=$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
-      | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1}' | sort -u \
-      | while read blob; do (cd "$ROOT_DIR" && git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}'); done \
-      | sort -u)
-  ACTUAL=$(grep -v '^#' "$ROOT_DIR/scripts/legacy-skill-hashes.txt" | grep -v '^$' | sort -u)
-  # The manifest must be a SUPERSET of expected — so newly committed SKILL.md
-  # versions are caught even if regen wasn't re-run for the absolute latest commit.
+      | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1, $2}' \
+      | while read blob path; do
+          skill_name=$(basename "$(dirname "$path")")
+          h=$(cd "$ROOT_DIR" && git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
+          [ -n "$h" ] && echo "$h $skill_name"
+        done | sort -u)
+  ACTUAL=$(awk '/^[[:space:]]*#/{next} /^[[:space:]]*$/{next} {print}' "$ROOT_DIR/scripts/legacy-skill-hashes.txt" | sort -u)
+  # The manifest must be a SUPERSET of expected (hash, skill_name) pairs.
   MISSING=$(comm -23 <(echo "$EXPECTED") <(echo "$ACTUAL"))
   if [ -n "$MISSING" ]; then
-    echo "FAIL (missing $(echo "$MISSING" | wc -l | tr -d ' ') hashes — run scripts/regen-legacy-hashes.sh)"
+    echo "FAIL ($(echo "$MISSING" | wc -l | tr -d ' ') missing pairs — run scripts/regen-legacy-hashes.sh)"
     ERRORS=$((ERRORS + 1))
   else
-    echo "OK ($(echo "$ACTUAL" | wc -l | tr -d ' ') hashes)"
+    echo "OK ($(echo "$ACTUAL" | wc -l | tr -d ' ') pairs)"
   fi
 fi
 
