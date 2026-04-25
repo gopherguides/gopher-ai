@@ -229,6 +229,39 @@ else
 fi
 rm -rf "$TMP_HOME"
 
+echo -n "install-all.sh runs Codex cleanup without jq on minimal machine... "
+TMP_HOME=$(mktemp -d)
+mkdir -p "$TMP_HOME/.codex/skills"
+SEEDED_OWNED=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  skill_name=$(basename "$skill_dir")
+  SEEDED_OWNED="$skill_name"
+  mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
+  printf -- "---\nname: %s\ndescription: legacy\n---\n" "$skill_name" > "$TMP_HOME/.codex/skills/$skill_name/SKILL.md"
+  break
+done
+JQ_PATH="$(command -v jq 2>/dev/null || true)"
+if [ -n "$JQ_PATH" ]; then
+  JQ_DIR="$(dirname "$JQ_PATH")"
+  SAFE_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "^${JQ_DIR}\$" | tr '\n' ':' | sed 's/:$//')
+  # Force Codex-only: no ~/.claude/ in TMP_HOME, and gemini binary won't be reachable.
+  if HOME="$TMP_HOME" PATH="$SAFE_PATH" bash "$ROOT_DIR/scripts/install-all.sh" --force </dev/null >/tmp/gopher-ai-installall-nojq.log 2>&1; then
+    if [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
+      echo "FAIL (cleanup did not run)"
+      ERRORS=$((ERRORS + 1))
+    else
+      echo "OK"
+    fi
+  else
+    echo "FAIL (install-all.sh exited non-zero on Codex-only/no-jq machine)"
+    sed -n '1,40p' /tmp/gopher-ai-installall-nojq.log
+    ERRORS=$((ERRORS + 1))
+  fi
+else
+  echo "SKIP (jq not installed)"
+fi
+rm -rf "$TMP_HOME"
+
 echo -n "Codex --cleanup works without jq installed... "
 TMP_HOME=$(mktemp -d)
 SKILLS_DIR="$TMP_HOME/.codex/skills"

@@ -68,16 +68,24 @@ bootstrap_if_needed() {
     echo ""
 }
 
-# Check that required tools are available before building
+# Check that the tools required for the platforms we're actually installing
+# are available. Codex --cleanup needs neither jq nor git nor the build step,
+# so we don't gate cleanup-only flows on those.
 check_prerequisites() {
     local missing=()
 
-    if ! command -v jq >/dev/null 2>&1; then
-        missing+=("jq (brew install jq / apt install jq)")
+    # jq is needed by build-universal.sh, which only runs for Claude/Gemini.
+    if $HAVE_CLAUDE || $HAVE_GEMINI; then
+        if ! command -v jq >/dev/null 2>&1; then
+            missing+=("jq (brew install jq / apt install jq)")
+        fi
     fi
 
-    if ! command -v git >/dev/null 2>&1; then
-        missing+=("git")
+    # git is needed for Claude marketplace updates.
+    if $HAVE_CLAUDE; then
+        if ! command -v git >/dev/null 2>&1; then
+            missing+=("git")
+        fi
     fi
 
     if [[ ${#missing[@]} -gt 0 ]]; then
@@ -236,8 +244,8 @@ main() {
     echo ""
 
     bootstrap_if_needed
-    check_prerequisites
     detect_platforms
+    check_prerequisites
 
     if ! $HAVE_CLAUDE && ! $HAVE_CODEX && ! $HAVE_GEMINI; then
         echo "No supported platforms detected."
@@ -267,18 +275,21 @@ main() {
         echo ""
     fi
 
-    # Build once, install everywhere
-    echo "Building distribution..."
-    echo ""
-    if ! "$ROOT_DIR/scripts/build-universal.sh"; then
+    # Build is only needed for Claude and Gemini; Codex --cleanup walks
+    # plugins/*/skills/ directly and doesn't read dist/.
+    if $HAVE_CLAUDE || $HAVE_GEMINI; then
+        echo "Building distribution..."
         echo ""
-        echo "error: build failed." >&2
-        echo "Common fixes:" >&2
-        echo "  - Install jq: brew install jq (macOS) / sudo apt install jq (Linux)" >&2
-        echo "  - Ensure git is installed and available" >&2
-        exit 1
+        if ! "$ROOT_DIR/scripts/build-universal.sh"; then
+            echo ""
+            echo "error: build failed." >&2
+            echo "Common fixes:" >&2
+            echo "  - Install jq: brew install jq (macOS) / sudo apt install jq (Linux)" >&2
+            echo "  - Ensure git is installed and available" >&2
+            exit 1
+        fi
+        echo ""
     fi
-    echo ""
 
     $HAVE_CLAUDE && install_claude
     $HAVE_CODEX && install_codex
