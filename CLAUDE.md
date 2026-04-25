@@ -73,6 +73,7 @@ The `shared/` directory contains code used by multiple plugins:
 - `commands/cancel-loop.md` - Cancel loop command
 
 **Hook ownership**: Only `go-workflow` has hooks registered:
+- **SessionStart hook** (`codex-cleanup-on-start.sh`): Auto-removes legacy gopher-ai skill files left in `~/.codex/skills/` from older `--user` installs. Gated by a per-version marker file (`~/.codex/.gopher-ai-cleanup-<version>`) so it's nearly free on subsequent sessions. Reads the shipped manifest at `hooks/legacy-skill-hashes.txt` (kept in sync with `scripts/legacy-skill-hashes.txt` by `regen-legacy-hashes.sh`). Removal requires three checks: matching skill name, matching frontmatter `name:`, and matching SKILL.md sha256 in the manifest — false positives are essentially impossible.
 - **Stop hook** (`stop-hook.sh`): Persistent loop management for `/start-issue` style commands
 - **PreToolUse hook** (`pre-tool-use.sh`): Validates environment, tools, and git state before tool execution:
   - Checks for required env vars (GOPHER_GUIDES_API_KEY, GITHUB_TOKEN, OPENAI_API_KEY) contextually

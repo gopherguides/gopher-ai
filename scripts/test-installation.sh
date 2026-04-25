@@ -180,6 +180,9 @@ SEEDED_CONTENT_DRIFT=""
 COUNT=0
 for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
+  # Skip support directories under skills/ that are not actual skills (e.g.
+  # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
+  [ -f "$skill_dir/SKILL.md" ] || continue
   COUNT=$((COUNT + 1))
   if [ -z "$SEEDED_OWNED" ]; then
     SEEDED_OWNED="$skill_name"
@@ -231,6 +234,9 @@ mkdir -p "$SKILLS_DIR"
 SEEDED_OWNED=""
 for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
+  # Skip support directories under skills/ that are not actual skills (e.g.
+  # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
+  [ -f "$skill_dir/SKILL.md" ] || continue
   SEEDED_OWNED="$skill_name"
   mkdir -p "$SKILLS_DIR/$skill_name"
   # Verbatim copy so content fingerprint check recognizes it as gopher-ai-owned.
@@ -255,6 +261,9 @@ mkdir -p "$TMP_HOME/.codex/skills"
 SEEDED_OWNED=""
 for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
+  # Skip support directories under skills/ that are not actual skills (e.g.
+  # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
+  [ -f "$skill_dir/SKILL.md" ] || continue
   SEEDED_OWNED="$skill_name"
   mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
   # Verbatim copy so content fingerprint check recognizes it as gopher-ai-owned.
@@ -314,6 +323,344 @@ else
   echo "SKIP (jq not installed locally)"
 fi
 rm -rf "$TMP_HOME"
+
+echo -n "Codex --cleanup works in bootstrap mode (no .git, manifest only)... "
+# Reproduces Cory's failure: install via curl one-liner pulls a tarball with
+# no .git/. The skill content is from an OLD shipped version (pre-trim).
+# Without the manifest, current-source-hash check would fail; with the
+# manifest, the cleanup correctly identifies and removes the legacy install.
+TMP_HOME=$(mktemp -d)
+TMP_FAKE_ROOT=$(mktemp -d)
+SKILLS_DIR="$TMP_HOME/.codex/skills"
+mkdir -p "$SKILLS_DIR"
+# Build a fake bootstrap root (mirrors what curl|tar produces): plugins/, scripts/,
+# and the manifest, but NO .git/.
+mkdir -p "$TMP_FAKE_ROOT/plugins" "$TMP_FAKE_ROOT/scripts"
+cp -R "$ROOT_DIR/plugins"/. "$TMP_FAKE_ROOT/plugins/"
+cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_FAKE_ROOT/scripts/"
+cp "$ROOT_DIR/scripts/build-universal.sh" "$TMP_FAKE_ROOT/scripts/" 2>/dev/null || true
+cp "$ROOT_DIR/scripts/legacy-skill-hashes.txt" "$TMP_FAKE_ROOT/scripts/"
+SEEDED_OWNED=""
+# Pick a hash from the manifest that is NOT the current SKILL.md content for
+# any skill — that simulates a stale install. We do this by finding a skill
+# whose manifest entry differs from the current file hash.
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  skill_name=$(basename "$skill_dir")
+  # Skip support directories under skills/ that are not actual skills (e.g.
+  # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
+  [ -f "$skill_dir/SKILL.md" ] || continue
+  CURRENT_HASH=$(sha256sum "$skill_dir/SKILL.md" | awk '{print $1}')
+  # Find a manifest entry for THIS skill whose hash differs from current — a
+  # historical version of the same skill. Per-skill scoping matters: with the
+  # manifest format `<hash> <skill_name>`, the cleanup only accepts a hash if
+  # both fields match, so picking a hash from a different skill wouldn't
+  # exercise the bootstrap-mode lookup correctly.
+  HISTORICAL_HASH=$(awk -v cur="$CURRENT_HASH" -v sn="$skill_name" '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    $1 != cur && $2 == sn { print $1; exit }
+  ' "$ROOT_DIR/scripts/legacy-skill-hashes.txt")
+  [ -n "$HISTORICAL_HASH" ] || continue
+  # Find a blob with this hash from git history and reconstruct it as a stale install.
+  # The inner subshell exits as soon as a match is printed; no `head -1` needed.
+  STALE_BLOB=$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
+    | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1, $2}' \
+    | (
+        while read blob path; do
+          h=$(git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
+          if [ "$h" = "$HISTORICAL_HASH" ] && [ "$(basename "$(dirname "$path")")" = "$skill_name" ]; then
+            echo "$blob"
+            exit 0
+          fi
+        done
+      ))
+  if [ -n "$STALE_BLOB" ]; then
+    SEEDED_OWNED="$skill_name"
+    mkdir -p "$SKILLS_DIR/$skill_name"
+    (cd "$ROOT_DIR" && git cat-file blob "$STALE_BLOB") > "$SKILLS_DIR/$skill_name/SKILL.md"
+    break
+  fi
+done
+if [ -z "$SEEDED_OWNED" ]; then
+  echo "SKIP (no historical-but-not-current SKILL.md found in manifest)"
+else
+  if ! HOME="$TMP_HOME" bash "$TMP_FAKE_ROOT/scripts/install-codex.sh" --cleanup --yes >/tmp/gopher-ai-bootstrap-cleanup.log 2>&1; then
+    echo "FAIL"
+    sed -n '1,40p' /tmp/gopher-ai-bootstrap-cleanup.log
+    ERRORS=$((ERRORS + 1))
+  elif [ -d "$SKILLS_DIR/$SEEDED_OWNED" ]; then
+    echo "FAIL (stale gopher-ai skill not removed in bootstrap mode: $SEEDED_OWNED)"
+    sed -n '1,40p' /tmp/gopher-ai-bootstrap-cleanup.log
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+rm -rf "$TMP_HOME" "$TMP_FAKE_ROOT"
+
+echo -n "Gemini agent files have valid YAML frontmatter... "
+AGENT_ERRORS=""
+for f in "$ROOT_DIR"/plugins/*/agents/*.md; do
+  [ -f "$f" ] || continue
+  if ! head -1 "$f" | grep -q '^---$'; then
+    AGENT_ERRORS="$AGENT_ERRORS $f(no-opening)"
+    continue
+  fi
+  # Frontmatter must be a closed YAML block with a `name:` line inside it.
+  # Require at least two `---` markers AND a `name:` line that appears within
+  # the first block (between the opening and closing delimiter).
+  if ! awk '
+    /^---$/ { c++; next }
+    c == 1 && /^name:[[:space:]]/ { found = 1 }
+    END { exit (found && c >= 2) ? 0 : 1 }
+  ' "$f"; then
+    AGENT_ERRORS="$AGENT_ERRORS $f(invalid-frontmatter)"
+  fi
+done
+if [ -n "$AGENT_ERRORS" ]; then
+  echo "FAIL:$AGENT_ERRORS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "legacy-skill-hashes.txt matches git history exactly... "
+if [ ! -f "$ROOT_DIR/scripts/legacy-skill-hashes.txt" ]; then
+  echo "FAIL (manifest missing — run scripts/regen-legacy-hashes.sh)"
+  ERRORS=$((ERRORS + 1))
+else
+  EXPECTED=$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
+      | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1, $2}' \
+      | while read blob path; do
+          skill_name=$(basename "$(dirname "$path")")
+          h=$(cd "$ROOT_DIR" && git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
+          [ -n "$h" ] && echo "$h $skill_name"
+        done | sort -u)
+  ACTUAL=$(awk '/^[[:space:]]*#/{next} /^[[:space:]]*$/{next} {print}' "$ROOT_DIR/scripts/legacy-skill-hashes.txt" | sort -u)
+  # Exact equality — the manifest is the ownership oracle for `--cleanup`,
+  # so an extra (hash, skill_name) pair would expand what gets deleted.
+  # Both missing and extra pairs are failures.
+  MISSING=$(comm -23 <(echo "$EXPECTED") <(echo "$ACTUAL"))
+  EXTRA=$(comm -13 <(echo "$EXPECTED") <(echo "$ACTUAL"))
+  if [ -n "$MISSING" ] || [ -n "$EXTRA" ]; then
+    echo "FAIL"
+    [ -n "$MISSING" ] && echo "  missing $(echo "$MISSING" | wc -l | tr -d ' ') pair(s) — run scripts/regen-legacy-hashes.sh"
+    [ -n "$EXTRA" ] && {
+      echo "  $(echo "$EXTRA" | wc -l | tr -d ' ') extra pair(s) not in git history (potential ownership-oracle pollution):"
+      echo "$EXTRA" | head -3 | sed 's/^/    /'
+    }
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK ($(echo "$ACTUAL" | wc -l | tr -d ' ') pairs)"
+  fi
+fi
+
+echo -n "Bootstrap honors GOPHER_AI_ARCHIVE_URL override... "
+# Regression test for #146 review finding: setting GOPHER_AI_ARCHIVE_URL must
+# bypass the git-clone preference so callers can test PR tarballs / mirrors.
+# This test runs install-codex.sh from a path WITHOUT scripts/build-universal.sh
+# (so bootstrap_repo() runs), points GOPHER_AI_ARCHIVE_URL at a local tarball,
+# and asserts the script logs "Bootstrap source: curl <archive>" — proving the
+# archive path ran rather than the default git-clone path.
+TMP_HOME=$(mktemp -d)
+TMP_SCRIPT_DIR=$(mktemp -d)
+TMP_ARCHIVE_DIR=$(mktemp -d)
+cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_SCRIPT_DIR/install-codex.sh"
+cp -R "$ROOT_DIR" "$TMP_ARCHIVE_DIR/gopher-ai-main"
+tar -czf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" -C "$TMP_ARCHIVE_DIR" gopher-ai-main
+mkdir -p "$TMP_HOME/.codex/skills"
+LOG_FILE=$(mktemp)
+if HOME="$TMP_HOME" GOPHER_AI_ARCHIVE_URL="file://$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" \
+   bash "$TMP_SCRIPT_DIR/install-codex.sh" --cleanup --yes >"$LOG_FILE" 2>&1; then
+  # Strict assertion: the bootstrap log line must show the archive path was used,
+  # NOT the git-clone path. This guards against the regression from #146 round 1.
+  if grep -q "Bootstrap source: curl file://$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" "$LOG_FILE"; then
+    echo "OK"
+  elif grep -q "Bootstrap source: git clone" "$LOG_FILE"; then
+    echo "FAIL (bootstrap silently cloned default repo, ignoring GOPHER_AI_ARCHIVE_URL)"
+    sed -n '1,30p' "$LOG_FILE"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "FAIL (no Bootstrap source log line found — install-codex.sh may have lost the trace echo)"
+    sed -n '1,30p' "$LOG_FILE"
+    ERRORS=$((ERRORS + 1))
+  fi
+else
+  echo "FAIL (script exited non-zero with archive URL override)"
+  sed -n '1,30p' "$LOG_FILE"
+  ERRORS=$((ERRORS + 1))
+fi
+rm -rf "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
+rm -f "$LOG_FILE"
+
+echo -n "SessionStart hook auto-cleans legacy Codex skills... "
+TMP_HOME=$(mktemp -d)
+TMP_PLUGIN=$(mktemp -d)/go-workflow
+mkdir -p "$TMP_HOME/.codex/skills" "$TMP_PLUGIN/hooks" "$TMP_PLUGIN/.claude-plugin"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json" "$TMP_PLUGIN/.claude-plugin/"
+SEEDED_OWNED=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  [ -f "$skill_dir/SKILL.md" ] || continue
+  skill_name=$(basename "$skill_dir")
+  SEEDED_OWNED="$skill_name"
+  mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
+  cp "$skill_dir/SKILL.md" "$TMP_HOME/.codex/skills/$skill_name/SKILL.md"
+  break
+done
+mkdir -p "$TMP_HOME/.codex/skills/user-custom-skill"
+printf -- "---\nname: user-custom-skill\ndescription: stays\n---\n" > "$TMP_HOME/.codex/skills/user-custom-skill/SKILL.md"
+
+CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-1.log 2>&1
+HOOK_EXIT=$?
+if [ "$HOOK_EXIT" -ne 0 ]; then
+  echo "FAIL (hook exited $HOOK_EXIT)"
+  cat /tmp/gopher-ai-hook-1.log
+  ERRORS=$((ERRORS + 1))
+elif [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
+  echo "FAIL (owned skill not removed: $SEEDED_OWNED)"
+  cat /tmp/gopher-ai-hook-1.log
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$TMP_HOME/.codex/skills/user-custom-skill" ]; then
+  echo "FAIL (cleanup wrongly removed user-custom-skill)"
+  ERRORS=$((ERRORS + 1))
+elif ! ls "$TMP_HOME/.codex/.gopher-ai-cleanup-"* >/dev/null 2>&1; then
+  echo "FAIL (marker file not written)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q "🧹 gopher-ai: removed" /tmp/gopher-ai-hook-1.log; then
+  echo "FAIL (no summary printed to stderr)"
+  cat /tmp/gopher-ai-hook-1.log
+  ERRORS=$((ERRORS + 1))
+else
+  # Re-run: marker should gate; second run must produce no output and not re-scan.
+  CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-2.log 2>&1
+  if [ -s /tmp/gopher-ai-hook-2.log ]; then
+    echo "FAIL (second run was not gated by marker — output produced)"
+    cat /tmp/gopher-ai-hook-2.log
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+rm -rf "$TMP_HOME" "$(dirname "$TMP_PLUGIN")"
+
+echo -n "SessionStart hook is silent on clean ~/.codex/skills/... "
+TMP_HOME=$(mktemp -d)
+mkdir -p "$TMP_HOME/.codex/skills"
+mkdir -p "$TMP_HOME/.codex/skills/user-custom-skill"
+printf -- "---\nname: user-custom-skill\ndescription: stays\n---\n" > "$TMP_HOME/.codex/skills/user-custom-skill/SKILL.md"
+CLAUDE_PLUGIN_ROOT="$ROOT_DIR/plugins/go-workflow" HOME="$TMP_HOME" \
+  bash "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-clean.log 2>&1
+if [ ! -d "$TMP_HOME/.codex/skills/user-custom-skill" ]; then
+  echo "FAIL (cleanup wrongly removed user-custom-skill)"
+  ERRORS=$((ERRORS + 1))
+elif [ -s /tmp/gopher-ai-hook-clean.log ]; then
+  echo "FAIL (hook printed output when there was nothing to clean)"
+  cat /tmp/gopher-ai-hook-clean.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "SessionStart hook works with shasum fallback (no sha256sum)... "
+# Stock macOS doesn't have sha256sum — only shasum. This test simulates that
+# environment by hiding sha256sum from PATH and verifying cleanup still works.
+TMP_HOME=$(mktemp -d)
+TMP_PLUGIN=$(mktemp -d)/go-workflow
+mkdir -p "$TMP_HOME/.codex/skills" "$TMP_PLUGIN/hooks" "$TMP_PLUGIN/.claude-plugin"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json" "$TMP_PLUGIN/.claude-plugin/"
+SEEDED_OWNED=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  [ -f "$skill_dir/SKILL.md" ] || continue
+  skill_name=$(basename "$skill_dir")
+  SEEDED_OWNED="$skill_name"
+  mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
+  cp "$skill_dir/SKILL.md" "$TMP_HOME/.codex/skills/$skill_name/SKILL.md"
+  break
+done
+# Build a controlled PATH that has shasum and openssl available, but NOT sha256sum.
+# This simulates stock macOS.
+SHASUM_PATH="$(command -v shasum 2>/dev/null || true)"
+if [ -z "$SHASUM_PATH" ]; then
+  echo "SKIP (shasum not installed locally — cannot simulate macOS)"
+else
+  TMP_BIN=$(mktemp -d)
+  for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail sort uniq stat shasum; do
+    cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
+    [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
+  done
+  # Deliberately do NOT link sha256sum.
+  if CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" PATH="$TMP_BIN" \
+     bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-shasum.log 2>&1; then
+    if [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
+      echo "FAIL (skill not removed when only shasum is available)"
+      cat /tmp/gopher-ai-hook-shasum.log
+      ERRORS=$((ERRORS + 1))
+    else
+      echo "OK"
+    fi
+  else
+    echo "FAIL (hook errored without sha256sum)"
+    cat /tmp/gopher-ai-hook-shasum.log
+    ERRORS=$((ERRORS + 1))
+  fi
+  rm -rf "$TMP_BIN"
+fi
+rm -rf "$TMP_HOME" "$(dirname "$TMP_PLUGIN")"
+
+echo -n "regen-legacy-hashes.sh refuses to run on a shallow clone... "
+TMP_REPO=$(mktemp -d)
+# Make a real shallow clone — --no-local disables git's local-clone optimization
+# that would otherwise hardlink the full object database and ignore --depth.
+if git clone --depth=1 --no-local --quiet "$ROOT_DIR" "$TMP_REPO/repo" 2>/dev/null; then
+  # Use the working-tree version of regen-legacy-hashes.sh (so the test sees
+  # uncommitted edits) but execute it against the shallow clone.
+  cp "$ROOT_DIR/scripts/regen-legacy-hashes.sh" "$TMP_REPO/repo/scripts/regen-legacy-hashes.sh"
+  if ! bash "$TMP_REPO/repo/scripts/regen-legacy-hashes.sh" >/tmp/gopher-ai-shallow.log 2>&1; then
+    if grep -q -i "shallow" /tmp/gopher-ai-shallow.log; then
+      echo "OK"
+    else
+      echo "FAIL (exited non-zero but didn't mention shallow)"
+      sed -n '1,15p' /tmp/gopher-ai-shallow.log
+      ERRORS=$((ERRORS + 1))
+    fi
+  else
+    echo "FAIL (regen succeeded on shallow clone — should have refused)"
+    ERRORS=$((ERRORS + 1))
+  fi
+else
+  echo "SKIP (could not create shallow test clone)"
+fi
+rm -rf "$TMP_REPO"
+
+echo -n "SessionStart hook short-circuits when ~/.codex/ missing... "
+TMP_HOME=$(mktemp -d)
+# No ~/.codex/ at all — hook must exit 0 silently.
+CLAUDE_PLUGIN_ROOT="$ROOT_DIR/plugins/go-workflow" HOME="$TMP_HOME" \
+  bash "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-nocodex.log 2>&1
+HOOK_EXIT=$?
+if [ "$HOOK_EXIT" -ne 0 ]; then
+  echo "FAIL (hook should exit 0 on no ~/.codex/)"
+  ERRORS=$((ERRORS + 1))
+elif [ -s /tmp/gopher-ai-hook-nocodex.log ]; then
+  echo "FAIL (hook printed output when ~/.codex/ was missing)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "Plugin-side manifest is in sync with scripts/ copy... "
+if ! diff -q "$ROOT_DIR/scripts/legacy-skill-hashes.txt" "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" >/dev/null 2>&1; then
+  echo "FAIL (run scripts/regen-legacy-hashes.sh)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
 
 echo -n "Codex --user mode is rejected with migration message... "
 if HOME="$(mktemp -d)" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-rejected.log 2>&1; then
