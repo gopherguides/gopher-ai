@@ -357,18 +357,20 @@ Apply IMMEDIATELY after displaying the report — no intervening text or analysi
   **Question:** "Changed files have {AGGREGATE_COVERAGE}% coverage (threshold: {COVERAGE_THRESHOLD}%). What would you like to do?"
 
   **Options (Go projects):**
-  1. "Generate tests for all uncovered functions in changed files"
-  2. "Generate tests only for functions I added or modified"
+  1. "Generate tests for all uncovered functions in changed files (excludes `package main`)"
+  2. "Generate tests only for functions I added or modified (excludes `package main`)"
   3. "Proceed without additional tests"
   4. "Show me the uncovered functions so I can decide"
 
   **Options (non-Go projects):** Omit options 2 and 4 — changed-function detection and per-function uncovered listings are only supported for Go (Step D only populates `UNCOVERED_FUNCS` for Go). Present options 1 and 3 only.
 
+  **Scope of test generation (Go path):** Options 1, 2, and 4 only consider gated files (`CHANGED_SRC_GATED`). Uncovered functions in `package main` files are shown in the report's row for transparency but `UNCOVERED_FUNCS` only contains gated entries — Step F never generates tests for `func main()`-style code. This matches the rationale of issue #143 (main is intentionally untested).
+
   Handle the user's choice:
-  - Option 1 → proceed to Step F in **all uncovered functions** mode
-  - Option 2 (Go only) → proceed to Step F in **changed functions only** mode
+  - Option 1 → proceed to Step F in **all uncovered functions** mode (gated files only)
+  - Option 2 (Go only) → proceed to Step F in **changed functions only** mode (gated files only)
   - Option 3 → return to calling command's next step
-  - Option 4 (Go only) → display the full `UNCOVERED_FUNCS` list with file locations, then re-ask with options 1-3
+  - Option 4 (Go only) → display the gated-files `UNCOVERED_FUNCS` list with file locations, then re-ask with options 1-3
 
 - **No test files exist at all** (coverage output is empty or all functions show 0%) → you MUST call `AskUserQuestion` with:
   "No test files found for changed packages. Changed files have 0% coverage (threshold: {COVERAGE_THRESHOLD}%). What would you like to do?"
@@ -382,12 +384,27 @@ Apply IMMEDIATELY after displaying the report — no intervening text or analysi
 
 ### Step E.3: Persist Result
 
-Persist `coverage_result` in state file:
+Persist `coverage_result` in the state file. Two fields are written: a numeric
+`coverage_result` (when a real aggregate exists) and a `coverage_skip_reason`
+that explains why the gate did not run, so callers can render a sensible
+summary line without producing `N/A%`-style output.
 
 ```bash
 TMP="${STATE_FILE}.tmp"
-jq --arg cr "$AGGREGATE_COVERAGE" '.coverage_result = $cr' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+if [ "$ALL_MAIN" = "true" ]; then
+  jq --arg reason "all-main" '.coverage_result = "" | .coverage_skip_reason = $reason' \
+    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+else
+  jq --arg cr "$AGGREGATE_COVERAGE" '.coverage_result = $cr | .coverage_skip_reason = ""' \
+    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+fi
 ```
+
+**Caller contract:** Callers that render a summary line (e.g. `/ship` Step 13f)
+must check `coverage_skip_reason` before formatting `coverage_result` with a
+percent sign. If `coverage_skip_reason` is non-empty, render a textual reason
+(e.g. `skipped — all changed files are package main`) instead of
+`<COV_RESULT>%`.
 
 ## Step F: Test Generation for Uncovered Code
 
