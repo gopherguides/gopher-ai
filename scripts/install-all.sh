@@ -45,6 +45,10 @@ trap cleanup EXIT
 # Prefers `git clone` so the Codex cleanup migration has full history access;
 # falls back to `curl | tar` if git is missing (the shipped legacy-skill-hashes
 # manifest covers ownership verification in that case).
+#
+# When the caller explicitly sets GOPHER_AI_ARCHIVE_URL (e.g., to test a PR
+# tarball, commit archive, or local mirror), we honor it — clone is only
+# preferred for the default GitHub source.
 bootstrap_if_needed() {
     if [[ -f "$ROOT_DIR/scripts/build-universal.sh" ]]; then
         return
@@ -54,7 +58,7 @@ bootstrap_if_needed() {
     BOOTSTRAP_DIR="$(mktemp -d)"
     local extracted=""
 
-    if command -v git >/dev/null 2>&1; then
+    if [[ -z "${GOPHER_AI_ARCHIVE_URL:-}" ]] && command -v git >/dev/null 2>&1; then
         local clone_url="https://github.com/${REPO_SLUG}.git"
         extracted="$BOOTSTRAP_DIR/gopher-ai"
         if ! git clone --quiet --branch "$REPO_REF" --single-branch \

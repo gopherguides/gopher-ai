@@ -72,7 +72,11 @@ bootstrap_repo() {
     # Prefer git clone when available — gives the cleanup logic full history
     # access. Falls back to curl|tar if git is missing, in which case the
     # shipped legacy-skill-hashes.txt manifest covers ownership verification.
-    if command -v git >/dev/null 2>&1; then
+    #
+    # When the caller explicitly sets GOPHER_AI_ARCHIVE_URL (PR tarballs, local
+    # mirrors, the test suite), honor it instead of clone — overriding the
+    # source URL has no effect if we always clone the default repo.
+    if [[ -z "${GOPHER_AI_ARCHIVE_URL:-}" ]] && command -v git >/dev/null 2>&1; then
         local clone_url="https://github.com/${REPO_SLUG}.git"
         extracted_root="$BOOTSTRAP_DIR/gopher-ai"
         if ! git clone --quiet --branch "$REPO_REF" --single-branch \
