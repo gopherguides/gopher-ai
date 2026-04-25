@@ -1,7 +1,6 @@
 ---
 name: tmux-start
-description: Start an issue in a new tmux window: create worktree, kick off /start-issue autonomously.
-
+description: "Start an issue in a new tmux window: create worktree, kick off /start-issue autonomously."
 ---
 
 # tmux Start

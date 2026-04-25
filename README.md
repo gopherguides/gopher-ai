@@ -283,7 +283,7 @@ Plugins are distributed via the [Codex plugin system](https://developers.openai.
 
 **Install into another repo:** `./scripts/install-codex.sh --repo /path/to/your-repo` copies the current plugin set and merges entries into that repo's `.agents/plugins/marketplace.json` without removing unrelated plugin entries.
 
-**GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms and installs everything.
+**GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms — installs Claude Code and Gemini, and runs the Codex `--cleanup --yes` migration. It does **not** install Codex plugins, since Codex now discovers gopher-ai through the in-repo marketplace. Either clone this repo and run Codex inside it, or use `--repo` to add the marketplace to another repo.
 
 **Migration from older versions:** Older releases offered a `--user` mode that copied flat skills into `~/.codex/skills/`. That conflicted with the plugin marketplace — Codex saw every gopher-ai skill twice and the duplicated metadata overflowed Codex's [skill metadata budget](https://developers.openai.com/codex/skills) (~2% of the context window). The flat layout is gone; run `./scripts/install-codex.sh --cleanup` once on machines that used `--user` previously. The marketplace is the only delivery path now.
 

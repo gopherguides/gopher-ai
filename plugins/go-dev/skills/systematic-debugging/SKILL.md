@@ -1,6 +1,6 @@
 ---
 name: systematic-debugging
-description: Debug Go code: investigate bugs, analyze test failures, race conditions, panics, deadlocks, stack traces. Trigger for 'why is this broken', 'test failing', 'getting an error'.
+description: "Debug Go code: investigate bugs, analyze test failures, race conditions, panics, deadlocks, stack traces. Trigger for 'why is this broken', 'test failing', 'getting an error'."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Bash(dlv:*) Agent
 ---
 

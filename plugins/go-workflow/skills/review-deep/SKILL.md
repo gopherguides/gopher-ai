@@ -1,6 +1,6 @@
 ---
 name: review-deep
-description: Deep code review with full PR/issue context, then fix findings. Trigger for 'review', 'review my changes', 'check this PR', or after finishing a feature/fix.
+description: "Deep code review with full PR/issue context, then fix findings. Trigger for 'review', 'review my changes', 'check this PR', or after finishing a feature/fix."
 argument-hint: "[PR-number|--issue <N>] [--post] [--scope <hint>]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---

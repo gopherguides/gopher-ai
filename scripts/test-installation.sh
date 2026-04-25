@@ -160,35 +160,95 @@ else
 fi
 rm -rf "$TMP_REPO"
 
-echo -n "Codex installer --cleanup removes legacy skills... "
+echo -n "Codex installer --cleanup --yes removes only matching skills... "
 TMP_HOME=$(mktemp -d)
 SKILLS_DIR="$TMP_HOME/.codex/skills"
 mkdir -p "$SKILLS_DIR"
-# Seed the fake home with one legacy skill name from the repo and one unrelated
-# skill that must NOT be removed.
-SEEDED_SKILL=""
+# Seed:
+#   1. A gopher-ai skill name with matching frontmatter — should be removed.
+#   2. A gopher-ai skill name with NON-matching frontmatter — should be kept
+#      (user redefined a skill that happens to share a generic name).
+#   3. A user-custom skill name — should be kept.
+SEEDED_OWNED=""
+SEEDED_DISGUISED=""
 for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
-  mkdir -p "$SKILLS_DIR/$skill_name"
-  echo "stub" > "$SKILLS_DIR/$skill_name/SKILL.md"
-  SEEDED_SKILL="$skill_name"
-  break
+  if [ -z "$SEEDED_OWNED" ]; then
+    SEEDED_OWNED="$skill_name"
+    mkdir -p "$SKILLS_DIR/$skill_name"
+    printf -- "---\nname: %s\ndescription: legacy gopher-ai install\n---\n\nbody\n" "$skill_name" > "$SKILLS_DIR/$skill_name/SKILL.md"
+  elif [ -z "$SEEDED_DISGUISED" ]; then
+    SEEDED_DISGUISED="$skill_name"
+    mkdir -p "$SKILLS_DIR/$skill_name"
+    printf -- "---\nname: my-personal-%s\ndescription: user override\n---\n\nbody\n" "$skill_name" > "$SKILLS_DIR/$skill_name/SKILL.md"
+    break
+  fi
 done
 mkdir -p "$SKILLS_DIR/user-custom-skill"
-echo "user content" > "$SKILLS_DIR/user-custom-skill/SKILL.md"
+printf -- "---\nname: user-custom-skill\ndescription: stays\n---\n" > "$SKILLS_DIR/user-custom-skill/SKILL.md"
 
-if ! HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup >/tmp/gopher-ai-install-cleanup.log 2>&1; then
+if ! HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes >/tmp/gopher-ai-install-cleanup.log 2>&1; then
   echo "FAIL"
   sed -n '1,120p' /tmp/gopher-ai-install-cleanup.log
   ERRORS=$((ERRORS + 1))
-elif [ -d "$SKILLS_DIR/$SEEDED_SKILL" ]; then
-  echo "FAIL (seeded gopher-ai skill not removed: $SEEDED_SKILL)"
+elif [ -d "$SKILLS_DIR/$SEEDED_OWNED" ]; then
+  echo "FAIL (seeded gopher-ai skill not removed: $SEEDED_OWNED)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$SKILLS_DIR/$SEEDED_DISGUISED" ]; then
+  echo "FAIL (cleanup wrongly removed disguised user skill: $SEEDED_DISGUISED)"
   ERRORS=$((ERRORS + 1))
 elif [ ! -d "$SKILLS_DIR/user-custom-skill" ]; then
   echo "FAIL (cleanup wrongly removed user-custom-skill)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "Codex --cleanup without --yes refuses to delete on non-tty... "
+TMP_HOME=$(mktemp -d)
+SKILLS_DIR="$TMP_HOME/.codex/skills"
+mkdir -p "$SKILLS_DIR"
+SEEDED_OWNED=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  skill_name=$(basename "$skill_dir")
+  SEEDED_OWNED="$skill_name"
+  mkdir -p "$SKILLS_DIR/$skill_name"
+  printf -- "---\nname: %s\ndescription: legacy\n---\n" "$skill_name" > "$SKILLS_DIR/$skill_name/SKILL.md"
+  break
+done
+# Pipe </dev/null so stdin is not a tty; expect non-zero exit and skill kept.
+if HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup </dev/null >/tmp/gopher-ai-cleanup-noconfirm.log 2>&1; then
+  echo "FAIL (should exit non-zero without --yes on non-tty)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$SKILLS_DIR/$SEEDED_OWNED" ]; then
+  echo "FAIL (deleted skill without confirmation)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "Codex --cleanup works without jq installed... "
+TMP_HOME=$(mktemp -d)
+SKILLS_DIR="$TMP_HOME/.codex/skills"
+mkdir -p "$SKILLS_DIR"
+# Hide jq via a PATH that excludes it. We deliberately keep core utilities by
+# pointing PATH at the original location minus jq's directory.
+JQ_PATH="$(command -v jq 2>/dev/null || true)"
+if [ -n "$JQ_PATH" ]; then
+  # Rebuild a sanitized PATH without jq's bin dir.
+  JQ_DIR="$(dirname "$JQ_PATH")"
+  SAFE_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "^${JQ_DIR}\$" | tr '\n' ':' | sed 's/:$//')
+  if HOME="$TMP_HOME" PATH="$SAFE_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes >/tmp/gopher-ai-cleanup-nojq.log 2>&1; then
+    echo "OK"
+  else
+    echo "FAIL (cleanup should not require jq)"
+    sed -n '1,40p' /tmp/gopher-ai-cleanup-nojq.log
+    ERRORS=$((ERRORS + 1))
+  fi
+else
+  echo "SKIP (jq not installed locally)"
 fi
 rm -rf "$TMP_HOME"
 

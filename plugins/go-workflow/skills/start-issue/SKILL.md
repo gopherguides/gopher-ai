@@ -1,7 +1,6 @@
 ---
 name: start-issue
-description: Start a GitHub issue end-to-end through PR: fetch, worktree, detect bug vs feature, implement with TDD, verify, submit.
-
+description: "Start a GitHub issue end-to-end through PR: fetch, worktree, detect bug vs feature, implement with TDD, verify, submit."
 ---
 
 # Start Issue

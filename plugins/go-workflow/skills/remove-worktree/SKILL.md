@@ -1,7 +1,6 @@
 ---
 name: remove-worktree
-description: Remove a specific git worktree interactively. Trigger on 'remove worktree', 'delete worktree'.
-
+description: "Remove a specific git worktree interactively. Trigger on 'remove worktree', 'delete worktree'."
 ---
 
 # Remove Worktree

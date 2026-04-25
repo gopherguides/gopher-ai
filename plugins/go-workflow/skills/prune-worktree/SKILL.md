@@ -1,7 +1,6 @@
 ---
 name: prune-worktree
-description: Batch-clean all completed git worktrees. Trigger on 'prune worktrees', 'clean up worktrees'.
-
+description: "Batch-clean all completed git worktrees. Trigger on 'prune worktrees', 'clean up worktrees'."
 ---
 
 # Prune Worktrees

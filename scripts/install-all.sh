@@ -153,10 +153,14 @@ install_claude() {
 
 install_codex() {
     echo "=== Codex CLI ==="
-    "$ROOT_DIR/scripts/install-codex.sh" --cleanup
-    echo "  Plugins discovered automatically via .agents/plugins/marketplace.json"
-    echo "  in any repo that ships one. To add to another repo:"
-    echo "    ./scripts/install-codex.sh --repo /path/to/your-repo"
+    echo "  Note: gopher-ai for Codex is delivered via the plugin marketplace,"
+    echo "  not via flat skills. This step only removes legacy ~/.codex/skills/"
+    echo "  entries from older --user installs. To use the plugins:"
+    echo "    - Run codex inside this repo (auto-discovered marketplace), OR"
+    echo "    - Run scripts/install-codex.sh --repo /path/to/your-repo to add"
+    echo "      the marketplace to another repo."
+    echo ""
+    "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes
     echo ""
 }
 

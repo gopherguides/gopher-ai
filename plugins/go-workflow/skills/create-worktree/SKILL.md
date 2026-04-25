@@ -1,7 +1,6 @@
 ---
 name: create-worktree
-description: Create a git worktree for an issue or PR. Trigger on 'create worktree', 'worktree for issue #N'.
-
+description: "Create a git worktree for an issue or PR. Trigger on 'create worktree', 'worktree for issue #N'."
 ---
 
 # Create Worktree

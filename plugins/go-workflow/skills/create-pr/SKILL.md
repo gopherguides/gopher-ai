@@ -1,7 +1,6 @@
 ---
 name: create-pr
-description: Create a pull request following the repo's PR template. Trigger on 'create PR', 'open PR', 'submit PR'.
-
+description: "Create a pull request following the repo's PR template. Trigger on 'create PR', 'open PR', 'submit PR'."
 ---
 
 # Create PR

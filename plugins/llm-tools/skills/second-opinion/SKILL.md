@@ -1,7 +1,6 @@
 ---
 name: second-opinion
-description: Get a second LLM opinion on complex architectural decisions, design trade-offs, library/framework choices, or security-sensitive code. Trigger when uncertain or facing 'should I' calls.
-
+description: "Get a second LLM opinion on complex architectural decisions, design trade-offs, library/framework choices, or security-sensitive code. Trigger when uncertain or facing 'should I' calls."
 ---
 
 # Second Opinion Skill

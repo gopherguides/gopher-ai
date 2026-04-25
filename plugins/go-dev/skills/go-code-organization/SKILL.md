@@ -1,6 +1,6 @@
 ---
 name: go-code-organization
-description: Organize Go code: package structure, naming, project layout, import grouping, file splitting. Use when deciding 'where should I put this?'.
+description: "Organize Go code: package structure, naming, project layout, import grouping, file splitting. Use when deciding 'where should I put this?'."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: go-best-practices
-description: Idiomatic Go patterns and routing hub to specialized Go skills (interfaces, concurrency, testing, errors, profiling, organization).
+description: "Idiomatic Go patterns and routing hub to specialized Go skills (interfaces, concurrency, testing, errors, profiling, organization)."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

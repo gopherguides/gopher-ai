@@ -1,6 +1,6 @@
 ---
 name: go-concurrency
-description: Write/review concurrent Go: goroutines, channels, select, locks, sync, errgroup, singleflight, worker pools, fan-out/in. Catch leaks, races, channel ownership.
+description: "Write/review concurrent Go: goroutines, channels, select, locks, sync, errgroup, singleflight, worker pools, fan-out/in. Catch leaks, races, channel ownership."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

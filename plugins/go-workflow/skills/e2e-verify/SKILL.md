@@ -1,6 +1,6 @@
 ---
 name: e2e-verify
-description: End-to-end PR verification: rebase, build, browser test, post results. Use to verify a PR before merging or to fix and ship.
+description: "End-to-end PR verification: rebase, build, browser test, post results. Use to verify a PR before merging or to fix and ship."
 argument-hint: "[PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page", "mcp__chrome-devtools-mcp__fill_form", "mcp__chrome-devtools-mcp__wait_for", "mcp__chrome-devtools-mcp__evaluate_script"]
 ---

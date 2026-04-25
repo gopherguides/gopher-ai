@@ -1,6 +1,6 @@
 ---
 name: go-error-handling
-description: Go error handling: fmt.Errorf, errors.Is/As/Join, sentinels, custom error types, panic/recover, wrapping, logging.
+description: "Go error handling: fmt.Errorf, errors.Is/As/Join, sentinels, custom error types, panic/recover, wrapping, logging."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

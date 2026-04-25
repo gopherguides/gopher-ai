@@ -1,6 +1,6 @@
 ---
 name: go-interfaces
-description: Design and review Go interfaces: composition, embedding, type assertions/switches, io.Reader/Writer, implicit satisfaction, decorator/middleware patterns.
+description: "Design and review Go interfaces: composition, embedding, type assertions/switches, io.Reader/Writer, implicit satisfaction, decorator/middleware patterns."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

@@ -1,7 +1,6 @@
 ---
 name: gemini-image
-description: Generate images via Google Gemini AI. Trigger for image/picture/graphic/illustration/banner/logo/icon generation requests.
-
+description: "Generate images via Google Gemini AI. Trigger for image/picture/graphic/illustration/banner/logo/icon generation requests."
 ---
 
 # Gemini Image Generation

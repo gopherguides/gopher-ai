@@ -1,7 +1,6 @@
 ---
 name: validate-skills
-description: Validate bash/shell code blocks in plugin commands and skills .md files. Trigger when editing markdown plugin files or new commands/skills.
-
+description: "Validate bash/shell code blocks in plugin commands and skills .md files. Trigger when editing markdown plugin files or new commands/skills."
 ---
 
 # Validate Skills

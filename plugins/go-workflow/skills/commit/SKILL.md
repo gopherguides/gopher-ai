@@ -1,7 +1,6 @@
 ---
 name: commit
-description: Create a git commit with auto-generated conventional message. Trigger on 'commit', 'save my work'.
-
+description: "Create a git commit with auto-generated conventional message. Trigger on 'commit', 'save my work'."
 ---
 
 # Commit

@@ -1,7 +1,6 @@
 ---
 name: templui
-description: templUI component library for Go templ apps. Use for templUI components, Script() setup, Go variable interpolation in JS, HTML-to-templ conversion, HTMX/Alpine integration.
-
+description: "templUI component library for Go templ apps. Use for templUI components, Script() setup, Go variable interpolation in JS, HTML-to-templ conversion, HTMX/Alpine integration."
 ---
 
 # templUI & HTMX/Alpine Best Practices

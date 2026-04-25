@@ -1,7 +1,6 @@
 ---
 name: gopher-guides
-description: Authoritative Gopher Guides Go training materials. Trigger when reviewing Go code, asking 'what's idiomatic?', 'how do professionals do this?', or learning Go conventions.
-
+description: "Authoritative Gopher Guides Go training materials. Trigger when reviewing Go code, asking 'what's idiomatic?', 'how do professionals do this?', or learning Go conventions."
 ---
 
 # Gopher Guides Professional Training

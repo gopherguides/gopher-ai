@@ -1,6 +1,6 @@
 ---
 name: go-testing
-description: Write Go tests: table-driven patterns, subtests, t.Parallel/Helper/Cleanup, testify, mocks, integration tests, benchmarks, fuzzing.
+description: "Write Go tests: table-driven patterns, subtests, t.Parallel/Helper/Cleanup, testify, mocks, integration tests, benchmarks, fuzzing."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 
