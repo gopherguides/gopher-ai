@@ -410,8 +410,8 @@ percent sign. If `coverage_skip_reason` is non-empty, render a textual reason
 
 **Mode selection** (set by Step E.2 user choice):
 
-- **All uncovered functions mode** (option 1): Generate tests for every uncovered function in `CHANGED_SRC`, as listed in `UNCOVERED_FUNCS` from Step D.
-- **No-test-files path** (from Step E.2 "Generate initial tests"): `UNCOVERED_FUNCS` may be empty because Step D short-circuits when coverage data is missing. In this case, read each file in `CHANGED_SRC` directly and extract all exported function/method signatures as test targets.
+- **All uncovered functions mode** (option 1): Generate tests for every uncovered function in `CHANGED_SRC` (Go: `CHANGED_SRC_GATED`), as listed in `UNCOVERED_FUNCS` from Step D.
+- **No-test-files path** (from Step E.2 "Generate initial tests"): `UNCOVERED_FUNCS` may be empty because Step D short-circuits when coverage data is missing. In this case, read each file in `CHANGED_SRC` (Go: `CHANGED_SRC_GATED` — `package main` files are excluded so Step F never generates tests for `func main()`-style code) directly and extract all exported function/method signatures as test targets.
 - **Changed functions only mode** (option 2, Go only): Restrict test generation to Go functions whose bodies were added or modified. Identify changed functions by mapping diff hunks to their enclosing function using committed, staged, unstaged, and untracked changes (matching Step B's file detection):
   ```bash
   # Combine committed + staged + unstaged diffs
