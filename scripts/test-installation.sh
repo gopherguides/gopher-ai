@@ -180,6 +180,9 @@ SEEDED_CONTENT_DRIFT=""
 COUNT=0
 for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
+  # Skip support directories under skills/ that are not actual skills (e.g.
+  # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
+  [ -f "$skill_dir/SKILL.md" ] || continue
   COUNT=$((COUNT + 1))
   if [ -z "$SEEDED_OWNED" ]; then
     SEEDED_OWNED="$skill_name"
@@ -231,6 +234,9 @@ mkdir -p "$SKILLS_DIR"
 SEEDED_OWNED=""
 for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
+  # Skip support directories under skills/ that are not actual skills (e.g.
+  # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
+  [ -f "$skill_dir/SKILL.md" ] || continue
   SEEDED_OWNED="$skill_name"
   mkdir -p "$SKILLS_DIR/$skill_name"
   # Verbatim copy so content fingerprint check recognizes it as gopher-ai-owned.
@@ -255,6 +261,9 @@ mkdir -p "$TMP_HOME/.codex/skills"
 SEEDED_OWNED=""
 for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
+  # Skip support directories under skills/ that are not actual skills (e.g.
+  # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
+  [ -f "$skill_dir/SKILL.md" ] || continue
   SEEDED_OWNED="$skill_name"
   mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
   # Verbatim copy so content fingerprint check recognizes it as gopher-ai-owned.
@@ -337,6 +346,9 @@ SEEDED_OWNED=""
 # whose manifest entry differs from the current file hash.
 for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
+  # Skip support directories under skills/ that are not actual skills (e.g.
+  # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
+  [ -f "$skill_dir/SKILL.md" ] || continue
   CURRENT_HASH=$(sha256sum "$skill_dir/SKILL.md" | awk '{print $1}')
   # Find a manifest hash that differs from current — that's a historical version.
   # Use awk for first-match selection so the upstream pipe doesn't SIGPIPE under
