@@ -339,16 +339,27 @@ for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
   CURRENT_HASH=$(sha256sum "$skill_dir/SKILL.md" | awk '{print $1}')
   # Find a manifest hash that differs from current — that's a historical version.
-  HISTORICAL_HASH=$(grep -v '^#' "$ROOT_DIR/scripts/legacy-skill-hashes.txt" | grep -v '^$' | grep -v "^$CURRENT_HASH$" | head -1)
+  # Use awk for first-match selection so the upstream pipe doesn't SIGPIPE under
+  # `set -o pipefail` (avoids `head -1` hazard).
+  HISTORICAL_HASH=$(awk -v cur="$CURRENT_HASH" '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    $1 != cur { print $1; exit }
+  ' "$ROOT_DIR/scripts/legacy-skill-hashes.txt")
   [ -n "$HISTORICAL_HASH" ] || continue
   # Find a blob with this hash from git history and reconstruct it as a stale install.
-  STALE_BLOB=$(cd "$ROOT_DIR" && git rev-list --objects --all | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1, $2}' | while read blob path; do
-    h=$(git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
-    if [ "$h" = "$HISTORICAL_HASH" ] && [ "$(basename "$(dirname "$path")")" = "$skill_name" ]; then
-      echo "$blob"
-      break
-    fi
-  done | head -1)
+  # The inner subshell exits as soon as a match is printed; no `head -1` needed.
+  STALE_BLOB=$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
+    | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1, $2}' \
+    | (
+        while read blob path; do
+          h=$(git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
+          if [ "$h" = "$HISTORICAL_HASH" ] && [ "$(basename "$(dirname "$path")")" = "$skill_name" ]; then
+            echo "$blob"
+            exit 0
+          fi
+        done
+      ))
   if [ -n "$STALE_BLOB" ]; then
     SEEDED_OWNED="$skill_name"
     mkdir -p "$SKILLS_DIR/$skill_name"
