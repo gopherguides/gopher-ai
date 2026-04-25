@@ -62,7 +62,10 @@ get_pkg() {
     {
       line = $0
       if (in_block) { if (sub(/.*\*\//, "", line)) in_block=0; else next }
-      sub(/[[:space:]]*\/\/.*$/, "", line)
+      # Strip block comments BEFORE line comments — otherwise a one-line
+      # block comment containing a URL like `/* See https://example.com */`
+      # has its `//` stripped first, leaving `/* See https:` and opening an
+      # unterminated block that swallows the real package clause.
       while (match(line, /\/\*/)) {
         pre  = substr(line, 1, RSTART-1)
         rest = substr(line, RSTART+RLENGTH)
@@ -72,6 +75,7 @@ get_pkg() {
           line = pre; in_block = 1; break
         }
       }
+      sub(/[[:space:]]*\/\/.*$/, "", line)
       sub(/^[[:space:]]+/, "", line)
       if (line == "") next
       if (line ~ /^package[[:space:]]+[A-Za-z_]/) {
