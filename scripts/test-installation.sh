@@ -160,27 +160,42 @@ else
 fi
 rm -rf "$TMP_REPO"
 
-echo -n "Codex installer --cleanup --yes removes only matching skills... "
+echo -n "Codex installer --cleanup --yes removes only owned skills... "
 TMP_HOME=$(mktemp -d)
 SKILLS_DIR="$TMP_HOME/.codex/skills"
 mkdir -p "$SKILLS_DIR"
-# Seed:
-#   1. A gopher-ai skill name with matching frontmatter — should be removed.
-#   2. A gopher-ai skill name with NON-matching frontmatter — should be kept
-#      (user redefined a skill that happens to share a generic name).
-#   3. A user-custom skill name — should be kept.
+# Seed four scenarios:
+#   1. SEEDED_OWNED         — gopher-ai name + matching content (gopher-ai SKILL.md verbatim)
+#                             → MUST be removed.
+#   2. SEEDED_NAME_DRIFT    — gopher-ai name + non-matching frontmatter name
+#                             → MUST be kept (frontmatter check is the first gate).
+#   3. SEEDED_CONTENT_DRIFT — gopher-ai name + matching frontmatter name + DIFFERENT content
+#                             → MUST be kept (content fingerprint catches user-authored
+#                             skills with generic names like `commit` or `ship`).
+#   4. user-custom-skill    — unrelated name
+#                             → MUST be kept.
 SEEDED_OWNED=""
-SEEDED_DISGUISED=""
+SEEDED_NAME_DRIFT=""
+SEEDED_CONTENT_DRIFT=""
+COUNT=0
 for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
+  COUNT=$((COUNT + 1))
   if [ -z "$SEEDED_OWNED" ]; then
     SEEDED_OWNED="$skill_name"
     mkdir -p "$SKILLS_DIR/$skill_name"
-    printf -- "---\nname: %s\ndescription: legacy gopher-ai install\n---\n\nbody\n" "$skill_name" > "$SKILLS_DIR/$skill_name/SKILL.md"
-  elif [ -z "$SEEDED_DISGUISED" ]; then
-    SEEDED_DISGUISED="$skill_name"
+    # Copy verbatim so content matches a current shipped version.
+    cp "$skill_dir/SKILL.md" "$SKILLS_DIR/$skill_name/SKILL.md"
+  elif [ -z "$SEEDED_NAME_DRIFT" ]; then
+    SEEDED_NAME_DRIFT="$skill_name"
     mkdir -p "$SKILLS_DIR/$skill_name"
     printf -- "---\nname: my-personal-%s\ndescription: user override\n---\n\nbody\n" "$skill_name" > "$SKILLS_DIR/$skill_name/SKILL.md"
+  elif [ -z "$SEEDED_CONTENT_DRIFT" ]; then
+    SEEDED_CONTENT_DRIFT="$skill_name"
+    mkdir -p "$SKILLS_DIR/$skill_name"
+    # Frontmatter name matches dir name (a user could plausibly write this for
+    # a generic name like `commit`), but content is NOT any version we shipped.
+    printf -- "---\nname: %s\ndescription: my own custom skill\n---\n\n# My %s\n\nUnrelated body content.\n" "$skill_name" "$skill_name" > "$SKILLS_DIR/$skill_name/SKILL.md"
     break
   fi
 done
@@ -192,10 +207,14 @@ if ! HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes 
   sed -n '1,120p' /tmp/gopher-ai-install-cleanup.log
   ERRORS=$((ERRORS + 1))
 elif [ -d "$SKILLS_DIR/$SEEDED_OWNED" ]; then
-  echo "FAIL (seeded gopher-ai skill not removed: $SEEDED_OWNED)"
+  echo "FAIL (owned gopher-ai skill not removed: $SEEDED_OWNED)"
+  sed -n '1,40p' /tmp/gopher-ai-install-cleanup.log
   ERRORS=$((ERRORS + 1))
-elif [ ! -d "$SKILLS_DIR/$SEEDED_DISGUISED" ]; then
-  echo "FAIL (cleanup wrongly removed disguised user skill: $SEEDED_DISGUISED)"
+elif [ ! -d "$SKILLS_DIR/$SEEDED_NAME_DRIFT" ]; then
+  echo "FAIL (cleanup wrongly removed name-drifted user skill: $SEEDED_NAME_DRIFT)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$SKILLS_DIR/$SEEDED_CONTENT_DRIFT" ]; then
+  echo "FAIL (cleanup wrongly removed content-drifted user skill: $SEEDED_CONTENT_DRIFT)"
   ERRORS=$((ERRORS + 1))
 elif [ ! -d "$SKILLS_DIR/user-custom-skill" ]; then
   echo "FAIL (cleanup wrongly removed user-custom-skill)"
@@ -214,7 +233,8 @@ for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
   SEEDED_OWNED="$skill_name"
   mkdir -p "$SKILLS_DIR/$skill_name"
-  printf -- "---\nname: %s\ndescription: legacy\n---\n" "$skill_name" > "$SKILLS_DIR/$skill_name/SKILL.md"
+  # Verbatim copy so content fingerprint check recognizes it as gopher-ai-owned.
+  cp "$skill_dir/SKILL.md" "$SKILLS_DIR/$skill_name/SKILL.md"
   break
 done
 # Pipe </dev/null so stdin is not a tty; expect non-zero exit and skill kept.
@@ -237,7 +257,8 @@ for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   skill_name=$(basename "$skill_dir")
   SEEDED_OWNED="$skill_name"
   mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
-  printf -- "---\nname: %s\ndescription: legacy\n---\n" "$skill_name" > "$TMP_HOME/.codex/skills/$skill_name/SKILL.md"
+  # Verbatim copy so content fingerprint check recognizes it as gopher-ai-owned.
+  cp "$skill_dir/SKILL.md" "$TMP_HOME/.codex/skills/$skill_name/SKILL.md"
   break
 done
 JQ_PATH="$(command -v jq 2>/dev/null || true)"
@@ -246,7 +267,10 @@ if [ -n "$JQ_PATH" ]; then
   # the test — no jq, no gemini — so the test result reflects installer
   # behavior rather than what else happens to be on the developer's PATH.
   TMP_BIN=$(mktemp -d)
-  for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail xargs sleep date wc; do
+  # Note: jq and gemini are intentionally excluded to simulate a minimal
+  # Codex-only machine. sha256sum, git, and sort are needed for the new
+  # content-fingerprint cleanup logic.
+  for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink; do
     cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
     [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
   done
