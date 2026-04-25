@@ -62,34 +62,23 @@ To add these plugins to **your own repo**:
 ./scripts/install-codex.sh --repo /path/to/your-repo
 ```
 
-### Global (Personal) Installation and Update
+### Global (Personal) Use
 
-To make plugins available across all your repos:
+For Codex, "global" means cloning this repo and running Codex inside it — Codex auto-discovers `.agents/plugins/marketplace.json` and offers the plugins through `/plugins`. There is no flat-skills install path; the previous `--user` mode has been removed because it double-loaded skills alongside the marketplace and overflowed Codex's skill metadata budget.
+
+If you previously ran `--user`, clean up the legacy entries once:
 
 ```bash
-./scripts/build-universal.sh
-./scripts/install-codex.sh --user
+./scripts/install-codex.sh --cleanup
 ```
 
-Or as a one-liner from GitHub (installs for all detected platforms):
+The universal installer handles every detected platform in one step:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"
 ```
 
-This downloads the repo to a temp directory, builds, installs for every platform it detects (Claude Code, Codex, Gemini), and cleans up.
-
-Restart Codex after installation or update. Use `/plugins` to verify they appear.
-
-### Flat Skills (Legacy)
-
-Individual skills can also be installed without the plugin system:
-
-```bash
-cp -r dist/codex/skills/* ~/.codex/skills/
-```
-
-Or use the built-in `$skill-installer` for curated skills.
+It builds, installs Claude Code and Gemini, runs the Codex `--cleanup`, and cleans up after itself. Restart Codex after running it; use `/plugins` to verify.
 
 ## Architecture
 

@@ -160,40 +160,57 @@ else
 fi
 rm -rf "$TMP_REPO"
 
-echo -n "Standalone Codex installer bootstraps correctly... "
+echo -n "Codex installer --cleanup removes legacy skills... "
 TMP_HOME=$(mktemp -d)
-TMP_SCRIPT_DIR=$(mktemp -d)
-TMP_ARCHIVE_DIR=$(mktemp -d)
-cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_SCRIPT_DIR/install-codex.sh"
-cp -R "$ROOT_DIR" "$TMP_ARCHIVE_DIR/gopher-ai-main"
-tar -czf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" -C "$TMP_ARCHIVE_DIR" gopher-ai-main
-if ! HOME="$TMP_HOME" GOPHER_AI_ARCHIVE_URL="file://$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" bash "$TMP_SCRIPT_DIR/install-codex.sh" --user >/tmp/gopher-ai-install-user.log 2>&1; then
+SKILLS_DIR="$TMP_HOME/.codex/skills"
+mkdir -p "$SKILLS_DIR"
+# Seed the fake home with one legacy skill name from the repo and one unrelated
+# skill that must NOT be removed.
+SEEDED_SKILL=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  skill_name=$(basename "$skill_dir")
+  mkdir -p "$SKILLS_DIR/$skill_name"
+  echo "stub" > "$SKILLS_DIR/$skill_name/SKILL.md"
+  SEEDED_SKILL="$skill_name"
+  break
+done
+mkdir -p "$SKILLS_DIR/user-custom-skill"
+echo "user content" > "$SKILLS_DIR/user-custom-skill/SKILL.md"
+
+if ! HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup >/tmp/gopher-ai-install-cleanup.log 2>&1; then
   echo "FAIL"
-  sed -n '1,120p' /tmp/gopher-ai-install-user.log
+  sed -n '1,120p' /tmp/gopher-ai-install-cleanup.log
+  ERRORS=$((ERRORS + 1))
+elif [ -d "$SKILLS_DIR/$SEEDED_SKILL" ]; then
+  echo "FAIL (seeded gopher-ai skill not removed: $SEEDED_SKILL)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$SKILLS_DIR/user-custom-skill" ]; then
+  echo "FAIL (cleanup wrongly removed user-custom-skill)"
   ERRORS=$((ERRORS + 1))
 else
-  SKILLS_DIR="$TMP_HOME/.codex/skills"
-  CODEX_DIST_DIR="$ROOT_DIR/dist/codex"
-  # Check that dist skills were copied to ~/.codex/skills/
-  DIST_SKILL_COUNT=$(find "$CODEX_DIST_DIR/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-  INSTALLED_SKILL_COUNT=$(find "$SKILLS_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)
-  MISSING_SKILLS=""
-  for skill_dir in "$CODEX_DIST_DIR"/skills/*/; do
-    skill_name=$(basename "$skill_dir")
-    if [ ! -f "$SKILLS_DIR/$skill_name/SKILL.md" ]; then
-      MISSING_SKILLS="$MISSING_SKILLS $skill_name"
-    fi
-  done
-  if [ "$INSTALLED_SKILL_COUNT" -lt "$DIST_SKILL_COUNT" ] || [ -n "$MISSING_SKILLS" ]; then
-    echo "FAIL"
-    [ "$INSTALLED_SKILL_COUNT" -lt "$DIST_SKILL_COUNT" ] && echo "expected $DIST_SKILL_COUNT skills, got $INSTALLED_SKILL_COUNT"
-    [ -n "$MISSING_SKILLS" ] && echo "missing skills:$MISSING_SKILLS"
-    ERRORS=$((ERRORS + 1))
-  else
-    echo "OK ($INSTALLED_SKILL_COUNT skills)"
-  fi
+  echo "OK"
 fi
-rm -rf "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
+rm -rf "$TMP_HOME"
+
+echo -n "Codex --user mode is rejected with migration message... "
+if HOME="$(mktemp -d)" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-rejected.log 2>&1; then
+  echo "FAIL (--user should exit non-zero)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q "removed" /tmp/gopher-ai-user-rejected.log; then
+  echo "FAIL (no migration message)"
+  sed -n '1,40p' /tmp/gopher-ai-user-rejected.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Build no longer emits dist/codex/skills/... "
+if [ -d "$ROOT_DIR/dist/codex/skills" ]; then
+  echo "FAIL (dist/codex/skills/ still exists after build)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
 
 echo ""
 if [ $ERRORS -gt 0 ]; then

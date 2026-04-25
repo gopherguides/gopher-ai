@@ -1,10 +1,7 @@
 ---
 name: create-pr
-description: |
-  WHEN: User wants to create a pull request, says "create PR", "open PR", "make a pull request",
-  "submit PR", or invokes $create-pr. Also when finishing implementation and ready to submit
-  for review.
-  WHEN NOT: User wants the full ship workflow with CI watching and merge. Use $ship for that.
+description: Create a pull request following the repo's PR template. Trigger on 'create PR', 'open PR', 'submit PR'.
+
 ---
 
 # Create PR

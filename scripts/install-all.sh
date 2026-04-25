@@ -7,7 +7,8 @@
 #
 # Platforms detected:
 #   - Claude Code: updates marketplace repo + plugin cache (requires ~/.claude/)
-#   - Codex CLI:   installs flat skills to ~/.codex/skills/ (requires jq)
+#   - Codex CLI:   cleans up legacy ~/.codex/skills/ entries; plugins are
+#                  discovered via .agents/plugins/marketplace.json (requires jq)
 #   - Gemini CLI:  installs extensions (requires gemini command)
 #
 # Remote install (no clone needed — downloads to tmp, installs, cleans up):
@@ -152,7 +153,10 @@ install_claude() {
 
 install_codex() {
     echo "=== Codex CLI ==="
-    "$ROOT_DIR/scripts/install-codex.sh" --user
+    "$ROOT_DIR/scripts/install-codex.sh" --cleanup
+    echo "  Plugins discovered automatically via .agents/plugins/marketplace.json"
+    echo "  in any repo that ships one. To add to another repo:"
+    echo "    ./scripts/install-codex.sh --repo /path/to/your-repo"
     echo ""
 }
 

@@ -1,11 +1,7 @@
 ---
 name: start-issue
-description: |
-  WHEN: User wants to start working on a GitHub issue, says "start issue", "work on issue",
-  "pick up issue #N", "implement issue", "fix issue #N", "add feature #N", or invokes
-  $start-issue with an issue number. Also when user wants the full issue-to-PR workflow.
-  WHEN NOT: User is already mid-implementation and just wants to commit, create a PR, or
-  manage worktrees. Use $commit, $create-pr, or $ship for those.
+description: Start a GitHub issue end-to-end through PR: fetch, worktree, detect bug vs feature, implement with TDD, verify, submit.
+
 ---
 
 # Start Issue

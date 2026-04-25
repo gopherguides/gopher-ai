@@ -1,17 +1,6 @@
 ---
 name: go-profiling-optimization
-description: |
-  WHEN: User is analyzing Go performance, asking about profiling, optimization, benchmarking
-  strategy, memory allocations, CPU hotspots, pprof, flame graphs, escape analysis, or
-  "why is this slow". Also activate when user mentions PGO, GOGC, GOMEMLIMIT, runtime/trace,
-  net/http/pprof, gcflags, benchstat, sync.Pool, buffer pooling, preallocation, or is
-  interpreting benchmark results, profiling output, or trace data. Trigger when user asks
-  "how do I profile", "where is the bottleneck", "how to reduce allocations", "is this
-  allocation on heap or stack", or any question about Go runtime performance tuning.
-  Trigger this skill liberally for ANY Go performance-related work.
-  WHEN NOT: Non-Go languages, general debugging without performance focus (use
-  systematic-debugging instead), writing new benchmarks from scratch (suggest /bench command),
-  questions entirely unrelated to performance or optimization
+description: Profile and optimize Go performance: pprof, allocations, escape analysis, sync.Pool, GOGC, benchmarks. Trigger for any Go perf, profiling, or runtime tuning question.
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

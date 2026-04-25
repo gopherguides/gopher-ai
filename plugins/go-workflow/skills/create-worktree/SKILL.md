@@ -1,10 +1,7 @@
 ---
 name: create-worktree
-description: |
-  WHEN: User wants to create a git worktree for isolated work on a GitHub issue or PR,
-  says "create worktree", "new worktree", "worktree for issue #N", or invokes
-  $create-worktree with an issue or PR number.
-  WHEN NOT: User wants to remove or clean up worktrees (use $remove-worktree or $prune-worktree).
+description: Create a git worktree for an issue or PR. Trigger on 'create worktree', 'worktree for issue #N'.
+
 ---
 
 # Create Worktree

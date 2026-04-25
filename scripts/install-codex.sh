@@ -12,15 +12,27 @@ BOOTSTRAP_DIR=""
 usage() {
     cat <<'EOF'
 Usage:
-  scripts/install-codex.sh --user
   scripts/install-codex.sh --repo /path/to/repo
+  scripts/install-codex.sh --cleanup
 
-Installs or updates gopher-ai Codex plugins using the current plugin-based layout.
+gopher-ai is delivered to Codex as plugins. Codex discovers them automatically
+when you run inside a repo that has .agents/plugins/marketplace.json (this repo
+ships one). To make them available in another repo, use --repo.
 
 Options:
-  --user        Install skills into ~/.codex/skills/ for global availability
-  --repo PATH   Install into PATH/plugins and merge entries into PATH/.agents/plugins/marketplace.json
+  --repo PATH   Install plugins into PATH/plugins and merge entries into
+                PATH/.agents/plugins/marketplace.json. Auto-cleans legacy
+                ~/.codex/skills/ entries left over from older installs.
+  --cleanup     Remove legacy gopher-ai skills from ~/.codex/skills/ that were
+                installed by the old --user mode. Safe — only removes skill
+                directory names that match this repo's plugin skills.
   --help        Show this help text
+
+Notes:
+  --user has been removed. The old mode copied skills into ~/.codex/skills/,
+  which double-loaded them alongside the plugin marketplace and overflowed the
+  Codex skill metadata budget. Run --cleanup once on machines that used --user
+  before, then rely on the marketplace for skill discovery.
 EOF
 }
 
@@ -93,19 +105,32 @@ merge_marketplace() {
     fi
 }
 
-install_user_skills() {
+cleanup_legacy_user_skills() {
     local skills_home="$HOME/.codex/skills"
-    mkdir -p "$skills_home"
+    if [[ ! -d "$skills_home" ]]; then
+        echo "no ~/.codex/skills/ directory — nothing to clean up"
+        return 0
+    fi
 
+    local removed=0
     local skill_dir
-    for skill_dir in "$DIST_DIR"/skills/*; do
+    for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
         [[ -d "$skill_dir" ]] || continue
         local skill_name
         skill_name="$(basename "$skill_dir")"
-        rm -rf "${skills_home:?}/$skill_name"
-        cp -R "$skill_dir" "$skills_home/"
-        echo "installed skill: $skills_home/$skill_name"
+        local target="$skills_home/$skill_name"
+        if [[ -d "$target" ]]; then
+            rm -rf "${target:?}"
+            echo "removed legacy skill: $target"
+            removed=$((removed + 1))
+        fi
     done
+
+    if [[ "$removed" -eq 0 ]]; then
+        echo "no legacy gopher-ai skills found in $skills_home"
+    else
+        echo "cleaned up $removed legacy skill directories"
+    fi
 }
 
 build_repo_marketplace() {
@@ -161,8 +186,23 @@ main() {
             usage
             ;;
         --user)
-            ensure_dist
-            install_user_skills
+            cat >&2 <<'EOF'
+error: --user mode has been removed.
+
+The old --user mode copied skills into ~/.codex/skills/, which conflicted
+with the plugin marketplace and overflowed Codex's skill metadata budget.
+gopher-ai is now delivered as Codex plugins only.
+
+To migrate:
+  1. ./scripts/install-codex.sh --cleanup     # remove legacy ~/.codex/skills/ entries
+  2. Run codex inside a repo that has .agents/plugins/marketplace.json
+     (this repo ships one), or use --repo to add the marketplace to another repo.
+EOF
+            exit 1
+            ;;
+        --cleanup)
+            bootstrap_repo
+            cleanup_legacy_user_skills
             ;;
         --repo)
             if [[ $# -lt 2 ]]; then
@@ -174,6 +214,7 @@ main() {
             target_repo="$(cd "$2" && pwd)"
             copy_repo_plugins "$target_repo"
             write_repo_marketplace "$target_repo"
+            cleanup_legacy_user_skills
             ;;
         *)
             usage >&2

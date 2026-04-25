@@ -1,11 +1,7 @@
 ---
 name: commit
-description: |
-  WHEN: User wants to create a git commit with an auto-generated message, says "commit",
-  "commit changes", "save my work", or invokes $commit. Also when finishing a task and
-  needing to commit before pushing.
-  WHEN NOT: User wants to push, create a PR, or do the full ship workflow.
-  Use $create-pr or $ship for those.
+description: Create a git commit with auto-generated conventional message. Trigger on 'commit', 'save my work'.
+
 ---
 
 # Commit

@@ -1,14 +1,7 @@
 ---
 name: second-opinion
-description: |
-  WHEN: User faces complex architectural decisions, asks for "another perspective", "second opinion",
-  "sanity check", "what do you think", or "am I overthinking this". Also trigger when multiple
-  valid approaches exist and user seems uncertain, when reviewing critical/security-sensitive code,
-  evaluating design trade-offs, choosing between libraries/frameworks, debating patterns like
-  microservices vs monolith, or when the user asks "should I..." about a significant technical
-  decision. Proactively suggest getting a second opinion on complex changes even if not asked.
-  WHEN NOT: User has expressed a clear strong preference, explicitly declines other opinions,
-  or is making simple/routine changes
+description: Get a second LLM opinion on complex architectural decisions, design trade-offs, library/framework choices, or security-sensitive code. Trigger when uncertain or facing 'should I' calls.
+
 ---
 
 # Second Opinion Skill

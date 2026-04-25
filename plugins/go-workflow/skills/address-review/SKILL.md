@@ -1,13 +1,6 @@
 ---
 name: address-review
-description: |
-  PR got review comments that need fixing? Use this. Whenever a reviewer or bot left feedback
-  on the user's pull request — comments to address, change requests, unresolved threads — and
-  the user wants those fixed in code, this is the skill. Runs the full response workflow: fetch
-  all review feedback (from teammates, leads, CodeRabbit, Copilot, Greptile, Claude, Codex, or
-  any other reviewer), apply code fixes, verify, push, resolve threads, request re-review.
-  Do NOT use for: creating new PRs, merging or closing PRs, writing your own review of
-  someone's code, or fixing CI/lint errors unrelated to review feedback.
+description: Address PR review feedback: fetch comments, fix in code, verify, push, resolve threads, request re-review. Use when reviewers/bots left feedback to apply.
 argument-hint: "[PR-number] [--no-watch]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion", "Agent"]
 ---

@@ -1,16 +1,6 @@
 ---
 name: go-interfaces
-description: |
-  WHEN: User is designing interfaces, asking about interface patterns, implementing interfaces,
-  working with type assertions, type switches, embedding, or asking "should this be an interface?",
-  "where should I define this interface?", "how many methods should my interface have?".
-  Also activate when reviewing interface design in PRs or refactoring toward interfaces.
-  Trigger when user mentions io.Reader, io.Writer, fmt.Stringer, sort.Interface, interface
-  composition, interface embedding, type assertion, type switch, implicit satisfaction,
-  decorator pattern, middleware pattern, or any question about Go interface design.
-  Trigger this skill liberally for ANY Go interface-related work.
-  WHEN NOT: Non-Go languages. Concurrency primitives (use go-concurrency).
-  Error handling specifics (use go-error-handling).
+description: Design and review Go interfaces: composition, embedding, type assertions/switches, io.Reader/Writer, implicit satisfaction, decorator/middleware patterns.
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

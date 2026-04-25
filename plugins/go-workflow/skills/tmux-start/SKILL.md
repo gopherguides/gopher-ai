@@ -1,10 +1,7 @@
 ---
 name: tmux-start
-description: |
-  WHEN: User wants to start working on an issue in a new tmux window, says "tmux start",
-  "start issue in tmux", "kick off issue #N", or invokes $tmux-start with an issue number.
-  WHEN NOT: User wants to create a worktree without tmux ($create-worktree), or start
-  an issue in the current session ($start-issue).
+description: Start an issue in a new tmux window: create worktree, kick off /start-issue autonomously.
+
 ---
 
 # tmux Start

@@ -1,15 +1,7 @@
 ---
 name: templui
-description: |
-  templUI component library for Go templ apps. Invoke for queries mentioning "templUI",
-  ".templ files", or "templ generate". Also activate whenever .templ files are present in
-  the project or templUI is in dependencies — even for implicit questions like "why doesn't
-  this dialog open?" or "how should I build tabs in this Go web app?". Covers: templUI
-  component setup (dropdown, dialog, modal, tabs, toast), Script() template configuration,
-  fixing non-responsive components, Go variable interpolation in JavaScript/onclick handlers
-  within templ files (curly braces as literal text or %7B encoding), HTML-to-templ conversion,
-  and HTMX/Alpine.js integration in templ-based apps.
-  Do NOT use for: React/Vue/Angular/Svelte, standard Go html/template, or non-Go frontend work.
+description: templUI component library for Go templ apps. Use for templUI components, Script() setup, Go variable interpolation in JS, HTML-to-templ conversion, HTMX/Alpine integration.
+
 ---
 
 # templUI & HTMX/Alpine Best Practices
