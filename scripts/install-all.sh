@@ -131,10 +131,11 @@ detect_platforms() {
         HAVE_CLAUDE=true
     fi
 
-    # Codex --cleanup doesn't require jq; treat ~/.codex/ as the signal so
-    # the migration runs even on minimal machines. (--repo would require jq,
-    # but install-all.sh only invokes --cleanup.)
-    if [[ -d "$HOME/.codex" ]]; then
+    # Detect Codex via either the CLI on PATH or an existing ~/.codex/. The
+    # CLI signal catches fresh installs that haven't run codex yet (no config
+    # dir created); the directory signal catches setups where the CLI is
+    # installed elsewhere (e.g. node global npm dir not on PATH for this shell).
+    if command -v codex >/dev/null 2>&1 || [[ -d "$HOME/.codex" ]]; then
         HAVE_CODEX=true
     fi
 
@@ -152,9 +153,9 @@ print_detection() {
     fi
 
     if $HAVE_CODEX; then
-        echo "  Codex CLI ...... found (~/.codex/ exists — will install global plugins)"
+        echo "  Codex CLI ...... found — will install global plugins to ~/.codex/plugins/"
     else
-        echo "  Codex CLI ...... skipped (no ~/.codex/ directory)"
+        echo "  Codex CLI ...... skipped (no codex binary, no ~/.codex/ directory)"
     fi
 
     if $HAVE_GEMINI; then

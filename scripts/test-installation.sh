@@ -699,6 +699,40 @@ else
 fi
 rm -rf "$TMP_HOME"
 
+echo -n "install-all.sh detects fresh Codex install (no ~/.codex/ yet)... "
+# Regression for #147 round 4: a user with the codex CLI but no ~/.codex/ yet
+# (fresh install, never ran codex) should still get global plugins installed.
+TMP_HOME=$(mktemp -d)
+TMP_BIN=$(mktemp -d)
+# Minimal fake codex on PATH so the detection picks it up.
+cat > "$TMP_BIN/codex" <<'STUB'
+#!/bin/sh
+echo "fake codex 0.0.0"
+STUB
+chmod +x "$TMP_BIN/codex"
+for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq; do
+  cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
+  [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
+done
+# Skip Claude path (no ~/.claude/) and Gemini (no gemini binary).
+HOME="$TMP_HOME" PATH="$TMP_BIN" bash "$ROOT_DIR/scripts/install-all.sh" --force </dev/null >/tmp/gopher-ai-fresh-codex.log 2>&1
+EXIT=$?
+if [ "$EXIT" -ne 0 ]; then
+  echo "FAIL (install-all exited $EXIT)"
+  sed -n '1,30p' /tmp/gopher-ai-fresh-codex.log
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$TMP_HOME/.codex/plugins/go-dev" ]; then
+  echo "FAIL (codex detected but plugins not installed)"
+  sed -n '1,30p' /tmp/gopher-ai-fresh-codex.log
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$TMP_HOME/.codex/plugins/go-dev/.gopher-ai-installed" ]; then
+  echo "FAIL (no marker file)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$TMP_BIN"
+
 echo -n "SessionStart hook runs new cleanup despite legacy v1 marker present... "
 # Regression for #147 round 2: users who ran the previous (v1) hook on this
 # same plugin version have a marker like .gopher-ai-cleanup-1.5.0. The new
