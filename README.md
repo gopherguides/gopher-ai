@@ -64,12 +64,15 @@ To install plugins individually: `/plugin install go-workflow@gopher-ai`, etc.
 
 ```bash
 # Global install — plugins available in every Codex session, regardless of cwd.
-# This is what install-all.sh uses for the curl one-liner.
-./scripts/install-codex.sh --user
+# Easiest path (no clone needed):
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"
 
-# Repo-local install — plugins available only when running Codex inside the repo.
+# Or, if you've already cloned the repo:
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
+./scripts/install-codex.sh --user
+
+# Repo-local install — plugins available only when running Codex inside this repo:
 codex   # Plugins load automatically from .agents/plugins/marketplace.json
 
 # Add the marketplace to another repo (project-scoped, like the gopher-ai repo itself):
@@ -79,8 +82,8 @@ codex   # Plugins load automatically from .agents/plugins/marketplace.json
 **Pick one mode.** `--user` and `--repo`-when-cwd'd-into-our-repo will both load the
 plugins, so having both active doubles the skill metadata Codex loads. The
 SessionStart hook on the Claude Code side auto-removes stale unmarked installs
-from earlier README versions, but if you switch between modes, run the
-appropriate install/cleanup explicitly.
+from earlier README versions and clears any stale gopher-ai marketplace cache
+when a marked global install is present.
 
 #### Google Gemini CLI
 
