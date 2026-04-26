@@ -419,25 +419,23 @@ plugin_json_author_email() {
     ' "$f"
 }
 
-# Clear gopher-ai entries from the Codex marketplace cache. Codex caches
+# Clear our gopher-ai entries from the Codex marketplace cache. Codex caches
 # marketplace plugins under ~/.codex/plugins/cache/<marketplace-name>/ when
 # the marketplace is discovered. If a user has both a marked global install
 # AND a cached marketplace copy (e.g. from running `codex` inside this repo),
 # Codex loads both and skill metadata doubles. Removing the cache lets the
 # global install be the single source of truth; Codex will repopulate the
 # cache only if a marketplace is rediscovered.
+#
+# Only the cache directory matching our exact marketplace name is removed.
+# Names like `gopher-ai-dev` or `gopher-ai-fork` (separate marketplaces a
+# user may have configured) are left alone.
 clear_gopher_ai_marketplace_cache() {
     local cache_root="$HOME/.codex/plugins/cache"
-    [[ -d "$cache_root" ]] || return 0
-    local removed=0
-    local entry
-    for entry in "$cache_root"/gopher-ai*; do
-        [[ -e "$entry" ]] || continue
-        rm -rf "$entry"
-        echo "cleared marketplace cache: $entry"
-        removed=$((removed + 1))
-    done
-    [[ "$removed" -eq 0 ]] || echo "cleared $removed gopher-ai marketplace cache entr$([ "$removed" -eq 1 ] && echo "y" || echo "ies")"
+    local target="$cache_root/gopher-ai"
+    [[ -d "$target" ]] || return 0
+    rm -rf "$target"
+    echo "cleared marketplace cache: $target"
 }
 
 # Install plugins globally to ~/.codex/plugins/<name>/. This is the path that

@@ -278,10 +278,14 @@ fi
 # marketplace cache so Codex doesn't load the same skills twice (once from
 # the global install, once from the cached marketplace copy). The cache
 # repopulates automatically if Codex rediscovers a marketplace.
+#
+# Scoped to the exact `gopher-ai` cache directory — names like
+# `gopher-ai-dev` or `gopher-ai-fork` are separate marketplaces and are
+# left alone.
 removed_cache=0
 removed_cache_paths=""
-CACHE_ROOT="$HOME/.codex/plugins/cache"
-if [[ -d "$CACHE_ROOT" && -d "$PLUGINS_HOME" ]]; then
+CACHE_TARGET="$HOME/.codex/plugins/cache/gopher-ai"
+if [[ -d "$CACHE_TARGET" && -d "$PLUGINS_HOME" ]]; then
     # Only act when at least one of OUR marked installs exists — otherwise
     # the cache may be the user's only working copy and we shouldn't touch it.
     has_marked=false
@@ -292,13 +296,10 @@ if [[ -d "$CACHE_ROOT" && -d "$PLUGINS_HOME" ]]; then
         fi
     done
     if [[ "$has_marked" == "true" ]]; then
-        for entry in "$CACHE_ROOT"/gopher-ai*; do
-            [[ -e "$entry" ]] || continue
-            rm -rf "$entry" 2>/dev/null && {
-                removed_cache_paths="${removed_cache_paths}${entry}\n"
-                removed_cache=$((removed_cache + 1))
-            }
-        done
+        rm -rf "$CACHE_TARGET" 2>/dev/null && {
+            removed_cache_paths="${CACHE_TARGET}\n"
+            removed_cache=1
+        }
     fi
 fi
 
