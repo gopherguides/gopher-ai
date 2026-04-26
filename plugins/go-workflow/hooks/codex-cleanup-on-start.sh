@@ -47,7 +47,12 @@ KNOWN_PLUGINS="go-dev go-web go-workflow gopher-guides llm-tools tailwind"
 #
 # v1: skills cleanup only.
 # v2: + unmarked plugin cleanup, + stale marketplace cache cleanup.
-CLEANUP_LOGIC_VERSION="v2"
+# v3: cache cleanup removed (cache is now the LEGITIMATE install path —
+#     direct ~/.codex/plugins/<name>/ installs are always stale because Codex
+#     never loaded plugins from there). Hook now removes ~/.codex/plugins/
+#     <name>/ regardless of marker, since the marker came from the (broken)
+#     prior --user install path.
+CLEANUP_LOGIC_VERSION="v3"
 PLUGIN_VERSION="$(awk -F'"' '/"version"/ {print $4; exit}' "$PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null || echo "unknown")"
 MARKER="$HOME/.codex/.gopher-ai-cleanup-${CLEANUP_LOGIC_VERSION}-${PLUGIN_VERSION}"
 [[ -f "$MARKER" ]] && exit 0
@@ -248,23 +253,36 @@ json_author_email() {
     ' "$file" 2>/dev/null
 }
 
+#
+# A directory at ~/.codex/plugins/<plugin-name>/ is ALWAYS stale (regardless
+# of marker) — we just learned that Codex never actually loaded plugins from
+# there. The legitimate install path is the marketplace cache at
+# ~/.codex/plugins/cache/gopher-ai/<plugin>/<commit-hash>/, populated by
+# install-codex.sh --user. Earlier `--user` versions wrote a marker file
+# alongside a direct install; that direct install was inert, so removing it
+# only eliminates clutter and frees the directory name for the user.
 if [[ -d "$PLUGINS_HOME" ]]; then
     for plugin_name in $KNOWN_PLUGINS; do
         target="$PLUGINS_HOME/$plugin_name"
         [[ -d "$target" ]] || continue
-        [[ -f "$target/.gopher-ai-installed" ]] && continue
 
-        plugin_json="$target/.codex-plugin/plugin.json"
-        [[ -f "$plugin_json" ]] || continue
-
-        # Top-level name match (NOT author.name — scoped to depth 1).
-        json_name="$(json_top_string "$plugin_json" "name")"
-        [[ "$json_name" == "$plugin_name" ]] || continue
-
-        # Author email match — the distinctive gopher-ai ownership signal.
-        # Scoped to author.email specifically, not the first "email" anywhere.
-        json_email="$(json_author_email "$plugin_json")"
-        [[ "$json_email" == "$GOPHER_AI_AUTHOR_EMAIL" ]] || continue
+        # Three independent signals that this directory is gopher-ai cruft:
+        #   - Has the marker file we used to write
+        #   - plugin.json with our author.email
+        #   - plugin.json with our top-level name
+        # Any single signal is enough to remove. A user-authored plugin
+        # sharing one of our names with a different author email AND no
+        # marker survives all three checks.
+        is_ours=false
+        if [[ -f "$target/.gopher-ai-installed" ]]; then
+            is_ours=true
+        elif [[ -f "$target/.codex-plugin/plugin.json" ]]; then
+            json_email="$(json_author_email "$target/.codex-plugin/plugin.json")"
+            if [[ "$json_email" == "$GOPHER_AI_AUTHOR_EMAIL" ]]; then
+                is_ours=true
+            fi
+        fi
+        [[ "$is_ours" == "true" ]] || continue
 
         rm -rf "$target" 2>/dev/null && {
             removed_plugin_paths="${removed_plugin_paths}${target}\n"
@@ -273,41 +291,11 @@ if [[ -d "$PLUGINS_HOME" ]]; then
     done
 fi
 
-# --- 3. Marketplace cache cleanup -----------------------------------------
-# If a marked global install is present, eliminate any stale gopher-ai
-# marketplace cache so Codex doesn't load the same skills twice (once from
-# the global install, once from the cached marketplace copy). The cache
-# repopulates automatically if Codex rediscovers a marketplace.
-#
-# Scoped to the exact `gopher-ai` cache directory — names like
-# `gopher-ai-dev` or `gopher-ai-fork` are separate marketplaces and are
-# left alone.
-removed_cache=0
-removed_cache_paths=""
-CACHE_TARGET="$HOME/.codex/plugins/cache/gopher-ai"
-if [[ -d "$CACHE_TARGET" && -d "$PLUGINS_HOME" ]]; then
-    # Only act when at least one of OUR marked installs exists — otherwise
-    # the cache may be the user's only working copy and we shouldn't touch it.
-    has_marked=false
-    for plugin_name in $KNOWN_PLUGINS; do
-        if [[ -f "$PLUGINS_HOME/$plugin_name/.gopher-ai-installed" ]]; then
-            has_marked=true
-            break
-        fi
-    done
-    if [[ "$has_marked" == "true" ]]; then
-        rm -rf "$CACHE_TARGET" 2>/dev/null && {
-            removed_cache_paths="${CACHE_TARGET}\n"
-            removed_cache=1
-        }
-    fi
-fi
-
 # Always write the marker so we don't re-scan next session.
 mkdir -p "$(dirname "$MARKER")" 2>/dev/null
 : > "$MARKER" 2>/dev/null
 
-if [[ "$removed_skills" -gt 0 || "$removed_plugins" -gt 0 || "$removed_cache" -gt 0 ]]; then
+if [[ "$removed_skills" -gt 0 || "$removed_plugins" -gt 0 ]]; then
     {
         if [[ "$removed_skills" -gt 0 ]]; then
             printf '🧹 gopher-ai: removed %d legacy Codex skill director%s from ~/.codex/skills/:\n' \
@@ -315,15 +303,12 @@ if [[ "$removed_skills" -gt 0 || "$removed_plugins" -gt 0 || "$removed_cache" -g
             printf '%b' "$removed_skill_paths" | sed 's|^|  |'
         fi
         if [[ "$removed_plugins" -gt 0 ]]; then
-            printf '🧹 gopher-ai: removed %d unmarked legacy plugin director%s from ~/.codex/plugins/:\n' \
+            printf '🧹 gopher-ai: removed %d stale plugin director%s from ~/.codex/plugins/:\n' \
                 "$removed_plugins" "$([ "$removed_plugins" -eq 1 ] && echo y || echo ies)"
             printf '%b' "$removed_plugin_paths" | sed 's|^|  |'
-            printf '   (Re-run install-all.sh to install marked global copies if you want them.)\n'
-        fi
-        if [[ "$removed_cache" -gt 0 ]]; then
-            printf '🧹 gopher-ai: cleared %d stale marketplace cache entr%s alongside the marked global install:\n' \
-                "$removed_cache" "$([ "$removed_cache" -eq 1 ] && echo y || echo ies)"
-            printf '%b' "$removed_cache_paths" | sed 's|^|  |'
+            printf '   (those were never loaded by Codex — the live install lives at\n'
+            printf '   ~/.codex/plugins/cache/gopher-ai/. If you want gopher-ai globally,\n'
+            printf '   run scripts/install-codex.sh --user.)\n'
         fi
     } >&2
 fi

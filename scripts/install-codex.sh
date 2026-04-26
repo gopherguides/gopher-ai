@@ -419,97 +419,132 @@ plugin_json_author_email() {
     ' "$f"
 }
 
-# Clear our gopher-ai entries from the Codex marketplace cache. Codex caches
-# marketplace plugins under ~/.codex/plugins/cache/<marketplace-name>/ when
-# the marketplace is discovered. If a user has both a marked global install
-# AND a cached marketplace copy (e.g. from running `codex` inside this repo),
-# Codex loads both and skill metadata doubles. Removing the cache lets the
-# global install be the single source of truth; Codex will repopulate the
-# cache only if a marketplace is rediscovered.
+# Install plugins globally for Codex via the marketplace + cache mechanism
+# Codex actually uses (verified empirically — direct copies to
+# ~/.codex/plugins/<name>/ are silently ignored by Codex).
 #
-# Only the cache directory matching our exact marketplace name is removed.
-# Names like `gopher-ai-dev` or `gopher-ai-fork` (separate marketplaces a
-# user may have configured) are left alone.
-clear_gopher_ai_marketplace_cache() {
-    local cache_root="$HOME/.codex/plugins/cache"
-    local target="$cache_root/gopher-ai"
-    [[ -d "$target" ]] || return 0
-    rm -rf "$target"
-    echo "cleared marketplace cache: $target"
-}
-
-# Install plugins globally to ~/.codex/plugins/<name>/. This is the path that
-# makes gopher-ai available in EVERY Codex session, regardless of cwd.
-# Idempotent: re-running cleanly replaces any prior install (whether from us
-# or from a pre-marker manual install). Each plugin gets a marker file
-# .gopher-ai-installed recording version + install timestamp so the
-# SessionStart cleanup hook can distinguish our installs from user-authored
-# plugins of the same name.
+# Three things are required for skills to actually load:
+#   1. The marketplace must be registered in ~/.codex/config.toml under
+#      [marketplaces.gopher-ai]. Achieved by `codex plugin marketplace add`.
+#   2. ~/.codex/plugins/cache/gopher-ai/<plugin>/<commit-hash>/ must exist
+#      with the plugin contents. Codex's TUI populates this after a user
+#      enables a plugin via /plugins; from the CLI we populate it ourselves
+#      from the marketplace clone at ~/.codex/.tmp/marketplaces/gopher-ai/.
+#   3. ~/.codex/config.toml must contain [plugins."<name>@gopher-ai"]
+#      enabled = true entries.
+#
+# Idempotent: re-running cleanly replaces stale cache + marker entries.
 install_user_plugins() {
-    local plugins_home="$HOME/.codex/plugins"
-    mkdir -p "$plugins_home"
+    require_cmd codex
+    require_cmd git
 
-    local plugin_version
-    plugin_version="$(jq -r '.metadata.version' "$ROOT_DIR/.claude-plugin/marketplace.json" 2>/dev/null || echo "unknown")"
-    local installed_at
-    installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local config_file="$HOME/.codex/config.toml"
+    local marketplace_clone="$HOME/.codex/.tmp/marketplaces/gopher-ai"
+    local cache_root="$HOME/.codex/plugins/cache/gopher-ai"
+
+    mkdir -p "$HOME/.codex"
+    [[ -f "$config_file" ]] || touch "$config_file"
+
+    # 1. Register the marketplace (idempotent — `add` succeeds the first time,
+    #    `upgrade` brings an existing registration up to date).
+    if grep -q '^\[marketplaces\.gopher-ai\]' "$config_file" 2>/dev/null; then
+        echo "marketplace already registered — upgrading..."
+        codex plugin marketplace upgrade gopher-ai 2>&1 | sed 's/^/  /'
+    else
+        echo "registering gopher-ai marketplace..."
+        codex plugin marketplace add gopherguides/gopher-ai 2>&1 | sed 's/^/  /'
+    fi
+
+    if [[ ! -d "$marketplace_clone" ]]; then
+        echo "error: marketplace clone missing at $marketplace_clone" >&2
+        echo "       \`codex plugin marketplace add\` should have created it." >&2
+        return 1
+    fi
+
+    # 2. Populate the cache with the plugin contents under the commit-hash
+    #    subdir Codex looks for. Hash is the short SHA of the marketplace
+    #    clone's HEAD (matches the path scheme openai-curated uses).
+    local commit_hash
+    commit_hash="$(git -C "$marketplace_clone" rev-parse --short=8 HEAD 2>/dev/null)"
+    if [[ -z "$commit_hash" ]]; then
+        echo "error: could not read commit hash from $marketplace_clone" >&2
+        return 1
+    fi
+    echo "populating cache (commit $commit_hash)..."
+
+    # Wipe any stale cache for this marketplace before repopulating — old
+    # commit-hash subdirs would otherwise linger forever and we'd accumulate.
+    rm -rf "$cache_root"
 
     local installed=0
-    local skipped=()
     local plugin_dir
-    for plugin_dir in "$ROOT_DIR"/plugins/*; do
+    for plugin_dir in "$marketplace_clone"/plugins/*; do
         [[ -d "$plugin_dir" ]] || continue
         [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
-        local plugin_name target
+        local plugin_name dest
         plugin_name="$(basename "$plugin_dir")"
-        target="$plugins_home/$plugin_name"
+        dest="$cache_root/$plugin_name/$commit_hash"
 
-        # Refuse to overwrite a user-authored plugin that happens to share one
-        # of our seven names. The hook applies the same gate at session-start;
-        # the installer needs it too so a fresh install doesn't nuke unrelated
-        # work between marker writes.
-        if ! target_is_safe_to_overwrite "$target"; then
-            skipped+=("$target (different author — leaving alone)")
-            continue
-        fi
-
-        # Replace any existing install. cp -R after rm -rf is the safest way
-        # to avoid mixing old + new files when SKILL.md or skills are renamed.
-        rm -rf "${target:?}"
-        cp -R "$plugin_dir" "$target"
-
-        # Drop the .claude-plugin/ subdir if it sneaked in — Codex doesn't need
-        # it and shipping it confuses some marketplace tools.
-        rm -rf "$target/.claude-plugin"
-
-        # Write the ownership marker. This is what the cleanup hook checks
-        # to decide "ours, leave alone" vs "legacy unmarked, candidate for
-        # removal".
-        cat > "$target/.gopher-ai-installed" <<EOF
-gopher-ai global install
-plugin: $plugin_name
-version: $plugin_version
-installed_at: $installed_at
-source: scripts/install-codex.sh --user
-EOF
-
-        echo "installed: $target ($plugin_name v$plugin_version)"
+        mkdir -p "$dest"
+        cp -R "$plugin_dir"/. "$dest/"
+        # Codex doesn't need the .claude-plugin/ subdir — drop it from the cache.
+        rm -rf "$dest/.claude-plugin"
+        echo "  installed: $plugin_name (cached at $dest)"
         installed=$((installed + 1))
     done
 
-    if [[ ${#skipped[@]} -gt 0 ]]; then
-        echo "skipped (not gopher-ai-owned):"
-        local entry
-        for entry in "${skipped[@]}"; do
-            echo "  $entry"
-        done
+    # 3. Enable each plugin in config.toml. Idempotent: skip entries that
+    #    already exist.
+    local enabled=0
+    for plugin_dir in "$marketplace_clone"/plugins/*; do
+        [[ -d "$plugin_dir" ]] || continue
+        [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
+        local plugin_name
+        plugin_name="$(basename "$plugin_dir")"
+        if grep -qF "[plugins.\"${plugin_name}@gopher-ai\"]" "$config_file"; then
+            continue
+        fi
+        # Append a new section. A blank line keeps the file readable.
+        printf '\n[plugins."%s@gopher-ai"]\nenabled = true\n' "$plugin_name" >> "$config_file"
+        enabled=$((enabled + 1))
+    done
+    if [[ "$enabled" -gt 0 ]]; then
+        echo "enabled $enabled new plugin entr$([ "$enabled" -eq 1 ] && echo "y" || echo "ies") in $config_file"
     fi
 
-    # Eliminate any stale gopher-ai marketplace cache so the global install
-    # is the single source of truth (no double-loading).
-    clear_gopher_ai_marketplace_cache
+    # Remove any leftover direct ~/.codex/plugins/<name>/ installs from the
+    # OLD broken --user behavior. Those are completely invisible to Codex
+    # (Codex never reads from there), but they confuse users who see them.
+    local removed_legacy=0
+    for plugin_dir in "$marketplace_clone"/plugins/*; do
+        [[ -d "$plugin_dir" ]] || continue
+        local plugin_name
+        plugin_name="$(basename "$plugin_dir")"
+        local legacy="$HOME/.codex/plugins/$plugin_name"
+        # Only remove if it has our marker (from previous broken --user install)
+        # OR if it has gopher-ai author email. NEVER touch user-authored plugins.
+        if [[ -d "$legacy" ]]; then
+            if [[ -f "$legacy/.gopher-ai-installed" ]]; then
+                rm -rf "$legacy"
+                removed_legacy=$((removed_legacy + 1))
+            elif [[ -f "$legacy/.codex-plugin/plugin.json" ]]; then
+                local owner_email
+                owner_email="$(plugin_json_author_email "$legacy/.codex-plugin/plugin.json")"
+                if [[ "$owner_email" == "support@gopherguides.com" ]]; then
+                    rm -rf "$legacy"
+                    removed_legacy=$((removed_legacy + 1))
+                fi
+            fi
+        fi
+    done
+    if [[ "$removed_legacy" -gt 0 ]]; then
+        echo "removed $removed_legacy legacy direct-install plugin director$([ "$removed_legacy" -eq 1 ] && echo "y" || echo "ies")"
+        echo "  (those were never loaded by Codex — only the marketplace cache is)"
+    fi
 
-    echo "installed $installed plugin(s) globally to $plugins_home/"
+    echo ""
+    echo "installed $installed plugin(s) via gopher-ai marketplace."
+    echo "Restart Codex; gopher-ai skills will load globally."
 }
 
 copy_repo_plugins() {
