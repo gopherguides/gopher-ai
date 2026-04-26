@@ -1,30 +1,41 @@
 #!/bin/bash
-# codex-cleanup-on-start.sh — SessionStart hook that auto-removes legacy
-# gopher-ai skill files left in ~/.codex/skills/ from older `--user` installs.
+# codex-cleanup-on-start.sh — SessionStart hook that self-heals stale
+# gopher-ai installs in ~/.codex/.
 #
-# This makes the migration "just work" — users don't have to remember to run
-# install-codex.sh --cleanup. It runs once per (user, plugin-version), gated by
-# a marker file, so it's nearly free on subsequent sessions.
+# Two cleanups in one hook:
 #
-# Safety: a candidate is only removed when ALL of these hold:
-#   1. The directory ~/.codex/skills/<name>/ matches a gopher-ai skill name.
-#   2. The SKILL.md frontmatter `name:` field matches the directory name.
-#   3. The SKILL.md sha256 matches a (hash, skill_name) pair in the shipped
-#      legacy-skill-hashes.txt manifest.
-# All three together make false-positive deletion essentially impossible.
+# 1. ~/.codex/skills/<name>/ — legacy flat-skill installs from the original
+#    `--user` mode (which this repo no longer offers). Removed when:
+#    - Directory name matches a gopher-ai skill name
+#    - SKILL.md frontmatter `name:` matches the directory name
+#    - SKILL.md sha256 matches a (hash, skill_name) pair in the shipped
+#      legacy-skill-hashes.txt manifest
 #
-# Exits 0 on all paths so it never blocks a session start. Errors are
-# silenced; nothing prints unless a cleanup actually happened (visible to
-# the user in the Claude Code transcript).
+# 2. ~/.codex/plugins/<name>/ — UNMARKED legacy plugin installs from when the
+#    README said "manually copy dist/codex/plugins/ to ~/.codex/plugins/".
+#    Plugins installed by the current `--user` mode write a
+#    .gopher-ai-installed/ marker; the hook leaves those alone. An unmarked
+#    directory matching one of our seven plugin names AND containing a
+#    .codex-plugin/plugin.json that looks like ours is candidate for removal.
+#    These show up alongside the new install path and double-load skill
+#    metadata (the entire reason this hook exists).
+#
+# Both cleanups are gated by a per-version marker so subsequent sessions are
+# nearly free. Exits 0 on every path so it never blocks a session start.
 
 set -u
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 MANIFEST="$PLUGIN_ROOT/hooks/legacy-skill-hashes.txt"
 SKILLS_HOME="$HOME/.codex/skills"
+PLUGINS_HOME="$HOME/.codex/plugins"
+
+# The seven plugins this repo ships for Codex. Used to scope the unmarked-
+# plugin cleanup so we never touch unrelated user-installed plugins.
+KNOWN_PLUGINS="go-dev go-web go-workflow gopher-guides llm-tools tailwind"
 
 # Fast-exit: nothing to clean.
-[[ -d "$SKILLS_HOME" ]] || exit 0
+[[ -d "$HOME/.codex" ]] || exit 0
 [[ -f "$MANIFEST" ]] || exit 0
 
 # Marker file scoped to plugin version. New gopher-ai versions trigger a
@@ -92,50 +103,115 @@ KNOWN_SKILLS="$(awk '
 
 [[ -n "$KNOWN_SKILLS" ]] || exit 0
 
-# Walk candidates and remove only those passing all three checks.
-removed=0
-candidates=""
-while IFS= read -r skill_name; do
-    [[ -n "$skill_name" ]] || continue
-    target="$SKILLS_HOME/$skill_name"
-    [[ -d "$target" ]] || continue
+# --- 1. Skills cleanup ----------------------------------------------------
+# Walk candidates in ~/.codex/skills/ and remove those passing all three checks.
+removed_skills=0
+removed_skill_paths=""
+if [[ -d "$SKILLS_HOME" ]]; then
+    while IFS= read -r skill_name; do
+        [[ -n "$skill_name" ]] || continue
+        target="$SKILLS_HOME/$skill_name"
+        [[ -d "$target" ]] || continue
 
-    skill_md="$target/SKILL.md"
-    [[ -f "$skill_md" ]] || continue
+        skill_md="$target/SKILL.md"
+        [[ -f "$skill_md" ]] || continue
 
-    # Check 1: frontmatter name matches directory name.
-    fm_name="$(skill_md_name "$skill_md")"
-    [[ "$fm_name" == "$skill_name" ]] || continue
+        # Check 1: frontmatter name matches directory name.
+        fm_name="$(skill_md_name "$skill_md")"
+        [[ "$fm_name" == "$skill_name" ]] || continue
 
-    # Check 2: SKILL.md content hash matches a (hash, skill_name) pair we shipped.
-    candidate_hash="$(sha256_of "$skill_md")"
-    [[ -n "$candidate_hash" ]] || continue
-    if ! awk -v target_hash="$candidate_hash" -v target_skill="$skill_name" '
-        /^[[:space:]]*#/ { next }
-        /^[[:space:]]*$/ { next }
-        $1 == target_hash && $2 == target_skill { found = 1; exit }
-        END { exit (found ? 0 : 1) }
-    ' "$MANIFEST"; then
-        continue
-    fi
+        # Check 2: SKILL.md content hash matches a (hash, skill_name) pair we shipped.
+        candidate_hash="$(sha256_of "$skill_md")"
+        [[ -n "$candidate_hash" ]] || continue
+        if ! awk -v target_hash="$candidate_hash" -v target_skill="$skill_name" '
+            /^[[:space:]]*#/ { next }
+            /^[[:space:]]*$/ { next }
+            $1 == target_hash && $2 == target_skill { found = 1; exit }
+            END { exit (found ? 0 : 1) }
+        ' "$MANIFEST"; then
+            continue
+        fi
 
-    # All checks passed — remove.
-    rm -rf "$target" 2>/dev/null && {
-        candidates="${candidates}${target}\n"
-        removed=$((removed + 1))
-    }
-done <<<"$KNOWN_SKILLS"
+        rm -rf "$target" 2>/dev/null && {
+            removed_skill_paths="${removed_skill_paths}${target}\n"
+            removed_skills=$((removed_skills + 1))
+        }
+    done <<<"$KNOWN_SKILLS"
+fi
+
+# --- 2. Unmarked plugin cleanup -------------------------------------------
+# Walk ~/.codex/plugins/<name>/ for the seven plugin names we ship. Remove a
+# directory only when ALL of these hold:
+#   - directory name matches one of our seven plugin names
+#   - NO .gopher-ai-installed marker file (we never touch marked installs)
+#   - .codex-plugin/plugin.json exists
+#   - plugin.json `name:` field matches the directory name
+#   - plugin.json `author.email` is "support@gopherguides.com" — distinctive
+#     to gopher-ai. A user-authored plugin that happens to share a name will
+#     have a different (or missing) author email and be left alone.
+# This pattern catches old README-era manual installs that pre-date the
+# marker convention while keeping user-authored plugins safe.
+removed_plugins=0
+removed_plugin_paths=""
+GOPHER_AI_AUTHOR_EMAIL="support@gopherguides.com"
+
+# Extract a JSON string field by name. Tolerant: works without jq, handles
+# quoted values, ignores arrays/objects. Returns the first match.
+json_string_field() {
+    local file="$1" field="$2"
+    awk -v f="$field" '
+        BEGIN { pat = "\""f"\"[[:space:]]*:[[:space:]]*\"" }
+        $0 ~ pat {
+            line = $0
+            sub(".*"pat, "", line)
+            sub(/".*/, "", line)
+            print line
+            exit
+        }
+    ' "$file" 2>/dev/null
+}
+
+if [[ -d "$PLUGINS_HOME" ]]; then
+    for plugin_name in $KNOWN_PLUGINS; do
+        target="$PLUGINS_HOME/$plugin_name"
+        [[ -d "$target" ]] || continue
+        [[ -f "$target/.gopher-ai-installed" ]] && continue
+
+        plugin_json="$target/.codex-plugin/plugin.json"
+        [[ -f "$plugin_json" ]] || continue
+
+        # Name match.
+        json_name="$(json_string_field "$plugin_json" "name")"
+        [[ "$json_name" == "$plugin_name" ]] || continue
+
+        # Author email match — the distinctive gopher-ai ownership signal.
+        json_email="$(json_string_field "$plugin_json" "email")"
+        [[ "$json_email" == "$GOPHER_AI_AUTHOR_EMAIL" ]] || continue
+
+        rm -rf "$target" 2>/dev/null && {
+            removed_plugin_paths="${removed_plugin_paths}${target}\n"
+            removed_plugins=$((removed_plugins + 1))
+        }
+    done
+fi
 
 # Always write the marker so we don't re-scan next session.
 mkdir -p "$(dirname "$MARKER")" 2>/dev/null
 : > "$MARKER" 2>/dev/null
 
-if [[ "$removed" -gt 0 ]]; then
+if [[ "$removed_skills" -gt 0 || "$removed_plugins" -gt 0 ]]; then
     {
-        printf '🧹 gopher-ai: removed %d legacy Codex skill director%s from ~/.codex/skills/:\n' \
-            "$removed" "$([ "$removed" -eq 1 ] && echo y || echo ies)"
-        printf '%b' "$candidates" | sed 's|^|  |'
-        printf '   (Codex now discovers gopher-ai via the plugin marketplace.)\n'
+        if [[ "$removed_skills" -gt 0 ]]; then
+            printf '🧹 gopher-ai: removed %d legacy Codex skill director%s from ~/.codex/skills/:\n' \
+                "$removed_skills" "$([ "$removed_skills" -eq 1 ] && echo y || echo ies)"
+            printf '%b' "$removed_skill_paths" | sed 's|^|  |'
+        fi
+        if [[ "$removed_plugins" -gt 0 ]]; then
+            printf '🧹 gopher-ai: removed %d unmarked legacy plugin director%s from ~/.codex/plugins/:\n' \
+                "$removed_plugins" "$([ "$removed_plugins" -eq 1 ] && echo y || echo ies)"
+            printf '%b' "$removed_plugin_paths" | sed 's|^|  |'
+            printf '   (Re-run install-all.sh to install marked global copies if you want them.)\n'
+        fi
     } >&2
 fi
 

@@ -12,36 +12,41 @@ BOOTSTRAP_DIR=""
 usage() {
     cat <<'EOF'
 Usage:
+  scripts/install-codex.sh --user
   scripts/install-codex.sh --repo /path/to/repo
   scripts/install-codex.sh --cleanup [--yes]
 
-gopher-ai is delivered to Codex as plugins. Codex discovers them automatically
-when you run inside a repo that has .agents/plugins/marketplace.json (this repo
-ships one). To make them available in another repo, use --repo.
+gopher-ai for Codex can be installed in two ways:
 
-Options:
-  --repo PATH   Install plugins into PATH/plugins and merge entries into
-                PATH/.agents/plugins/marketplace.json. Auto-cleans legacy
+  --user        Install plugins globally to ~/.codex/plugins/<name>/ so they
+                load in EVERY Codex session, regardless of the working
+                directory. This is what install-all.sh uses for the curl
+                one-liner. Idempotent: re-running cleanly replaces any
+                existing install. Each plugin gets a marker file
+                .gopher-ai-installed/ recording version + install timestamp,
+                so the cleanup hook can distinguish our installs from
+                user-authored plugins of the same name. Also removes legacy
                 ~/.codex/skills/ entries left over from older installs
                 (with --yes semantics — assumes the user wants the migration).
+
+  --repo PATH   Install plugins into PATH/plugins and merge entries into
+                PATH/.agents/plugins/marketplace.json. Use this for project-
+                scoped installs where you want the plugins to load only when
+                running Codex inside that repo. Also runs the legacy
+                ~/.codex/skills/ cleanup.
+
   --cleanup     Remove legacy gopher-ai skills from ~/.codex/skills/ left over
-                from the old --user mode. Lists candidates and prompts before
-                deleting. Two ownership gates protect user-authored skills:
-                (1) the SKILL.md frontmatter must have `name: <dirname>`, and
-                (2) its content must hash-match a current or historical
-                gopher-ai-shipped version of that file (via git history when
-                this script runs from a clone, or just current sources in
-                bootstrap mode). A user-authored skill at a generic name like
-                `commit` or `ship` will fail the content check and be kept.
-  --yes         Skip the interactive confirmation in --cleanup (used by
+                from the old `--user` mode (which copied skills there). Two
+                ownership gates protect user-authored skills: (1) the SKILL.md
+                frontmatter must have `name: <dirname>`, and (2) its content
+                must hash-match a gopher-ai-shipped version of that file via
+                the bundled scripts/legacy-skill-hashes.txt manifest. A user-
+                authored skill at a generic name like `commit` or `ship` will
+                fail the content check and be kept.
+
+  --yes         Skip interactive confirmation in --cleanup (used by
                 install-all.sh and CI flows).
   --help        Show this help text
-
-Notes:
-  --user has been removed. The old mode copied skills into ~/.codex/skills/,
-  which double-loaded them alongside the plugin marketplace and overflowed the
-  Codex skill metadata budget. Run --cleanup once on machines that used --user
-  before, then rely on the marketplace for skill discovery.
 EOF
 }
 
@@ -329,6 +334,58 @@ build_repo_marketplace() {
     ' "$DIST_DIR/plugins/marketplace.json" >"$output_file"
 }
 
+# Install plugins globally to ~/.codex/plugins/<name>/. This is the path that
+# makes gopher-ai available in EVERY Codex session, regardless of cwd.
+# Idempotent: re-running cleanly replaces any prior install (whether from us
+# or from a pre-marker manual install). Each plugin gets a marker file
+# .gopher-ai-installed/ recording version + install timestamp so the
+# SessionStart cleanup hook can distinguish our installs from user-authored
+# plugins of the same name.
+install_user_plugins() {
+    local plugins_home="$HOME/.codex/plugins"
+    mkdir -p "$plugins_home"
+
+    local plugin_version
+    plugin_version="$(jq -r '.metadata.version' "$ROOT_DIR/.claude-plugin/marketplace.json" 2>/dev/null || echo "unknown")"
+    local installed_at
+    installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    local installed=0
+    local plugin_dir
+    for plugin_dir in "$ROOT_DIR"/plugins/*; do
+        [[ -d "$plugin_dir" ]] || continue
+        [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
+        local plugin_name target
+        plugin_name="$(basename "$plugin_dir")"
+        target="$plugins_home/$plugin_name"
+
+        # Replace any existing install. cp -R after rm -rf is the safest way
+        # to avoid mixing old + new files when SKILL.md or skills are renamed.
+        rm -rf "${target:?}"
+        cp -R "$plugin_dir" "$target"
+
+        # Drop the .claude-plugin/ subdir if it sneaked in — Codex doesn't need
+        # it and shipping it confuses some marketplace tools.
+        rm -rf "$target/.claude-plugin"
+
+        # Write the ownership marker. This is what the cleanup hook checks
+        # to decide "ours, leave alone" vs "legacy unmarked, candidate for
+        # removal".
+        cat > "$target/.gopher-ai-installed" <<EOF
+gopher-ai global install
+plugin: $plugin_name
+version: $plugin_version
+installed_at: $installed_at
+source: scripts/install-codex.sh --user
+EOF
+
+        echo "installed: $target ($plugin_name v$plugin_version)"
+        installed=$((installed + 1))
+    done
+
+    echo "installed $installed plugin(s) globally to $plugins_home/"
+}
+
 copy_repo_plugins() {
     local target_repo="$1"
     mkdir -p "$target_repo/plugins"
@@ -370,19 +427,12 @@ main() {
             usage
             ;;
         --user)
-            cat >&2 <<'EOF'
-error: --user mode has been removed.
-
-The old --user mode copied skills into ~/.codex/skills/, which conflicted
-with the plugin marketplace and overflowed Codex's skill metadata budget.
-gopher-ai is now delivered as Codex plugins only.
-
-To migrate:
-  1. ./scripts/install-codex.sh --cleanup     # remove legacy ~/.codex/skills/ entries
-  2. Run codex inside a repo that has .agents/plugins/marketplace.json
-     (this repo ships one), or use --repo to add the marketplace to another repo.
-EOF
-            exit 1
+            require_cmd jq
+            bootstrap_repo
+            install_user_plugins
+            # --user is itself an explicit migration action; auto-confirm
+            # the legacy ~/.codex/skills/ cleanup that runs alongside it.
+            cleanup_legacy_user_skills "true"
             ;;
         --cleanup)
             bootstrap_repo

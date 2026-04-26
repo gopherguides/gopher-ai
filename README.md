@@ -63,21 +63,24 @@ To install plugins individually: `/plugin install go-workflow@gopher-ai`, etc.
 #### OpenAI Codex CLI
 
 ```bash
-# Repo-local (auto-discovered — just clone and run Codex)
+# Global install — plugins available in every Codex session, regardless of cwd.
+# This is what install-all.sh uses for the curl one-liner.
+./scripts/install-codex.sh --user
+
+# Repo-local install — plugins available only when running Codex inside the repo.
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
 codex   # Plugins load automatically from .agents/plugins/marketplace.json
-# Use /plugins to browse, $start-issue 42 to invoke workflow skills
 
-# Add to another repo (so its Codex sessions discover gopher-ai too)
+# Add the marketplace to another repo (project-scoped, like the gopher-ai repo itself):
 ./scripts/install-codex.sh --repo /path/to/your-repo
-
-# Migrating from older versions: clean up legacy ~/.codex/skills/ entries
-./scripts/install-codex.sh --cleanup
-# Older versions installed flat skills into ~/.codex/skills/ via --user mode.
-# That double-loaded skills alongside the marketplace and overflowed Codex's
-# skill metadata budget. The marketplace is the only delivery path now.
 ```
+
+**Pick one mode.** `--user` and `--repo`-when-cwd'd-into-our-repo will both load the
+plugins, so having both active doubles the skill metadata Codex loads. The
+SessionStart hook on the Claude Code side auto-removes stale unmarked installs
+from earlier README versions, but if you switch between modes, run the
+appropriate install/cleanup explicitly.
 
 #### Google Gemini CLI
 
@@ -283,9 +286,13 @@ Plugins are distributed via the [Codex plugin system](https://developers.openai.
 
 **Install into another repo:** `./scripts/install-codex.sh --repo /path/to/your-repo` copies the current plugin set and merges entries into that repo's `.agents/plugins/marketplace.json` without removing unrelated plugin entries.
 
-**GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms — installs Claude Code and Gemini, and runs the Codex `--cleanup --yes` migration. It does **not** install Codex plugins, since Codex now discovers gopher-ai through the in-repo marketplace. Either clone this repo and run Codex inside it, or use `--repo` to add the marketplace to another repo.
+**GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms — installs Claude Code and Gemini, and installs Codex plugins globally to `~/.codex/plugins/<name>/` (so they load in every Codex session). Each plugin gets a `.gopher-ai-installed` marker so the SessionStart cleanup hook can tell our installs apart from user-authored plugins of the same name.
 
-**Migration from older versions:** Older releases offered a `--user` mode that copied flat skills into `~/.codex/skills/`. That conflicted with the plugin marketplace — Codex saw every gopher-ai skill twice and the duplicated metadata overflowed Codex's [skill metadata budget](https://developers.openai.com/codex/skills) (~2% of the context window). The flat layout is gone; run `./scripts/install-codex.sh --cleanup` once on machines that used `--user` previously. The marketplace is the only delivery path now.
+**Migration from older versions:** Two earlier states needed cleanup, both handled automatically by the SessionStart hook (no command required) plus by `install-codex.sh --user` whenever you run install-all:
+- Flat skills at `~/.codex/skills/<name>/` from the original (broken) `--user` mode — overflowed Codex's [skill metadata budget](https://developers.openai.com/codex/skills).
+- Unmarked plugin directories at `~/.codex/plugins/<name>/` from when the README said "manually copy `dist/codex/plugins/` to `~/.codex/plugins/`" — also caused double-loading.
+
+The current `--user` mode writes a `.gopher-ai-installed` marker so the cleanup hook leaves marked installs alone and only removes pre-marker leftovers. To migrate manually: `./scripts/install-codex.sh --user` (clean reinstall) or `./scripts/install-codex.sh --cleanup` (remove leftover skills only).
 
 **Workflow skills** (from `go-workflow` plugin):
 

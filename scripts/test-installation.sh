@@ -255,49 +255,37 @@ else
 fi
 rm -rf "$TMP_HOME"
 
-echo -n "install-all.sh runs Codex cleanup without jq on minimal machine... "
+echo -n "install-all.sh fails cleanly when jq is missing... "
+# install-all.sh requires jq for every platform now (including Codex --user,
+# which reads marketplace.json for the version field). This test verifies the
+# script reports a clear "missing jq" error rather than silently misbehaving.
 TMP_HOME=$(mktemp -d)
-mkdir -p "$TMP_HOME/.codex/skills"
-SEEDED_OWNED=""
-for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
-  skill_name=$(basename "$skill_dir")
-  # Skip support directories under skills/ that are not actual skills (e.g.
-  # plugins/go-workflow/skills/coverage/ holds shared docs, not a SKILL.md).
-  [ -f "$skill_dir/SKILL.md" ] || continue
-  SEEDED_OWNED="$skill_name"
-  mkdir -p "$TMP_HOME/.codex/skills/$skill_name"
-  # Verbatim copy so content fingerprint check recognizes it as gopher-ai-owned.
-  cp "$skill_dir/SKILL.md" "$TMP_HOME/.codex/skills/$skill_name/SKILL.md"
-  break
-done
+mkdir -p "$TMP_HOME/.codex"
 JQ_PATH="$(command -v jq 2>/dev/null || true)"
 if [ -n "$JQ_PATH" ]; then
-  # Build a controlled PATH that contains only the directories required for
-  # the test — no jq, no gemini — so the test result reflects installer
-  # behavior rather than what else happens to be on the developer's PATH.
   TMP_BIN=$(mktemp -d)
-  # Note: jq and gemini are intentionally excluded to simulate a minimal
-  # Codex-only machine. sha256sum, git, and sort are needed for the new
-  # content-fingerprint cleanup logic.
+  # Deliberately exclude jq and gemini from this controlled PATH.
   for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink; do
     cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
     [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
   done
-  if HOME="$TMP_HOME" PATH="$TMP_BIN" bash "$ROOT_DIR/scripts/install-all.sh" --force </dev/null >/tmp/gopher-ai-installall-nojq.log 2>&1; then
-    if [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
-      echo "FAIL (cleanup did not run)"
-      ERRORS=$((ERRORS + 1))
-    else
-      echo "OK"
-    fi
-  else
-    echo "FAIL (install-all.sh exited non-zero on Codex-only/no-jq machine)"
-    sed -n '1,40p' /tmp/gopher-ai-installall-nojq.log
+  set +e
+  HOME="$TMP_HOME" PATH="$TMP_BIN" bash "$ROOT_DIR/scripts/install-all.sh" --force </dev/null >/tmp/gopher-ai-installall-nojq.log 2>&1
+  EXIT=$?
+  set -e
+  if [ "$EXIT" -eq 0 ]; then
+    echo "FAIL (install-all.sh should error when jq is missing)"
     ERRORS=$((ERRORS + 1))
+  elif ! grep -q "jq" /tmp/gopher-ai-installall-nojq.log; then
+    echo "FAIL (error message did not mention jq)"
+    sed -n '1,20p' /tmp/gopher-ai-installall-nojq.log
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
   fi
   rm -rf "$TMP_BIN"
 else
-  echo "SKIP (jq not installed)"
+  echo "SKIP (jq not installed locally)"
 fi
 rm -rf "$TMP_HOME"
 
@@ -662,17 +650,99 @@ else
   echo "OK"
 fi
 
-echo -n "Codex --user mode is rejected with migration message... "
-if HOME="$(mktemp -d)" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-rejected.log 2>&1; then
-  echo "FAIL (--user should exit non-zero)"
+echo -n "Codex --user installs plugins globally with marker file... "
+TMP_HOME=$(mktemp -d)
+if ! HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-install.log 2>&1; then
+  echo "FAIL (--user exited non-zero)"
+  sed -n '1,40p' /tmp/gopher-ai-user-install.log
   ERRORS=$((ERRORS + 1))
-elif ! grep -q "removed" /tmp/gopher-ai-user-rejected.log; then
-  echo "FAIL (no migration message)"
-  sed -n '1,40p' /tmp/gopher-ai-user-rejected.log
+else
+  EXPECTED_PLUGINS="go-dev go-web go-workflow gopher-guides llm-tools tailwind"
+  MISSING=""
+  UNMARKED=""
+  for p in $EXPECTED_PLUGINS; do
+    if [ ! -d "$TMP_HOME/.codex/plugins/$p" ]; then
+      MISSING="$MISSING $p"
+    elif [ ! -f "$TMP_HOME/.codex/plugins/$p/.gopher-ai-installed" ]; then
+      UNMARKED="$UNMARKED $p"
+    elif [ -d "$TMP_HOME/.codex/plugins/$p/.claude-plugin" ]; then
+      # Codex installs should not ship the Claude-Code-only manifest dir.
+      UNMARKED="$UNMARKED $p(has-claude-plugin)"
+    fi
+  done
+  if [ -n "$MISSING" ]; then
+    echo "FAIL (missing:$MISSING)"
+    ERRORS=$((ERRORS + 1))
+  elif [ -n "$UNMARKED" ]; then
+    echo "FAIL (no marker or stray .claude-plugin:$UNMARKED)"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK (6 plugins installed and marked)"
+  fi
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "Codex --user is idempotent (re-running cleanly replaces) ... "
+TMP_HOME=$(mktemp -d)
+HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+# Drop a sentinel inside one plugin dir to ensure a re-run wipes it cleanly.
+echo "stale" > "$TMP_HOME/.codex/plugins/go-dev/STALE_FILE"
+HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+if [ -f "$TMP_HOME/.codex/plugins/go-dev/STALE_FILE" ]; then
+  echo "FAIL (stale file survived re-install)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$TMP_HOME/.codex/plugins/go-dev/.gopher-ai-installed" ]; then
+  echo "FAIL (marker missing after re-run)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
 fi
+rm -rf "$TMP_HOME"
+
+echo -n "SessionStart hook removes unmarked legacy plugin directories... "
+TMP_HOME=$(mktemp -d)
+TMP_PLUGIN=$(mktemp -d)/go-workflow
+mkdir -p "$TMP_HOME/.codex/plugins" "$TMP_PLUGIN/hooks" "$TMP_PLUGIN/.claude-plugin"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json" "$TMP_PLUGIN/.claude-plugin/"
+
+# Seed three scenarios:
+#   1. LEGACY:    gopher-ai plugin, no marker → MUST be removed
+#   2. MARKED:    gopher-ai plugin with marker → MUST be kept
+#   3. CONFLICT:  user-authored plugin sharing a gopher-ai name with different
+#                 author email → MUST be kept
+mkdir -p "$TMP_HOME/.codex/plugins/go-dev/.codex-plugin"
+cp "$ROOT_DIR/plugins/go-dev/.codex-plugin/plugin.json" "$TMP_HOME/.codex/plugins/go-dev/.codex-plugin/"
+
+mkdir -p "$TMP_HOME/.codex/plugins/llm-tools/.codex-plugin"
+cp "$ROOT_DIR/plugins/llm-tools/.codex-plugin/plugin.json" "$TMP_HOME/.codex/plugins/llm-tools/.codex-plugin/"
+echo "marker" > "$TMP_HOME/.codex/plugins/llm-tools/.gopher-ai-installed"
+
+mkdir -p "$TMP_HOME/.codex/plugins/go-workflow/.codex-plugin"
+printf '{\n  "name": "go-workflow",\n  "version": "0.1.0",\n  "author": { "name": "Other Author", "email": "other@example.com" }\n}\n' \
+  > "$TMP_HOME/.codex/plugins/go-workflow/.codex-plugin/plugin.json"
+
+CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" \
+  bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-plugins.log 2>&1
+if [ -d "$TMP_HOME/.codex/plugins/go-dev" ]; then
+  echo "FAIL (legacy unmarked plugin not removed: go-dev)"
+  cat /tmp/gopher-ai-hook-plugins.log
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$TMP_HOME/.codex/plugins/llm-tools" ]; then
+  echo "FAIL (cleanup wrongly removed marked plugin: llm-tools)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$TMP_HOME/.codex/plugins/go-workflow" ]; then
+  echo "FAIL (cleanup wrongly removed user-authored same-named plugin: go-workflow)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q "removed 1 unmarked legacy plugin" /tmp/gopher-ai-hook-plugins.log; then
+  echo "FAIL (no removal message in stderr)"
+  cat /tmp/gopher-ai-hook-plugins.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$(dirname "$TMP_PLUGIN")"
 
 echo -n "Build no longer emits dist/codex/skills/... "
 if [ -d "$ROOT_DIR/dist/codex/skills" ]; then
