@@ -7,9 +7,9 @@
 #
 # Platforms detected:
 #   - Claude Code: updates marketplace repo + plugin cache (requires ~/.claude/)
-#   - Codex CLI:   cleans up legacy ~/.codex/skills/ entries (migration only);
-#                  plugins are discovered via .agents/plugins/marketplace.json
-#                  in the repo. Cleanup runs without jq or git.
+#   - Codex CLI:   installs plugins globally to ~/.codex/plugins/ (so they
+#                  load in every Codex session) AND cleans up legacy
+#                  ~/.codex/skills/ entries from older flat-install attempts.
 #   - Gemini CLI:  installs extensions (requires gemini command)
 #
 # Remote install (no clone needed — downloads to tmp, installs, cleans up):
@@ -93,13 +93,13 @@ bootstrap_if_needed() {
 }
 
 # Check that the tools required for the platforms we're actually installing
-# are available. Codex --cleanup needs neither jq nor git nor the build step,
-# so we don't gate cleanup-only flows on those.
+# are available.
 check_prerequisites() {
     local missing=()
 
-    # jq is needed by build-universal.sh, which only runs for Claude/Gemini.
-    if $HAVE_CLAUDE || $HAVE_GEMINI; then
+    # jq is needed by build-universal.sh (Claude/Gemini) and by install-codex.sh
+    # for marketplace.json manipulation when installing globally.
+    if $HAVE_CLAUDE || $HAVE_GEMINI || $HAVE_CODEX; then
         if ! command -v jq >/dev/null 2>&1; then
             missing+=("jq (brew install jq / apt install jq)")
         fi
@@ -131,10 +131,11 @@ detect_platforms() {
         HAVE_CLAUDE=true
     fi
 
-    # Codex --cleanup doesn't require jq; treat ~/.codex/ as the signal so
-    # the migration runs even on minimal machines. (--repo would require jq,
-    # but install-all.sh only invokes --cleanup.)
-    if [[ -d "$HOME/.codex" ]]; then
+    # Detect Codex via either the CLI on PATH or an existing ~/.codex/. The
+    # CLI signal catches fresh installs that haven't run codex yet (no config
+    # dir created); the directory signal catches setups where the CLI is
+    # installed elsewhere (e.g. node global npm dir not on PATH for this shell).
+    if command -v codex >/dev/null 2>&1 || [[ -d "$HOME/.codex" ]]; then
         HAVE_CODEX=true
     fi
 
@@ -152,9 +153,9 @@ print_detection() {
     fi
 
     if $HAVE_CODEX; then
-        echo "  Codex CLI ...... found (~/.codex/ exists — will run cleanup migration only)"
+        echo "  Codex CLI ...... found — will install global plugins to ~/.codex/plugins/"
     else
-        echo "  Codex CLI ...... skipped (no ~/.codex/ directory)"
+        echo "  Codex CLI ...... skipped (no codex binary, no ~/.codex/ directory)"
     fi
 
     if $HAVE_GEMINI; then
@@ -187,14 +188,10 @@ install_claude() {
 
 install_codex() {
     echo "=== Codex CLI ==="
-    echo "  Note: gopher-ai for Codex is delivered via the plugin marketplace,"
-    echo "  not via flat skills. This step only removes legacy ~/.codex/skills/"
-    echo "  entries from older --user installs. To use the plugins:"
-    echo "    - Run codex inside this repo (auto-discovered marketplace), OR"
-    echo "    - Run scripts/install-codex.sh --repo /path/to/your-repo to add"
-    echo "      the marketplace to another repo."
+    echo "  Installing gopher-ai plugins globally to ~/.codex/plugins/."
+    echo "  They will load in every Codex session, regardless of working directory."
     echo ""
-    "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes
+    "$ROOT_DIR/scripts/install-codex.sh" --user
     echo ""
 }
 
@@ -317,8 +314,8 @@ main() {
         echo ""
     fi
 
-    # Build is only needed for Claude and Gemini; Codex --cleanup walks
-    # plugins/*/skills/ directly and doesn't read dist/.
+    # Build is needed for Claude and Gemini. Codex --user copies straight from
+    # plugins/ source — no build artifacts required.
     if $HAVE_CLAUDE || $HAVE_GEMINI; then
         echo "Building distribution..."
         echo ""
@@ -345,10 +342,7 @@ main() {
         echo "  Claude Code: Restart Claude Code to reload plugins"
     fi
     if $HAVE_CODEX; then
-        echo "  Codex CLI:   Migration only — no plugins were installed."
-        echo "               To use gopher-ai with Codex: clone this repo and"
-        echo "               run 'codex' inside it (auto-discovers the marketplace),"
-        echo "               or run scripts/install-codex.sh --repo <target-repo>"
+        echo "  Codex CLI:   Plugins installed to ~/.codex/plugins/ — restart Codex to load."
     fi
     if $HAVE_GEMINI; then
         echo "  Gemini CLI:  Restart Gemini to load extensions"
