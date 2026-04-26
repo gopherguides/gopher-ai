@@ -699,6 +699,111 @@ else
 fi
 rm -rf "$TMP_HOME"
 
+echo -n "Codex --user refuses to overwrite user-authored same-named plugin... "
+TMP_HOME=$(mktemp -d)
+mkdir -p "$TMP_HOME/.codex/plugins/go-workflow/.codex-plugin"
+# Plant a user-authored plugin with one of our names but a different author.
+printf '{\n  "name": "go-workflow",\n  "version": "9.9.9",\n  "author": { "name": "Other", "email": "other@example.com" }\n}\n' \
+  > "$TMP_HOME/.codex/plugins/go-workflow/.codex-plugin/plugin.json"
+echo "user content" > "$TMP_HOME/.codex/plugins/go-workflow/USER_FILE"
+HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-skip.log 2>&1
+if [ ! -f "$TMP_HOME/.codex/plugins/go-workflow/USER_FILE" ]; then
+  echo "FAIL (user-authored plugin was overwritten by --user install)"
+  ERRORS=$((ERRORS + 1))
+elif [ -f "$TMP_HOME/.codex/plugins/go-workflow/.gopher-ai-installed" ]; then
+  echo "FAIL (user-authored plugin was marked as gopher-ai)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q "skipped" /tmp/gopher-ai-user-skip.log; then
+  echo "FAIL (no skip message in output)"
+  cat /tmp/gopher-ai-user-skip.log
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$TMP_HOME/.codex/plugins/go-dev/.gopher-ai-installed" ]; then
+  echo "FAIL (other plugins not installed)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "Codex --user clears stale gopher-ai marketplace cache... "
+TMP_HOME=$(mktemp -d)
+mkdir -p "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/local"
+echo "cached" > "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/local/CACHE_MARKER"
+HOME="$TMP_HOME" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-cache.log 2>&1
+if [ -d "$TMP_HOME/.codex/plugins/cache/gopher-ai" ]; then
+  echo "FAIL (gopher-ai marketplace cache not cleared)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q "cleared marketplace cache" /tmp/gopher-ai-user-cache.log; then
+  echo "FAIL (no clear message)"
+  cat /tmp/gopher-ai-user-cache.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME"
+
+echo -n "SessionStart hook clears stale cache alongside marked installs... "
+TMP_HOME=$(mktemp -d)
+TMP_PLUGIN=$(mktemp -d)/go-workflow
+mkdir -p "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/local"
+echo "stale" > "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/local/SKILL.md"
+mkdir -p "$TMP_HOME/.codex/plugins/llm-tools/.codex-plugin" "$TMP_PLUGIN/hooks" "$TMP_PLUGIN/.claude-plugin"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json" "$TMP_PLUGIN/.claude-plugin/"
+cp "$ROOT_DIR/plugins/llm-tools/.codex-plugin/plugin.json" "$TMP_HOME/.codex/plugins/llm-tools/.codex-plugin/"
+echo "marker" > "$TMP_HOME/.codex/plugins/llm-tools/.gopher-ai-installed"
+CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" \
+  bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-cache.log 2>&1
+if [ -d "$TMP_HOME/.codex/plugins/cache/gopher-ai" ]; then
+  echo "FAIL (cache not cleared in presence of marked install)"
+  cat /tmp/gopher-ai-hook-cache.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$(dirname "$TMP_PLUGIN")"
+
+echo -n "SessionStart hook leaves cache alone when no marked install exists... "
+TMP_HOME=$(mktemp -d)
+TMP_PLUGIN=$(mktemp -d)/go-workflow
+mkdir -p "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/local" "$TMP_PLUGIN/hooks" "$TMP_PLUGIN/.claude-plugin"
+echo "user-cache" > "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/local/SKILL.md"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json" "$TMP_PLUGIN/.claude-plugin/"
+CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" \
+  bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/dev/null 2>&1
+if [ ! -d "$TMP_HOME/.codex/plugins/cache/gopher-ai" ]; then
+  echo "FAIL (cache wrongly cleared with no marked install present)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$(dirname "$TMP_PLUGIN")"
+
+echo -n "json_author_email parses author.email, not first email anywhere... "
+# Verify the hook's json_author_email function is correctly scoped to the
+# author object — a contributor field with email shouldn't fool it.
+TMP_PLUGIN_JSON=$(mktemp)
+cat > "$TMP_PLUGIN_JSON" <<'EOF'
+{
+  "name": "go-dev",
+  "contributors": [{"email": "first-match@wrong.com"}],
+  "author": {"name": "Gopher Guides", "email": "support@gopherguides.com"}
+}
+EOF
+# Source the function from the hook by extracting it.
+RESULT=$(awk '/^json_author_email\(\) \{/,/^\}/' "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" \
+  | { cat; echo 'json_author_email "$1"'; } | bash -s "$TMP_PLUGIN_JSON" 2>/dev/null)
+if [ "$RESULT" = "support@gopherguides.com" ]; then
+  echo "OK"
+else
+  echo "FAIL (expected support@gopherguides.com, got: '$RESULT')"
+  ERRORS=$((ERRORS + 1))
+fi
+rm -f "$TMP_PLUGIN_JSON"
+
 echo -n "SessionStart hook removes unmarked legacy plugin directories... "
 TMP_HOME=$(mktemp -d)
 TMP_PLUGIN=$(mktemp -d)/go-workflow

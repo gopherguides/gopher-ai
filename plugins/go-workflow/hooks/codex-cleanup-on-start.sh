@@ -155,18 +155,87 @@ removed_plugins=0
 removed_plugin_paths=""
 GOPHER_AI_AUTHOR_EMAIL="support@gopherguides.com"
 
-# Extract a JSON string field by name. Tolerant: works without jq, handles
-# quoted values, ignores arrays/objects. Returns the first match.
-json_string_field() {
+# Extract a top-level JSON string field by name. Scoped to depth-1 keys so
+# `name` returns the top-level plugin name, not `author.name`.
+json_top_string() {
     local file="$1" field="$2"
-    awk -v f="$field" '
-        BEGIN { pat = "\""f"\"[[:space:]]*:[[:space:]]*\"" }
-        $0 ~ pat {
+    awk -v target="$field" '
+        BEGIN { depth = 0; pending_key = "" }
+        {
             line = $0
-            sub(".*"pat, "", line)
-            sub(/".*/, "", line)
-            print line
-            exit
+            while (length(line) > 0) {
+                c = substr(line, 1, 1)
+                line = substr(line, 2)
+                if (c == "\"") {
+                    tok = ""
+                    while (length(line) > 0) {
+                        cc = substr(line, 1, 1); line = substr(line, 2)
+                        if (cc == "\\") { tok = tok substr(line, 1, 1); line = substr(line, 2) }
+                        else if (cc == "\"") break
+                        else tok = tok cc
+                    }
+                    if (depth == 1 && pending_key == target) {
+                        print tok
+                        exit
+                    }
+                    last_token = tok
+                } else if (c == ":") {
+                    pending_key = last_token
+                } else if (c == "{") {
+                    depth++; pending_key = ""
+                } else if (c == "}") {
+                    depth--
+                } else if (c == ",") {
+                    pending_key = ""
+                }
+            }
+        }
+    ' "$file" 2>/dev/null
+}
+
+# Extract author.email from a plugin.json. Walks the JSON token stream,
+# tracking when we are inside the `author` object specifically — does not
+# match the first `"email"` anywhere in the file (which would be wrong if
+# any other object also has an email field).
+json_author_email() {
+    local file="$1"
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.author.email // ""' "$file" 2>/dev/null
+        return
+    fi
+    awk '
+        BEGIN { in_author = 0; depth = 0; author_depth = 0; pending_key = "" }
+        {
+            line = $0
+            while (length(line) > 0) {
+                c = substr(line, 1, 1)
+                line = substr(line, 2)
+                if (c == "\"") {
+                    tok = ""
+                    while (length(line) > 0) {
+                        cc = substr(line, 1, 1); line = substr(line, 2)
+                        if (cc == "\\") { tok = tok substr(line, 1, 1); line = substr(line, 2) }
+                        else if (cc == "\"") break
+                        else tok = tok cc
+                    }
+                    if (in_author && pending_key == "email") {
+                        print tok
+                        exit
+                    }
+                    last_token = tok
+                } else if (c == ":") {
+                    pending_key = last_token
+                } else if (c == "{") {
+                    depth++
+                    if (pending_key == "author") { in_author = 1; author_depth = depth }
+                    pending_key = ""
+                } else if (c == "}") {
+                    if (in_author && depth == author_depth) in_author = 0
+                    depth--
+                } else if (c == ",") {
+                    pending_key = ""
+                }
+            }
         }
     ' "$file" 2>/dev/null
 }
@@ -180,12 +249,13 @@ if [[ -d "$PLUGINS_HOME" ]]; then
         plugin_json="$target/.codex-plugin/plugin.json"
         [[ -f "$plugin_json" ]] || continue
 
-        # Name match.
-        json_name="$(json_string_field "$plugin_json" "name")"
+        # Top-level name match (NOT author.name — scoped to depth 1).
+        json_name="$(json_top_string "$plugin_json" "name")"
         [[ "$json_name" == "$plugin_name" ]] || continue
 
         # Author email match — the distinctive gopher-ai ownership signal.
-        json_email="$(json_string_field "$plugin_json" "email")"
+        # Scoped to author.email specifically, not the first "email" anywhere.
+        json_email="$(json_author_email "$plugin_json")"
         [[ "$json_email" == "$GOPHER_AI_AUTHOR_EMAIL" ]] || continue
 
         rm -rf "$target" 2>/dev/null && {
@@ -195,11 +265,40 @@ if [[ -d "$PLUGINS_HOME" ]]; then
     done
 fi
 
+# --- 3. Marketplace cache cleanup -----------------------------------------
+# If a marked global install is present, eliminate any stale gopher-ai
+# marketplace cache so Codex doesn't load the same skills twice (once from
+# the global install, once from the cached marketplace copy). The cache
+# repopulates automatically if Codex rediscovers a marketplace.
+removed_cache=0
+removed_cache_paths=""
+CACHE_ROOT="$HOME/.codex/plugins/cache"
+if [[ -d "$CACHE_ROOT" && -d "$PLUGINS_HOME" ]]; then
+    # Only act when at least one of OUR marked installs exists — otherwise
+    # the cache may be the user's only working copy and we shouldn't touch it.
+    has_marked=false
+    for plugin_name in $KNOWN_PLUGINS; do
+        if [[ -f "$PLUGINS_HOME/$plugin_name/.gopher-ai-installed" ]]; then
+            has_marked=true
+            break
+        fi
+    done
+    if [[ "$has_marked" == "true" ]]; then
+        for entry in "$CACHE_ROOT"/gopher-ai*; do
+            [[ -e "$entry" ]] || continue
+            rm -rf "$entry" 2>/dev/null && {
+                removed_cache_paths="${removed_cache_paths}${entry}\n"
+                removed_cache=$((removed_cache + 1))
+            }
+        done
+    fi
+fi
+
 # Always write the marker so we don't re-scan next session.
 mkdir -p "$(dirname "$MARKER")" 2>/dev/null
 : > "$MARKER" 2>/dev/null
 
-if [[ "$removed_skills" -gt 0 || "$removed_plugins" -gt 0 ]]; then
+if [[ "$removed_skills" -gt 0 || "$removed_plugins" -gt 0 || "$removed_cache" -gt 0 ]]; then
     {
         if [[ "$removed_skills" -gt 0 ]]; then
             printf '🧹 gopher-ai: removed %d legacy Codex skill director%s from ~/.codex/skills/:\n' \
@@ -211,6 +310,11 @@ if [[ "$removed_skills" -gt 0 || "$removed_plugins" -gt 0 ]]; then
                 "$removed_plugins" "$([ "$removed_plugins" -eq 1 ] && echo y || echo ies)"
             printf '%b' "$removed_plugin_paths" | sed 's|^|  |'
             printf '   (Re-run install-all.sh to install marked global copies if you want them.)\n'
+        fi
+        if [[ "$removed_cache" -gt 0 ]]; then
+            printf '🧹 gopher-ai: cleared %d stale marketplace cache entr%s alongside the marked global install:\n' \
+                "$removed_cache" "$([ "$removed_cache" -eq 1 ] && echo y || echo ies)"
+            printf '%b' "$removed_cache_paths" | sed 's|^|  |'
         fi
     } >&2
 fi

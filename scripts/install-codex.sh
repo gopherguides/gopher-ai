@@ -334,11 +334,117 @@ build_repo_marketplace() {
     ' "$DIST_DIR/plugins/marketplace.json" >"$output_file"
 }
 
+# Returns 0 if the directory at $1 is safe to overwrite as a gopher-ai install:
+#   - empty or missing
+#   - has our marker (prior --user install)
+#   - has plugin.json with author.email == support@gopherguides.com (legacy
+#     manual install from old README — still ours to replace)
+# Returns 1 (refuse to overwrite) otherwise — e.g. a user-authored plugin that
+# happens to share one of our names but has a different author email.
+target_is_safe_to_overwrite() {
+    local target="$1"
+    [[ -d "$target" ]] || return 0
+    [[ -f "$target/.gopher-ai-installed" ]] && return 0
+    local plugin_json="$target/.codex-plugin/plugin.json"
+    [[ -f "$plugin_json" ]] || return 0  # not a Codex plugin — empty/leftover, safe
+    local owner_email
+    owner_email="$(plugin_json_author_email "$plugin_json")"
+    [[ "$owner_email" == "support@gopherguides.com" ]]
+}
+
+# Extract author.email from a plugin.json. Prefers jq (precise); falls back to
+# a scoped awk parser that walks tokens to find author -> email — does NOT
+# match the first "email" anywhere in the file, which would be wrong if any
+# other object in the JSON also has an email field.
+plugin_json_author_email() {
+    local f="$1"
+    [[ -f "$f" ]] || { echo ""; return; }
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '.author.email // ""' "$f" 2>/dev/null
+        return
+    fi
+    awk '
+        BEGIN { in_author = 0; depth = 0; author_depth = 0 }
+        {
+            line = $0
+            while (length(line) > 0) {
+                c = substr(line, 1, 1)
+                line = substr(line, 2)
+                if (c == "\"") {
+                    # Read a quoted token, honoring backslash escapes.
+                    tok = ""
+                    while (length(line) > 0) {
+                        cc = substr(line, 1, 1)
+                        line = substr(line, 2)
+                        if (cc == "\\") {
+                            tok = tok substr(line, 1, 1)
+                            line = substr(line, 2)
+                        } else if (cc == "\"") {
+                            break
+                        } else {
+                            tok = tok cc
+                        }
+                    }
+                    last_key_token = tok
+                } else if (c == ":") {
+                    pending_key = last_key_token
+                } else if (c == "{") {
+                    depth++
+                    if (pending_key == "author") {
+                        in_author = 1
+                        author_depth = depth
+                    }
+                    pending_key = ""
+                } else if (c == "}") {
+                    if (in_author && depth == author_depth) in_author = 0
+                    depth--
+                } else if (in_author && pending_key == "email" && c ~ /[^[:space:]]/) {
+                    # Already past the colon; expect the next quoted token to
+                    # be the value. Re-prepend so the next iteration parses it.
+                    line = c line
+                    sub(/^[[:space:]]*"/, "", line)
+                    val = ""
+                    while (length(line) > 0) {
+                        cc = substr(line, 1, 1)
+                        line = substr(line, 2)
+                        if (cc == "\\") { val = val substr(line, 1, 1); line = substr(line, 2) }
+                        else if (cc == "\"") break
+                        else val = val cc
+                    }
+                    print val
+                    exit
+                }
+            }
+        }
+    ' "$f"
+}
+
+# Clear gopher-ai entries from the Codex marketplace cache. Codex caches
+# marketplace plugins under ~/.codex/plugins/cache/<marketplace-name>/ when
+# the marketplace is discovered. If a user has both a marked global install
+# AND a cached marketplace copy (e.g. from running `codex` inside this repo),
+# Codex loads both and skill metadata doubles. Removing the cache lets the
+# global install be the single source of truth; Codex will repopulate the
+# cache only if a marketplace is rediscovered.
+clear_gopher_ai_marketplace_cache() {
+    local cache_root="$HOME/.codex/plugins/cache"
+    [[ -d "$cache_root" ]] || return 0
+    local removed=0
+    local entry
+    for entry in "$cache_root"/gopher-ai*; do
+        [[ -e "$entry" ]] || continue
+        rm -rf "$entry"
+        echo "cleared marketplace cache: $entry"
+        removed=$((removed + 1))
+    done
+    [[ "$removed" -eq 0 ]] || echo "cleared $removed gopher-ai marketplace cache entr$([ "$removed" -eq 1 ] && echo "y" || echo "ies")"
+}
+
 # Install plugins globally to ~/.codex/plugins/<name>/. This is the path that
 # makes gopher-ai available in EVERY Codex session, regardless of cwd.
 # Idempotent: re-running cleanly replaces any prior install (whether from us
 # or from a pre-marker manual install). Each plugin gets a marker file
-# .gopher-ai-installed/ recording version + install timestamp so the
+# .gopher-ai-installed recording version + install timestamp so the
 # SessionStart cleanup hook can distinguish our installs from user-authored
 # plugins of the same name.
 install_user_plugins() {
@@ -351,6 +457,7 @@ install_user_plugins() {
     installed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     local installed=0
+    local skipped=()
     local plugin_dir
     for plugin_dir in "$ROOT_DIR"/plugins/*; do
         [[ -d "$plugin_dir" ]] || continue
@@ -358,6 +465,15 @@ install_user_plugins() {
         local plugin_name target
         plugin_name="$(basename "$plugin_dir")"
         target="$plugins_home/$plugin_name"
+
+        # Refuse to overwrite a user-authored plugin that happens to share one
+        # of our seven names. The hook applies the same gate at session-start;
+        # the installer needs it too so a fresh install doesn't nuke unrelated
+        # work between marker writes.
+        if ! target_is_safe_to_overwrite "$target"; then
+            skipped+=("$target (different author — leaving alone)")
+            continue
+        fi
 
         # Replace any existing install. cp -R after rm -rf is the safest way
         # to avoid mixing old + new files when SKILL.md or skills are renamed.
@@ -382,6 +498,18 @@ EOF
         echo "installed: $target ($plugin_name v$plugin_version)"
         installed=$((installed + 1))
     done
+
+    if [[ ${#skipped[@]} -gt 0 ]]; then
+        echo "skipped (not gopher-ai-owned):"
+        local entry
+        for entry in "${skipped[@]}"; do
+            echo "  $entry"
+        done
+    fi
+
+    # Eliminate any stale gopher-ai marketplace cache so the global install
+    # is the single source of truth (no double-loading).
+    clear_gopher_ai_marketplace_cache
 
     echo "installed $installed plugin(s) globally to $plugins_home/"
 }
