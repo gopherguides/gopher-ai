@@ -38,10 +38,18 @@ KNOWN_PLUGINS="go-dev go-web go-workflow gopher-guides llm-tools tailwind"
 [[ -d "$HOME/.codex" ]] || exit 0
 [[ -f "$MANIFEST" ]] || exit 0
 
-# Marker file scoped to plugin version. New gopher-ai versions trigger a
-# fresh check (in case new skills were added that need migration too).
+# Marker file scoped to (cleanup logic version, plugin version). Bump the
+# CLEANUP_LOGIC_VERSION whenever this script gains a new cleanup mode that
+# previously-migrated users need to run — otherwise old markers from a prior
+# logic version would short-circuit the new behavior. Plugin-version still
+# participates so that future SKILL.md / plugin updates also trigger a fresh
+# pass even at the same logic version.
+#
+# v1: skills cleanup only.
+# v2: + unmarked plugin cleanup, + stale marketplace cache cleanup.
+CLEANUP_LOGIC_VERSION="v2"
 PLUGIN_VERSION="$(awk -F'"' '/"version"/ {print $4; exit}' "$PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null || echo "unknown")"
-MARKER="$HOME/.codex/.gopher-ai-cleanup-$PLUGIN_VERSION"
+MARKER="$HOME/.codex/.gopher-ai-cleanup-${CLEANUP_LOGIC_VERSION}-${PLUGIN_VERSION}"
 [[ -f "$MARKER" ]] && exit 0
 
 # Detect a portable sha256 implementation. macOS ships `shasum -a 256` but not

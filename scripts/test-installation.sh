@@ -699,6 +699,40 @@ else
 fi
 rm -rf "$TMP_HOME"
 
+echo -n "SessionStart hook runs new cleanup despite legacy v1 marker present... "
+# Regression for #147 round 2: users who ran the previous (v1) hook on this
+# same plugin version have a marker like .gopher-ai-cleanup-1.5.0. The new
+# hook adds plugin and cache cleanup; if the marker check short-circuits on
+# that legacy marker, those users never get the new cleanups. Verify the
+# new marker schema (.gopher-ai-cleanup-v2-<plugin-version>) makes the hook
+# run regardless.
+TMP_HOME=$(mktemp -d)
+TMP_PLUGIN=$(mktemp -d)/go-workflow
+mkdir -p "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/local"
+mkdir -p "$TMP_HOME/.codex/plugins/llm-tools/.codex-plugin"
+mkdir -p "$TMP_PLUGIN/hooks" "$TMP_PLUGIN/.claude-plugin"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$TMP_PLUGIN/hooks/"
+cp "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json" "$TMP_PLUGIN/.claude-plugin/"
+cp "$ROOT_DIR/plugins/llm-tools/.codex-plugin/plugin.json" "$TMP_HOME/.codex/plugins/llm-tools/.codex-plugin/"
+echo "marker" > "$TMP_HOME/.codex/plugins/llm-tools/.gopher-ai-installed"
+# Plant the legacy v1-style marker (no v2- prefix).
+PLUGIN_VERSION=$(awk -F'"' '/"version"/ {print $4; exit}' "$TMP_PLUGIN/.claude-plugin/plugin.json")
+touch "$TMP_HOME/.codex/.gopher-ai-cleanup-${PLUGIN_VERSION}"
+CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" \
+  bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-marker-bump.log 2>&1
+if [ -d "$TMP_HOME/.codex/plugins/cache/gopher-ai" ]; then
+  echo "FAIL (legacy marker prevented new cache cleanup from running)"
+  cat /tmp/gopher-ai-hook-marker-bump.log
+  ERRORS=$((ERRORS + 1))
+elif ! ls "$TMP_HOME/.codex/.gopher-ai-cleanup-v2-"* >/dev/null 2>&1; then
+  echo "FAIL (new v2 marker not written)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$(dirname "$TMP_PLUGIN")"
+
 echo -n "Codex --user refuses to overwrite user-authored same-named plugin... "
 TMP_HOME=$(mktemp -d)
 mkdir -p "$TMP_HOME/.codex/plugins/go-workflow/.codex-plugin"
