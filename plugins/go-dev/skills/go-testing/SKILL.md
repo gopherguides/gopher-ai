@@ -1,6 +1,6 @@
 ---
 name: go-testing
-description: "Write Go tests: table-driven patterns, subtests, t.Parallel/Helper/Cleanup, testify, mocks, integration tests, benchmarks, fuzzing."
+description: "Write Go tests: table-driven patterns, subtests, t.Parallel/Helper/Cleanup, testify, mocks, integration tests, benchmarks, fuzzing. Trigger when user asks 'how do I test this', writes or pastes _test.go files, mentions table-driven/subtests/mocks, or pastes a failing Go test."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 
@@ -52,6 +52,14 @@ When auditing a codebase for test quality, dispatch up to 4 parallel sub-agents.
 2. **Test quality** -- Find tests without assertions, tests with hardcoded magic values instead of named constants, tests that only check the happy path, and tests that assert on implementation details (internal struct fields, unexported state) rather than behavior.
 3. **Test isolation** -- Find tests that share mutable state, miss `t.Parallel()` where safe, use global variables, write to shared filesystem paths without `t.TempDir()`, or rely on test execution order.
 4. **Test organization** -- Find missing test helpers (repeated setup code across multiple tests), missing `t.Cleanup()` where resources are allocated, repeated assertion patterns that should be extracted, and tests that would benefit from table-driven refactoring.
+
+## Anti-Patterns
+
+- **Asserting on internal state** (unexported fields, private maps) — couples the test to implementation. A refactor that preserves behavior still breaks the test.
+- **One giant test function** instead of subtests — when one assertion fails you don't know which scenario broke, and you cannot run a single case in isolation.
+- **Mocking what you don't own** (database drivers, HTTP clients, third-party libs) — your mock drifts from upstream behavior. Wrap the dependency in a thin interface and mock the wrapper.
+- **Sleep-based synchronization** (`time.Sleep(100*time.Millisecond)`) in concurrent tests — flaky on slow CI. Use channels, `sync.WaitGroup`, or an explicit `Eventually` poll with a deadline.
+- **No `t.Parallel()` and no comment explaining why** — sequential tests are slow; if a test is intentionally sequential (shared resource, env var), say so in a comment so the next reader doesn't add `t.Parallel()` and break it.
 
 ## Cross-References
 
