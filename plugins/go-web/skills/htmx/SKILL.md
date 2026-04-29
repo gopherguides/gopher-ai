@@ -1,6 +1,6 @@
 ---
 name: htmx
-description: "htmx for Go/templ apps: hx-* attributes, swap strategies, triggers, OOB updates, SSE, WebSockets, forms, redirects, debounce, server integration."
+description: "htmx for Go/templ apps: hx-* attributes, swap strategies, triggers, OOB updates, SSE, WebSockets, forms, redirects, debounce, server integration. Trigger when user writes or pastes templates containing hx-* attributes, asks about HTMX swaps/triggers/OOB updates, or wires HTMX to a Go handler."
 ---
 
 # htmx Best Practices & Go/Templ Integration

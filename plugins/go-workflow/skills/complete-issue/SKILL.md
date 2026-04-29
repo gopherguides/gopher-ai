@@ -1,8 +1,9 @@
 ---
 name: complete-issue
-description: "Take a GitHub issue end-to-end: implement, review, e2e verify, merge. Issue number in -> merged PR out."
+description: "Take a GitHub issue end-to-end: implement, review, e2e verify, merge. Issue number in -> merged PR out. Trigger on 'complete issue #N', 'finish this issue end-to-end', '/complete-issue', or when user wants a fully autonomous issue-to-merged-PR run."
 argument-hint: "<issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "EnterPlanMode", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page", "mcp__chrome-devtools-mcp__fill_form", "mcp__chrome-devtools-mcp__wait_for", "mcp__chrome-devtools-mcp__evaluate_script"]
+disable-model-invocation: true
 ---
 
 # Complete Issue

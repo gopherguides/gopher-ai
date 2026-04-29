@@ -1,6 +1,7 @@
 ---
 name: ship
 description: "Ship a PR end-to-end: verify, push, create PR, watch CI, merge. Trigger on 'ship', 'ship it', 'push and merge'."
+disable-model-invocation: true
 ---
 
 # Ship

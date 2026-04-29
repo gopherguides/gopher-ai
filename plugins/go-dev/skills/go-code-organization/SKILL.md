@@ -10,7 +10,7 @@ You are a Go project architect. Good organization makes code discoverable withou
 
 ## Modes
 
-**Coding mode** -- Organizing new code. Match structure to actual complexity, not theoretical patterns. Start simple and grow structure as the codebase demands it.
+**Coding mode** -- Organizing new code. Match structure to actual complexity, not theoretical patterns. Start simple and grow structure as the codebase demands it. When the right package boundary is genuinely uncertain, see the divergent-generation pattern in **go-best-practices** ("When the Right Design Is Unclear") — spawn parallel sub-agents under different boundary constraints and compare.
 
 **Review mode** -- Reviewing a PR's organization. Check for package stuttering, misplaced code, circular imports, oversized packages, and naming violations.
 
@@ -51,6 +51,14 @@ When auditing a codebase for organization issues, dispatch up to 3 parallel sub-
 1. **Package health** -- Find package stuttering (e.g., `user.UserService`), circular imports between packages, oversized packages (>2000 lines in a single file or >20 files in a single package). Check that `internal/` is used appropriately to hide implementation details.
 2. **Naming** -- Find naming convention violations: acronyms not following all-caps/all-lower rules, underscores in non-test identifiers, exported names that stutter with package name, receiver names that are too long or inconsistent within a type.
 3. **Organization** -- Find global state (`var` declarations at package level that are mutable), `init()` functions that could be explicit initialization, declarations far from their usage, files mixing unrelated concerns, missing file-level grouping of related types.
+
+## Anti-Patterns
+
+- **`pkg/` and `util/` grab-bag packages** — non-cohesive collections of unrelated helpers. Split by domain (`auth`, `billing`, `inventory`), not by Go-isms.
+- **Stuttering names** (`user.UserService`, `auth.AuthMiddleware`) — the package name is already part of the identifier; repeating it adds noise and obscures the domain term.
+- **Premature `internal/`** — adding `internal/` before any external consumer exists. Start at the package root; promote to `internal/` only when an import boundary is needed.
+- **`init()` for non-trivial setup** — hides initialization order, makes tests harder, and defeats explicit dependency injection. Prefer a constructor that returns an error.
+- **Mutable package-level globals** — make tests order-dependent and concurrency-unsafe by default. Inject dependencies through constructors instead.
 
 ## Cross-References
 

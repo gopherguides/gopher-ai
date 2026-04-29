@@ -29,6 +29,10 @@ Ensure the branch is pushed to the remote:
 git push -u origin `git branch --show-current`
 ```
 
+## Output Durability
+
+PR titles, bodies, and "Test Plan" entries describe modules, contracts, and observable behavior — not file paths, line numbers, or current internal layout. Acceptance criteria are stated as behaviors a reviewer can verify (e.g. "rejects negative quantities with a 400 response"), not as file diffs (e.g. "adds validator.go:42"). The PR description must remain interpretable after a future refactor that moves files around.
+
 ### Step 2: Determine PR Body
 
 **If a PR template was found** (the "PR template" context above does NOT say "NO_TEMPLATE_FOUND"):

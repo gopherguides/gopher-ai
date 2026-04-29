@@ -1,6 +1,6 @@
 ---
 name: go-concurrency
-description: "Write/review concurrent Go: goroutines, channels, select, locks, sync, errgroup, singleflight, worker pools, fan-out/in. Catch leaks, races, channel ownership."
+description: "Write/review concurrent Go: goroutines, channels, select, locks, sync, errgroup, singleflight, worker pools, fan-out/in. Catch leaks, races, channel ownership. Trigger when user pastes code with 'go ' statements, channels, select, sync.* primitives, or errgroup, or asks about goroutine lifecycle, races, or deadlocks."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 
@@ -78,7 +78,7 @@ Before spawning a goroutine, answer every question:
 | Wait + cancel siblings on first error | errgroup.WithContext | Context cancellation on failure |
 | Wait + limit concurrency | errgroup.SetLimit(n) | Built-in worker pool |
 
-## Common Mistakes
+## Anti-Patterns
 
 | Mistake | Problem | Fix |
 |---|---|---|

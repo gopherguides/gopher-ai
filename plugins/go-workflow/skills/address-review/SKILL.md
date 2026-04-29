@@ -7,6 +7,10 @@ allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUse
 
 # Address PR Review Comments
 
+## Output Durability
+
+Replies to review comments and any new commit messages describe what behavior changed and why, not file paths or line numbers. A reviewer reading the reply six months later, after the file in question has moved, must still understand what was fixed.
+
 **If `$ARGUMENTS` is empty or not provided:**
 
 Auto-detect PR from current branch:
