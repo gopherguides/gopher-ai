@@ -46,7 +46,11 @@ For each page tested, include a detailed description of what was visually observ
 - **Observed:** Data table renders correctly with 3 columns. However, sidebar navigation is missing — only the main content area is visible. The layout appears to be full-width instead of the expected sidebar + content split.
 - **Verdict:** FAIL — sidebar navigation missing from layout
 
-*Each route MUST include Expected/Observed/Verdict. "Screenshot captured" is NOT a valid finding.*
+*Each route MUST include Expected / Observed / Verdict. Invalid Observed
+entries: "Screenshot captured", "looks good", "no console errors", or any other
+DOM-only check. The Observed field must describe what the screenshot actually
+shows. A screenshot of a QR code covering text means Verdict=FAIL — set
+`E2E_RESULT='fail'` and stop.*
 
 ### Screenshots
 
@@ -67,10 +71,29 @@ For each page tested, include a detailed description of what was visually observ
 *Edge case section only appears if edge cases were tested in Step 5i.*
 *The "Observed" column MUST describe what was actually seen in the screenshot, not just "Rendered correctly".*
 
+### Verification Outcome
+
+**E2E_RESULT:** `$E2E_RESULT`
+
+Allowed values: `pass`, `fail`, `partial`, `skipped`, `skipped-server-failed`,
+`missing-browser-tooling`, `uninspected-screenshots`.
+
+**Gate (per `SKILL.md` Step 7):**
+- UI-visible diff → only `pass` proceeds. Any other value blocks shipping:
+  no `run-full-ci` label, no `e2e-verified` label, no `/go-workflow:ship`.
+- Non-UI diff → `skipped` is the success path.
+
+If this section reports anything other than `pass` (UI-visible) or `skipped`
+(non-UI), the workflow has stopped. Address the findings above and re-run
+`/go-workflow:e2e-verify`.
+
 ### Summary
 
 $OVERALL_VERDICT
 ```
+
+The Verification Outcome section is **required for every comment**, regardless
+of mode. It makes the gate visible to humans reading the PR.
 
 **Conditional sections:**
 - If E2E was skipped (MCP unavailable or no web components): replace the E2E Visual Verification Results section with: `*E2E tests skipped: $SKIP_REASON*`
@@ -93,7 +116,10 @@ EOF
 
 ## 6c. Mode-Specific Footer
 
-Append mode-specific information to the comment:
+The footer depends on `E2E_RESULT`. Pass-path footers per mode below; fail-path
+is identical across modes.
+
+**Pass path** (`E2E_RESULT=pass` for UI-visible, or `E2E_RESULT=skipped` for non-UI):
 
 | Mode | Footer |
 |------|--------|
@@ -104,15 +130,29 @@ Append mode-specific information to the comment:
 | `ship` | "Verified and shipping via `/ship`." |
 | `fix-and-ship` | "Review addressed, verified, and shipping. `run-full-ci` label added." |
 
-## 6d. Add Labels (mode-specific)
+**Fail path** (`E2E_RESULT` is `fail`, `partial`, `skipped-server-failed`,
+`missing-browser-tooling`, or `uninspected-screenshots` on a UI-visible diff)
+— same footer for every mode:
 
-For modes that add the `run-full-ci` label (`fix-and-verify`, `ship-prep`, `fix-and-ship`):
+> E2E verification failed (`$E2E_RESULT`). Workflow stopped — no labels added,
+> no ship invoked. Address the findings above and re-run
+> `/go-workflow:e2e-verify`.
+
+## 6d. Add Labels (gated on `E2E_RESULT`)
+
+Labels are added only when the Step 7 gate would pass — i.e. `E2E_RESULT=pass`
+on a UI-visible diff or `E2E_RESULT=skipped` on a non-UI diff. For any fail
+state, **do not add `run-full-ci`** and **do not add `e2e-verified`**.
+
+When the gate has passed, for modes that add the `run-full-ci` label
+(`fix-and-verify`, `ship-prep`, `fix-and-ship`):
 
 ```bash
 gh pr edit "$PR_NUM" --add-label "run-full-ci"
 ```
 
-For all modes where E2E passed, optionally add:
+When the gate has passed, also add the `e2e-verified` label to mark the PR as
+E2E-clean:
 
 ```bash
 gh pr edit "$PR_NUM" --add-label "e2e-verified"

@@ -111,7 +111,13 @@ If `PHASE` is empty, this is a fresh start. Continue to Step 1.
 
 ## Mode Summary
 
-| Mode | Steps Executed | Finish Action |
+For UI-visible diffs every Finish Action below is **gated on `E2E_RESULT=pass`**.
+If `E2E_RESULT` is `fail`, `partial`, `skipped-server-failed`,
+`missing-browser-tooling`, or `uninspected-screenshots`, the workflow stops
+after Step 6 — no labels, no ship, no `VERIFIED`. See Step 7 and Completion
+Criteria for the exact gate.
+
+| Mode | Steps Executed | Finish Action (only when `E2E_RESULT=pass` for UI diffs) |
 |------|---------------|---------------|
 | `verify` (default) | 1-2, 5-6 | Report results |
 | `fix-and-verify` | 1-2, 3, 5-6 | Add `run-full-ci` label, report |
@@ -267,6 +273,27 @@ Read `pr-results-comment.md` for structured PR comment posting:
 
 ## Step 7: Finish (mode-specific)
 
+### Step 7.0: E2E Gate (applies to every mode before any finish action)
+
+Before doing anything in the per-mode table below, evaluate `E2E_RESULT`:
+
+- **UI-visible diff** (`WEB_CHANGES`, `HANDLER_CHANGES`, or layout-sensitive
+  keywords detected — see `e2e-test-execution.md` §5a.1):
+  - `E2E_RESULT=pass` → continue to the per-mode finish action below.
+  - `E2E_RESULT` is anything else (`fail`, `partial`, `skipped-server-failed`,
+    `missing-browser-tooling`, `uninspected-screenshots`) → **stop**. Do NOT
+    add `run-full-ci`. Do NOT add `e2e-verified`. Do NOT invoke
+    `/go-workflow:ship`. The Step 6 comment already records the failure with
+    findings. Output `<done>E2E_FAIL</done>` so the loop exits without a
+    verified state.
+- **Non-UI diff** (no web indicators, no UI-facing files changed):
+  - `E2E_RESULT=skipped` → continue to the per-mode finish action below
+    (treated as the success path).
+  - Any non-`skipped` value on a non-UI diff is a logic error — investigate
+    before continuing.
+
+### Step 7.1: Per-mode finish action (only reached when the gate above passed)
+
 | Mode | Action |
 |------|--------|
 | `verify` | Report results. Output `<done>VERIFIED</done>` |
@@ -290,16 +317,26 @@ Then invoke `/go-workflow:ship --skip-coverage` to avoid re-running coverage and
 
 ## Completion Criteria
 
-Output `<done>VERIFIED</done>` when ALL of these are true:
+The loop terminates on a `<done>…</done>` sentinel. Which sentinel you emit
+depends on `E2E_RESULT` and whether the diff is UI-visible:
+
+| `E2E_RESULT` | UI-visible diff | Non-UI diff |
+|---|---|---|
+| `pass` | `<done>VERIFIED</done>` | `<done>VERIFIED</done>` |
+| `skipped` | not allowed — must be `pass` or a fail state | `<done>VERIFIED</done>` |
+| `fail`, `partial`, `skipped-server-failed`, `missing-browser-tooling`, `uninspected-screenshots` | post comment, then `<done>E2E_FAIL</done>`. No labels, no ship. | not applicable |
+
+Output `<done>VERIFIED</done>` only when ALL of these are true:
 
 1. Branch rebased onto base (or already up to date)
 2. Build passes (go build, go test)
 3. Review addressed (if `fix-and-verify` or `fix-and-ship` mode)
-4. E2E tests completed (pass or skipped — never blocks)
+4. E2E gate passed per the table above (UI: `pass`; non-UI: `skipped`)
 5. Results posted to PR as a comment
-6. Mode-specific finish action completed
+6. Mode-specific finish action completed (only reached when the E2E gate passed)
 
-**When ALL criteria are met, output exactly:** `<done>VERIFIED</done>`
+If the E2E gate failed on a UI-visible diff, output `<done>E2E_FAIL</done>`
+after Step 6 instead. Do not invoke `/go-workflow:ship`. Do not add labels.
 
 **Safety:** If 15+ iterations without success, document blockers and ask user.
 
