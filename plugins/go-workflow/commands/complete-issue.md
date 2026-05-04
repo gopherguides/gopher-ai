@@ -56,6 +56,10 @@ fi
 echo "Completing issue #$ISSUE_NUM"
 ```
 
+## Output Durability
+
+This command orchestrates `/start-issue`, codex review, and `/e2e-verify` — each produces lasting GitHub artifacts (commit messages, PR body, review replies). All such artifacts describe modules, contracts, and observable behavior, not file paths or current internal layout, so they remain interpretable after future refactors. The downstream commands enforce this rule; do not relax it here.
+
 ## Loop Initialization
 
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh"; exit 1; else ISSUE_NUM=""; SKIP_NEXT=false; for arg in $ARGUMENTS; do if [ "$SKIP_NEXT" = "true" ]; then SKIP_NEXT=false; elif [ "$arg" = "--coverage-threshold" ]; then SKIP_NEXT=true; elif echo "$arg" | grep -qE "^--"; then continue; elif [ -z "$ISSUE_NUM" ] && echo "$arg" | grep -qE "^[0-9]+$"; then ISSUE_NUM="$arg"; fi; done; if [ -z "$ISSUE_NUM" ]; then echo "Error: no issue number"; exit 1; fi; "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "complete-issue-${ISSUE_NUM}" "COMPLETE" 100; fi`

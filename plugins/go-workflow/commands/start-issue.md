@@ -37,6 +37,10 @@ Ask the user: "What issue number would you like to work on?"
 
 **If `$ARGUMENTS` is provided:**
 
+## Output Durability
+
+Any artifact this command produces — commit messages, PR titles and bodies, GitHub issue comments — describes modules, contracts, and observable behavior, not file paths, line numbers, or current internal layout. Acceptance criteria are stated as behaviors a reviewer can verify, not as file diffs. The artifact must remain interpretable after a future refactor.
+
 ## Clear Stale Worktree State
 
 Clear any leftover worktree state from a prior session. This prevents the pre-tool-use hook from blocking commands in a fresh `/start-issue` invocation:

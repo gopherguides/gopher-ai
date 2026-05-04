@@ -1,6 +1,6 @@
 ---
 name: start-issue
-description: "Start a GitHub issue end-to-end through PR: fetch, worktree, detect bug vs feature, implement with TDD, verify, submit."
+description: "Start a GitHub issue end-to-end through PR: fetch, worktree, detect bug vs feature, implement with TDD, verify, submit. Trigger on 'start issue #N', 'work on this issue', '/start-issue', or when user provides a GitHub issue URL/number and asks to begin implementation."
 ---
 
 # Start Issue

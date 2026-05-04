@@ -1,6 +1,6 @@
 ---
 name: go-best-practices
-description: "Idiomatic Go patterns and routing hub to specialized Go skills (interfaces, concurrency, testing, errors, profiling, organization)."
+description: "Idiomatic Go patterns and routing hub to specialized Go skills (interfaces, concurrency, testing, errors, profiling, organization). Trigger when user pastes Go code, asks 'is this idiomatic', 'how should I structure this', or any open Go question that doesn't fit a more specific child skill."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 
@@ -40,6 +40,32 @@ This is the hub skill for Go development. For deep guidance on any topic, follow
 - **Complex constructors**: Use functional options pattern
 - **Discarded errors**: Never assign errors to `_`
 - **Log-and-return**: Errors must be logged OR returned, never both
+
+## When the Right Design Is Unclear: Generate Alternatives
+
+**When to apply** (all must hold):
+
+- The user is actively *designing* something new — a public interface, a package boundary, an error-handling strategy, a multi-step refactor sequence — not asking for a code review, idiom check, or "is this Go-y enough" judgment on existing code.
+- The user has either explicitly asked for alternatives ("design it twice", "show me a few options", "what are my choices") OR the design carries durable consequences (public API, cross-package contract, schema change) AND there is genuine ambiguity about the right shape.
+- A single confident first-pass answer would fit if the constraints were clear; the value comes from the *contrast* between divergent options.
+
+**Do NOT apply** for routine idiom questions, code reviews, "is this idiomatic", small refactors with an obvious shape, or any prompt where the user did not ask for alternatives. Default to a single, confident answer in those cases — fanning out on every uncertain moment is more expensive than helpful.
+
+**When the gate is met:**
+
+1. Spawn 3+ Agent sub-agents in **one message** (parallel, not sequential), each with a different hard constraint, e.g.:
+   - Minimize surface area — fewest exported methods possible
+   - Maximize flexibility — anticipate plausible future use cases
+   - Optimize for the most common call site
+   - Mimic the closest stdlib idiom
+
+2. Each agent returns a concrete sketch: type signatures, one usage example, one paragraph on what it hides.
+
+3. Compare in prose: which design has the deepest abstraction (small surface, significant hidden complexity), which makes correct use easiest, where designs diverge most.
+
+4. The chosen design often combines elements from multiple sketches. The value is in the contrast, not in picking a single winner outright.
+
+This is generation, not exploration — the sub-agents are producing competing answers, not investigating the codebase. Apply most often when designing interfaces (→ go-interfaces) and package boundaries (→ go-code-organization).
 
 ## Cross-References
 

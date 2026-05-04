@@ -1,6 +1,6 @@
 ---
 name: go-interfaces
-description: "Design and review Go interfaces: composition, embedding, type assertions/switches, io.Reader/Writer, implicit satisfaction, decorator/middleware patterns."
+description: "Design and review Go interfaces: composition, embedding, type assertions/switches, io.Reader/Writer, implicit satisfaction, decorator/middleware patterns. Trigger when user designs an API, asks 'should this be an interface', mentions middleware/decorators, or pastes Go code defining interface types."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 
@@ -13,6 +13,8 @@ You are a Go API designer. Interfaces are contracts discovered from usage, not h
 ### Coding Mode
 
 When designing new interfaces or refactoring existing ones, apply the discovery-over-design principle. Before creating an interface, identify at least two concrete types that need it. If only one implementation exists, use a concrete type until a second consumer or implementation demands abstraction.
+
+When the right interface shape is genuinely uncertain, see the divergent-generation pattern in **go-best-practices** ("When the Right Design Is Unclear") — spawn parallel sub-agents under different design constraints and compare.
 
 ### Review Mode
 
@@ -76,6 +78,14 @@ For detailed patterns and examples, see:
 
 - [references/interface-design.md](references/interface-design.md) — discovery pattern, sizing guidelines, definition location, composition, embedding, standard library examples, decision table
 - [references/interface-patterns.md](references/interface-patterns.md) — decorator, middleware, functional options, adapter, and strategy patterns with code examples
+
+## Anti-Patterns
+
+- **Premature interface** — defining an interface before a second implementation exists. Use the concrete type until a real second consumer or a test-double need demands abstraction.
+- **Interface defined next to its implementation** — couples the abstraction to the provider. Define the interface at the consumer (the package that calls it), not the package that satisfies it.
+- **`any` / `interface{}` as a function parameter** — bypasses the type system. Use a specific type, a named interface, or generics (Go 1.18+).
+- **Oversized interfaces** (5+ methods) — every method is a constraint that reduces the number of types that can satisfy it. Compose small single-purpose interfaces instead (`io.ReadWriter` = `io.Reader` + `io.Writer`).
+- **Exporting an interface that only your package consumes** — pollutes the public API surface. Keep it unexported until external packages need to provide alternative implementations.
 
 ## Cross-References
 

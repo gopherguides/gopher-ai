@@ -1,6 +1,6 @@
 ---
 name: go-error-handling
-description: "Go error handling: fmt.Errorf, errors.Is/As/Join, sentinels, custom error types, panic/recover, wrapping, logging."
+description: "Go error handling: fmt.Errorf, errors.Is/As/Join, sentinels, custom error types, panic/recover, wrapping, logging. Trigger when user writes or reviews Go code with error returns, asks 'how should I wrap this error', mentions panic/recover, or pastes Go code with multiple error paths."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 
@@ -53,6 +53,14 @@ When auditing a codebase for error handling issues, dispatch up to 5 parallel su
 3. **Single handling rule** -- Find log-and-return violations: any code path that both logs an error AND returns it (or returns a wrapped version of it). Also find swallowed errors (`_ = someFunc()`).
 4. **Panic/recover** -- Audit all `panic()` calls. Flag any panic used for expected error conditions. Verify `recover()` is only used in deferred functions. Check that recovered panics are converted to errors.
 5. **Structured logging** -- Verify `slog` usage at error sites. Flag `log.Printf` or `fmt.Printf` used for error logging. Check that error values are passed as structured attributes (`slog.Any("error", err)`) not interpolated into message strings.
+
+## Anti-Patterns
+
+- **Panic-as-control-flow** — using `panic`/`recover` to short-circuit a deep call stack instead of returning an error. Failures become invisible to the type system and callers.
+- **Stringly-typed error matching** (`if err.Error() == "not found"`) — strings are not API. Use sentinel errors with `errors.Is` or typed errors with `errors.As`.
+- **Log-and-return** — logging the error inside the inner function AND returning it. Produces duplicate logs and obscures the originating call site.
+- **Silent discard** (`_ = doSomething()`) — turns a failure into nothing. If ignoring is intentional, document the reason; otherwise it's a bug.
+- **`%v` on a wrapped error** — destroys the error chain. Use `%w` so callers can `errors.Is` / `errors.As` through the wrap.
 
 ## Cross-References
 
