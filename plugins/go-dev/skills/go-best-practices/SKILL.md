@@ -43,7 +43,15 @@ This is the hub skill for Go development. For deep guidance on any topic, follow
 
 ## When the Right Design Is Unclear: Generate Alternatives
 
-For high-stakes design moments — interface shape, package boundary, error strategy, refactor sequence — a single first answer is usually weaker than the comparison between several. When the right shape is genuinely uncertain:
+**When to apply** (all must hold):
+
+- The user is actively *designing* something new — a public interface, a package boundary, an error-handling strategy, a multi-step refactor sequence — not asking for a code review, idiom check, or "is this Go-y enough" judgment on existing code.
+- The user has either explicitly asked for alternatives ("design it twice", "show me a few options", "what are my choices") OR the design carries durable consequences (public API, cross-package contract, schema change) AND there is genuine ambiguity about the right shape.
+- A single confident first-pass answer would fit if the constraints were clear; the value comes from the *contrast* between divergent options.
+
+**Do NOT apply** for routine idiom questions, code reviews, "is this idiomatic", small refactors with an obvious shape, or any prompt where the user did not ask for alternatives. Default to a single, confident answer in those cases — fanning out on every uncertain moment is more expensive than helpful.
+
+**When the gate is met:**
 
 1. Spawn 3+ Agent sub-agents in **one message** (parallel, not sequential), each with a different hard constraint, e.g.:
    - Minimize surface area — fewest exported methods possible

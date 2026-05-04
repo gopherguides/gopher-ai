@@ -59,7 +59,7 @@ When auditing a codebase for test quality, dispatch up to 4 parallel sub-agents.
 - **One giant test function** instead of subtests — when one assertion fails you don't know which scenario broke, and you cannot run a single case in isolation.
 - **Mocking what you don't own** (database drivers, HTTP clients, third-party libs) — your mock drifts from upstream behavior. Wrap the dependency in a thin interface and mock the wrapper.
 - **Sleep-based synchronization** (`time.Sleep(100*time.Millisecond)`) in concurrent tests — flaky on slow CI. Use channels, `sync.WaitGroup`, or an explicit `Eventually` poll with a deadline.
-- **No `t.Parallel()` and no comment explaining why** — sequential tests are slow; if a test is intentionally sequential (shared resource, env var), say so in a comment so the next reader doesn't add `t.Parallel()` and break it.
+- **Missing `t.Parallel()` on a test that is demonstrably independent** — flag only when a test has no shared mutable state, no `t.Setenv`, no package-level globals, no shared filesystem path, and no order dependency. Tests that genuinely require sequential execution (env vars, shared external services, integration fixtures, order-sensitive setup) are correct without it; do not demand a justifying comment on every such test.
 
 ## Cross-References
 
