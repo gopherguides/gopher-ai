@@ -12,21 +12,12 @@ Migrate Tailwind CSS v3 configuration to v4's CSS-based configuration.
 
 **Usage:** `/tailwind-migrate [options]`
 
-**Examples:**
+- `/tailwind-migrate` — migrate v3 to v4
+- `/tailwind-migrate --check` — preview changes without modifying files
 
-- `/tailwind-migrate` - Migrate v3 to v4
-- `/tailwind-migrate --check` - Check what would change without modifying files
+**What it does:** finds `tailwind.config.js`/`.ts` → converts theme to `@theme` directive → converts `content` paths to `@source` directives → updates CSS files to `@import "tailwindcss"` syntax → updates `package.json` deps → optionally removes the old config file.
 
-**What this command does:**
-
-1. Finds and parses your `tailwind.config.js` or `tailwind.config.ts`
-2. Converts theme configuration to CSS `@theme` directive
-3. Converts `content` paths to `@source` directives
-4. Updates CSS files to use `@import "tailwindcss"` syntax
-5. Updates package.json dependencies to v4
-6. Optionally removes the old config file
-
-**Key v4 Changes:**
+**Key v4 changes:**
 
 | v3 | v4 |
 |----|-----|
@@ -43,87 +34,30 @@ Proceed with migration.
 
 Parse arguments:
 
-- **--check**: Preview changes without modifying files
-- **--keep-config**: Keep old config file after migration (for reference)
-- **--backup**: Create backup files before modifying
+- `--check` — preview changes without modifying files
+- `--keep-config` — keep old config file after migration (for reference)
+- `--backup` — create backup files before modifying
 
 ## Loop Initialization
 
-Initialize persistent loop to ensure migration completes fully:
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-migrate" "COMPLETE"; fi`
 
 ## Step 1: Find v3 Configuration
 
-Look for Tailwind v3 configuration files:
-
 ```bash
-# Check for config files
 ls tailwind.config.js tailwind.config.ts tailwind.config.cjs tailwind.config.mjs 2>/dev/null
-
-# Check package.json for Tailwind version
 grep '"tailwindcss"' package.json 2>/dev/null
 ```
 
-**If no config found:**
+If no config found:
 
-```text
-No tailwind.config.* file found.
-
-Options:
-1. This project may already be using Tailwind v4 (CSS-based config)
-2. Use /tailwind-init to set up Tailwind v4 from scratch
-3. Check if config is in a non-standard location
-```
+> No `tailwind.config.*` file found. Options: (1) project may already use v4 (CSS-based config); (2) use `/tailwind-init` to set up v4 from scratch; (3) check if config is in a non-standard location.
 
 ## Step 2: Parse v3 Configuration
 
-Read and parse the configuration file. Extract:
+Read the config file. Extract: `content` array (becomes `@source` directives), `theme.extend` (becomes `@theme` CSS variables), `darkMode` (becomes `@variant`), `plugins` (check v4 compatibility).
 
-### Theme Configuration
-
-```javascript
-// v3 tailwind.config.js
-module.exports = {
-  content: ['./src/**/*.{js,jsx,ts,tsx}', './public/index.html'],
-  darkMode: 'class',
-  theme: {
-    extend: {
-      colors: {
-        primary: '#3b82f6',
-        secondary: '#64748b',
-        accent: {
-          light: '#fef3c7',
-          DEFAULT: '#f59e0b',
-          dark: '#b45309',
-        },
-      },
-      fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        display: ['Lexend', 'sans-serif'],
-      },
-      spacing: {
-        '18': '4.5rem',
-        '22': '5.5rem',
-      },
-      borderRadius: {
-        '4xl': '2rem',
-      },
-    },
-  },
-  plugins: [
-    require('@tailwindcss/forms'),
-    require('@tailwindcss/typography'),
-  ],
-}
-```
-
-### Content/Source Paths
-
-Extract the `content` array - these become `@source` directives.
-
-### Plugins
-
-Note any plugins - check v4 compatibility:
+**Plugin compatibility:**
 
 | v3 Plugin | v4 Status |
 |-----------|-----------|
@@ -134,71 +68,43 @@ Note any plugins - check v4 compatibility:
 
 ## Step 3: Generate v4 CSS Configuration
 
-Convert the parsed configuration to v4 CSS syntax:
+Convert the parsed configuration to v4 CSS:
 
 ```css
 @import "tailwindcss";
 
-/* Source paths (from content array) */
+/* From content array */
 @source "./src/**/*.{js,jsx,ts,tsx}";
 @source "./public/index.html";
 
-/* Theme configuration (from theme.extend) */
+/* From theme.extend */
 @theme {
-  /* Colors - convert hex to oklch for better manipulation */
-  --color-primary: oklch(0.59 0.2 250); /* #3b82f6 */
+  --color-primary: oklch(0.59 0.2 250);   /* #3b82f6 */
   --color-secondary: oklch(0.55 0.02 250); /* #64748b */
-  --color-accent-light: oklch(0.96 0.05 85); /* #fef3c7 */
-  --color-accent: oklch(0.75 0.18 70); /* #f59e0b */
-  --color-accent-dark: oklch(0.52 0.15 50); /* #b45309 */
 
-  /* Font families */
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Lexend", ui-sans-serif, system-ui, sans-serif;
-
-  /* Custom spacing */
   --spacing-18: 4.5rem;
-  --spacing-22: 5.5rem;
-
-  /* Custom border radius */
   --radius-4xl: 2rem;
 }
 
-/* Dark mode (from darkMode: 'class') */
-@variant dark {
-  /* Override theme colors for dark mode if needed */
-}
+/* From darkMode: 'class' */
+@variant dark { /* override theme colors here if needed */ }
 
 /* Plugins */
 @plugin "@tailwindcss/typography";
-
-/* Base layer customizations */
-@layer base {
-  html {
-    font-family: var(--font-sans);
-  }
-}
 ```
 
-### Color Conversion Table
+For hex → oklch conversion, use https://oklch.com/. Common conversions:
 
-Convert common hex colors to oklch:
-
-| Hex | oklch | Notes |
-|-----|-------|-------|
-| `#3b82f6` (blue-500) | `oklch(0.59 0.2 250)` | Primary blue |
-| `#ef4444` (red-500) | `oklch(0.63 0.26 25)` | Error red |
-| `#22c55e` (green-500) | `oklch(0.72 0.19 145)` | Success green |
-| `#f59e0b` (amber-500) | `oklch(0.75 0.18 70)` | Warning amber |
-| `#6366f1` (indigo-500) | `oklch(0.58 0.22 275)` | Accent indigo |
-| `#ffffff` | `oklch(1 0 0)` | White |
-| `#000000` | `oklch(0 0 0)` | Black |
-
-Use the oklch color picker: https://oklch.com/
+| Hex | oklch |
+|-----|-------|
+| `#3b82f6` (blue-500) | `oklch(0.59 0.2 250)` |
+| `#ef4444` (red-500) | `oklch(0.63 0.26 25)` |
+| `#22c55e` (green-500) | `oklch(0.72 0.19 145)` |
+| `#f59e0b` (amber-500) | `oklch(0.75 0.18 70)` |
+| `#ffffff` / `#000000` | `oklch(1 0 0)` / `oklch(0 0 0)` |
 
 ## Step 4: Update CSS Files
-
-Find CSS files with old directives:
 
 ```bash
 grep -rl '@tailwind' --include="*.css" .
@@ -208,52 +114,20 @@ Replace v3 directives:
 
 | v3 | v4 |
 |----|-----|
-| `@tailwind base;` | Remove (included in import) |
-| `@tailwind components;` | Remove (included in import) |
-| `@tailwind utilities;` | Remove (included in import) |
-| All three | `@import "tailwindcss";` |
+| `@tailwind base;` / `components;` / `utilities;` (any/all) | `@import "tailwindcss";` |
 
-**Before:**
-```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-.custom-class {
-  @apply p-4;
-}
-```
-
-**After:**
-```css
-@import "tailwindcss";
-
-@source "./src/**/*.{js,jsx}";
-
-@theme {
-  /* moved from tailwind.config.js */
-}
-
-.custom-class {
-  @apply p-4;
-}
-```
+Existing `@apply` rules in your CSS continue to work unchanged.
 
 ## Step 5: Update package.json
 
-Update dependencies based on your integration method:
-
-**For CLI method (recommended for most projects):**
+**CLI method (recommended for most projects):**
 
 ```bash
-# Remove old packages
 npm uninstall tailwindcss postcss autoprefixer
-
-# Install v4 CLI
 npm install -D tailwindcss@latest @tailwindcss/cli@latest
 ```
 
-Update scripts:
+Scripts:
 
 ```json
 {
@@ -264,32 +138,17 @@ Update scripts:
 }
 ```
 
-**For PostCSS method (if using existing PostCSS pipeline):**
+**PostCSS method (if using an existing PostCSS pipeline):**
 
 ```bash
-# Remove old packages but keep postcss
 npm uninstall tailwindcss autoprefixer
-
-# Install v4 with PostCSS plugin
 npm install -D tailwindcss@latest @tailwindcss/postcss@latest postcss
 ```
 
-## Step 6: Handle PostCSS (if applicable)
+## Step 6: Handle PostCSS Config
 
-If project uses PostCSS, update `postcss.config.js`:
-
-**v3:**
-```javascript
-module.exports = {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
-}
-```
-
-**v4:**
-```javascript
+```js
+// v4
 export default {
   plugins: {
     '@tailwindcss/postcss': {},
@@ -297,109 +156,81 @@ export default {
 }
 ```
 
-Note: autoprefixer is no longer needed - v4 handles prefixing automatically.
+**Note:** autoprefixer is no longer needed — v4 handles prefixing automatically.
 
 ## Step 7: Handle Old Config File
 
-After successful migration, ask user:
+`AskUserQuestion`: "Migration complete. What should we do with `tailwind.config.js`?"
 
-```text
-Migration complete. What should we do with tailwind.config.js?
+| Option | Description |
+|--------|-------------|
+| **Delete** (recommended) | Config is now in CSS |
+| **Keep as backup** | Rename to `tailwind.config.js.bak` |
+| **Keep unchanged** | May cause confusion |
 
-1. Delete it (recommended) - Config is now in CSS
-2. Keep it (reference) - Rename to tailwind.config.js.bak
-3. Keep it (unchanged) - May cause confusion
-```
-
-## Step 8: Verify Migration
-
-Run a test build:
+## Step 8: Verify
 
 ```bash
 npm run css 2>&1 | head -20
 ```
 
-Check for errors. Common issues:
+Common errors:
 
 | Error | Solution |
 |-------|----------|
 | `Unknown directive @tailwind` | Old directive not removed |
 | `Cannot find module` | Plugin not v4 compatible |
-| `Invalid CSS` | Syntax error in @theme block |
+| `Invalid CSS` | Syntax error in `@theme` block |
 
 ## Step 9: Migration Report
 
-```text
-## Tailwind v3 to v4 Migration Complete
+```
+## Tailwind v3 → v4 Migration Complete
 
-### Changes Made
-
-**Files modified:**
-- [CSS file] - Updated directives and added @theme
-- package.json - Updated dependencies
-- [postcss.config.js] - Updated for v4 (if applicable)
-
-**Configuration migrated:**
-- X custom colors → @theme CSS variables
+### Changes
+- [CSS file] — @import + @theme
+- package.json — v4 dependencies
+- [postcss.config.js] — updated (if applicable)
+- X custom colors → @theme variables
 - Y content paths → @source directives
 - Z plugins → @plugin directives
 - Dark mode → @variant dark
-
-**Files removed:**
-- tailwind.config.js (config now in CSS)
-
-### Breaking Changes
-
-[List any potential breaking changes]
+- tailwind.config.js — removed (or kept per user choice)
 
 ### Manual Review Needed
-
 - [ ] Verify custom colors look correct
 - [ ] Test dark mode toggle
 - [ ] Check responsive breakpoints
 - [ ] Verify plugins work correctly
 
 ### Next Steps
-
-1. Run `npm run css:watch` to start development
-2. Test the application thoroughly
-3. Run `/tailwind-audit` to check for any issues
-4. Commit changes
-
-### Resources
-
-- Upgrade guide: https://tailwindcss.com/docs/upgrade-guide
-- v4 documentation: https://tailwindcss.com/docs
-- oklch colors: https://oklch.com/
+1. `npm run css:watch`
+2. Test thoroughly
+3. `/tailwind-audit` to check for any issues
+4. Commit
 ```
+
+Resources: https://tailwindcss.com/docs/upgrade-guide; https://oklch.com/
 
 ## Notes
 
 - Always backup files before migration or use `--check` first
-- oklch colors may look slightly different than hex - verify visually
+- oklch colors may look slightly different than hex — verify visually
 - Some v3 plugins may not have v4 equivalents yet
 - Test thoroughly after migration, especially dark mode and responsive designs
 
----
-
 ## Completion Criteria
 
-**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
-1. v3 config has been parsed and analyzed
+1. v3 config parsed and analyzed
 2. CSS file updated with `@import "tailwindcss"` and `@theme`
-3. package.json dependencies updated to v4
-4. `npm run css` or equivalent build succeeds without errors
+3. package.json deps updated to v4
+4. `npm run css` (or equivalent) succeeds with zero errors
 5. No `@tailwind` directives remain in CSS files
-
-**When ALL criteria are met, output exactly:**
 
 ```
 <done>COMPLETE</done>
 ```
 
-This signals the loop to exit. If you output this prematurely, the migration may be incomplete.
-
----
-
-**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.
+**Safety:** if 15+ iterations without success, document blockers and ask.

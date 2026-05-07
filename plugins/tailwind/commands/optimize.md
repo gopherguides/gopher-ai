@@ -12,19 +12,11 @@ Analyze Tailwind CSS output and provide optimization recommendations.
 
 **Usage:** `/tailwind-optimize [options]`
 
-**Examples:**
+- `/tailwind-optimize` — quick analysis
+- `/tailwind-optimize --report` — detailed report
+- `/tailwind-optimize --fix` — apply safe optimizations
 
-- `/tailwind-optimize` - Quick analysis
-- `/tailwind-optimize --report` - Generate detailed report
-- `/tailwind-optimize --fix` - Apply optimizations
-
-**What this command analyzes:**
-
-1. **Bundle size** - Measure CSS output size (dev vs prod)
-2. **Source coverage** - Verify `@source` paths cover all templates
-3. **Unused classes** - Find classes in CSS not used in templates
-4. **CSS variable bloat** - Identify unused theme variables
-5. **Build performance** - Check build times and suggest improvements
+**Analyzes:** bundle size (dev vs prod, gzipped) · source coverage (`@source` paths cover all templates) · unused classes (in CSS but not templates) · CSS variable bloat · build performance.
 
 Proceed with optimization analysis.
 
@@ -32,95 +24,56 @@ Proceed with optimization analysis.
 
 **If `$ARGUMENTS` is provided:**
 
-Parse arguments:
-
-- **--report**: Generate detailed markdown report
-- **--fix**: Apply safe optimizations automatically
-- **--verbose**: Show all findings, not just issues
+Parse arguments: `--report` (detailed markdown report), `--fix` (apply safe optimizations), `--verbose` (show all findings).
 
 ## Loop Initialization
 
-Initialize persistent loop to ensure optimization analysis completes fully:
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-optimize" "COMPLETE"; fi`
 
 ## Step 1: Find CSS Files
 
-Locate Tailwind CSS files:
-
 ```bash
-# Find input CSS (with @import "tailwindcss")
 grep -rl '@import.*tailwindcss' --include="*.css" . 2>/dev/null
-
-# Find output CSS
 ls **/output.css dist/**/*.css build/**/*.css public/**/*.css 2>/dev/null
 ```
 
 ## Step 2: Measure Bundle Size
 
-### Development Build
-
 ```bash
-# Build without minification
+# Dev build (no minification)
 npx @tailwindcss/cli -i input.css -o /tmp/dev-output.css 2>&1
-
-# Measure size
 wc -c /tmp/dev-output.css
-```
 
-### Production Build
-
-```bash
-# Build with minification
+# Prod build (minified) + gzip estimate
 npx @tailwindcss/cli -i input.css -o /tmp/prod-output.css --minify 2>&1
-
-# Measure size
 wc -c /tmp/prod-output.css
-
-# Gzip size estimate
 gzip -c /tmp/prod-output.css | wc -c
 ```
 
-### Size Benchmarks
+**Size benchmarks (gzipped):**
 
-| Size Category | Range | Assessment |
-|---------------|-------|------------|
-| Excellent | < 10KB gzipped | Highly optimized |
-| Good | 10-25KB gzipped | Normal for most apps |
-| Acceptable | 25-50KB gzipped | Consider optimization |
-| Large | > 50KB gzipped | Needs optimization |
+| Range | Assessment |
+|-------|------------|
+| < 10 KB | Excellent — highly optimized |
+| 10–25 KB | Good — normal for most apps |
+| 25–50 KB | Acceptable — consider optimization |
+| > 50 KB | Needs optimization |
 
-Most Tailwind projects should ship < 10KB CSS gzipped.
+Most Tailwind projects ship < 10 KB CSS gzipped.
 
 ## Step 3: Analyze Source Coverage
 
-### Find Template Files
-
 ```bash
-# Count template files
 fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -d 5 2>/dev/null | wc -l
-
-# Show file types
 fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -d 5 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn
-```
-
-### Check @source Configuration
-
-Read the CSS input file and extract `@source` directives:
-
-```bash
 grep '@source' input.css
 ```
-
-### Verify Coverage
 
 For each `@source` pattern, verify files are found:
 
 ```bash
-# Example: @source "./src/**/*.{js,jsx}"
-fd -e js -e jsx ./src 2>/dev/null | wc -l
+fd -e js -e jsx ./src 2>/dev/null | wc -l   # for @source "./src/**/*.{js,jsx}"
 ```
-
-**Coverage issues to check:**
 
 | Issue | Symptom | Fix |
 |-------|---------|-----|
@@ -130,108 +83,61 @@ fd -e js -e jsx ./src 2>/dev/null | wc -l
 
 ## Step 4: Find Unused Classes
 
-### Extract Used Classes
-
 ```bash
-# Extract class names from templates
+# Used classes in templates
 grep -ohr 'class="[^"]*"' --include="*.html" --include="*.templ" --include="*.jsx" --include="*.tsx" . 2>/dev/null | \
   sed 's/class="//g' | sed 's/"//g' | tr ' ' '\n' | sort -u > /tmp/used-classes.txt
 
-wc -l /tmp/used-classes.txt
-```
-
-### Compare With Generated CSS
-
-```bash
-# Extract class names from CSS
+# Class names in generated CSS
 grep -oE '\.[a-zA-Z][a-zA-Z0-9_-]*' output.css | sed 's/\.//' | sort -u > /tmp/css-classes.txt
 
-# Find classes in CSS but not in templates
+# CSS-only (potentially unused)
 comm -23 /tmp/css-classes.txt /tmp/used-classes.txt | head -50
 ```
 
-**Note:** Some "unused" classes may be:
-- Dynamically generated (e.g., `bg-${color}-500`)
-- Used by JavaScript
-- From third-party libraries
-- Base/reset styles (intentionally included)
+**Note:** Some "unused" classes may be: dynamically generated (`bg-${color}-500`); used by JavaScript; from third-party libraries; or base/reset styles (intentionally included).
 
 ## Step 5: CSS Variable Analysis
 
-Tailwind v4 generates many CSS variables. Check for bloat:
-
 ```bash
-# Count CSS variables in output
 grep -c -- '--' output.css
-
-# List unused color variables
 grep -oE '--color-[a-z]+-[0-9]+' output.css | sort -u | wc -l
 ```
 
-### Variable Categories
-
-| Category | Expected | If Higher |
+| Category | Expected | If higher |
 |----------|----------|-----------|
-| Color vars | 50-100 | Using full palette when subset would work |
-| Spacing vars | 20-30 | Normal |
-| Font vars | 5-10 | Normal |
-| Animation vars | 10-20 | Normal |
+| Color vars | 50–100 | Using full palette when subset would work |
+| Spacing vars | 20–30 | Normal |
+| Font vars | 5–10 | Normal |
+| Animation vars | 10–20 | Normal |
 
-### Reducing Variable Bloat
-
-If too many unused variables, consider:
-
-1. **Define only needed colors in @theme:**
-
-```css
-@theme {
-  /* Only define colors you actually use */
-  --color-primary: oklch(0.6 0.2 250);
-  --color-secondary: oklch(0.5 0.02 250);
-  /* Don't rely on full Tailwind palette */
-}
-```
-
-2. **Use specific source paths** to generate only needed utilities
+**Reducing variable bloat:** define only needed colors in `@theme` (don't rely on the full Tailwind palette); use specific `@source` paths to generate only needed utilities.
 
 ## Step 6: Build Performance
 
-### Measure Build Time
-
 ```bash
-# Time a production build
 time npx @tailwindcss/cli -i input.css -o output.css --minify 2>&1
 ```
 
-### Performance Benchmarks
-
-| Build Time | Assessment |
+| Build time | Assessment |
 |------------|------------|
-| < 100ms | Excellent |
-| 100-500ms | Good |
-| 500ms-2s | Acceptable |
-| > 2s | Consider optimization |
+| < 100 ms | Excellent |
+| 100–500 ms | Good |
+| 500 ms – 2 s | Acceptable |
+| > 2 s | Consider optimization |
 
-### Performance Tips
-
-1. **Narrow @source paths** - More specific = faster builds
-2. **Use incremental builds** - `--watch` mode is much faster
-3. **Exclude node_modules** - Don't scan dependencies
-4. **Use faster disk** - SSD > HDD significantly
+**Tips:** narrow `@source` paths (more specific = faster); use `--watch` for incremental builds; exclude `node_modules`; SSD significantly faster than HDD.
 
 ## Step 7: Generate Report
 
-```text
+```
 ## Tailwind CSS Optimization Report
-
-**Generated:** [date]
-**Project:** [path]
 
 ### Bundle Size
 
 | Metric | Size | Assessment |
 |--------|------|------------|
-| Development | XXX KB | - |
+| Development | XXX KB | — |
 | Production | XXX KB | [assessment] |
 | Gzipped | XXX KB | [assessment] |
 
@@ -240,7 +146,6 @@ time npx @tailwindcss/cli -i input.css -o output.css --minify 2>&1
 | Source Pattern | Files Found | Status |
 |----------------|-------------|--------|
 | `./src/**/*.jsx` | 45 | OK |
-| `./templates/**/*.templ` | 12 | OK |
 | `./components/**/*.html` | 0 | Warning: No files |
 
 ### Class Usage
@@ -251,52 +156,22 @@ time npx @tailwindcss/cli -i input.css -o output.css --minify 2>&1
 | Classes in generated CSS | XXX |
 | Potentially unused | XXX |
 
-### CSS Variables
+### CSS Variables / Build Performance
 
-| Category | Count | Status |
-|----------|-------|--------|
-| Total variables | XXX | - |
-| Color variables | XXX | [status] |
-| Unused estimates | XXX | [status] |
-
-### Build Performance
-
-| Metric | Value |
-|--------|-------|
-| Build time | XXX ms |
-| Incremental | XXX ms |
+[Per the categories above]
 
 ### Recommendations
 
-**High Priority:**
-1. [Critical optimizations]
-
-**Medium Priority:**
-2. [Helpful optimizations]
-
-**Low Priority:**
-3. [Nice-to-have optimizations]
-
-### Quick Wins
-
-```bash
-# Commands to apply recommended optimizations
-[commands]
-```
+**High Priority:** [Critical]
+**Medium Priority:** [Helpful]
+**Low Priority:** [Nice-to-have]
 ```
 
-## Step 8: Apply Optimizations (if --fix)
+## Step 8: Apply Optimizations (if `--fix`)
 
-When `--fix` flag is present:
+Auto-apply: add missing `@source` for uncovered template directories; replace `**/*` with specific patterns; add `--minify` to production build scripts.
 
-1. **Add missing @source** - For uncovered template directories
-2. **Remove overly broad sources** - Replace `**/*` with specific patterns
-3. **Update build scripts** - Add `--minify` for production
-
-**Do NOT auto-fix:**
-- Class removal (may break dynamic classes)
-- Theme variable removal (may be used elsewhere)
-- Source path reduction (may cause missing classes)
+**Do NOT auto-fix:** class removal (may break dynamic classes); theme variable removal (may be used elsewhere); source-path reduction (may cause missing classes).
 
 ## Notes
 
@@ -304,27 +179,18 @@ When `--fix` flag is present:
 - Some "unused" CSS is intentional (resets, future features)
 - Gzipped size matters most for production
 - Use browser DevTools "Coverage" tab for runtime analysis
-- Consider code-splitting CSS for large applications
-
----
 
 ## Completion Criteria
 
-**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
-1. Bundle size has been measured (dev and prod)
-2. Source coverage has been analyzed
-3. Optimization report has been generated
-4. If `--fix` flag provided: safe optimizations have been applied
-
-**When ALL criteria are met, output exactly:**
+1. Bundle size measured (dev and prod)
+2. Source coverage analyzed
+3. Optimization report generated
+4. If `--fix`: safe optimizations applied
 
 ```
 <done>COMPLETE</done>
 ```
 
-This signals the loop to exit. If you output this prematurely, the optimization analysis may be incomplete.
-
----
-
-**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.
+**Safety:** if 15+ iterations without success, document blockers and ask.
