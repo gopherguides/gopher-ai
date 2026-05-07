@@ -45,39 +45,13 @@ echo "Issue: $ISSUE_NUM | Flags: $FLAGS"
 
 ## Loop Initialization & Re-entry
 
-```bash
-STATE_FILE=".local/state/complete-issue-${ISSUE_NUM}.loop.local.json"
-if [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
-  echo "Re-entry detected — skipping setup-loop."
-else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "complete-issue-${ISSUE_NUM}" "COMPLETE" 100 "" \
-    '{"implementing":"Resume start-issue implementation.","reviewing":"Resume codex review.","verifying":"Resume E2E verification and shipping."}'
-fi
-```
+Read `loop-state.md` and run the **bootstrap block** + **re-entry check**. If `PHASE` is set, recover state and skip to the corresponding phase below; otherwise continue to Phase 1.
 
-### Persist Arguments
+Phase → step routing:
 
-```bash
-TMP="$STATE_FILE.tmp"
-jq --arg issue_num "$ISSUE_NUM" --arg flags "$FLAGS" --arg pr_number "" \
-   '. + {issue_num: $issue_num, flags: $flags, pr_number: $pr_number}' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
-
-### Re-entry Check
-
-```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-if [ -f "$STATE_FILE" ]; then
-  read_loop_state "$STATE_FILE"
-fi
-```
-
-If `PHASE` is set, recover state and skip to the corresponding phase:
-
-- `implementing` → go to Phase 1
-- `reviewing` → go to Phase 2
-- `verifying` → go to Phase 3
+- `implementing` → Phase 1
+- `reviewing` → Phase 2
+- `verifying` → Phase 3
 
 ---
 
@@ -87,27 +61,13 @@ If `PHASE` is set, recover state and skip to the corresponding phase:
 set_loop_phase "$STATE_FILE" "implementing"
 ```
 
-Invoke `/go-workflow:start-issue $ISSUE_NUM $FLAGS`.
+Invoke `/go-workflow:start-issue $ISSUE_NUM $FLAGS`. Read `phases.md` for the full sub-step list (fetch issue, create worktree, detect type, explore, design, TDD, verify, coverage, security review, commit/push/PR, watch CI).
 
-This runs the full start-issue workflow:
-1. Fetch issue details
-2. Create worktree (if user chooses)
-3. Detect issue type (bug/feature)
-4. Explore codebase
-5. Design approach (features: get user approval)
-6. TDD implementation
-7. Verify (build, test, lint)
-8. Coverage check
-9. Security review
-10. Commit, push, create PR
-11. Watch CI
-
-After `/start-issue` completes, detect the PR number and worktree context:
+After `/start-issue` completes, detect the PR number and worktree context, reassign `STATE_FILE` to an absolute path (because CWD may have changed if a worktree was created), and persist:
 
 ```bash
 PR_NUM=$(gh pr view --json number --jq '.number' 2>/dev/null)
 
-# Detect if start-issue created a worktree (CWD may have changed)
 GIT_DIR_ABS=$(cd "$(git rev-parse --git-dir 2>/dev/null)" && pwd)
 GIT_COMMON_ABS=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd)
 if [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
@@ -115,7 +75,6 @@ if [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
   echo "Running in worktree: $WORKTREE_PATH"
 fi
 
-# Reassign STATE_FILE to absolute path so it resolves correctly after CWD changes
 STATE_FILE="$(pwd)/.local/state/complete-issue-${ISSUE_NUM}.loop.local.json"
 mkdir -p "$(dirname "$STATE_FILE")"
 
@@ -126,7 +85,7 @@ jq --arg pr_number "$PR_NUM" --arg worktree_path "${WORKTREE_PATH:-}" \
 echo "PR #$PR_NUM created"
 ```
 
-**If a worktree was created:** All subsequent phases MUST operate from `$WORKTREE_PATH`. Prefix every Bash command with `cd "$WORKTREE_PATH" &&` and use `$WORKTREE_PATH` as the base for all Read/Edit/Write file paths. The pre-tool-use hook will block tool calls targeting the wrong directory. The `STATE_FILE` variable has been reassigned to an absolute path so `set_loop_phase` calls resolve correctly regardless of CWD.
+> **Worktree-CWD invariant (decision-time, must stay in trunk):** If a worktree was created, all subsequent phases MUST operate from `$WORKTREE_PATH`. Prefix every Bash command with `cd "$WORKTREE_PATH" &&` and use `$WORKTREE_PATH` as the base for all Read/Edit/Write file paths. The pre-tool-use hook will block tool calls targeting the wrong directory. The `STATE_FILE` reassignment above ensures `set_loop_phase` calls resolve correctly regardless of CWD.
 
 ---
 
@@ -138,65 +97,29 @@ set_loop_phase "$STATE_FILE" "reviewing"
 
 Run an LLM review to catch issues before E2E verification. **CRITICAL: Never silently fall back** — always present the user with options if codex fails.
 
-1. **Detect codex availability:**
-   ```bash
-   CODEX_AVAILABLE=false
-   if command -v codex &>/dev/null; then
-     CODEX_CMD="codex"
-     CODEX_AVAILABLE=true
-   elif npx -y codex --version &>/dev/null 2>&1; then
-     CODEX_CMD="npx -y codex"
-     CODEX_AVAILABLE=true
-   fi
-   ```
+Detect codex availability:
 
-2. **If codex NOT available:** Do NOT silently fall back. Use `AskUserQuestion`:
+```bash
+CODEX_AVAILABLE=false
+if command -v codex &>/dev/null; then
+  CODEX_CMD="codex"
+  CODEX_AVAILABLE=true
+elif npx -y codex --version &>/dev/null 2>&1; then
+  CODEX_CMD="npx -y codex"
+  CODEX_AVAILABLE=true
+fi
+```
 
-   **"Codex CLI is not available for self-review. How would you like to proceed?"**
+- **If codex is NOT available** OR **if codex exec fails at runtime** → Read `codex-fallback.md` and follow the `AskUserQuestion` flow for the matching scenario. Do NOT silently fall back.
+- **If codex IS available** → run codex review on the PR diff with an adaptive timeout, address findings, and commit fixes. See `phases.md` for the full bash (diff sizing, timeout calculation, large-diff warning).
 
-   | Option | Description |
-   |--------|-------------|
-   | **Retry** | Check again (after you install codex) |
-   | **Install instructions** | Show how to install: `npm install -g @openai/codex` |
-   | **Use agent-based review** | Fall back to Claude agent review |
-   | **Skip review** | Proceed to Phase 3 without review (with warning) |
+Address findings: for each valid finding, make the fix. Skip false positives or cosmetic-only items. Commit fixes if any changes were made:
 
-   Handle the user's choice:
-   - **Retry** → Re-run the availability check from step 1.
-   - **Install instructions** → Display: `npm install -g @openai/codex` and ensure `OPENAI_API_KEY` is set. Then re-check.
-   - **Use agent-based review** → Use an Agent subagent to review the diff for correctness, security, and Go idioms.
-   - **Skip review** → Warn "Self-review skipped — proceeding to E2E verification without code review." and go directly to Phase 3.
-
-3. **If codex available:** Run codex review on the PR diff:
-   ```bash
-   DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
-   DIFF=$(git diff "origin/${DEFAULT_BRANCH}...HEAD")
-   DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
-   # Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
-   CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
-   if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
-   # Detect timeout command (macOS does not ship GNU timeout)
-   if command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout"
-   elif command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout"
-   else TIMEOUT_CMD=""; fi
-   ```
-   If `$TIMEOUT_CMD` is available, use `$TIMEOUT_CMD $CODEX_TIMEOUT $CODEX_CMD exec` with structured output. If no timeout command is available, run `$CODEX_CMD exec` without a timeout wrapper.
-
-   If the diff exceeds 3000 lines, warn the user via `AskUserQuestion` before starting: "Large diff ($DIFF_LINES lines) — codex exec may timeout. Proceed / Use `codex review --base` / Agent review / Skip?"
-
-4. **If codex exec fails at runtime** (non-zero exit or no output): Do NOT silently fall back. Display the exit code and stderr, then use `AskUserQuestion`:
-   - **Exit code 124 (timeout):** Offer: Retry with longer timeout / Use `codex review --base` / Drop `--output-schema` / Agent review / Skip review
-   - **Other exit codes:** Offer: Retry / Debug / Agent review / Skip review
-   The user must choose.
-
-5. **Address findings:** For each valid finding, make the fix. Skip findings that are false positives or cosmetic-only.
-
-6. **Commit fixes** (if any changes were made):
-   ```bash
-   git add -A
-   git commit -m "fix: address codex review findings"
-   git push
-   ```
+```bash
+git add -A
+git commit -m "fix: address codex review findings"
+git push
+```
 
 ---
 
@@ -206,17 +129,7 @@ Run an LLM review to catch issues before E2E verification. **CRITICAL: Never sil
 set_loop_phase "$STATE_FILE" "verifying"
 ```
 
-Invoke `/go-workflow:e2e-verify $PR_NUM fix-and-ship`.
-
-This runs the full e2e-verify workflow in `fix-and-ship` mode:
-1. Rebase onto base branch
-2. Build verification
-3. Address any new review feedback
-4. E2E browser testing via Chrome DevTools MCP
-5. Post results to PR
-6. Add `run-full-ci` label
-7. Watch CI
-8. Invoke `/go-workflow:ship` to merge
+Invoke `/go-workflow:e2e-verify $PR_NUM fix-and-ship`. This runs the full e2e-verify workflow in `fix-and-ship` mode (rebase, build, address review, E2E browser tests, post results, add `run-full-ci` label, watch CI, invoke `/go-workflow:ship`).
 
 ---
 
@@ -235,3 +148,9 @@ Output `<done>COMPLETE</done>` when ALL of these are true:
 **When ALL criteria are met, output exactly:** `<done>COMPLETE</done>`
 
 **Safety:** If 15+ iterations without success, document blockers and ask user.
+
+## Further Reading
+
+- `phases.md` — full sub-step lists for Phase 1 (`/start-issue`) and the codex run for Phase 2
+- `loop-state.md` — bootstrap, re-entry, and persist blocks
+- `codex-fallback.md` — `AskUserQuestion` flows for codex unavailable / runtime failure / timeout

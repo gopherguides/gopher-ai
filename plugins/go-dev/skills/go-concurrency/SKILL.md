@@ -1,6 +1,6 @@
 ---
 name: go-concurrency
-description: "Write/review concurrent Go: goroutines, channels, select, locks, sync, errgroup, singleflight, worker pools, fan-out/in. Catch leaks, races, channel ownership. Trigger when user pastes code with 'go ' statements, channels, select, sync.* primitives, or errgroup, or asks about goroutine lifecycle, races, or deadlocks."
+description: "Write/review concurrent Go: goroutines, channels, select, sync, errgroup, singleflight, worker pools, fan-out/in. Catches leaks, races, channel ownership. Trigger on `go` statements, channels, select, sync.*, errgroup, or goroutine lifecycle/races/deadlocks questions."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 
