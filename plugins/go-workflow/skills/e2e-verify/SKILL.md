@@ -52,72 +52,23 @@ echo "Working on PR #$PR_NUM in mode: $MODE"
 
 ## Loop Initialization & Re-entry
 
-### State File Bootstrap
+Read `loop-state.md` and run the **bootstrap block** (creates state file via setup-loop, persists arguments, performs re-entry check). If `PHASE` is set, recover state and skip to the corresponding phase below; otherwise this is a fresh start.
 
-```bash
-STATE_FILE=".local/state/e2e-verify-${PR_NUM}.loop.local.json"
-if [ -f "$STATE_FILE" ]; then
-  EXISTING_PHASE=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null || true)
-  if [ -n "$EXISTING_PHASE" ]; then
-    echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop to preserve state."
-  fi
-fi
-```
+Phase → step routing:
 
-**Only call setup-loop on fresh starts** (no state file or empty phase):
-
-```bash
-if [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
-  echo "Re-entry detected — skipping setup-loop."
-else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "e2e-verify-${PR_NUM}" "VERIFIED" 30 "" \
-    '{"rebasing":"Resume rebase onto base branch.","building":"Resume build verification.","addressing":"Resume address-review fixes.","investigating":"Resume investigation.","e2e-testing":"Resume E2E tests. Restart dev server if needed.","posting":"Resume posting results to PR.","shipping":"Resume ship workflow."}'
-fi
-```
-
-### Persist Arguments
-
-```bash
-STATE_FILE=".local/state/e2e-verify-${PR_NUM}.loop.local.json"
-TMP="$STATE_FILE.tmp"
-jq --arg mode "$MODE" --arg pr_number "$PR_NUM" --arg build_result "" \
-   --arg e2e_result "" --argjson pages_tested 0 --arg base_branch "" \
-   '. + {mode: $mode, pr_number: $pr_number, build_result: $build_result, e2e_result: $e2e_result, pages_tested: $pages_tested, base_branch: $base_branch}' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
-
-### Re-entry Check
-
-```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-if [ -f "$STATE_FILE" ]; then
-  read_loop_state "$STATE_FILE"
-fi
-```
-
-If `PHASE` is set (non-empty), this is a re-entry. Recover state from persisted fields and skip to the corresponding phase:
-
-- `rebasing` → go to Step 1-2
-- `building` → go to Step 2
-- `addressing` → go to Step 3
-- `investigating` → go to Step 4
-- `e2e-testing` → go to Step 5
-- `posting` → go to Step 6
-- `shipping` → go to Step 7
-
-If `PHASE` is empty, this is a fresh start. Continue to Step 1.
+- `rebasing` → Step 1-2
+- `building` → Step 2
+- `addressing` → Step 3
+- `investigating` → Step 4
+- `e2e-testing` → Step 5
+- `posting` → Step 6
+- `shipping` → Step 7
 
 ---
 
 ## Mode Summary
 
-For UI-visible diffs every Finish Action below is **gated on `E2E_RESULT=pass`**.
-If `E2E_RESULT` is `fail`, `partial`, `skipped-server-failed`,
-`missing-browser-tooling`, or `uninspected-screenshots`, the workflow stops
-after Step 6 — no labels, no ship, no `VERIFIED`. See Step 7 and Completion
-Criteria for the exact gate.
-
-| Mode | Steps Executed | Finish Action (only when `E2E_RESULT=pass` for UI diffs) |
+| Mode | Steps Executed | Finish Action |
 |------|---------------|---------------|
 | `verify` (default) | 1-2, 5-6 | Report results |
 | `fix-and-verify` | 1-2, 3, 5-6 | Add `run-full-ci` label, report |
@@ -130,25 +81,13 @@ Criteria for the exact gate.
 
 ## Steps 1-2: Rebase and Build Verification
 
-Set phase to `rebasing`:
-
 ```bash
 set_loop_phase "$STATE_FILE" "rebasing"
 ```
 
-Read `rebase-and-build.md` for the full rebase and build verification procedure:
-- Step 1: Detect base branch, fetch, rebase if behind, force-push with lease, wait for CI
-- Step 2: Run code generation, go build, go test, golangci-lint, check for generated file drift
+Read `rebase-and-build.md` for the full procedure: detect base branch, fetch, rebase if behind, force-push with lease, wait for CI; then run code generation, `go build`, `go test`, `golangci-lint`, and check for generated-file drift.
 
-After build verification, persist results:
-
-```bash
-set_loop_phase "$STATE_FILE" "building"
-TMP="$STATE_FILE.tmp"
-jq --arg build_result "$BUILD_RESULT" --arg base_branch "$BASE_BRANCH" \
-   '.build_result = $build_result | .base_branch = $base_branch' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
+After build verification, persist results — Read `loop-state.md` for the **persist-build-result block**.
 
 **If build failed:** Report failure and stop. Do not proceed to E2E testing with a broken build.
 
@@ -156,11 +95,7 @@ jq --arg build_result "$BUILD_RESULT" --arg base_branch "$BASE_BRANCH" \
 
 ## Step 3: Address Review (conditional)
 
-**Only for modes: `fix-and-verify`, `fix-and-ship`**
-
-For all other modes, skip to Step 4 or Step 5.
-
-Set phase to `addressing`:
+**Only for modes: `fix-and-verify`, `fix-and-ship`** — for all others, skip to Step 4 or 5.
 
 ```bash
 set_loop_phase "$STATE_FILE" "addressing"
@@ -176,7 +111,7 @@ After addressing review feedback, create a descriptive fix commit and push.
 
 ### Re-verify after fixes
 
-**CRITICAL:** Since Step 3 modified code, re-run build verification before proceeding to E2E:
+**CRITICAL:** Step 3 modified code, so re-run build verification before E2E:
 
 ```bash
 go build ./...
@@ -190,39 +125,20 @@ Update `BUILD_RESULT` based on these fresh results. If the build fails after fix
 
 ## Step 4: Investigate (conditional)
 
-**Only for mode: `investigate`**
-
-For all other modes, skip to Step 5.
-
-Set phase to `investigating`:
+**Only for mode: `investigate`** — for all others, skip to Step 5.
 
 ```bash
 set_loop_phase "$STATE_FILE" "investigating"
 ```
 
-1. Read the GitHub issue linked to the PR:
-   ```bash
-   gh pr view "$PR_NUM" --json body,title,url
-   ```
-
-2. Review the implementation against requirements:
-   ```bash
-   git diff "origin/${BASE_BRANCH}...HEAD"
-   ```
-
-3. Identify gaps between issue requirements and implementation:
-   - Missing acceptance criteria
-   - Untested edge cases
-   - Potential regressions
-   - Architectural concerns
-
-4. Record findings for the PR comment. Do NOT fix anything — only report.
+1. Read the GitHub issue linked to the PR: `gh pr view "$PR_NUM" --json body,title,url`
+2. Review the implementation against requirements: `git diff "origin/${BASE_BRANCH}...HEAD"`
+3. Identify gaps between issue requirements and implementation: missing acceptance criteria, untested edge cases, potential regressions, architectural concerns
+4. Record findings for the PR comment. **Do NOT fix anything — only report.**
 
 ---
 
 ## Step 5: E2E Testing
-
-Set phase to `e2e-testing`:
 
 ```bash
 set_loop_phase "$STATE_FILE" "e2e-testing"
@@ -234,116 +150,51 @@ Read the PR/issue description first to understand what the change is supposed to
 gh pr view "$PR_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"'
 ```
 
-Read `e2e-test-execution.md` for the full E2E test procedure:
-- Check MCP availability and web component indicators
-- Detect and start dev server (reuse if already running)
-- Run database migrations if applicable
-- Perform login flow if authentication is required
-- **For each route: navigate → stabilize → screenshot → READ screenshot → compare to spec → document findings**
-- Clean up and collect results
+Read `e2e-test-execution.md` for the full E2E test procedure: MCP availability check, dev-server detection/start, migrations, login flow, **per-route navigate → stabilize → screenshot → READ screenshot → compare to spec → document findings**, cleanup.
 
 **CRITICAL:** Every screenshot MUST be read and visually compared against the PR/issue spec. If you take a screenshot but don't read it, you have not tested anything.
 
-After E2E testing, persist results:
-
-```bash
-TMP="$STATE_FILE.tmp"
-jq --arg e2e_result "$E2E_RESULT" --argjson pages_tested "$PAGES_TESTED" \
-   '.e2e_result = $e2e_result | .pages_tested = $pages_tested' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
+After E2E testing, persist results — Read `loop-state.md` for the **persist-e2e-result block**.
 
 ---
 
 ## Step 6: Post Results
 
-Set phase to `posting`:
-
 ```bash
 set_loop_phase "$STATE_FILE" "posting"
 ```
 
-Read `pr-results-comment.md` for structured PR comment posting:
-- Build verification results table
-- E2E test results table (or skip reason)
-- Investigation findings (if investigate mode)
-- Mode-specific footer and labels
+Read `pr-results-comment.md` for the structured PR comment: build results table, E2E results table (or skip reason), investigation findings (if `investigate` mode), mode-specific footer and labels.
 
 ---
 
 ## Step 7: Finish (mode-specific)
 
-### Step 7.0: E2E Gate (applies to every mode before any finish action)
-
-Before doing anything in the per-mode table below, evaluate `E2E_RESULT`:
-
-- **UI-visible diff** (`WEB_CHANGES`, `HANDLER_CHANGES`, or layout-sensitive
-  keywords detected — see `e2e-test-execution.md` §5a.1):
-  - `E2E_RESULT=pass` → continue to the per-mode finish action below.
-  - `E2E_RESULT` is anything else (`fail`, `partial`, `skipped-server-failed`,
-    `missing-browser-tooling`, `uninspected-screenshots`) → **stop**. Do NOT
-    add `run-full-ci`. Do NOT add `e2e-verified`. Do NOT invoke
-    `/go-workflow:ship`. The Step 6 comment already records the failure with
-    findings. Output `<done>E2E_FAIL</done>` so the loop exits without a
-    verified state.
-- **Non-UI diff** (no web indicators, no UI-facing files changed):
-  - `E2E_RESULT=skipped` → continue to the per-mode finish action below
-    (treated as the success path).
-  - Any non-`skipped` value on a non-UI diff is a logic error — investigate
-    before continuing.
-
-### Step 7.1: Per-mode finish action (only reached when the gate above passed)
-
-| Mode | Action |
-|------|--------|
-| `verify` | Report results. Output `<done>VERIFIED</done>` |
-| `fix-and-verify` | Add `run-full-ci` label. Report results. Output `<done>VERIFIED</done>` |
-| `investigate` | Report findings (no label). Output `<done>VERIFIED</done>` |
-| `ship-prep` | Add `run-full-ci` label. Report results. Output `<done>VERIFIED</done>` |
-| `ship` | Set phase to `shipping`. Invoke `/go-workflow:ship` |
-| `fix-and-ship` | Add `run-full-ci` label. Set phase to `shipping`. Watch CI → invoke `/go-workflow:ship --skip-coverage` |
-
-For `fix-and-ship` mode, watch CI before shipping:
-
-```bash
-set_loop_phase "$STATE_FILE" "shipping"
-gh pr edit "$PR_NUM" --add-label "run-full-ci"
-for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
-```
-
-Then invoke `/go-workflow:ship --skip-coverage` to avoid re-running coverage and E2E tests that were already done.
+Read `mode-finish.md` for the mode → finish-action mapping, the `run-full-ci` label add, the `fix-and-ship` CI watch loop, and the `/go-workflow:ship` invocation rules.
 
 ---
 
 ## Completion Criteria
 
-The loop terminates on a `<done>…</done>` sentinel. Which sentinel you emit
-depends on `E2E_RESULT` and whether the diff is UI-visible:
-
-| `E2E_RESULT` | UI-visible diff | Non-UI diff |
-|---|---|---|
-| `pass` | `<done>VERIFIED</done>` | `<done>VERIFIED</done>` |
-| `skipped` | not allowed — must be `pass` or a fail state | `<done>VERIFIED</done>` |
-| `fail`, `partial`, `skipped-server-failed`, `missing-browser-tooling`, `uninspected-screenshots` | post comment, then `<done>E2E_FAIL</done>`. No labels, no ship. | not applicable |
-
-Output `<done>VERIFIED</done>` only when ALL of these are true:
+Output `<done>VERIFIED</done>` when ALL of these are true:
 
 1. Branch rebased onto base (or already up to date)
 2. Build passes (go build, go test)
 3. Review addressed (if `fix-and-verify` or `fix-and-ship` mode)
-4. E2E gate passed per the table above (UI: `pass`; non-UI: `skipped`)
+4. E2E tests completed (pass or skipped — never blocks)
 5. Results posted to PR as a comment
-6. Mode-specific finish action completed (only reached when the E2E gate passed)
+6. Mode-specific finish action completed
 
-If the E2E gate failed on a UI-visible diff, output `<done>E2E_FAIL</done>`
-after Step 6 instead. Do not invoke `/go-workflow:ship`. Do not add labels.
+**When ALL criteria are met, output exactly:** `<done>VERIFIED</done>`
 
 **Safety:** If 15+ iterations without success, document blockers and ask user.
 
 ---
 
-## Supporting Files
+## Further Reading
 
 - `rebase-and-build.md` — Steps 1-2: rebase onto base branch + build verification
 - `e2e-test-execution.md` — Step 5: Chrome DevTools MCP E2E testing
 - `pr-results-comment.md` — Step 6: structured PR comment with results
+- `loop-state.md` — bootstrap, re-entry, persist-result blocks (Steps 1-2 and Step 5)
+- `mode-finish.md` — Step 7 mode → action mapping and `fix-and-ship` CI-watch loop
