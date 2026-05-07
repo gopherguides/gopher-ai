@@ -17,57 +17,27 @@ Find and clean dead code across the entire Go project.
 - `/refactor-clean --dry-run` - Report findings without applying fixes
 - `/refactor-clean ./internal/auth --dry-run` - Report-only for a specific package
 
-**Analysis Categories:**
+**Analysis categories:** unused exported functions/types, orphaned test files, overly complex functions, unused imports.
 
-1. Unused exported functions and types
-2. Orphaned test files (tests for deleted code)
-3. Overly complex functions (suggest extraction)
-4. Unused imports beyond goimports coverage
+**Workflow:** detect tools → parallel-dispatch 4 analysis subagents → present findings report → apply fixes only after user confirmation → verify build + tests.
 
-**Workflow:**
-
-1. Detect available analysis tools
-2. Scan codebase across all categories
-3. Present structured findings report
-4. Apply fixes only after user confirmation
-5. Verify code still compiles and tests pass
-
-**Set default path and proceed with full workflow below:**
-
-`TARGET_PATH="./..."`
+Set default: `TARGET_PATH="./..."` and proceed.
 
 ---
 
 **If `$ARGUMENTS` is provided:**
 
-Analyze and clean dead code for the specified path or options.
+Parse `$ARGUMENTS`:
 
-**Parse `$ARGUMENTS` to extract path and options:**
-
-- If argument starts with `./` or is a package pattern: set as `TARGET_PATH`
-- If argument is `--dry-run`: set `DRY_RUN=true`, use `TARGET_PATH="./..."`
-- If both path and `--dry-run`: extract path to `TARGET_PATH`, set `DRY_RUN=true`
-
-Example parsing:
-- `./pkg/...` → `TARGET_PATH="./pkg/..."`
-- `--dry-run` → `TARGET_PATH="./..."`, `DRY_RUN=true`
-- `./internal/auth --dry-run` → `TARGET_PATH="./internal/auth"`, `DRY_RUN=true`
+- Argument starting with `./` or a package pattern → `TARGET_PATH`
+- `--dry-run` → set `DRY_RUN=true`, default `TARGET_PATH="./..."`
+- Both: extract path to `TARGET_PATH`, set `DRY_RUN=true`
 
 ## Loop Initialization
 
-Initialize persistent loop to ensure all confirmed fixes are applied cleanly:
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "refactor-clean" "COMPLETE"; fi`
 
-## Configuration
-
-Parse arguments:
-
-- **Path**: Package or directory to analyze (default: `./...`)
-- **--dry-run**: Report findings without applying any fixes
-
-## Steps
-
-### 1. Verify Go Project
+## Step 1: Verify Go Project
 
 ```bash
 if [ ! -f go.mod ]; then
@@ -79,9 +49,7 @@ head -5 go.mod
 
 Capture the module path from `go.mod` for import analysis.
 
-### 2. Detect Available Analysis Tools
-
-Check for each tool and record availability. The command works with or without any individual tool — missing tools trigger fallback to manual analysis.
+## Step 2: Detect Available Analysis Tools
 
 ```bash
 echo "=== Tool Detection ==="
@@ -93,243 +61,48 @@ which goimports 2>/dev/null || echo "goimports: NOT FOUND"
 go version
 ```
 
-**Tool usage plan:**
+| Tool | Purpose | Fallback |
+|------|---------|----------|
+| `staticcheck` | Unused code (U1000) | Manual grep for exported symbols with no callers |
+| `deadcode` | Unreachable functions | `go vet` + manual export analysis |
+| `gocyclo` / `gocognit` | Complexity score | Manual nesting/branch count for funcs >50 lines |
+| `goimports` | Unused imports | `go build` error parsing |
 
-| Tool | Purpose | Fallback if missing |
-|------|---------|-------------------|
-| `staticcheck` | Unused code detection (U1000) | Manual grep for exported symbols with no callers |
-| `deadcode` | Unreachable function detection | `go vet` + manual export analysis |
-| `gocyclo` or `gocognit` | Complexity scoring | Count branches manually (if/switch/for nesting depth) |
-| `goimports` | Unused import cleanup | `go build` error parsing for unused imports |
+If no specialized tools are available, inform the user which would improve results, but proceed regardless.
 
-If no specialized tools are available, inform the user which tools would improve results and offer to install them, but proceed with manual analysis regardless.
+## Step 3: Parallel Analysis Dispatch
 
-### Parallel Analysis Dispatch
+Launch **4 Agent calls in a SINGLE message** (parallel dispatch):
 
-**Dispatch all 4 analysis categories as parallel Explore subagents for speed.** Each subagent gets a focused analysis scope and returns structured findings.
+1. **Unused Exports Agent** (sonnet, Explore) — staticcheck `-checks U1000` if available, else deadcode, else manual grep. Exclude `main`/`init`, `cmd/` packages, interface implementations, generated files (`*_templ.go`, `*_mock.go`, `*.pb.go`), `vendor/`. Report file/line/symbol/type/confidence.
+2. **Orphaned Tests Agent** (sonnet, Explore) — for each `*_test.go`, check that the corresponding source exists and tested functions still exist. Verify via `go list` before flagging test-only directories. Report file/issue/details.
+3. **Complexity Agent** (sonnet, Explore) — gocyclo/gocognit `-over 15` if available, or count nesting depth/branches manually for funcs >50 lines. Report file/line/function/score/extraction suggestion.
+4. **Import Cleanup Agent** (sonnet, Explore) — goimports `-l` if available, or parse `go build` output. Flag side-effect imports for review only (do NOT auto-remove).
 
-Launch 4 Agent calls in a SINGLE message (parallel dispatch):
+Each subagent's prompt should include the tools detected in Step 2, `TARGET_PATH`, and the module path. Collect all 4 results, then proceed to Step 4 (present findings).
 
-1. **Unused Exports Agent** (sonnet, Explore) — "Analyze unused exported functions and types in `$TARGET_PATH`. Use staticcheck -checks U1000 if available, deadcode if available, or manual grep fallback. Exclude main/init, cmd/ packages, interface implementations, generated files (*_templ.go, *_mock.go, *.pb.go), vendor/. Report: file, line, symbol, type, confidence."
+If a subagent fails or returns empty, fall through to the manual analysis path for that category — see `${CLAUDE_PLUGIN_ROOT}/lib/refactor-clean/manual-analysis.md`.
 
-2. **Orphaned Tests Agent** (sonnet, Explore) — "Find orphaned test files in `$TARGET_PATH`. For each *_test.go, check if corresponding source exists and tested functions still exist. Verify via `go list` before flagging test-only directories. Report: test file, issue type, details."
+## Step 4: Present Findings Report
 
-3. **Complexity Agent** (sonnet, Explore) — "Identify complex functions in `$TARGET_PATH`. Use gocyclo -over 15 or gocognit -over 15 if available, or count nesting depth/branches manually for functions >50 lines. Report: file, line, function, score, extraction suggestion."
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/refactor-clean/manual-analysis.md` for the full report layout (4 category tables + summary). At a high level, the report has:
 
-4. **Import Cleanup Agent** (sonnet, Explore) — "Find unused imports in `$TARGET_PATH`. Use goimports -l if available, or parse `go build` output. Flag side-effect imports for review only (do NOT mark as auto-removable). Report: file, import, issue type."
+- Module path, target path, tools used
+- Category A — Unused Code
+- Category B — Orphaned Tests
+- Category C — Complexity Issues (always manual; never auto-applied)
+- Category D — Import Issues (side-effect imports flagged review-only)
+- Summary: totals, auto-fixable count, requires-review count
 
-Each subagent should include in its prompt:
-- The available tools detected in Step 2
-- The `TARGET_PATH` and module path from go.mod
-- Instructions to use absolute paths and `cd` to the project root
+If `--dry-run` was specified: output the report and proceed to completion. Do not ask about applying fixes.
 
-Collect all 4 results, then proceed to Step 7 (Present Findings Report) with the aggregated findings.
+If no findings in any category: report "No dead code or issues found — codebase is clean" and proceed to completion.
 
-**If any subagent fails or returns empty results**, fall through to the manual analysis steps below for that category only.
-
-### Manual Analysis Steps (Fallback)
-
-The following steps are used as fallback when subagent dispatch fails, or as reference for what each subagent should do. When subagent dispatch succeeds, skip directly to Step 7.
-
-### 3. Analyze Unused Exported Functions and Types
-
-**All commands use `$TARGET_PATH` from Configuration step.**
-
-**With staticcheck:**
-
-```bash
-staticcheck -checks U1000 $TARGET_PATH 2>&1
-```
-
-**With deadcode (more thorough for reachability):**
-
-```bash
-deadcode $TARGET_PATH 2>&1
-```
-
-**Manual fallback (no tools):**
-
-1. List all exported functions, methods, and types (convert package pattern to directory):
-```bash
-# Convert $TARGET_PATH to directory for grep (e.g., ./pkg/... → ./pkg/)
-SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
-# Exported standalone functions: func ExportedName(...)
-grep -rn '^func [A-Z]' --include='*.go' --exclude='*_test.go' "$SEARCH_DIR"
-# Exported methods: func (r *Receiver) ExportedName(...) or func (r Receiver) ExportedName(...)
-grep -rn '^func ([^)]*) [A-Z]' --include='*.go' --exclude='*_test.go' "$SEARCH_DIR"
-# Exported types
-grep -rn '^type [A-Z]' --include='*.go' --exclude='*_test.go' "$SEARCH_DIR"
-```
-
-2. For each exported symbol, search for references outside its defining file:
-```bash
-grep -rn 'SymbolName' --include='*.go' . | grep -v 'func SymbolName'
-```
-
-3. Symbols with zero external references (excluding the definition and test files) are candidates for removal or unexport.
-
-**Exclusions — do NOT flag these as dead code:**
-
-- `main()` and `init()` functions (entry points)
-- Functions in `cmd/` packages (CLI entry points)
-- Functions implementing interfaces (check interface satisfaction)
-- Functions called via reflection (warn about false positives)
-- Functions in generated files (`*_templ.go`, `*_mock.go`, `*.pb.go`, `*_gen.go`)
-- Functions registered as HTTP handlers, gRPC services, or similar frameworks
-- Functions in `vendor/` directory
-
-### 4. Find Orphaned Test Files
-
-Look for test files whose corresponding source files no longer exist or whose test targets have been removed.
-
-```bash
-# Convert $TARGET_PATH to directory for find
-SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
-find "$SEARCH_DIR" -name '*_test.go' -not -path './vendor/*' -not -path './.git/*' | sort
-```
-
-For each `*_test.go` file:
-
-1. Check if corresponding source files exist in the same package directory
-2. Extract tested function names:
-```bash
-grep -oE 'func Test[A-Za-z0-9_]+' path/to/file_test.go | sed 's/func Test//'
-```
-3. Verify each tested function exists in the package source:
-```bash
-grep -rn 'func.*FunctionName' --include='*.go' --exclude='*_test.go' path/to/package/
-```
-
-**Orphan indicators:**
-
-- Test functions reference functions that no longer exist in the package
-- Test file imports packages that no longer exist in `go.mod`
-- Directory contains only `*_test.go` files AND `go list` fails on it (distinguishes broken tests from valid test-only packages like integration/blackbox tests)
-
-**Note:** Do NOT flag test-only directories as orphaned without verifying via `go list`. Directories containing only `*_test.go` files are valid if they form a standalone test package (e.g., `package foo_test` for blackbox testing). Use:
-```bash
-go list ./path/to/testdir 2>&1
-```
-If `go list` succeeds, the test package is valid even without non-test source files.
-
-### 5. Identify Overly Complex Functions
-
-**With gocyclo:**
-
-```bash
-# Convert $TARGET_PATH to directory for gocyclo
-SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
-gocyclo -over 15 "$SEARCH_DIR" 2>&1
-```
-
-**With gocognit:**
-
-```bash
-SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
-gocognit -over 15 "$SEARCH_DIR" 2>&1
-```
-
-**Manual fallback:**
-
-For functions over 50 lines, read and assess:
-- Nested if/else depth > 3
-- Switch statements with > 10 cases
-- Multiple return paths (> 5)
-- Function length > 80 lines
-
-**Complexity thresholds:**
-
-| Score | Assessment | Action |
-|-------|-----------|--------|
-| < 10 | Simple | No action |
-| 10-15 | Moderate | Note for awareness |
-| 15-25 | Complex | Suggest extraction |
-| > 25 | Very complex | Strongly recommend refactoring |
-
-For complex functions, suggest specific extraction points:
-- Independent logic blocks that could become helper functions
-- Repeated patterns that could be consolidated
-- Early returns that simplify remaining logic
-
-### 6. Clean Up Unused Imports
-
-**With goimports:**
-
-```bash
-# Convert $TARGET_PATH to directory for goimports
-SEARCH_DIR=$(echo "$TARGET_PATH" | sed 's|/\.\.\.$||')
-goimports -l "$SEARCH_DIR" 2>&1
-```
-
-**Via go build (catches what goimports misses):**
-
-```bash
-go build $TARGET_PATH 2>&1 | grep 'imported and not used'
-```
-
-**Beyond standard unused imports — identify unnecessary dependencies:**
-
-- Packages imported solely for side effects (`_ "pkg"`) where the side effect may no longer be needed
-- Dependency packages that could be replaced with standard library
-
-**CRITICAL: Do NOT automatically remove side-effect imports (`_ "pkg/..."`).** These require human judgment. Flag them for review but exclude them from automatic cleanup.
-
-### 7. Present Findings Report
-
-Compile all findings into a structured report. Present this to the user BEFORE making any changes.
-
-```text
-=== Refactor Clean Report ===
-
-Module: <module-path>
-Path analyzed: <target-path>
-Tools used: <list of available tools>
-
---- Category A: Unused Code (X findings) ---
-
-| # | File | Line | Symbol | Type | Confidence |
-|---|------|------|--------|------|------------|
-| 1 | pkg/auth/token.go | 45 | GenerateOldToken | func | High |
-| 2 | internal/db/types.go | 12 | LegacyConfig | type | Medium |
-
---- Category B: Orphaned Tests (X findings) ---
-
-| # | Test File | Issue | Details |
-|---|-----------|-------|---------|
-| 1 | pkg/old/handler_test.go | Source file deleted | pkg/old/handler.go missing |
-| 2 | internal/v1/api_test.go | Function removed | TestProcessV1Request tests missing func |
-
---- Category C: Complexity Issues (X findings) ---
-
-| # | File | Line | Function | Score | Suggestion |
-|---|------|------|----------|-------|------------|
-| 1 | pkg/api/handler.go | 89 | ProcessRequest | 22 | Extract validation logic |
-| 2 | internal/engine/run.go | 34 | Execute | 18 | Split into setup/run/cleanup |
-
---- Category D: Import Issues (X findings) ---
-
-| # | File | Import | Issue |
-|---|------|--------|-------|
-| 1 | pkg/utils/helper.go | "encoding/xml" | Imported but not used |
-| 2 | cmd/server/main.go | _ "net/http/pprof" | Side-effect import (review only) |
-
---- Summary ---
-Total findings: X
-  Auto-fixable: Y (unused code removal, import cleanup)
-  Requires review: Z (complexity refactoring, side-effect imports)
-```
-
-**If `--dry-run` was specified:** Output the report and proceed directly to completion. Do not ask about applying fixes.
-
-**If no findings in any category:** Report "No dead code or issues found — codebase is clean" and proceed to completion.
-
-### 8. Apply Fixes with User Confirmation
+## Step 5: Apply Fixes with User Confirmation
 
 **CRITICAL: Never apply fixes without explicit user approval.**
 
-Use AskUserQuestion to present options:
-
-"I found X issues across Y categories. How would you like to proceed?"
+Use `AskUserQuestion`: "I found X issues across Y categories. How would you like to proceed?"
 
 | Option | Description |
 |--------|-------------|
@@ -338,9 +111,10 @@ Use AskUserQuestion to present options:
 | Apply individually | Confirm each change one by one |
 | Skip fixes | Keep the report only |
 
-**Note:** Complexity suggestions (Category C) always require manual refactoring — provide specific guidance but do not auto-apply.
+Complexity suggestions (Category C) always require manual refactoring — provide guidance, never auto-apply.
 
 **Apply fixes in this order:**
+
 1. Remove unused imports (least disruptive)
 2. Remove unused exported functions/types (may create cascading unused imports)
 3. Remove orphaned test files/functions
@@ -349,42 +123,41 @@ Use AskUserQuestion to present options:
 6. Verify: `go test ./...`
 
 **If compilation or tests fail after a fix**, revert that specific change:
+
 ```bash
 git checkout -- path/to/file.go
 ```
 
 Report the revert and continue with remaining fixes.
 
-### 9. Provide Complexity Refactoring Guidance
+## Step 6: Complexity Refactoring Guidance (Category C)
 
-For each function flagged in Category C:
+For each function in Category C:
 
 1. Read the function body and identify extractable logic blocks
 2. Suggest concrete function signatures for extracted code
 3. Describe the before/after structure
 
-Ask the user if they want any specific complexity refactoring applied. If yes, apply it and verify compilation and tests.
+Ask the user if they want any specific complexity refactoring applied. If yes, apply it and verify compilation + tests.
 
 ## Completion Criteria
 
-**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
-1. All four analysis categories have been scanned (unused code, orphaned tests, complexity, imports)
-2. Findings report has been presented to the user
-3. If `--dry-run`: No fixes were attempted (report only)
-4. If fixes were applied: User confirmed each batch of changes
-5. If fixes were applied: `go build ./...` succeeds with zero errors
-6. If fixes were applied: `go test ./...` passes
-7. If no findings: User was informed that the codebase is clean
-
-**When ALL criteria are met, output exactly:**
+1. All four categories scanned (unused, orphans, complexity, imports)
+2. Findings report presented to the user
+3. If `--dry-run`: no fixes attempted (report only)
+4. If fixes applied: user confirmed each batch
+5. If fixes applied: `go build ./...` zero errors
+6. If fixes applied: `go test ./...` passes
+7. If no findings: user informed that the codebase is clean
 
 ```
 <done>COMPLETE</done>
 ```
 
-This signals the loop to exit. If you output this prematurely, issues may remain unaddressed.
+**Safety note:** If 15+ iterations without success, document blockers and ask the user.
 
----
+## Further Reading
 
-**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.
+- `${CLAUDE_PLUGIN_ROOT}/lib/refactor-clean/manual-analysis.md` — full manual analysis fallbacks (staticcheck/deadcode/gocyclo/goimports invocations + manual greps), exclusions list (interface implementations, reflection callers, framework registrations), the orphaned-test detection rules, the complexity threshold table, and the structured findings report layout

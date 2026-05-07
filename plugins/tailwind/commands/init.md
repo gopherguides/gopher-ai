@@ -10,27 +10,11 @@ allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestio
 
 Initialize Tailwind CSS v4 in the current directory.
 
-**Usage:** `/tailwind-init [project-path]`
+**Usage:** `/tailwind-init [project-path]`. `/tailwind-init` (current dir) or `/tailwind-init ./my-app` (specific dir).
 
-**Examples:**
+**What it does:** detect project type → check for existing Tailwind → choose integration method → install deps → create CSS entry file with v4 syntax → set up build scripts.
 
-- `/tailwind-init` - Initialize in current directory
-- `/tailwind-init ./my-app` - Initialize in specific directory
-
-**What this command does:**
-
-1. Detects your project type (Go/Templ, React, Vue, Vite, Next.js, plain HTML)
-2. Checks for existing Tailwind installation
-3. Asks your preferred integration method
-4. Installs dependencies
-5. Creates CSS entry file with v4 syntax
-6. Sets up build scripts
-
-**Tailwind v4 Key Changes:**
-
-- No `tailwind.config.js` needed - configure in CSS with `@theme`
-- Single import: `@import "tailwindcss";`
-- Auto-detects templates (or use `@source` for custom paths)
+**v4 key changes:** no `tailwind.config.js` (configure in CSS via `@theme`); single `@import "tailwindcss";`; auto-detects templates (`@source` only for custom paths).
 
 Proceed with initialization in the current directory.
 
@@ -38,159 +22,121 @@ Proceed with initialization in the current directory.
 
 **If `$ARGUMENTS` is provided:**
 
-Initialize Tailwind CSS v4 in the specified path: `$ARGUMENTS`
+Initialize Tailwind CSS v4 in: `$ARGUMENTS`.
 
 ## Loop Initialization
 
-Initialize persistent loop to ensure Tailwind setup completes fully:
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-init" "COMPLETE"; fi`
 
 ## Step 1: Validate Environment
-
-Check that Node.js is installed:
 
 ```bash
 node --version 2>/dev/null || echo "NOT_INSTALLED"
 ```
 
-**If Node.js is not installed**, display:
+If Node.js missing:
 
-```text
-Node.js is required for Tailwind CSS.
+> Node.js is required. Install: macOS `brew install node`, nvm, or https://nodejs.org/
 
-Install options:
-- macOS: brew install node
-- nvm: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash && nvm install --lts
-- Direct: https://nodejs.org/
-```
-
-Then stop and ask user to install Node.js first.
+Stop and ask the user to install first.
 
 ## Step 2: Detect Project Type
 
-Scan the target directory:
-
 ```bash
-# Check for package.json
 ls package.json 2>/dev/null
-
-# Check for framework indicators
 ls vite.config.* next.config.* nuxt.config.* astro.config.* 2>/dev/null
-
-# Check for Go/Templ
 ls go.mod 2>/dev/null
 fd -e templ -d 3 2>/dev/null | head -3
-
-# Check for existing Tailwind
 grep -l "tailwind" package.json 2>/dev/null
 ls tailwind.config.* 2>/dev/null
 ```
 
-**Project type detection:**
-
 | Indicator | Project Type |
 |-----------|--------------|
-| `vite.config.*` | Vite project |
+| `vite.config.*` | Vite |
 | `next.config.*` | Next.js |
 | `nuxt.config.*` | Nuxt |
 | `astro.config.*` | Astro |
 | `go.mod` + `*.templ` | Go + Templ |
-| `package.json` only | Generic Node project |
+| `package.json` only | Generic Node |
 | None | Plain HTML/CSS |
 
-**If existing Tailwind found:**
+If existing Tailwind detected, ask via `AskUserQuestion`:
 
-```text
-Existing Tailwind installation detected.
-
-Options:
-1. Upgrade to v4 - Use /tailwind-migrate instead
-2. Reinstall - Remove existing and start fresh
-3. Cancel - Keep existing installation
-```
+| Option | Action |
+|--------|--------|
+| **Upgrade to v4** | Recommend `/tailwind-migrate` instead |
+| **Reinstall** | Remove existing and start fresh |
+| **Cancel** | Keep existing installation |
 
 ## Step 3: Choose Integration Method
 
-Use AskUserQuestion to ask:
+`AskUserQuestion`:
 
 | Method | Best For | Package |
 |--------|----------|---------|
 | **CLI** (recommended) | Most projects, Go/Templ, plain HTML | `@tailwindcss/cli` |
 | **Vite Plugin** | Vite-based projects (React, Vue, Svelte) | `@tailwindcss/vite` |
-| **PostCSS** | Existing PostCSS pipelines, legacy builds | `@tailwindcss/postcss` |
+| **PostCSS** | Existing PostCSS pipelines | `@tailwindcss/postcss` |
 
-**Plain explanations:**
-
-- **CLI**: Standalone tool that processes your CSS. Works everywhere, no build system required. Just run `npx @tailwindcss/cli` commands. Best for Go/Templ projects.
-
-- **Vite Plugin**: Tight integration with Vite's hot reload. CSS updates instantly without page refresh. Best for modern frontend frameworks.
-
-- **PostCSS**: Plugs into existing CSS build pipelines. Choose this if you already use PostCSS for other transformations.
+- **CLI:** standalone tool that processes CSS — works everywhere, no build system required.
+- **Vite Plugin:** tight integration with Vite hot reload; instant CSS updates.
+- **PostCSS:** plugs into existing PostCSS pipelines.
 
 ## Step 4: Install Dependencies
 
-Based on integration choice, run:
-
-**CLI method:**
-
 ```bash
+# CLI (recommended)
 npm install -D tailwindcss @tailwindcss/cli
-```
 
-**Vite method:**
-
-```bash
+# Vite
 npm install -D tailwindcss @tailwindcss/vite
-```
 
-**PostCSS method:**
-
-```bash
+# PostCSS
 npm install -D tailwindcss @tailwindcss/postcss postcss
 ```
 
 ## Step 5: Create CSS Entry File
 
-Determine the CSS file location based on project type:
+CSS path by project type:
 
-| Project Type | CSS Path |
-|--------------|----------|
+| Project | Path |
+|---------|------|
 | Go/Templ | `static/css/input.css` |
 | Vite/React | `src/index.css` or `src/styles/main.css` |
 | Next.js | `app/globals.css` or `styles/globals.css` |
 | Plain HTML | `css/input.css` |
 
-Create the CSS entry file with v4 syntax:
+Create with v4 syntax:
 
 ```css
 @import "tailwindcss";
 
-/* Source detection - adjust paths for your templates */
+/* Adjust paths for your templates */
 @source "../templates/**/*.templ";
 @source "../components/**/*.html";
 @source "./**/*.{js,jsx,ts,tsx,vue,svelte}";
 
-/* Theme customization - add your design tokens */
+/* Design tokens — add yours */
 @theme {
-  /* Colors using oklch for better color manipulation */
+  /* Colors in oklch for better manipulation */
   --color-primary: oklch(0.6 0.2 250);
   --color-primary-foreground: oklch(1 0 0);
   --color-secondary: oklch(0.5 0.02 250);
   --color-secondary-foreground: oklch(1 0 0);
 
-  /* Background and foreground */
+  /* Background / foreground */
   --color-background: oklch(1 0 0);
   --color-foreground: oklch(0.145 0 0);
   --color-muted: oklch(0.95 0 0);
   --color-muted-foreground: oklch(0.4 0 0);
   --color-border: oklch(0.9 0 0);
 
-  /* Custom spacing (extends default scale) */
+  /* Custom spacing */
   --spacing-18: 4.5rem;
   --spacing-22: 5.5rem;
 }
 
-/* Dark mode variant */
 @variant dark {
   --color-background: oklch(0.145 0 0);
   --color-foreground: oklch(0.985 0 0);
@@ -199,21 +145,16 @@ Create the CSS entry file with v4 syntax:
   --color-border: oklch(0.3 0 0);
 }
 
-/* Base layer customizations */
 @layer base {
-  html {
-    font-family: ui-sans-serif, system-ui, sans-serif;
-  }
+  html { font-family: ui-sans-serif, system-ui, sans-serif; }
 }
 ```
 
-**Adjust `@source` paths** based on where templates are located in the project.
+Adjust `@source` paths based on where templates are located.
 
 ## Step 6: Configure Build Scripts
 
-Update `package.json` with build scripts:
-
-**CLI method:**
+**CLI:**
 
 ```json
 {
@@ -224,35 +165,24 @@ Update `package.json` with build scripts:
 }
 ```
 
-**Vite method:**
-
-Update `vite.config.js`:
+**Vite** — `vite.config.js`:
 
 ```javascript
 import tailwindcss from '@tailwindcss/vite'
-
 export default {
-  plugins: [
-    tailwindcss(),
-  ],
+  plugins: [tailwindcss()],
 }
 ```
 
-**PostCSS method:**
-
-Create or update `postcss.config.mjs`:
+**PostCSS** — `postcss.config.mjs`:
 
 ```javascript
 export default {
-  plugins: {
-    '@tailwindcss/postcss': {},
-  },
+  plugins: { '@tailwindcss/postcss': {} },
 }
 ```
 
-## Step 7: Update .gitignore
-
-Add output CSS to `.gitignore` if using CLI:
+## Step 7: Update .gitignore (CLI only)
 
 ```text
 # Tailwind output (regenerated on build)
@@ -262,7 +192,7 @@ static/css/output.css
 
 ## Step 8: Final Report
 
-```text
+```
 Tailwind CSS v4 Initialized
 
 Files created/modified:
@@ -271,50 +201,32 @@ Files created/modified:
 - [Config file if Vite/PostCSS]
 
 Next steps:
+1. npm run css:watch
+2. Include in HTML: <link href="/css/output.css" rel="stylesheet">
+3. Use classes: <div class="flex items-center gap-4 p-4 bg-primary text-primary-foreground">…
+4. Customize theme via @theme { ... } in the CSS file
 
-1. Start development:
-   npm run css:watch
-
-2. Include output CSS in your HTML:
-   <link href="/css/output.css" rel="stylesheet">
-
-3. Use Tailwind classes:
-   <div class="flex items-center gap-4 p-4 bg-primary text-primary-foreground">
-     Hello Tailwind v4!
-   </div>
-
-4. Customize theme in your CSS file using @theme { ... }
-
-Documentation: https://tailwindcss.com/docs
+Docs: https://tailwindcss.com/docs
 ```
 
 ## Notes
 
-- Tailwind v4 auto-detects most template files
-- Use `@source` directive only if classes aren't being detected
-- The `@theme` directive replaces `tailwind.config.js`
-- oklch color format provides better color manipulation than hex/rgb
-
----
+- v4 auto-detects most template files; use `@source` only when classes aren't being detected
+- `@theme` replaces `tailwind.config.js`
+- oklch provides better color manipulation than hex/rgb
 
 ## Completion Criteria
 
-**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
-1. Dependencies are installed (tailwindcss, @tailwindcss/cli or equivalent)
-2. CSS entry file is created with `@import "tailwindcss"`
-3. Build scripts are added to package.json
-4. `npm run css` succeeds without errors
+1. Dependencies installed
+2. CSS entry file created with `@import "tailwindcss"`
+3. Build scripts added to `package.json`
+4. `npm run css` (or equivalent) succeeds with zero errors
 5. Output CSS is generated
-
-**When ALL criteria are met, output exactly:**
 
 ```
 <done>COMPLETE</done>
 ```
 
-This signals the loop to exit. If you output this prematurely, Tailwind may not be properly configured.
-
----
-
-**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.
+**Safety:** if 15+ iterations without success, document blockers and ask.

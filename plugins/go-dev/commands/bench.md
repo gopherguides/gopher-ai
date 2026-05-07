@@ -6,262 +6,172 @@ allowed-tools: ["Bash", "Read", "Write", "Glob", "Grep", "AskUserQuestion"]
 
 **If `$ARGUMENTS` is empty or not provided:**
 
-Display usage information and ask for input:
-
 **Usage:** `/bench <target>`
 
-**Examples:**
+- `/bench pkg/auth/login.go` — benchmark all exported functions in a file
+- `/bench ProcessOrder` — benchmark a specific function
+- `/bench pkg/utils/` — benchmark all functions in a package
 
-- `/bench pkg/auth/login.go` - Benchmark all exported functions in a file
-- `/bench ProcessOrder` - Benchmark a specific function
-- `/bench pkg/utils/` - Benchmark all functions in a package
+**Workflow:** detect tooling/existing benchmarks → analyze target → generate table-driven benchmarks → run with `-benchmem -count=6` → compare against baseline (if benchstat) → profile CPU + memory → summarize + suggest optimizations.
 
-**Workflow:**
-
-1. Detect benchmark environment (existing benchmarks, benchstat, pprof)
-2. Analyze target functions for benchmark generation
-3. Generate table-driven benchmark functions
-4. Run benchmarks with `-benchmem -count=6`
-5. Compare against baseline (if benchstat available)
-6. Profile CPU and memory hotspots
-7. Summarize results and suggest optimizations
-
-Ask the user: "What file, function, or package would you like me to benchmark?"
+Ask: "What file, function, or package would you like me to benchmark?"
 
 ---
 
 **If `$ARGUMENTS` is provided:**
 
-Generate and run Go benchmarks for the specified code. Produces table-driven benchmarks, runs them
-with statistical rigor, profiles CPU and memory hotspots, and suggests concrete optimizations.
+Generate and run Go benchmarks for the specified code with statistical rigor.
 
 ## Loop Initialization
 
-Initialize persistent loop to ensure benchmarks are complete and analyzed:
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "bench" "COMPLETE"; fi`
 
 ## Configuration
 
-- **Target**: `$ARGUMENTS` (file path, function name, or package)
+- **Target**: `$ARGUMENTS` (file, function, or package)
 
 ## Steps
 
-1. **Detect Benchmark Environment**
+### 1. Detect Benchmark Environment
 
-   Check available tooling and existing benchmarks:
+```bash
+which benchstat 2>/dev/null && echo "benchstat: available" || echo "benchstat: not found"
+grep -rl 'func Bench' --include='*_test.go' ./path/to/package/
+ls .bench-baseline*.txt 2>/dev/null
+```
 
-   ```bash
-   # Check for benchstat
-   which benchstat 2>/dev/null && echo "benchstat: available" || echo "benchstat: not found"
+Also detect: existing `_test.go` patterns, testify vs stdlib, existing `.pprof` files.
 
-   # Check for existing benchmark files in the target package
-   grep -rl 'func Bench' --include='*_test.go' ./path/to/package/
+If existing benchmarks for the target, ask via `AskUserQuestion`:
 
-   # Check for saved baseline results
-   ls .bench-baseline*.txt 2>/dev/null
-   ```
+| Option | Action |
+|--------|--------|
+| Run existing | Run only, skip generation |
+| Augment | Add new cases alongside existing |
+| Generate fresh | Create new benchmarks in a separate file |
 
-   Also detect:
-   - Existing `_test.go` files in the target package for benchmark patterns already in use
-   - Whether the project uses testify or standard testing
-   - Any existing `.pprof` files or benchmark output files
+### 2. Analyze Target
 
-   **If existing benchmarks found for the target**, ask the user:
+Read the target and extract: function signatures, input types/sizes (for realistic data), dependencies/interfaces (for setup), I/O operations (special handling), allocation-heavy patterns (string concat, slice append, map ops), concurrency patterns (channels, mutexes).
 
-   | Option | Action |
-   |--------|--------|
-   | Run existing | Run existing benchmarks only, skip generation |
-   | Augment | Add new benchmark cases alongside existing ones |
-   | Generate fresh | Create new benchmarks in a separate file |
+For each function: classify CPU- vs memory- vs I/O-bound; identify variable-size sub-benchmarks; need for `b.ResetTimer()`; exported vs unexported (affects test package choice).
 
-2. **Analyze Target Code**
+**I/O-bound functions:** warn the user — benchmark results will include I/O latency. Suggest mocking I/O for pure CPU/memory benchmarks, or proceed with I/O included if preferred.
 
-   Read the target file/function and extract:
-   - Function signatures and parameters
-   - Input types and sizes (to create realistic benchmark data)
-   - Dependencies and interfaces (for benchmark setup)
-   - I/O operations (network, disk) that may need special handling
-   - Allocation-heavy patterns (string concatenation, slice appending, map operations)
-   - Concurrency patterns (channels, mutexes) that affect benchmark design
+### 3. Generate Benchmark Code
 
-   For each function identified, determine:
-   - CPU-bound vs memory-bound vs I/O-bound behavior
-   - Variable-size inputs for sub-benchmarks (e.g., `b.Run("size=100", ...)`)
-   - Whether `b.ResetTimer()` is needed (for setup-heavy benchmarks)
-   - Whether functions are exported or unexported (affects test package choice)
+Table-driven, idiomatic:
 
-   **I/O-bound functions**: If the target performs network or disk I/O, warn the user that
-   benchmark results will include I/O latency. Suggest mocking I/O dependencies for pure
-   CPU/memory benchmarks, or proceed with I/O included if the user prefers.
+```go
+func BenchmarkFunctionName(b *testing.B) {
+    benchmarks := []struct {
+        name  string
+        input InputType
+    }{
+        {"small input", smallInput},
+        {"medium input", mediumInput},
+        {"large input", largeInput},
+    }
 
-3. **Generate Benchmark Code**
+    for _, bm := range benchmarks {
+        b.Run(bm.name, func(b *testing.B) {
+            b.ReportAllocs()
+            for i := 0; i < b.N; i++ {
+                FunctionName(bm.input)
+            }
+        })
+    }
+}
+```
 
-   Create table-driven benchmarks following Go idioms:
+Rules:
 
-   ```go
-   func BenchmarkFunctionName(b *testing.B) {
-       benchmarks := []struct {
-           name  string
-           input InputType
-       }{
-           {"small input", smallInput},
-           {"medium input", mediumInput},
-           {"large input", largeInput},
-       }
+- `b.ReportAllocs()` in every sub-benchmark
+- `b.ResetTimer()` after expensive setup
+- `b.StopTimer()` / `b.StartTimer()` only when in-loop setup is unavoidable
+- Prevent compiler optimization with a sink:
+  ```go
+  var sink ResultType
+  for i := 0; i < b.N; i++ { sink = FunctionName(input) }
+  _ = sink
+  ```
+- Sub-benchmarks for different input sizes
+- Realistic test data, not trivial inputs
+- Unexported functions → use the same package (not `_test` suffix)
+- Exported functions → use `_test` suffix only when all parameter and return types are also exported
 
-       for _, bm := range benchmarks {
-           b.Run(bm.name, func(b *testing.B) {
-               b.ReportAllocs()
-               for i := 0; i < b.N; i++ {
-                   FunctionName(bm.input)
-               }
-           })
-       }
-   }
-   ```
+### 4. Run Benchmarks
 
-   Key generation rules:
-   - Use `b.ReportAllocs()` in every sub-benchmark
-   - Use `b.ResetTimer()` after expensive setup
-   - Use `b.StopTimer()` / `b.StartTimer()` only when setup within the loop is unavoidable
-   - Prevent compiler optimization with a sink variable:
-     ```go
-     var sink ResultType
-     for i := 0; i < b.N; i++ {
-         sink = FunctionName(input)
-     }
-     _ = sink
-     ```
-   - Include sub-benchmarks for different input sizes where applicable
-   - Create realistic test data, not trivial inputs
-   - For unexported functions, use the same package (not `_test` suffix)
-   - For exported functions, use `_test` suffix package only when all parameter and return types
-     are also exported; otherwise use the same package to access unexported types
+```bash
+go test -bench=. -benchmem -count=6 -run=^$ ./path/to/package/ 2>&1 | tee bench-results.txt
+```
 
-4. **Run Benchmarks**
+Flags: `-bench=.` (run all), `-benchmem` (allocations per op), `-count=6` (statistical significance for benchstat), `-run=^$` (skip unit tests), `-timeout 300s` if long-running.
 
-   Execute with statistical rigor:
+If compile/run fails, fix the generated code and re-run.
 
-   ```bash
-   go test -bench=. -benchmem -count=6 -run=^$ ./path/to/package/ 2>&1 | tee bench-results.txt
-   ```
+### 5. Baseline Comparison
 
-   Flags:
-   - `-bench=.` — run all benchmarks
-   - `-benchmem` — report memory allocations per operation
-   - `-count=6` — run 6 times for statistical significance (benchstat needs multiple runs)
-   - `-run=^$` — skip unit tests, only run benchmarks
-   - `-timeout 300s` — add if benchmarks may be long-running
+```bash
+benchstat .bench-baseline.txt bench-results.txt   # if baseline exists
+cp bench-results.txt .bench-baseline.txt          # if no baseline, save current
+```
 
-   If benchmarks fail to compile or run, fix the generated code and re-run.
+Present old vs new ns/op, B/op, allocs/op; p-value; delta %. If benchstat missing, note `go install golang.org/x/perf/cmd/benchstat@latest` for future runs.
 
-5. **Baseline Comparison**
+### 6. CPU and Memory Profiling
 
-   If `benchstat` is available:
+```bash
+go test -bench=. -cpuprofile=cpu.pprof -run=^$ ./path/to/package/
+go test -bench=. -memprofile=mem.pprof -run=^$ ./path/to/package/
 
-   ```bash
-   # If a baseline file exists, compare
-   benchstat .bench-baseline.txt bench-results.txt
+go tool pprof -top cpu.pprof 2>&1 | head -30
+go tool pprof -top mem.pprof 2>&1 | head -30
+go tool pprof -list=FunctionName cpu.pprof 2>&1
+```
 
-   # If no baseline exists, save current results as baseline
-   cp bench-results.txt .bench-baseline.txt
-   ```
+### 7. Analysis Report
 
-   Present benchstat output showing:
-   - Old vs new ns/op, B/op, allocs/op
-   - Statistical significance (p-value)
-   - Delta percentages
+```
+## Benchmark Results
 
-   **If benchstat is not installed**, skip this step. Note in the output that `benchstat` can
-   be installed with `go install golang.org/x/perf/cmd/benchstat@latest` for future comparisons.
+| Benchmark | ns/op | B/op | allocs/op |
+|-----------|-------|------|-----------|
 
-6. **CPU and Memory Profiling**
+## Baseline Comparison
+[benchstat output, or "No baseline — current saved"]
 
-   Generate profiles:
+## CPU Hotspots
+Top 5 functions by CPU time
 
-   ```bash
-   # CPU profile
-   go test -bench=. -cpuprofile=cpu.pprof -run=^$ ./path/to/package/
+## Memory Hotspots
+Top 5 allocators
 
-   # Memory profile
-   go test -bench=. -memprofile=mem.pprof -run=^$ ./path/to/package/
-   ```
+## Optimization Suggestions
+[Concrete, actionable items based on profile data]
 
-   Analyze profiles:
+## Generated Files
+- bench-results.txt — raw output
+- .bench-baseline.txt — baseline for future comparisons
+- cpu.pprof — CPU profile (`go tool pprof cpu.pprof`)
+- mem.pprof — memory profile (`go tool pprof mem.pprof`)
+```
 
-   ```bash
-   # CPU hotspots - top functions
-   go tool pprof -top cpu.pprof 2>&1 | head -30
-
-   # Memory hotspots - top allocators
-   go tool pprof -top mem.pprof 2>&1 | head -30
-
-   # Source-level view of hottest functions
-   go tool pprof -list=FunctionName cpu.pprof 2>&1
-   ```
-
-7. **Analysis and Optimization Suggestions**
-
-   Synthesize all collected data into a structured report:
-
-   ```markdown
-   ## Benchmark Results
-
-   | Benchmark | ns/op | B/op | allocs/op |
-   |-----------|-------|------|-----------|
-   | BenchmarkX/small | 123 | 48 | 2 |
-   | BenchmarkX/large | 4567 | 1024 | 15 |
-
-   ## Baseline Comparison
-   [benchstat output if available, or "No baseline — current results saved for future comparison"]
-
-   ## CPU Hotspots
-   Top 5 functions by CPU time with percentages
-
-   ## Memory Hotspots
-   Top 5 allocators with allocation counts and sizes
-
-   ## Optimization Suggestions
-   [Numbered list of concrete, actionable suggestions based on profile data]
-
-   ## Generated Files
-   - `bench-results.txt` — raw benchmark output
-   - `.bench-baseline.txt` — baseline for future comparisons
-   - `cpu.pprof` — CPU profile (`go tool pprof cpu.pprof`)
-   - `mem.pprof` — memory profile (`go tool pprof mem.pprof`)
-   ```
-
-   Common optimization patterns to suggest based on profile data:
-   - `strings.Builder` instead of `+` concatenation
-   - Pre-allocated slices with `make([]T, 0, capacity)`
-   - `sync.Pool` for frequently allocated objects
-   - Avoiding interface boxing in hot paths
-   - Reducing allocations by reusing buffers
-   - Using `bytes.Buffer` pooling
-   - Struct field alignment for reducing padding
-   - Avoiding `fmt.Sprintf` in hot paths (use `strconv` directly)
-
----
+**Common optimization patterns** (suggest based on profile data): `strings.Builder` over `+` concat; pre-allocated slices `make([]T, 0, cap)`; `sync.Pool` for frequently allocated objects; avoid interface boxing in hot paths; reuse buffers; `bytes.Buffer` pooling; struct field alignment for padding; `strconv` over `fmt.Sprintf` in hot paths.
 
 ## Completion Criteria
 
-**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
-1. Benchmark file is generated with table-driven benchmark functions
+1. Benchmark file generated with table-driven benchmarks
 2. Benchmark file compiles without errors
 3. `go test -bench=. -benchmem -count=6` runs successfully
-4. Benchmark results are captured and summarized
-5. CPU and memory profiles are generated and analyzed
-6. Optimization suggestions are provided based on profile data
-
-**When ALL criteria are met, output exactly:**
+4. Benchmark results captured and summarized
+5. CPU + memory profiles generated and analyzed
+6. Optimization suggestions provided
 
 ```
 <done>COMPLETE</done>
 ```
 
-This signals the loop to exit. If you output this prematurely, benchmarks may be incomplete or failing.
-
----
-
-**Safety note:** If you've iterated 15+ times without success, document what's blocking progress and ask the user for guidance.
+**Safety:** if 15+ iterations without success, document blockers and ask.

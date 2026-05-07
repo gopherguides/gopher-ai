@@ -8,30 +8,15 @@ allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(tmux:*)", "Bash(pwd:*)", "Bas
 
 **If `$ARGUMENTS` is empty or not provided:**
 
-Display usage information and ask for input:
+This command creates a worktree, opens a new tmux window, launches Claude Code, and sends `/go-workflow:start-issue` automatically.
 
-This command creates a git worktree for an issue, opens a new tmux window, launches Claude Code, and sends `/go-workflow:start-issue` automatically.
+**Usage:** `/tmux-start <issue-number>`. Example: `/tmux-start 294`.
 
-**Usage:** `/tmux-start <issue-number>`
+**What it does:** validate prereqs (tmux session, gh, git repo) → fetch latest primary branch → create or reuse worktree → open named tmux window → launch Claude with `--dangerously-skip-permissions` → send `/go-workflow:start-issue <num>` after Claude boots.
 
-**Example:** `/tmux-start 294`
+**Prerequisites:** running inside a tmux session (`$TMUX` set); `gh` authenticated; inside a git repo.
 
-**What it does:**
-
-1. Validates prerequisites (tmux session, gh CLI, git repo)
-2. Fetches latest code from the primary branch
-3. Creates a worktree (or reuses an existing one)
-4. Opens a new named tmux window
-5. Launches Claude Code with `--dangerously-skip-permissions`
-6. Sends `/go-workflow:start-issue <issue-number>` after Claude boots
-
-**Prerequisites:**
-
-- Must be running inside a tmux session (`$TMUX` is set)
-- GitHub CLI (`gh`) authenticated
-- Must be inside a git repository
-
-Ask the user: "What issue number would you like to start in a tmux window?"
+Ask: "What issue number would you like to start in a tmux window?"
 
 ---
 
@@ -39,7 +24,6 @@ Ask the user: "What issue number would you like to start in a tmux window?"
 
 ## Clear Worktree State
 
-Clear any stale worktree state so the pre-tool-use hook doesn't block setup commands:
 !`"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true`
 
 ## Context
@@ -52,201 +36,160 @@ Clear any stale worktree state so the pre-tool-use hook doesn't block setup comm
 
 ## Steps
 
-**CRITICAL: When executing bash commands below, use backticks (\`) for command substitution, NOT $(). Claude Code has a bug that mangles $() syntax into broken commands. Copy the commands exactly as written.**
+**CRITICAL: Use backticks (`` ` ``) for command substitution, NOT `$()`.**
 
-1. **Validate input is numeric** (security: prevent command injection)
-   !if ! echo "$ARGUMENTS" | grep -qE '^[0-9]+$'; then echo "Error: Issue number must be numeric. Usage: /tmux-start <number>"; exit 1; fi
-   !ISSUE_NUM="$ARGUMENTS"
+### 1–3. Validate input + prereqs + issue exists
 
-2. **Validate prerequisites**
+```bash
+# 1. Numeric input
+if ! echo "$ARGUMENTS" | grep -qE '^[0-9]+$'; then
+  echo "Error: Issue number must be numeric. Usage: /tmux-start <number>"; exit 1
+fi
+ISSUE_NUM="$ARGUMENTS"
 
-   **Check tmux:**
-   !if [ -z "$TMUX" ]; then echo "Error: Not running inside a tmux session. Please start tmux first: tmux new-session -s work"; exit 1; fi
+# 2. Prereqs
+if [ -z "$TMUX" ]; then echo "Error: Not running inside a tmux session. tmux new-session -s work"; exit 1; fi
+if ! command -v gh >/dev/null 2>&1; then echo "Error: gh not installed"; exit 1; fi
+if ! gh auth status >/dev/null 2>&1; then echo "Error: gh not authenticated. Run: gh auth login"; exit 1; fi
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "Error: Not inside a git repository"; exit 1; fi
 
-   **Check gh CLI:**
-   !if ! command -v gh >/dev/null 2>&1; then echo "Error: GitHub CLI (gh) is not installed"; exit 1; fi
-   !if ! gh auth status >/dev/null 2>&1; then echo "Error: GitHub CLI is not authenticated. Run: gh auth login"; exit 1; fi
+# 3. Issue exists
+ISSUE_JSON=`gh issue view "$ISSUE_NUM" --json number,title,state 2>/dev/null`
+if [ -z "$ISSUE_JSON" ]; then echo "Error: Issue #$ISSUE_NUM not found"; exit 1; fi
+echo "$ISSUE_JSON"
+```
 
-   **Check git repo:**
-   !if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "Error: Not inside a git repository"; exit 1; fi
+### 4–5. Resolve main repo root and fetch primary
 
-3. **Validate issue exists**
-   !ISSUE_JSON=`gh issue view "$ISSUE_NUM" --json number,title,state 2>/dev/null`
-   !if [ -z "$ISSUE_JSON" ]; then echo "Error: Issue #$ISSUE_NUM not found"; exit 1; fi
-   !echo "$ISSUE_JSON"
+If currently inside a worktree, resolve back to the main repo root. Fetch (don't pull) so we don't mutate the main checkout:
 
-4. **Resolve main repo root** (not a worktree)
+```bash
+GIT_COMMON_DIR=`git rev-parse --path-format=absolute --git-common-dir 2>/dev/null`
+MAIN_REPO_ROOT=`echo "$GIT_COMMON_DIR" | sed 's|/\.git$||'`
+echo "Main repo root: $MAIN_REPO_ROOT"
 
-   If currently inside a worktree, resolve back to the main repo root:
-   ```bash
-   GIT_COMMON_DIR=`git rev-parse --path-format=absolute --git-common-dir 2>/dev/null`
-   MAIN_REPO_ROOT=`echo "$GIT_COMMON_DIR" | sed 's|/\.git$||'`
-   echo "Main repo root: $MAIN_REPO_ROOT"
-   ```
+DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //' | tr -cd '[:alnum:]-._/'`
+if [ -z "$DEFAULT_BRANCH" ]; then echo "Error: Could not determine default branch"; exit 1; fi
+cd "$MAIN_REPO_ROOT" && git fetch origin "$DEFAULT_BRANCH"
+echo "Fetched latest origin/$DEFAULT_BRANCH"
+```
 
-5. **Fetch latest primary branch**
+### 6–7. Build naming + check existing worktree
 
-   Fetch (not pull) from the primary branch to avoid mutating the main checkout:
-   ```bash
-   DEFAULT_BRANCH=`git remote show origin | grep 'HEAD branch' | sed 's/.*: //' | tr -cd '[:alnum:]-._/'`
-   if [ -z "$DEFAULT_BRANCH" ]; then echo "Error: Could not determine default branch"; exit 1; fi
-   cd "$MAIN_REPO_ROOT" && git fetch origin "$DEFAULT_BRANCH"
-   echo "Fetched latest origin/$DEFAULT_BRANCH"
-   ```
+```bash
+REPO_NAME=`basename "$MAIN_REPO_ROOT"`
+ITEM_TITLE=`gh issue view "$ISSUE_NUM" --json title --jq '.title'`
+CLEAN_TITLE=`echo "$ITEM_TITLE" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
+WORKTREE_NAME="${REPO_NAME}-issue-${ISSUE_NUM}-${CLEAN_TITLE}"
+WORKTREE_PATH="${MAIN_REPO_ROOT}/../${WORKTREE_NAME}"
+BRANCH_NAME="issue-${ISSUE_NUM}-${CLEAN_TITLE}"
 
-6. **Build worktree naming variables**
+cd "$MAIN_REPO_ROOT" && EXISTING_PATH=`git worktree list | awk '{print $1}' | grep -E "issue-${ISSUE_NUM}-" | head -1`
+if [ -n "$EXISTING_PATH" ]; then echo "WORKTREE_EXISTS: $EXISTING_PATH"; else echo "WORKTREE_NOT_FOUND"; fi
+```
 
-   ```bash
-   REPO_NAME=`basename "$MAIN_REPO_ROOT"`
-   ITEM_TITLE=`gh issue view "$ISSUE_NUM" --json title --jq '.title'`
-   CLEAN_TITLE=`echo "$ITEM_TITLE" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//'`
-   WORKTREE_NAME="${REPO_NAME}-issue-${ISSUE_NUM}-${CLEAN_TITLE}"
-   WORKTREE_PATH="${MAIN_REPO_ROOT}/../${WORKTREE_NAME}"
-   BRANCH_NAME="issue-${ISSUE_NUM}-${CLEAN_TITLE}"
-   echo "Worktree name: $WORKTREE_NAME"
-   echo "Branch name: $BRANCH_NAME"
-   ```
+**If `WORKTREE_EXISTS`:** set `WORKTREE_ABS_PATH=$EXISTING_PATH`, register state, skip to Step 9:
 
-7. **Check for existing worktree**
+```bash
+WORKTREE_ABS_PATH="$EXISTING_PATH"
+REPO_ROOT=`cd "$WORKTREE_ABS_PATH" && git rev-parse --show-toplevel`
+"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ISSUE_NUM"
+```
 
-   ```bash
-   cd "$MAIN_REPO_ROOT" && EXISTING_PATH=`git worktree list | awk '{print $1}' | grep -E "issue-${ISSUE_NUM}-" | head -1`
-   if [ -n "$EXISTING_PATH" ]; then
-     echo "WORKTREE_EXISTS"
-     echo "Path: $EXISTING_PATH"
-   else
-     echo "WORKTREE_NOT_FOUND"
-   fi
-   ```
+### 8. Create new worktree (when not found)
 
-   **If `WORKTREE_EXISTS`:** Set `WORKTREE_ABS_PATH="$EXISTING_PATH"` and register worktree state:
-   ```bash
-   WORKTREE_ABS_PATH="$EXISTING_PATH"
-   REPO_ROOT=`cd "$WORKTREE_ABS_PATH" && git rev-parse --show-toplevel`
-   "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ISSUE_NUM"
-   ```
-   Then skip to **Step 9**.
+```bash
+cd "$MAIN_REPO_ROOT" && git fetch origin "$DEFAULT_BRANCH"
+git branch -D "$BRANCH_NAME" 2>/dev/null || true
+if ! git worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"; then echo "Error: Failed to create worktree"; exit 1; fi
+cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
+WORKTREE_ABS_PATH=`cd "$WORKTREE_PATH" && pwd`
+echo "Created worktree at: $WORKTREE_ABS_PATH"
 
-   **If `WORKTREE_NOT_FOUND`:** Continue to Step 8.
+# Register state (enables hook-based path enforcement in spawned session)
+REPO_ROOT=`cd "$WORKTREE_ABS_PATH" && git rev-parse --show-toplevel`
+"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ISSUE_NUM"
 
-8. **Create worktree**
+# Search for env files in main repo
+ENV_FILES=`find "$MAIN_REPO_ROOT" \( -name "node_modules" -o -name ".git" -o -name "vendor" \) -prune -o \( -name ".env" -o -name ".env.local" -o -name ".envrc" \) -type f -print 2>/dev/null | sed "s|^$MAIN_REPO_ROOT/||" | grep -v "^-" | sort`
+if [ -n "$ENV_FILES" ]; then echo "Found env files:"; echo "$ENV_FILES"; fi
+```
 
-   ```bash
-   cd "$MAIN_REPO_ROOT" && git fetch origin "$DEFAULT_BRANCH"
-   git branch -D "$BRANCH_NAME" 2>/dev/null || true
-   if ! git worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"; then
-     echo "Error: Failed to create worktree"
-     exit 1
-   fi
-   cd "$WORKTREE_PATH" && git checkout -b "$BRANCH_NAME"
-   WORKTREE_ABS_PATH=`cd "$WORKTREE_PATH" && pwd`
-   echo "Created worktree at: $WORKTREE_ABS_PATH"
-   ```
+If env files found, use `AskUserQuestion`: "Found environment files (may contain secrets). Copy them to the new worktree?" with **Yes, copy them** / **No, skip**.
 
-   **Register worktree state** (enables hook-based path enforcement in the spawned session):
-   ```bash
-   REPO_ROOT=`cd "$WORKTREE_ABS_PATH" && git rev-parse --show-toplevel`
-   "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$REPO_ROOT" "$ISSUE_NUM"
-   ```
+If confirmed:
 
-   **Search for environment files** in the main repo:
-   ```bash
-   ENV_FILES=`find "$MAIN_REPO_ROOT" \( -name "node_modules" -o -name ".git" -o -name "vendor" \) -prune -o \( -name ".env" -o -name ".env.local" -o -name ".envrc" \) -type f -print 2>/dev/null | sed "s|^$MAIN_REPO_ROOT/||" | grep -v "^-" | sort`
-   if [ -n "$ENV_FILES" ]; then echo "Found env files:"; echo "$ENV_FILES"; fi
-   ```
+```bash
+echo "$ENV_FILES" | while read file; do
+  if [ -n "$file" ]; then
+    dir=`dirname "$file"`
+    if [ "$dir" != "." ]; then mkdir -p "$WORKTREE_ABS_PATH/$dir"; fi
+    cp -P "$MAIN_REPO_ROOT/$file" "$WORKTREE_ABS_PATH/$file" && echo "Copied $file"
+  fi
+done
+```
 
-   **If environment files were found**, use AskUserQuestion to ask:
-   "Found environment files (may contain secrets). Copy them to the new worktree?"
-   - Options: "Yes, copy them" / "No, skip"
+### 9–10. Build window name + check existing window
 
-   If user confirms, copy the files preserving directory structure:
-   ```bash
-   echo "$ENV_FILES" | while read file; do
-     if [ -n "$file" ]; then
-       dir=`dirname "$file"`
-       if [ "$dir" != "." ]; then mkdir -p "$WORKTREE_ABS_PATH/$dir"; fi
-       cp -P "$MAIN_REPO_ROOT/$file" "$WORKTREE_ABS_PATH/$file" && echo "Copied $file"
-     fi
-   done
-   ```
+```bash
+SLUG=`echo "$ITEM_TITLE" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g; s/^-//; s/-$//' | cut -c1-40 | sed 's/-$//'`
+WINDOW_NAME="${REPO_NAME}-issue-${ISSUE_NUM}-${SLUG}"
 
-9. **Build tmux window name**
+# Scope lookup to this repo
+EXISTING_WINDOW=`tmux list-windows -F '#{window_name}' 2>/dev/null | grep -F "${REPO_NAME}-issue-${ISSUE_NUM}" | head -1`
+if [ -n "$EXISTING_WINDOW" ]; then echo "WINDOW_EXISTS: $EXISTING_WINDOW"; else echo "WINDOW_NOT_FOUND"; fi
+```
 
-   Create a descriptive but compact window name:
-   ```bash
-   SLUG=`echo "$ITEM_TITLE" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]' | sed 's/--*/-/g; s/^-//; s/-$//' | cut -c1-40 | sed 's/-$//'`
-   WINDOW_NAME="${REPO_NAME}-issue-${ISSUE_NUM}-${SLUG}"
-   echo "tmux window name: $WINDOW_NAME"
-   ```
+**If `WINDOW_EXISTS`:** switch and report (skip Step 11):
 
-10. **Check for existing tmux window**
+```bash
+tmux select-window -t "$EXISTING_WINDOW"
+echo "Switched to existing tmux window: $EXISTING_WINDOW"
+```
 
-    Scope the lookup to this repo by including the repo name in the match:
-    ```bash
-    EXISTING_WINDOW=`tmux list-windows -F '#{window_name}' 2>/dev/null | grep -F "${REPO_NAME}-issue-${ISSUE_NUM}" | head -1`
-    if [ -n "$EXISTING_WINDOW" ]; then
-      echo "WINDOW_EXISTS: $EXISTING_WINDOW"
-    else
-      echo "WINDOW_NOT_FOUND"
-    fi
-    ```
+### 11. Create tmux window + launch Claude Code
 
-    **If `WINDOW_EXISTS`:** Switch to that window and report. Do NOT create a new one.
-    ```bash
-    tmux select-window -t "$EXISTING_WINDOW"
-    echo "Switched to existing tmux window: $EXISTING_WINDOW"
-    ```
-    **Skip to Step 13 (Report).**
+```bash
+tmux new-window -n "$WINDOW_NAME"
+tmux send-keys -t "$WINDOW_NAME" "cd \"$WORKTREE_ABS_PATH\" && claude --dangerously-skip-permissions" Enter
+echo "Created tmux window: $WINDOW_NAME"
+```
 
-    **If `WINDOW_NOT_FOUND`:** Continue to Step 11.
+### 12. Send start-issue after Claude boots
 
-11. **Create tmux window and launch Claude Code**
+Wait for Claude's input prompt to appear, then send:
 
-    ```bash
-    tmux new-window -n "$WINDOW_NAME"
-    tmux send-keys -t "$WINDOW_NAME" "cd \"$WORKTREE_ABS_PATH\" && claude --dangerously-skip-permissions" Enter
-    echo "Created tmux window: $WINDOW_NAME"
-    echo "Launching Claude Code in: $WORKTREE_ABS_PATH"
-    ```
+```bash
+sleep 5
+READY=false
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  sleep 2
+  PANE_CONTENT=`tmux capture-pane -t "$WINDOW_NAME" -p 2>/dev/null`
+  if echo "$PANE_CONTENT" | grep -qE '^\s*>\s*$'; then
+    READY=true; break
+  fi
+done
+if [ "$READY" = "false" ]; then
+  echo "Warning: Claude Code may not be ready yet. Sending command anyway."
+fi
+tmux send-keys -t "$WINDOW_NAME" "/go-workflow:start-issue $ISSUE_NUM" Enter
+echo "Sent /go-workflow:start-issue $ISSUE_NUM to window $WINDOW_NAME"
+```
 
-12. **Send start-issue command after Claude boots**
+### 13. Report
 
-    Wait for Claude Code to finish initializing, then send the command.
-    Wait for the shell command to be consumed, then poll for Claude's input prompt:
-    ```bash
-    sleep 5
-    READY=false
-    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-      sleep 2
-      PANE_CONTENT=`tmux capture-pane -t "$WINDOW_NAME" -p 2>/dev/null`
-      if echo "$PANE_CONTENT" | grep -qE '^\s*>\s*$'; then
-        READY=true
-        break
-      fi
-    done
-    if [ "$READY" = "false" ]; then
-      echo "Warning: Claude Code may not be ready yet. Sending command anyway."
-    fi
-    tmux send-keys -t "$WINDOW_NAME" "/go-workflow:start-issue $ISSUE_NUM" Enter
-    echo "Sent /go-workflow:start-issue $ISSUE_NUM to window $WINDOW_NAME"
-    ```
+```
+--- tmux-start complete ---
 
-13. **Report**
+Issue:     #$ISSUE_NUM
+Worktree:  $WORKTREE_ABS_PATH
+Branch:    $BRANCH_NAME
+Window:    $WINDOW_NAME
 
-    Display a summary:
+Switch to it:
+  Ctrl+B w          (window picker)
+  Ctrl+B <number>   (direct switch by window index)
 
-    ```
-    --- tmux-start complete ---
-
-    Issue:     #$ISSUE_NUM
-    Worktree:  $WORKTREE_ABS_PATH
-    Branch:    $BRANCH_NAME
-    Window:    $WINDOW_NAME
-
-    Switch to it:
-      Ctrl+B w          (window picker)
-      Ctrl+B <number>   (direct switch by window index)
-
-    Claude Code is running /go-workflow:start-issue $ISSUE_NUM autonomously.
-    Monitor the window and accept plans when prompted.
-    ```
+Claude Code is running /go-workflow:start-issue $ISSUE_NUM autonomously.
+Monitor the window and accept plans when prompted.
+```
