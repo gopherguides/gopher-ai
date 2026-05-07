@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 161
+# Total entries: 160
 03dac3a27d6da4b0a0c64ff6511df17004747e20b47a1691b4f9f030478877b9 commit
 03dffb69f33f5e2549a05bb03daf154260288c350ccbea60804f373bda3b3d08 gopher-guides
 04f549258f56aee10034e6d678038954f94b5aec679b286edb2ff8c2aae23e69 htmx
@@ -149,7 +149,6 @@ dfc36db0858171bff24d464d9bb7e04658df3f76636e03344a7bc254e3f70e4c tmux-start
 e01feecf1e50dc969f6ebbe5d251044c84118fd4dcb786c371d97678e9fbda9e commit
 e09cee46457e5a13eb058c1ff77d1b5f03f5a223a5490c6d088324e623a5d6b1 tailwind-best-practices
 e338c2bc546babcb73c9a8f9e1b15a1953a9203b7233cbfe089054472302f665 gopher-guides
-e6da29a9216ecdb2602e6db380e46e767b9ce28fc150b5bf5efe12e96c22fc03 review-deep
 e7398cc9bf011c03689c56e89b5eba0c52f2d73bd2fcf4619180514f16e76874 complete-issue
 ed50c1c5b29b003f54116cfe28f02b20c762dcc6ddba100ddbaef593ac3b72b4 go-error-handling
 edfed0bd039ddc1e1e2dd5399c8692e2cfed148fadd3a32122eba997c9623219 go-code-organization
