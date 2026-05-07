@@ -1,6 +1,9 @@
 # Coverage Verification (Shared Reference)
 
-This document is referenced by both `/ship` and `/start-issue` commands. Follow Steps A through F using the parameters provided by the calling command.
+This document is referenced by both `/ship` and `/start-issue`. It's a router:
+each step (A through F) gives the contract — what must be true on entry, what
+must be true on return — and points to the sibling that owns the implementation.
+Follow Steps A through F using the parameters provided by the calling command.
 
 ## Prerequisites
 
@@ -15,6 +18,22 @@ The calling command MUST set these variables before invoking this workflow:
 
 **Worktree note:** When running in a worktree, `STATE_FILE` MUST be an absolute path to the state file (which lives in the original repo's `.local/state/` directory, not the worktree). Coverage artifacts (`.local/state/coverage.out`) are written relative to the current working directory — ensure `.local/state/` exists via `mkdir -p .local/state` before running coverage commands.
 
+## State-file fields written
+
+After this workflow returns, the state file holds these keys (callers read them
+to render summary lines):
+
+| Field | Type | Set by | Meaning |
+|-------|------|--------|---------|
+| `coverage_result` | string | Step E.3 | Aggregate percent (e.g. `"82.4"`); empty when skipped |
+| `coverage_skip_reason` | string | Step E.3 | Empty when a real number was computed; `"all-main"` when every changed file was `package main` |
+| `coverage_tests_generated` | number | Step F | Count of new tests added (0 when Step F didn't run) |
+
+**Caller contract:** When rendering a summary, check `coverage_skip_reason`
+before formatting `coverage_result` with a percent sign. If `coverage_skip_reason`
+is non-empty, render a textual reason (e.g. `skipped — all changed files are
+package main`) instead of `<COV_RESULT>%`.
+
 ## Step A: Skip Conditions
 
 Skip this entire workflow (return to the calling command's next step) if ANY of these are true:
@@ -24,183 +43,35 @@ Skip this entire workflow (return to the calling command's next step) if ANY of 
 
 ## Step B: Detect Changed Source Files
 
-Detect changed files including committed, uncommitted, staged, and untracked files (uncommitted/untracked changes are common when called from `/start-issue` before the commit step):
+Detect committed/uncommitted/staged/untracked files and filter to source files
+per detected project type. For Go, partition into **gated** files (count toward
+the aggregate) and **info** files (`package main` — shown in the report but
+excluded from the gate).
 
-```bash
-mkdir -p .local/state
-rm -f .local/state/coverage.out .local/state/coverage.json 2>/dev/null
-CHANGED_FILES=$( (git diff --name-only "${BASE_BRANCH}...HEAD" 2>/dev/null; git diff --name-only HEAD 2>/dev/null; git diff --name-only --cached HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null) | sort -u )
-```
+→ Read `step-b-detect-changed-files.md` for the full procedure: the
+`CHANGED_FILES` collector, per-language source-file filters (Go / Node /
+Rust / Python), the `get_pkg` comment-aware Go package extractor, and the
+gated/info partitioning loop. The rationale for excluding `package main`
+(issue #143) lives there.
 
-The `rm -f` removes stale coverage artifacts from prior runs to prevent false results if the current coverage command fails.
-
-Filter to source files per detected project type, excluding test files, generated files, and vendored code:
-
-**Go** (go.mod exists):
-```bash
-CHANGED_SRC=$(echo "$CHANGED_FILES" | grep '\.go$' \
-  | grep -v '_test\.go$' \
-  | grep -v '_templ\.go$' \
-  | grep -v '_mock\.go$' \
-  | grep -v '\.pb\.go$' \
-  | grep -v '_gen\.go$' \
-  | grep -v '^vendor/' \
-  || true)
-```
-
-Then partition `CHANGED_SRC` into **gated** files (counted toward the aggregate and the threshold) and **info** files (`package main` — shown in the report but excluded from the gate):
-
-```bash
-# Comment-aware extractor: prints the actual Go package name (or empty).
-# Strips //-line-comments and /*..*/ block comments (handling unterminated
-# blocks across lines and inline blocks on the same line), then matches the
-# first non-blank `^package <name>` line. This avoids false positives from
-# `package main` text appearing inside doc comments.
-get_pkg() {
-  awk '
-    BEGIN { in_block=0 }
-    {
-      line = $0
-      if (in_block) { if (sub(/.*\*\//, "", line)) in_block=0; else next }
-      # Strip block comments BEFORE line comments — otherwise a one-line
-      # block comment containing a URL like `/* See https://example.com */`
-      # has its `//` stripped first, leaving `/* See https:` and opening an
-      # unterminated block that swallows the real package clause.
-      while (match(line, /\/\*/)) {
-        pre  = substr(line, 1, RSTART-1)
-        rest = substr(line, RSTART+RLENGTH)
-        if (match(rest, /\*\//)) {
-          line = pre substr(rest, RSTART+RLENGTH)
-        } else {
-          line = pre; in_block = 1; break
-        }
-      }
-      sub(/[[:space:]]*\/\/.*$/, "", line)
-      sub(/^[[:space:]]+/, "", line)
-      if (line == "") next
-      if (line ~ /^package[[:space:]]+[A-Za-z_]/) {
-        split(line, a, /[[:space:]]+/); print a[2]; exit
-      }
-    }
-  '
-}
-
-CHANGED_SRC_GATED=""
-CHANGED_SRC_INFO=""
-for f in $CHANGED_SRC; do
-  # Detection is by the file's package clause, NOT filename. Any .go file
-  # declaring `package main` (cmd/foo/main.go, cmd/foo/server.go, cmd/foo/wire.go,
-  # internal/tools/run.go, ...) is excluded from the gate. For deleted files
-  # (no longer on disk), read the blob from the base branch via `git show` so
-  # a diff that deletes only `cmd/foo/main.go` still triggers the all-main
-  # path in Step E.2 instead of producing a 0% gate prompt.
-  if [ -f "$f" ]; then
-    pkg=$(get_pkg < "$f" 2>/dev/null)
-  else
-    pkg=$(git show "${BASE_BRANCH}:${f}" 2>/dev/null | get_pkg)
-  fi
-  if [ "$pkg" = "main" ]; then
-    CHANGED_SRC_INFO="${CHANGED_SRC_INFO}${f}
-"
-  else
-    CHANGED_SRC_GATED="${CHANGED_SRC_GATED}${f}
-"
-  fi
-done
-CHANGED_SRC_GATED=$(printf '%s' "$CHANGED_SRC_GATED" | sed '/^$/d')
-CHANGED_SRC_INFO=$(printf '%s'  "$CHANGED_SRC_INFO"  | sed '/^$/d')
-```
-
-**Why exclude `package main`?** Idiomatic Go keeps `func main()` to a thin shim — argument parsing, dependency wiring, and a call into a testable package. There's little to assert against, and what's left (e.g. `os.Exit` paths) is awkward to test without refactoring purely to satisfy the metric. This is a **`package main`-only** carve-out — touching a hard-to-test middleware or handler file still trips the gate (the "if you touch it, you own it" rule is unchanged). See [#143](https://github.com/gopherguides/gopher-ai/issues/143) for full rationale and external references.
-
-**Node/TypeScript** (package.json exists):
-```bash
-CHANGED_SRC=$(echo "$CHANGED_FILES" | grep -E '\.(ts|tsx|js|jsx)$' \
-  | grep -v -E '\.(test|spec)\.' \
-  | grep -v '^node_modules/' \
-  | grep -v '^dist/' \
-  || true)
-```
-
-**Rust** (Cargo.toml exists):
-```bash
-CHANGED_SRC=$(echo "$CHANGED_FILES" | grep '\.rs$' \
-  | grep -v -E '(^tests/|/tests/)' \
-  || true)
-```
-
-**Python** (pyproject.toml or setup.py exists):
-```bash
-CHANGED_SRC=$(echo "$CHANGED_FILES" | grep '\.py$' \
-  | grep -v -E '(^tests?/|/tests?/|test_[^/]*\.py$|_test\.py$|conftest\.py$)' \
-  || true)
-```
-
-If `CHANGED_SRC` is empty → skip (no source files to measure coverage for). Return to calling command's next step.
+If `CHANGED_SRC` is empty after filtering → skip (no source files to measure
+coverage for). Return to the calling command's next step.
 
 ## Step C: Run Coverage
 
-Run the coverage tool appropriate for the detected project type. Store coverage output for analysis.
+Run the coverage tool appropriate for the detected project type and store
+output for analysis.
 
-**Go** (built-in — always available):
-```bash
-go test -coverprofile=.local/state/coverage.out ./... 2>/dev/null || true
-go tool cover -func=.local/state/coverage.out 2>/dev/null
-```
+→ Read `step-c-run-coverage.md` for the per-language commands (Go's built-in
+`go test -coverprofile`; Node detection of vitest/jest/c8; Rust llvm-cov or
+tarpaulin; Python pytest-cov or coverage.py). It also contains the rule for
+when "tool unavailable" should warn-and-skip vs proceed-with-zero-coverage.
 
-Then extract coverage for changed files specifically:
-
-```bash
-for f in $CHANGED_SRC; do
-  grep "^${f}:" .local/state/coverage.out 2>/dev/null
-done
-```
-
-Parse the `go tool cover -func` output — each line shows `file:line: functionName  coverage%`. Extract functions with 0% or low coverage in changed files.
-
-**Node/TypeScript**:
-```bash
-if grep -q '"vitest"' package.json 2>/dev/null; then
-  npx vitest run --coverage --coverage.reporter=json-summary 2>/dev/null || true
-  COVERAGE_JSON="coverage/coverage-summary.json"
-elif grep -q '"jest"' package.json 2>/dev/null; then
-  npx jest --coverage --coverageReporters=json-summary 2>/dev/null || true
-  COVERAGE_JSON="coverage/coverage-summary.json"
-elif grep -q '"c8"' package.json 2>/dev/null || grep -q '"nyc"' package.json 2>/dev/null; then
-  npx c8 --reporter=json-summary npm test 2>/dev/null || true
-  COVERAGE_JSON="coverage/coverage-summary.json"
-fi
-```
-
-Parse `coverage-summary.json` for per-file coverage. Both vitest, jest, and c8 (with `json-summary` reporter) use this format:
-```json
-{
-  "path/to/file.ts": { "lines": { "total": 100, "covered": 75, "pct": 75.0 }, ... },
-  "total": { "lines": { "total": 500, "covered": 350, "pct": 70.0 }, ... }
-}
-```
-
-Extract `lines.pct` for each changed file to compute per-file and aggregate coverage.
-
-**Rust**:
-```bash
-if command -v cargo-llvm-cov >/dev/null 2>&1; then
-  cargo llvm-cov --json > .local/state/coverage.json 2>/dev/null || true
-elif command -v cargo-tarpaulin >/dev/null 2>&1; then
-  cargo tarpaulin --out Json --output-dir .local/state 2>/dev/null || true
-fi
-```
-
-**Python**:
-```bash
-if command -v pytest >/dev/null 2>&1 && python3 -c "import pytest_cov" 2>/dev/null; then
-  pytest --cov --cov-report=json:.local/state/coverage.json 2>/dev/null || true
-elif command -v coverage >/dev/null 2>&1; then
-  coverage run -m pytest 2>/dev/null && coverage json -o .local/state/coverage.json 2>/dev/null || true
-fi
-```
-
-If the coverage tool binary is genuinely missing (e.g., `cargo-llvm-cov` not installed) → display a warning ("Coverage tool unavailable, skipping coverage gate") and return to calling command's next step. However, if the coverage command ran and produced output (e.g., `coverage.out` exists with content, or JSON file exists with data), the tool did NOT fail — proceed to Step D even if coverage is 0%. Do NOT treat low coverage as a tool failure.
+If the coverage tool binary is genuinely missing (e.g., `cargo-llvm-cov` not
+installed) → display a warning ("Coverage tool unavailable, skipping coverage
+gate") and return to the calling command's next step. Otherwise — even if
+coverage is 0% — proceed to Step D. **Do NOT treat low coverage as a tool
+failure.**
 
 ## Step D: Analyze Changed-File Coverage
 
@@ -210,279 +81,62 @@ Parse the coverage output and compute per-file coverage for changed files only:
 2. Identify specific uncovered functions/methods in changed files
 3. Calculate the aggregate coverage percentage across changed source files (Go: gated files only — `CHANGED_SRC_GATED`, excluding `package main`; other languages: all of `CHANGED_SRC`)
 
-For Go, parse the raw coverprofile to compute **statement-weighted** coverage (not function-average). The coverprofile format is:
-```
-mode: set
-file.go:startLine.startCol,endLine.endCol numStatements hitCount
-```
+→ Read `step-d-analyze.md` for the full statement-weighted Go coverprofile
+parser (two-pass: gated, then info), the `ALL_MAIN` flag logic, and the
+per-language JSON parsing notes (Node coverage-summary.json, Rust
+llvm-cov/tarpaulin JSON, Python coverage.json).
 
-Use statement counts weighted by whether they were hit. The loop runs twice: first over `CHANGED_SRC_GATED` (counted toward the aggregate), then over `CHANGED_SRC_INFO` (`package main` files — displayed but excluded from totals). Per-file row generation, uncovered-function extraction, and the `N/A (no statements)` short-circuit are identical in both passes; only the totals accumulation differs. The `Notes` column distinguishes the two: blank for gated rows, `excluded from gate (package main)` for info rows.
-
-```bash
-COVERAGE_FUNC=$(go tool cover -func=.local/state/coverage.out 2>/dev/null)
-AGGREGATE_COVERAGE=""
-FILE_REPORT=""
-UNCOVERED_FUNCS=""
-TOTAL_STMTS=0
-TOTAL_COVERED=0
-INFO_COUNT=0
-
-# Pass 1: gated files — count toward TOTAL_STMTS / TOTAL_COVERED.
-for f in $CHANGED_SRC_GATED; do
-  FILE_STMTS=$(grep "^${f}:" .local/state/coverage.out 2>/dev/null | awk '{
-    split($2, a, " "); stmts=$2; hit=$3
-    total+=stmts; if(hit>0) covered+=stmts
-  } END {printf "%d %d", total, covered}')
-  FILE_TOTAL=$(echo "$FILE_STMTS" | awk '{print $1}')
-  FILE_COVERED=$(echo "$FILE_STMTS" | awk '{print $2}')
-
-  if [ "$FILE_TOTAL" -eq 0 ] 2>/dev/null; then
-    FILE_REPORT="${FILE_REPORT}\n| ${f} | N/A (no statements) | — |  |"
-    continue
-  fi
-
-  FILE_COV=$(awk "BEGIN {printf \"%.1f\", ($FILE_COVERED/$FILE_TOTAL)*100}")
-  TOTAL_STMTS=$((TOTAL_STMTS + FILE_TOTAL))
-  TOTAL_COVERED=$((TOTAL_COVERED + FILE_COVERED))
-
-  FILE_FUNC_LINES=$(echo "$COVERAGE_FUNC" | grep "^${f}:" | grep -v "^total:")
-  UNCOV=$(echo "$FILE_FUNC_LINES" | awk '$NF == "0.0%" {print $2}' | paste -sd ", " -)
-  UNCOV_DISPLAY="${UNCOV:-—}"
-  FILE_REPORT="${FILE_REPORT}\n| ${f} | ${FILE_COV}% | ${UNCOV_DISPLAY} |  |"
-
-  if [ -n "$UNCOV" ]; then
-    UNCOVERED_FUNCS="${UNCOVERED_FUNCS}\n${f}:${UNCOV}"
-  fi
-done
-
-# Pass 2: info files (package main) — display only, do NOT touch totals.
-for f in $CHANGED_SRC_INFO; do
-  INFO_COUNT=$((INFO_COUNT + 1))
-  FILE_STMTS=$(grep "^${f}:" .local/state/coverage.out 2>/dev/null | awk '{
-    split($2, a, " "); stmts=$2; hit=$3
-    total+=stmts; if(hit>0) covered+=stmts
-  } END {printf "%d %d", total, covered}')
-  FILE_TOTAL=$(echo "$FILE_STMTS" | awk '{print $1}')
-  FILE_COVERED=$(echo "$FILE_STMTS" | awk '{print $2}')
-
-  NOTE="excluded from gate (package main)"
-
-  if [ "$FILE_TOTAL" -eq 0 ] 2>/dev/null; then
-    FILE_REPORT="${FILE_REPORT}\n| ${f} | N/A (no statements) | — | ${NOTE} |"
-    continue
-  fi
-
-  FILE_COV=$(awk "BEGIN {printf \"%.1f\", ($FILE_COVERED/$FILE_TOTAL)*100}")
-  FILE_FUNC_LINES=$(echo "$COVERAGE_FUNC" | grep "^${f}:" | grep -v "^total:")
-  UNCOV=$(echo "$FILE_FUNC_LINES" | awk '$NF == "0.0%" {print $2}' | paste -sd ", " -)
-  UNCOV_DISPLAY="${UNCOV:-—}"
-  FILE_REPORT="${FILE_REPORT}\n| ${f} | ${FILE_COV}% | ${UNCOV_DISPLAY} | ${NOTE} |"
-done
-
-# Aggregate is computed from gated files only. ALL_MAIN signals "every changed
-# file was package main" — Step E.2 emits a warning instead of running the gate.
-ALL_MAIN=false
-if [ "$TOTAL_STMTS" -gt 0 ]; then
-  AGGREGATE_COVERAGE=$(awk "BEGIN {printf \"%.1f\", ($TOTAL_COVERED/$TOTAL_STMTS)*100}")
-elif [ -z "$CHANGED_SRC_GATED" ] && [ -n "$CHANGED_SRC_INFO" ]; then
-  AGGREGATE_COVERAGE="N/A"
-  ALL_MAIN=true
-else
-  AGGREGATE_COVERAGE="0.0"
-fi
-```
-
-For **Node/TypeScript**, parse JSON coverage summary — extract `lines.pct` for each changed file from the JSON output.
-
-For **Rust**, parse the JSON output from llvm-cov or tarpaulin — extract per-file line coverage.
-
-For **Python**, parse `coverage.json` — extract `files.<path>.summary.percent_covered` for each changed file.
+**Outputs from Step D** (used by Steps E and F):
+- `AGGREGATE_COVERAGE` — percent string (or `"N/A"` when `ALL_MAIN=true`)
+- `ALL_MAIN` — boolean: `true` when every changed file is `package main`
+- `FILE_REPORT` — per-file table rows (gated rows have empty Notes;
+  info rows carry `excluded from gate (package main)`)
+- `UNCOVERED_FUNCS` — newline-separated `file:func1, func2` entries
+  (Go-only, gated files only — see issue #143)
+- `INFO_COUNT` — number of `package main` files included in the report
 
 ## Step E: Coverage Gate Decision
 
-**MANDATORY RULE — NO EXCEPTIONS:**
+**MANDATORY RULE — NO EXCEPTIONS:** When coverage is below `COVERAGE_THRESHOLD`,
+your ONLY permitted action is to display the report (Step E.1) and then
+IMMEDIATELY call `AskUserQuestion` (Step E.2). You MUST NOT skip, waive,
+rationalize, or proceed without asking. **Only the user can decide to proceed
+with low coverage.**
 
-When coverage is below `COVERAGE_THRESHOLD`, you MUST call `AskUserQuestion` to let the user decide. You MUST NOT:
-- Decide on your own to skip, waive, or bypass the coverage gate
-- Rationalize that low coverage is "pre-existing," "inherited," or "not caused by your changes"
-- Argue that the threshold does not apply because changes were small, trivial, or limited to a few lines
-- Conclude that coverage is "effectively" acceptable despite being numerically below threshold
-- Claim that other tests (template tests, integration tests, etc.) make up for low unit coverage
-- Add commentary, analysis, or justification between the coverage report and the `AskUserQuestion` call
-- Proceed to the next step without calling `AskUserQuestion` when coverage < threshold
+**Design philosophy: "if you touch it, you own it."** The entire file's
+coverage counts, regardless of which lines you changed. The carve-out for
+`package main` (Go only) is detected by the package clause and is the only
+exception — see Step B and issue #143.
 
-**Design philosophy: "if you touch it, you own it."** The entire file's coverage counts, regardless of which lines you changed or whether uncovered code existed before your changes. This is intentional. The purpose of this gate is to **improve coverage in the codebase over time** — every touched file is an opportunity. Only the USER can decide to proceed with low coverage. You cannot make that decision.
-
-**One narrow carve-out (Go only): `package main` files are excluded from the aggregate** because `func main()` is idiomatically a thin shim and not unit-testable in practice. The carve-out is detected by the package clause, not the filename — see Step B and issue #143. Hard-to-test middleware, handlers, and other non-main code still trip the gate as before.
-
-**If coverage < `COVERAGE_THRESHOLD`: your ONLY permitted action is to display the report (Step E.1) and then IMMEDIATELY call `AskUserQuestion` (Step E.2). Any other action is a violation of this workflow.**
-
-### Step E.1: Display Coverage Report
-
-Output ONLY the coverage table and aggregate line. Do NOT add any analysis, explanation, or commentary. Do NOT discuss why coverage is low or whether the low coverage is justified.
-
-**Go format** — 4 columns; rows for `package main` files carry a Notes value of `excluded from gate (package main)`. The footer is selected by the `ALL_MAIN` flag from Step D — never substitute `{AGGREGATE_COVERAGE}` directly into the gated-form footer when `ALL_MAIN=true`, or you'll render `N/A%`.
-
-```
-## Coverage Report (Changed Files)
-
-| File | Coverage | Uncovered Functions | Notes |
-|------|----------|--------------------|-------|
-<one row per file from CHANGED_SRC_GATED, then CHANGED_SRC_INFO, using FILE_REPORT from Step D>
-
-# If ALL_MAIN=true:
-**Changed-file coverage: N/A — all changed files are `package main`; gate skipped (see Step E.2 warning)**
-
-# Else (ALL_MAIN=false):
-**Changed-file coverage: {AGGREGATE_COVERAGE}% (threshold: {COVERAGE_THRESHOLD}%)** [— {INFO_COUNT} file(s) shown for info only]
-```
-
-Pick exactly one footer line; do not emit both. The `# If ... # Else` comments are for this skill's reader — they must not appear in the rendered report.
-
-**Non-Go formats** — keep the existing 3-column table (`File | Coverage | Uncovered Functions`); the `package main` carve-out is Go-specific and does not apply to Node/TS, Rust, or Python paths.
-
-### Step E.2: Gate Decision
-
-Apply IMMEDIATELY after displaying the report — no intervening text or analysis:
-
-- **Go path, `ALL_MAIN=true`** (every changed file is `package main`) → emit this exact one-line warning, **then run Step E.3 to persist the skip reason** (`coverage_skip_reason = "all-main"`, `coverage_result = ""`), and return to the calling command's next step. Do NOT call `AskUserQuestion`; there is no signal to act on, and silently passing would hide the fact that no gate ran. Skipping Step E.3 here would leave the calling command (e.g. `/ship`) unable to render the correct summary line.
-
-  ```
-  ⚠️  Coverage gate skipped: all changed files are in `package main` (typically bootstrap/wiring code that's untestable in practice). See issue #143 for rationale.
-  ```
-
-- **Coverage >= `COVERAGE_THRESHOLD`** → pass. Return to calling command's next step.
-- **Coverage < `COVERAGE_THRESHOLD`** → you MUST call `AskUserQuestion` with this exact question and options:
-
-  **Question:** "Changed files have {AGGREGATE_COVERAGE}% coverage (threshold: {COVERAGE_THRESHOLD}%). What would you like to do?"
-
-  **Options (Go projects):**
-  1. "Generate tests for all uncovered functions in changed files (excludes `package main`)"
-  2. "Generate tests only for functions I added or modified (excludes `package main`)"
-  3. "Proceed without additional tests"
-  4. "Show me the uncovered functions so I can decide"
-
-  **Options (non-Go projects):** Omit options 2 and 4 — changed-function detection and per-function uncovered listings are only supported for Go (Step D only populates `UNCOVERED_FUNCS` for Go). Present options 1 and 3 only.
-
-  **Scope of test generation (Go path):** Options 1, 2, and 4 only consider gated files (`CHANGED_SRC_GATED`). Uncovered functions in `package main` files are shown in the report's row for transparency but `UNCOVERED_FUNCS` only contains gated entries — Step F never generates tests for `func main()`-style code. This matches the rationale of issue #143 (main is intentionally untested).
-
-  Handle the user's choice:
-  - Option 1 → proceed to Step F in **all uncovered functions** mode (gated files only)
-  - Option 2 (Go only) → proceed to Step F in **changed functions only** mode (gated files only)
-  - Option 3 → return to calling command's next step
-  - Option 4 (Go only) → display the gated-files `UNCOVERED_FUNCS` list with file locations, then re-ask with options 1-3
-
-- **No test files exist at all** (coverage output is empty or all functions show 0%) → you MUST call `AskUserQuestion` with:
-  "No test files found for changed packages. Changed files have 0% coverage (threshold: {COVERAGE_THRESHOLD}%). What would you like to do?"
-  Options:
-  1. "Generate initial tests for changed files"
-  2. "Proceed without tests"
-
-  You MUST NOT decide to skip test generation on your own. Only the user can make this decision.
-
-- **Coverage tool genuinely failed or unavailable** → warn and proceed ONLY if the tool genuinely failed (non-zero exit code AND no usable output, or missing binary). If `go test -coverprofile` produced a `coverage.out` file with content, or if the JSON coverage file exists with data, the tool did NOT fail — proceed with coverage analysis even if coverage is 0%.
-
-### Step E.3: Persist Result
-
-Persist `coverage_result` in the state file. Two fields are written: a numeric
-`coverage_result` (when a real aggregate exists) and a `coverage_skip_reason`
-that explains why the gate did not run, so callers can render a sensible
-summary line without producing `N/A%`-style output.
-
-```bash
-TMP="${STATE_FILE}.tmp"
-if [ "$ALL_MAIN" = "true" ]; then
-  jq --arg reason "all-main" '.coverage_result = "" | .coverage_skip_reason = $reason' \
-    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-else
-  jq --arg cr "$AGGREGATE_COVERAGE" '.coverage_result = $cr | .coverage_skip_reason = ""' \
-    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-fi
-```
-
-**Caller contract:** Callers that render a summary line (e.g. `/ship` Step 13f)
-must check `coverage_skip_reason` before formatting `coverage_result` with a
-percent sign. If `coverage_skip_reason` is non-empty, render a textual reason
-(e.g. `skipped — all changed files are package main`) instead of
-`<COV_RESULT>%`.
+→ Read `step-e-gate.md` for the full MUST-NOT enumeration, the exact report
+formats (Go 4-column with the `ALL_MAIN`-conditional footer; non-Go 3-column),
+the gate-decision tree (pass / `ALL_MAIN` warning / coverage < threshold / no
+test files / tool failure), every `AskUserQuestion` question + option set
+verbatim, the user-choice routing, and the jq blocks that persist
+`coverage_result` + `coverage_skip_reason`.
 
 ## Step F: Test Generation for Uncovered Code
 
-**Mode selection** (set by Step E.2 user choice):
+When the user picks "Generate tests" in Step E.2, generate tests for the
+uncovered functions identified in Step D. Three modes (set by the user's
+choice):
 
-- **All uncovered functions mode** (option 1): Generate tests for every uncovered function in `CHANGED_SRC` (Go: `CHANGED_SRC_GATED`), as listed in `UNCOVERED_FUNCS` from Step D.
-- **No-test-files path** (from Step E.2 "Generate initial tests"): `UNCOVERED_FUNCS` may be empty because Step D short-circuits when coverage data is missing. In this case, read each file in `CHANGED_SRC` (Go: `CHANGED_SRC_GATED` — `package main` files are excluded so Step F never generates tests for `func main()`-style code) directly and extract all exported function/method signatures as test targets.
-- **Changed functions only mode** (option 2, Go only): Restrict test generation to Go functions whose bodies were added or modified. Identify changed functions by mapping diff hunks to their enclosing function using committed, staged, unstaged, and untracked changes (matching Step B's file detection):
-  ```bash
-  # Combine committed + staged + unstaged diffs
-  COMBINED_DIFF=$( (git diff "${BASE_BRANCH}...HEAD" -- $CHANGED_SRC 2>/dev/null; git diff HEAD -- $CHANGED_SRC 2>/dev/null; git diff --cached HEAD -- $CHANGED_SRC 2>/dev/null) )
-  # For untracked files: generate a synthetic diff so new functions are detected
-  UNTRACKED_SRC=$(git ls-files --others --exclude-standard 2>/dev/null | grep '\.go$' | grep -v '_test\.go$' || true)
-  for uf in $UNTRACKED_SRC; do
-    COMBINED_DIFF="${COMBINED_DIFF}
-$(git diff --no-index /dev/null "$uf" 2>/dev/null || true)"
-  done
-  # Extract function names from diff hunk headers (@@...@@ func Name or func (r *T) Name)
-  # These identify the enclosing function for ANY changed line, not just added declarations.
-  # Use `go tool cover -func` format for matching: bare name for functions, receiver for methods.
-  CHANGED_FUNC_NAMES=$(echo "$COMBINED_DIFF" | grep -oE '^@@.*@@ func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | sed 's/^@@.*@@ //' | sort -u)
-  # Also catch newly added function declarations (on added lines)
-  NEW_FUNCS=$(echo "$COMBINED_DIFF" | grep -E '^\+.*func ' | grep -v '^\+\+\+' | sed 's/^+//' | grep -oE 'func (\([^)]*\) )?[A-Za-z_][A-Za-z0-9_]*' | sed 's/^func //' | sort -u)
-  CHANGED_FUNC_NAMES=$(printf '%s\n%s' "$CHANGED_FUNC_NAMES" "$NEW_FUNCS" | sort -u | grep -v '^$')
-  ```
-  **Matching logic:** Cross-reference per-file to avoid ambiguity (e.g., `Run` in `pkg/a/a.go` vs `pkg/b/b.go`). For each file in `CHANGED_SRC`:
-  1. Get the functions changed in that file from `COMBINED_DIFF` (hunk headers and added `func` lines scoped to that file)
-  2. Get the uncovered functions in that file from `UNCOVERED_FUNCS` (Step D stores entries as `file:func1, func2`)
-  3. Intersect the two lists — only generate tests for functions that are BOTH changed AND uncovered in the same file
+- **All uncovered functions** (E.2 option 1)
+- **Changed functions only** (E.2 option 2, Go only) — diff-driven function
+  list intersected with `UNCOVERED_FUNCS`
+- **No-test-files path** (Step E.2 "Generate initial tests") — when no test
+  files exist anywhere; fall back to extracting exported signatures from
+  `CHANGED_SRC` directly
 
-  If no functions match across any file (all changed functions are already covered), report this and return to calling command's next step.
+→ Read `step-f-test-generation.md` for: the `CHANGED_FUNC_NAMES` extraction
+bash, per-language test-writing conventions (Go table-driven, vitest/jest,
+Rust `#[test]`, pytest parametrize), and the `coverage_tests_generated`
+state-file write at the end.
 
-Generate tests appropriate for the detected project type. For each target uncovered function:
+## Further Reading
 
-1. **Read the source file** and understand the function signature, parameters, return types, and dependencies
-
-2. **Check for existing test files** and **detect testing conventions** per language:
-
-**Go:**
-- Check for existing test files following patterns from `${CLAUDE_PLUGIN_ROOT}/skills/address-review/test-generation.md` Steps 4.5b-4.5c:
-  ```bash
-  ls "${FILE%.*}_test.go" 2>/dev/null || ls "$(dirname "$FILE")"/*_test.go 2>/dev/null
-  ```
-- Detect: stdlib `testing` vs `testify`, table-driven patterns (`tests := []struct`), naming conventions
-- Generate table-driven tests with `t.Run()`, `t.Parallel()`, following `test-gen.md` patterns
-- Verify: `go test ./path/to/package/... -run "TestFunctionName" -v`
-- Re-run coverage: `go test -coverprofile=.local/state/coverage.out ./... 2>/dev/null || true`
-
-**Node/TypeScript:**
-- Check for existing test files: `*.test.ts`, `*.spec.ts`, `__tests__/*.ts`
-- Detect: vitest vs jest vs mocha, describe/it patterns, assertion style
-- Generate tests following detected conventions (describe blocks, beforeEach setup)
-- Verify: `npx vitest run <test-file>` or `npx jest <test-file>`
-
-**Rust:**
-- Check for existing `#[cfg(test)]` modules in the same file or `tests/` directory
-- Detect: built-in `#[test]` vs `rstest` vs `proptest`
-- Generate test functions with `#[test]` attribute, `assert_eq!` / `assert!` macros
-- Verify: `cargo test <test-name>`
-
-**Python:**
-- Check for existing test files: `test_*.py`, `*_test.py` in the same or `tests/` directory
-- Detect: pytest vs unittest, fixture patterns, parametrize decorators
-- Generate pytest functions with `@pytest.mark.parametrize` for multiple cases
-- Verify: `pytest <test-file> -v`
-
-3. **Include test scenarios** for all languages:
-   - Happy path with typical inputs
-   - Edge cases (nil/empty/boundary values)
-   - Error scenarios (invalid input, expected failures)
-   - If existing table/parametrized tests exist for the function, add new cases to them
-   - If no test exists, create a new test following project conventions
-
-Track the number of tests generated and persist in state file:
-
-```bash
-TMP="${STATE_FILE}.tmp"
-jq --argjson n "$TESTS_GENERATED" '.coverage_tests_generated = $n' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
-
-Generated test files will be staged and committed alongside other changes.
+- `step-b-detect-changed-files.md` — `CHANGED_FILES` collector, per-language source filters, `get_pkg` extractor, gated/info partitioning
+- `step-c-run-coverage.md` — per-language coverage invocations and JSON shapes
+- `step-d-analyze.md` — statement-weighted Go parser, `ALL_MAIN` logic, per-language JSON parsing
+- `step-e-gate.md` — report formats, gate decision tree, all `AskUserQuestion` options, state-file persistence
+- `step-f-test-generation.md` — mode selection, `CHANGED_FUNC_NAMES` extraction, per-language test generation, final state-file write
