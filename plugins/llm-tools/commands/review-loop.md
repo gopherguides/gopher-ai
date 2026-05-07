@@ -12,704 +12,141 @@ allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestio
 
 Parse `$ARGUMENTS` to extract:
 
-- `--llm <value>`: LLM to use for reviews. Options: `codex` (default), `gemini`, `ollama`
-- `--max-passes <n>`: Maximum review passes before stopping (default: 5)
-- `--quick`: Use lightweight `codex review` instead of exhaustive `codex exec` (faster but limited to 2-3 findings per pass). Only applies when `--llm codex`.
-- `--tier <value>`: Gemini service tier. Options: `flex`, `standard`, `priority`. Only applies when `--llm gemini`. Default: not set (standard behavior).
-- Remaining text: scope hint (e.g., "focus on error handling")
+- `--llm <value>`: `codex` (default), `gemini`, `ollama`
+- `--max-passes <n>`: max review passes (default: 5)
+- `--quick`: use `codex review` instead of `codex exec` (faster, limited to 2-3 findings per pass; codex only)
+- `--tier <value>`: gemini service tier (`flex`/`standard`/`priority`; gemini only; default: unset)
+- Remaining text: scope hint
 
-Store as `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE` (default: `false`), `GEMINI_TIER`, and `SCOPE_HINT`.
+Store as `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE` (default `false`), `GEMINI_TIER`, `SCOPE_HINT`.
 
-**Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.local/state/review-loop.loop.local.json` using `jq`:
-
-```bash
-STATE_FILE=".local/state/review-loop.loop.local.json"
-TMP="$STATE_FILE.tmp"
-jq --arg args "$ARGUMENTS" --argjson pass 0 --arg quick_mode "$QUICK_MODE" --arg gemini_tier "$GEMINI_TIER" \
-   '. + {args: $args, pass: $pass, quick_mode: $quick_mode, gemini_tier: $gemini_tier}' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
-
-This ensures stop-hook re-entry can restore the original configuration (including `QUICK_MODE`).
+**Persist** to `.local/state/review-loop.loop.local.json` via `jq` (merge `args`, `pass: 0`, `quick_mode`, `gemini_tier`) so the stop-hook can restore on re-entry. See `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/state-persist.md` for the exact jq invocation; the same pattern repeats in Step 4c.
 
 ## 2. Prerequisite Check
 
-Verify the selected LLM CLI is installed. **CRITICAL: Never silently fail or fall back** — always present the user with options.
-
-### 2a. Detect LLM CLI
+Verify the selected LLM CLI is installed. **CRITICAL: Never silently fail or fall back** — always present the user with options via `AskUserQuestion`.
 
 ```bash
 LLM_AVAILABLE=true
-if [ "$LLM_CHOICE" = "codex" ]; then
-  if command -v codex &>/dev/null; then
-    CODEX_CMD="codex"
-  elif npx -y codex --version &>/dev/null 2>&1; then
-    CODEX_CMD="npx -y codex"
-  else
-    LLM_AVAILABLE=false
-  fi
-elif [ "$LLM_CHOICE" = "gemini" ]; then
-  command -v gemini >/dev/null 2>&1 || LLM_AVAILABLE=false
-elif [ "$LLM_CHOICE" = "ollama" ]; then
-  command -v ollama >/dev/null 2>&1 || LLM_AVAILABLE=false
-fi
+case "$LLM_CHOICE" in
+  codex)  command -v codex >/dev/null 2>&1 && CODEX_CMD="codex" \
+            || (npx -y codex --version >/dev/null 2>&1 && CODEX_CMD="npx -y codex") \
+            || LLM_AVAILABLE=false ;;
+  gemini) command -v gemini >/dev/null 2>&1 || LLM_AVAILABLE=false ;;
+  ollama) command -v ollama >/dev/null 2>&1 || LLM_AVAILABLE=false ;;
+esac
 ```
 
-### 2b. Handle CLI Not Found
+If `LLM_AVAILABLE=false` → ask the user via `AskUserQuestion` with options **Retry** / **Debug / Install instructions** / **Abort**. On **Abort**, run `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "review-loop"` and output `<done>REVIEW_CLEAN</done>`.
 
-If `LLM_AVAILABLE` is `false`:
-
-1. Run diagnostics and display them:
-   ```bash
-   echo "=== LLM CLI Diagnostic ==="
-   echo "LLM selected: $LLM_CHOICE"
-   if [ "$LLM_CHOICE" = "codex" ]; then
-     echo "codex in PATH: $(command -v codex 2>/dev/null || echo 'NOT FOUND')"
-     echo "npx codex: $(npx -y codex --version 2>/dev/null || echo 'FAILED')"
-     echo "OPENAI_API_KEY set: $([ -n "${OPENAI_API_KEY:-}" ] && echo 'yes' || echo 'NO')"
-   elif [ "$LLM_CHOICE" = "gemini" ]; then
-     echo "gemini in PATH: $(command -v gemini 2>/dev/null || echo 'NOT FOUND')"
-   elif [ "$LLM_CHOICE" = "ollama" ]; then
-     echo "ollama in PATH: $(command -v ollama 2>/dev/null || echo 'NOT FOUND')"
-     echo "ollama serve running: $(curl -s http://localhost:11434/api/version 2>/dev/null || echo 'NOT RUNNING')"
-   fi
-   echo "========================="
-   ```
-
-2. Use `AskUserQuestion` — **do NOT proceed or silently exit**:
-
-   **"`$LLM_CHOICE` CLI not found. How would you like to proceed?"**
-
-   | Option | Description |
-   |--------|-------------|
-   | **Retry** | Check again (after you install or fix `$LLM_CHOICE`) |
-   | **Debug / Install instructions** | Show install steps and help troubleshoot |
-   | **Abort** | Stop the review loop entirely |
-
-3. Handle the user's choice:
-   - **Retry** → Re-run the check from Step 2a. If still fails, present options again.
-   - **Debug / Install instructions** → Display:
-     - codex: `npm install -g @openai/codex` or ensure `OPENAI_API_KEY` is set
-     - gemini: `npm install -g @google/gemini-cli`
-     - ollama: `brew install ollama && ollama serve`
-     After the user says they've fixed it, re-run the check from Step 2a. If still fails, present options again.
-   - **Abort** → Clean up the loop state file and stop:
-     ```bash
-     "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "review-loop"
-     ```
-     Output `<done>REVIEW_CLEAN</done>` to signal completion.
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/prerequisites.md` for the diagnostic-output block and the per-LLM install instructions.
 
 ## 3. Re-entry Check
-
-Read the loop state file at `.local/state/review-loop.loop.local.json`:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
 STATE_FILE=".local/state/review-loop.loop.local.json"
-if [ -f "$STATE_FILE" ]; then
-  read_loop_state "$STATE_FILE"
-fi
+[ -f "$STATE_FILE" ] && read_loop_state "$STATE_FILE"
 ```
 
-If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from the persisted fields using `jq`:
+If `PHASE` is set (non-empty), this is a stop-hook re-entry. Restore from state file (re-parse `args` for `LLM_CHOICE`/`MAX_PASSES`/`QUICK_MODE`/`SCOPE_HINT`; read `pass`, `scope`, `base_branch`, `model`, `file_paths`, `quick_mode`, `gemini_tier` via `jq -r '.<field> // empty'`) then jump:
 
-1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE`, `SCOPE_HINT`
-2. Read `pass` field via `jq -r '.pass // 0' "$STATE_FILE"` to restore the current pass count
-3. Read `scope`, `base_branch`, `model`, `file_paths`, `quick_mode`, `gemini_tier` fields via `jq -r '.field // empty' "$STATE_FILE"` to restore `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`, `QUICK_MODE`, `GEMINI_TIER`
+- `reviewing` → Step 5
+- `fixing` → Step 7
+- `verifying` → Step 8
 
-Then skip to the corresponding phase:
-
-- `reviewing` → go to Step 5
-- `fixing` → go to Step 7
-- `verifying` → go to Step 8
-
-If `PHASE` is empty or unset, this is a fresh start. Continue to Step 4.
+If `PHASE` is empty/unset, this is a fresh start. Continue to Step 4.
 
 ## 4. Detect Review Scope
 
 ### 4a. Silent PR Auto-Detection
 
-Before asking any questions, silently detect PR context using multiple strategies:
-
-**Strategy 1 — Current branch:**
-
-```bash
-PR_JSON=`gh pr view --json number,title,body,state,baseRefName,closingIssuesReferences --jq '.' 2>/dev/null`
-```
-
-**Strategy 2 — Match HEAD commit against open PRs:**
-
-```bash
-if [ -z "$PR_JSON" ]; then
-  HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
-  PR_NUM=`gh pr list --search "$HEAD_SHA" --state open --json number --jq '.[0].number' 2>/dev/null`
-  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,closingIssuesReferences 2>/dev/null`
-  fi
-fi
-```
-
-**Strategy 3 — Check merged/closed PRs too:**
-
-```bash
-if [ -z "$PR_JSON" ]; then
-  HEAD_SHA=`git rev-parse HEAD 2>/dev/null`
-  PR_NUM=`gh pr list --search "$HEAD_SHA" --state all --limit 5 --json number --jq '.[0].number' 2>/dev/null`
-  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=`gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,closingIssuesReferences 2>/dev/null`
-  fi
-fi
-```
-
-If a PR was found, display a brief summary.
+Before asking any questions, silently detect PR context using three strategies (current branch / HEAD-search open / HEAD-search any-state). The exact bash for these strategies plus base-branch fallback is the same as in `review-deep` Step 1; if needed, see `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/scope-detect.md`.
 
 ### 4b. Ask User for Review Scope
 
-Use a **single `AskUserQuestion` call** with these questions:
+Use a **single `AskUserQuestion` call** with two questions.
 
-**Question 1 — "What do you want to review?"**
+**Q1 — "What do you want to review?":** options `Changes vs branch` (Recommended; against base branch, default `main`) / `Uncommitted changes` (staged, unstaged, untracked) / `Specific files` (paths).
 
-| Option | Description |
-|--------|-------------|
-| Changes vs branch (Recommended) | Review changes against a base branch (default: `main`) |
-| Uncommitted changes | Review staged, unstaged, and untracked changes |
-| Specific files | Review only specific files or directories |
+**Q2 — "Which model?":** show options based on `LLM_CHOICE`:
 
-**Question 2 — "Which model?"**
-
-Show model options based on `LLM_CHOICE`:
-
-**If codex:**
-
-| Model | Description |
-|-------|-------------|
-| gpt-5.5 (Recommended) | Latest frontier model, best overall |
-| gpt-5.5-pro | Maximum performance on complex tasks |
-| gpt-5.3-codex | Previous generation frontier model |
-| gpt-5.1-codex-mini | Cost-efficient |
-
-**If gemini:**
-
-| Model | Description |
-|-------|-------------|
-| gemini-2.5-pro (Recommended) | Most capable |
-| gemini-2.5-flash | Faster, cost-efficient |
-
-**If ollama:**
-
-| Model | Description |
-|-------|-------------|
-| codellama (Recommended) | Code-specialized |
-| llama3 | General purpose |
-| deepseek-coder | Code-specialized |
-| Custom | Enter model name |
+- **codex:** `gpt-5.5` (Recommended), `gpt-5.5-pro`, `gpt-5.3-codex`, `gpt-5.1-codex-mini`
+- **gemini:** `gemini-2.5-pro` (Recommended), `gemini-2.5-flash`
+- **ollama:** `codellama` (Recommended), `llama3`, `deepseek-coder`, Custom
 
 ### 4c. Auto-Detect Base Branch & Conditional Follow-Up
 
-**Base branch auto-detection** (for "Changes vs branch" or "Specific files" scopes):
+For "Changes vs branch" / "Specific files": reuse `PR_JSON` from 4a, fall back to `origin/HEAD`/remote default/`main`. Display the detected branch.
 
-Reuse PR data from Step 4a if available, otherwise fall back to remote default:
+Remaining follow-ups (only ask if needed): "Specific files" → ask paths; "Custom" model → ask model name.
 
-```bash
-if [ -n "$PR_JSON" ]; then
-  BASE_BRANCH=`echo "$PR_JSON" | jq -r '.baseRefName'`
-else
-  BASE_BRANCH=`(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' | grep .) || (git remote show -n origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep .) || echo "main"`
-fi
-echo "Detected base branch: $BASE_BRANCH"
-```
-
-Display: "Detected base branch: `$BASE_BRANCH`". If the user corrects it (e.g., "use `develop`"), update `BASE_BRANCH` accordingly.
-
-**Remaining follow-ups** — only ask `AskUserQuestion` if OTHER selections need input:
-
-- If "Specific files" was selected → ask for the file paths (base branch is already auto-detected above)
-- If "Custom" model was selected → ask for the model name
-- If no remaining follow-ups are needed, skip `AskUserQuestion` entirely
-
-Store all selections: `REVIEW_SCOPE`, `BASE_BRANCH`, `MODEL`, `FILE_PATHS`.
-
-**Persist scope/model to state file** for re-entry recovery. Merge these fields into `.local/state/review-loop.loop.local.json`:
-
-```bash
-STATE_FILE=".local/state/review-loop.loop.local.json"
-TMP="$STATE_FILE.tmp"
-jq --arg scope "$REVIEW_SCOPE" --arg base_branch "$BASE_BRANCH" \
-   --arg model "$MODEL" --arg file_paths "${FILE_PATHS:-}" \
-   '. + {scope: $scope, base_branch: $base_branch, model: $model, file_paths: $file_paths}' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
-
-The `pass:` field in the state file was initialized to 0 in Step 1.
+Persist `scope`, `base_branch`, `model`, `file_paths` to the state file via `jq` (same pattern as Step 1). See `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/state-persist.md` for the exact invocation.
 
 ## 5. Review Phase
-
-Set phase to `reviewing` and increment the `pass:` field in the state file:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
 set_loop_phase ".local/state/review-loop.loop.local.json" "reviewing"
-# Increment pass counter in state file (read current value, increment, write back)
+# Increment pass counter in state file; read updated value into PASS
 ```
 
-Read the updated `pass:` value from the state file into `PASS` for use in this pass.
+**Generate diff per `REVIEW_SCOPE`:**
 
-### 5a. Generate Diff
+- Changes vs branch: `git diff ${BASE_BRANCH}...HEAD`
+- Uncommitted: `git diff HEAD` (don't add `--cached`, it duplicates staged hunks); include untracked file content via `git ls-files --others --exclude-standard`
+- Specific files: `git diff ${BASE_BRANCH}...HEAD -- <file_paths>`
 
-Based on `REVIEW_SCOPE`:
+**Run LLM review** — four paths (codex exhaustive `exec --output-schema`, codex quick `review`, gemini, ollama). Each includes diff-size warning, adaptive timeout for codex, and `AskUserQuestion`-based error handling — never silently fail.
 
-- **Changes vs branch:** `git diff ${BASE_BRANCH}...HEAD`
-- **Uncommitted changes:** `git diff HEAD` (includes both staged and unstaged changes vs HEAD — do NOT also add `git diff --cached` as that duplicates staged hunks). For untracked files, use `git ls-files --others --exclude-standard` to get paths, then include their full content (e.g., `cat <file>`) in the diff section so new files are actually reviewed by `codex exec`.
-- **Specific files:** `git diff ${BASE_BRANCH}...HEAD -- <file_paths>`
-
-### 5b. Run LLM Review
-
-Execute the review based on `LLM_CHOICE`:
-
-**Codex (default — exhaustive mode via `codex exec`):**
-
-When `QUICK_MODE` is `false` (the default), use `codex exec` with a structured output schema. This bypasses the 2-3 finding limit of `codex review` and returns ALL findings as structured JSON.
-
-1. Read the prompt template:
-
-```bash
-PROMPT_TEMPLATE=$(cat "${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md")
-```
-
-2. Build the prompt by replacing `{PLACEHOLDER}` tokens:
-
-- `{DIFF}` ← diff from Step 5a
-- `{SCOPE_HINT}` ← if `SCOPE_HINT` is set, render as `## Specific Focus Area\n$SCOPE_HINT`; otherwise empty string
-- `{REPO_GUIDELINES}` ← auto-detect `AGENTS.md` in repo root; if found, render as `## Repository Review Guidelines\n$(cat AGENTS.md)`; else check `CLAUDE.md`; otherwise empty string
-- `{PR_CONTEXT}` ← if PR was detected in Step 4a, render PR number, title, body, and linked issues; otherwise empty string
-
-3. Detect timeout command and estimate diff size:
-
-```bash
-# Detect timeout command (macOS does not ship GNU timeout)
-if command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="gtimeout"
-elif command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="timeout"
-else
-  TIMEOUT_CMD=""
-fi
-
-DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
-DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git' || echo 0)
-echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
-
-# Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
-CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
-if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
-```
-
-If the diff exceeds 3000 lines, warn the user **before** starting:
-
-Use `AskUserQuestion`:
-
-**"Large diff detected ($DIFF_LINES lines, $DIFF_FILES files). Codex exec may timeout on diffs this large. How would you like to proceed?"**
-
-| Option | Description |
-|--------|-------------|
-| **Proceed with codex exec** | Run with extended timeout (${CODEX_TIMEOUT}s) — may still timeout |
-| **Use `codex review --base`** | Faster but limited to 2-3 findings per pass (no structured output) |
-| **Skip review** | Stop the review loop |
-
-If the user chooses `codex review --base`, set `QUICK_MODE=true` and persist to state file for re-entry:
-
-```bash
-TMP="$STATE_FILE.tmp"
-jq '.quick_mode = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
-
-Then use the quick-mode path below.
-
-4. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs), then execute with adaptive timeout:
-
-```bash
-PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
-echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
-
-set +e
-if [ -n "$TIMEOUT_CMD" ]; then
-  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "$MODEL" -s read-only \
-    --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
-    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
-else
-  REVIEW_JSON=$($CODEX_CMD exec -m "$MODEL" -s read-only \
-    --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
-    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
-fi
-CODEX_EXIT_CODE=$?
-CODEX_STDERR=$(cat "/tmp/codex-review-stderr-$$" 2>/dev/null)
-rm -f "/tmp/codex-review-stderr-$$"
-set -e
-
-# Strip codex exec headers (version/config info printed before JSON)
-REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
-# Guard: if stripping removed all output, codex exec returned no JSON
-if [ -z "$REVIEW_JSON" ] && [ "$CODEX_EXIT_CODE" -eq 0 ]; then
-  echo "WARNING: $CODEX_CMD exec produced no JSON output after header stripping"
-  REVIEW_JSON='{"error":"no JSON output"}'
-fi
-rm -f "$PROMPT_FILE"
-```
-
-**If `CODEX_EXIT_CODE` is non-zero**, do NOT silently fail. Handle based on exit code:
-
-- **Exit code 124 (timeout):** Compute doubled timeout and display diagnostics:
-  ```bash
-  DOUBLED_TIMEOUT=$(( CODEX_TIMEOUT * 2 ))
-  if [ "$DOUBLED_TIMEOUT" -gt 900 ]; then DOUBLED_TIMEOUT=900; fi
-  ```
-  Display diff size, timeout used, partial output, and stderr. Use `AskUserQuestion`:
-
-  **"Codex exec timed out after ${CODEX_TIMEOUT}s. How would you like to proceed?"**
-
-  | Option | Description |
-  |--------|-------------|
-  | **Retry with longer timeout** | Double the timeout to ${DOUBLED_TIMEOUT}s |
-  | **Use `codex review --base`** | Faster mode, limited to 2-3 findings per pass |
-  | **Drop `--output-schema`** | Run codex exec without structured output (faster, parse free-text) |
-  | **Skip review** | Stop the review loop |
-
-  For "Retry with longer timeout": set `CODEX_TIMEOUT=$DOUBLED_TIMEOUT` and re-run from Step 5b.4.
-  For "Drop `--output-schema`": re-run without the schema flag and parse the free-text response. Set `CODEX_EXEC_FALLBACK=true`.
-
-- **Other non-zero exit codes:** Display exit code, stderr, and any output. Use `AskUserQuestion`:
-
-  **"`$LLM_CHOICE` exec failed (exit code $CODEX_EXIT_CODE). How would you like to proceed?"**
-
-  | Option | Description |
-  |--------|-------------|
-  | **Retry** | Run the command again |
-  | **Debug / Fix** | Show diagnostics (version, API key, auth, network) |
-  | **Skip review** | Stop the review loop |
-
-5. Validate JSON was returned. If `codex exec` returns non-JSON or empty output, this is a review failure — do NOT fall through to the free-text clean-review path (which would treat empty output as `NO_ISSUES_FOUND`). Display the raw output (first 500 chars). Use `AskUserQuestion`:
-
-   **"Codex exec returned invalid output. Review did not complete."**
-
-   | Option | Description |
-   |--------|-------------|
-   | **Retry** | Run `$CODEX_CMD exec` again |
-   | **Debug / Fix** | Investigate (show codex version, API key status, raw output) |
-   | **Use `codex review --base`** | Use the simpler codex review mode for this pass |
-   | **Skip review** | Stop the review loop |
-
-**Codex (quick mode — `--quick` flag):**
-
-When `QUICK_MODE` is `true`, use the standard `codex review` command. This is faster but limited to 2-3 findings per pass:
-
-```bash
-# For changes vs branch:
-$CODEX_CMD review --base "$BASE_BRANCH" -c model="$MODEL"
-
-# For uncommitted:
-$CODEX_CMD review --uncommitted -c model="$MODEL"
-
-# For specific files or when scope hint is provided, use stdin:
-DIFF=$(git diff ${BASE_BRANCH}...HEAD -- <files>)
-$CODEX_CMD review -c model="$MODEL" - <<EOF
-$DIFF
-
-## Review Instructions
-${SCOPE_HINT:+Focus area: $SCOPE_HINT}
-Report each finding with: file path, line number, severity (error/warning/suggestion), and description.
-If there are no issues, respond with exactly: NO_ISSUES_FOUND
-EOF
-```
-
-Capture output as free-text `FINDINGS`.
-
-**Gemini:**
-
-Use the `DIFF` generated in Step 5a (scope-aware), not a hardcoded branch diff.
-
-If `GEMINI_TIER` is set and non-empty, display a warning before running:
-
-> **Note:** `--tier $GEMINI_TIER` was specified but the Gemini CLI does not support service tiers. The tier setting will be ignored for this review. When Gemini CLI adds `--service-tier` support, it will be applied automatically. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for updates.
-
-```bash
-gemini -m "$MODEL" <<EOF
-Review the following code changes for bugs, security issues, performance problems, and best practice violations.
-
-${SCOPE_HINT:+Focus area: $SCOPE_HINT}
-
-Report each finding with: file path, line number, severity (error/warning/suggestion), and description.
-If there are no issues, respond with exactly: NO_ISSUES_FOUND
-
-\`\`\`diff
-$DIFF
-\`\`\`
-EOF
-```
-
-**Ollama:**
-
-Use the `DIFF` generated in Step 5a (scope-aware), not a hardcoded branch diff.
-
-```bash
-ollama run "$MODEL" <<EOF
-Review the following code changes for bugs, security issues, performance problems, and best practice violations.
-
-${SCOPE_HINT:+Focus area: $SCOPE_HINT}
-
-Report each finding with: file path, line number, severity (error/warning/suggestion), and description.
-If there are no issues, respond with exactly: NO_ISSUES_FOUND
-
-\`\`\`diff
-$DIFF
-\`\`\`
-EOF
-```
-
-Capture the output as `FINDINGS`.
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/review-phase.md` for prompt-template assembly, `gtimeout`/`timeout` detection, 3000-line large-diff warning, exit-code 124 timeout handling, "Drop --output-schema" / "Use codex review --base" fallback options, gemini/ollama heredocs, and the `GEMINI_TIER` warning text.
 
 ## 6. Parse Findings
 
-### 6a. Structured JSON (codex exec mode)
+- **Structured JSON** (codex exec, `QUICK_MODE=false`, `CODEX_EXEC_FALLBACK!=true`): validate JSON, filter `confidence_score < 0.3` FIRST, check for clean AFTER filtering, sort by priority then confidence, display table, de-duplicate across passes via state file
+- **Free-text** (codex quick / gemini / ollama): exact-match `NO_ISSUES_FOUND` clean signal, parse findings from output
 
-When `LLM_CHOICE` is `codex` and `QUICK_MODE` is `false` and `CODEX_EXEC_FALLBACK` is not `true`:
+**Always filter bot noise** — silently discard findings containing usage-limit / quota messages.
 
-1. Validate JSON: `printf '%s\n' "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, log a warning and fall through to Step 6b with `FINDINGS="$REVIEW_JSON"`.
-
-2. Extract and filter findings:
-
-```bash
-OVERALL=$(printf '%s\n' "$REVIEW_JSON" | jq -r '.overall_correctness')
-OVERALL_EXPLANATION=$(printf '%s\n' "$REVIEW_JSON" | jq -r '.overall_explanation')
-OVERALL_CONFIDENCE=$(printf '%s\n' "$REVIEW_JSON" | jq -r '.overall_confidence_score')
-```
-
-3. Filter low-confidence noise FIRST — discard findings with `confidence_score < 0.3`:
-
-```bash
-FILTERED_JSON=$(printf '%s\n' "$REVIEW_JSON" | jq '{
-  findings: [.findings[] | select(.confidence_score >= 0.3)],
-  overall_correctness: .overall_correctness,
-  overall_explanation: .overall_explanation,
-  overall_confidence_score: .overall_confidence_score
-}')
-FINDING_COUNT=$(printf '%s\n' "$FILTERED_JSON" | jq '.findings | length')
-```
-
-4. Check for clean review AFTER filtering (so filtered-to-zero also triggers clean path):
-
-If `FINDING_COUNT == 0` and `OVERALL` is `"patch is correct"`:
-   - If `PASS == 1`: Ask user to confirm scope is correct. If confirmed → output `<done>REVIEW_CLEAN</done>`.
-   - If `PASS > 1`: Clean verification pass. Output summary and `<done>REVIEW_CLEAN</done>`.
-
-If `FINDING_COUNT == 0` but `OVERALL` is `"patch is incorrect"`: display `overall_explanation` as a warning but treat as clean (no actionable findings survived filtering).
-
-5. Sort by priority (0 first), then confidence (highest first).
-
-6. Display as formatted table:
-
-```
-## Review Findings (Pass $PASS) — $FINDING_COUNT issues
-
-| # | Priority | Category | File | Lines | Title | Confidence |
-|---|----------|----------|------|-------|-------|------------|
-| 1 | P0 | correctness | api/handler.go | 42-45 | Nil pointer on empty response | 0.95 |
-```
-
-Display `overall_explanation` as a summary below the table.
-
-7. **De-duplicate across passes:** Compare `(file_path, line_range.start, normalized title)` against previous-pass findings stored in state file. Skip duplicates.
-
-8. Store findings in state file for de-duplication and re-entry:
-
-```bash
-jq --argjson f "$FILTERED_JSON" --arg key "findings_pass_$PASS" \
-  '.[$key] = $f.findings' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
-
-### 6b. Free-text (codex quick mode / gemini / ollama)
-
-After capturing the LLM review output as `FINDINGS`:
-
-- If output (trimmed) equals exactly `NO_ISSUES_FOUND` or has fewer than 20 characters of content:
-  - If `PASS == 1`: Ask user to confirm the scope is correct (first-pass clean review may indicate wrong scope). If user confirms scope is fine → output `<done>REVIEW_CLEAN</done>` and stop.
-  - If `PASS > 1`: Clean review after fixes. Output summary and `<done>REVIEW_CLEAN</done>`.
-- Otherwise: Extract structured findings from the output. Display findings to user with pass number.
-
-**Filter bot noise:** Silently discard any finding that contains usage-limit or quota messages (e.g., "reached your Codex usage limits", "usage limits for code reviews", "see your limits").
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/parse-findings.md` for the jq filter chain, de-duplication keying, per-pass `findings_pass_<N>` state-file write, and the formatted-table layout.
 
 ## 7. Fix Phase
-
-Set phase to `fixing`:
 
 ```bash
 set_loop_phase ".local/state/review-loop.loop.local.json" "fixing"
 ```
 
-### Parallel Fix Dispatch (when 3+ findings target different files)
+For each finding (priority P0 → P3): read file at cited line range, evaluate validity, auto-skip `priority == 3` AND `confidence < 0.5`, make minimal fix or record skip reason, generate a test for testable fixes.
 
-When structured findings (codex exec mode) contain 3 or more findings targeting **different files**, dispatch parallel Implementer subagents for faster resolution:
+**Parallel dispatch** when 3+ findings target different files: group by file (and shared `_test.go` per package), dispatch one Agent subagent per group with `run_in_background: true`, then aggregate. Fall back to sequential when <3 findings, free-text findings, or all findings target the same file.
 
-1. **Group findings by file** — findings in the same file must be handled sequentially (one subagent per file group)
-2. **Group by test file** — if two source files share the same `_test.go` (same package), they must be in the same group to avoid write conflicts on test files
-3. **For each file group**, dispatch an Agent subagent (sonnet) with this prompt:
-   - "You are fixing review findings in `{FILE_PATH}`. Working directory: `{PROJECT_ROOT}`."
-   - Include all findings for that file (title, body, line range, priority, category)
-   - "For each finding: read the file, evaluate validity, fix if valid (skip if not), generate test if testable. Report STATUS, FILES_CHANGED, TEST_RESULTS, SKIPPED findings with reasons."
-3. **Dispatch all file-group agents in parallel** using `run_in_background: true`
-4. **Collect results** — aggregate FIXED and SKIPPED counts across all subagents
-5. **Proceed to Step 8** (Verify Phase) with combined results
-
-**Fall back to sequential processing** (steps 7a/7b below) when:
-- Fewer than 3 findings (subagent overhead not justified)
-- Findings are free-text (not structured JSON — harder to distribute)
-- All findings target the same file
-
-### 7a. Structured findings (codex exec mode)
-
-When findings are structured JSON from Step 6a, iterate using `jq` and process in priority order (P0 first):
-
-```bash
-for i in $(seq 0 $((FINDING_COUNT - 1))); do
-  FILE=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].code_location.file_path")
-  START=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].code_location.line_range.start")
-  END=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].code_location.line_range.end")
-  TITLE=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].title")
-  BODY=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].body")
-  PRIORITY=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].priority")
-  CATEGORY=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].category")
-  CONFIDENCE=$(printf '%s\n' "$FILTERED_JSON" | jq -r ".findings[$i].confidence_score")
-done
-```
-
-For each finding:
-
-1. Read `$FILE` lines `$START` to `$END` plus surrounding context
-2. Evaluate: Is this valid? Cross-reference with category and confidence.
-3. Auto-skip findings with `priority == 3` AND `confidence < 0.5` (nit-level noise)
-4. If valid: make the fix using Edit tool
-5. If not valid or intentionally skipped: record the reason
-6. For testable fixes (changes observable behavior): generate a corresponding test
-   - Check for existing `_test.go` / `_test.ts` / `test_*.py` files
-   - If table-driven tests exist, add a new case
-   - If no test exists, create one following project conventions
-   - Verify the new test passes
-
-### 7b. Free-text findings (codex quick mode / gemini / ollama)
-
-For each finding from Step 6b:
-
-1. Read the relevant file and surrounding code context
-2. Evaluate the finding — is it valid and actionable?
-3. If valid: make the fix using Edit tool
-4. If not valid or intentionally skipped: record the reason
-5. For testable fixes (changes observable behavior): generate a corresponding test
-   - Check for existing `_test.go` / `_test.ts` / `test_*.py` files
-   - If table-driven tests exist, add a new case
-   - If no test exists, create one following project conventions
-   - Verify the new test passes
-
-Track counts: `FIXED`, `SKIPPED` (with reasons).
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/fix-phase.md` for the structured/free-text iteration bash, the dispatch agent prompt, and per-language test-generation conventions.
 
 ## 8. Verify Phase
-
-Set phase to `verifying`:
 
 ```bash
 set_loop_phase ".local/state/review-loop.loop.local.json" "verifying"
 ```
 
-Auto-detect project type and run appropriate verification:
+Auto-detect project type (`go.mod`, `package.json`, `Cargo.toml`, `pyproject.toml`/`setup.py`) and run the matching build + test + (optional) lint commands. If no project type detected, ask the user for the verify command.
 
-**Go** (go.mod exists):
+If any verification fails: analyze, fix, re-run, repeat until all pass.
 
-```bash
-go build ./...
-go test ./...
-golangci-lint run 2>/dev/null || true  # optional: may not be installed
-```
-
-**Node/TypeScript** (package.json exists):
-
-```bash
-npm run build  # fail if build breaks
-npm test       # fail if tests break
-npm run lint 2>/dev/null || true  # optional: lint script may not exist
-```
-
-**Rust** (Cargo.toml exists):
-
-```bash
-cargo build
-cargo test
-cargo clippy 2>/dev/null || true  # optional: may not be installed
-```
-
-**Python** (pyproject.toml or setup.py exists):
-
-```bash
-pytest 2>/dev/null || python -m pytest  # fail if tests break
-ruff check . 2>/dev/null || flake8 . 2>/dev/null || true  # optional: linter may not be installed
-```
-
-**Fallback:** If no project type detected, ask the user what verify command to run.
-
-If any verification fails:
-1. Analyze the failure
-2. Fix the issue
-3. Re-run the failing verification
-4. Repeat until all verifications pass
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/verify-and-commit.md` for the per-language command set and the Step 9 commit logic (stage modified files only — never `git add -A`; commit only when there are staged changes; per-pass summary line).
 
 ## 9. Commit Fixes
 
-Stage only the files that were fixed in this pass. Do NOT use `git add -A` as it may sweep in unrelated working-tree changes:
-
-```bash
-git add <list of files modified during fix phase>
-```
-
-Track which files were edited during the fix phase (Step 7) and only stage those specific files.
-
-**Only commit if there are staged changes.** Passes can legitimately have zero fixable findings (all skipped/invalid), so check before committing:
-
-```bash
-if ! git diff --cached --quiet; then
-  git commit -m "fix: address $LLM_CHOICE review findings (pass $PASS)"
-else
-  echo "No changes to commit for this pass"
-fi
-```
-
-Display summary for this pass:
-- Findings reported by LLM
-- Findings fixed
-- Findings skipped (with reasons)
-- Files changed
-- Verification status
+See `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/verify-and-commit.md`. Commit message format: `fix: address $LLM_CHOICE review findings (pass $PASS)`. After commit, display the per-pass summary: findings reported / fixed / skipped (with reasons), files changed, verification status.
 
 ## 10. Loop Decision
 
-### Multi-pass optimization for codex exec mode
+**Codex `exec` optimization:** exhaustive mode returns ALL findings in pass 1, so additional passes are mainly for verification. After pass 1's fixes, run ONE verification pass — if zero findings, stop immediately regardless of `MAX_PASSES`. New issues from fixes → continue normally.
 
-Since `codex exec` returns ALL findings in a single pass (no artificial limit), additional passes are primarily useful for verification after fixes. When `LLM_CHOICE` is `codex` and `QUICK_MODE` is `false`:
-
-- If pass 1 returned findings and they were all fixed, run ONE verification pass (pass 2) with the same prompt and a fresh diff
-- If pass 2 is clean (zero findings) → stop immediately regardless of `MAX_PASSES`
-- If pass 2 has findings, those are genuinely new issues introduced by fixes → continue normally
-
-### Standard loop decision
-
-Check if we should continue:
-
-- If `PASS >= MAX_PASSES`:
-  - Display overall summary (total passes, total findings addressed, total skipped, files changed)
-  - Ask user: "Max passes reached. Continue for another round or stop?"
-  - If stop → output `<done>REVIEW_CLEAN</done>`
-  - If continue → reset `MAX_PASSES` to `MAX_PASSES + current value` and go to Step 5
-- Otherwise:
-  - Go to Step 5 (next review pass)
+**Standard:** if `PASS >= MAX_PASSES`, ask "Max passes reached. Continue or stop?" via `AskUserQuestion`. Stop → output `<done>REVIEW_CLEAN</done>`. Continue → reset `MAX_PASSES = MAX_PASSES + current value` and go to Step 5. Otherwise → go to Step 5.
 
 ## Completion
 
-When outputting completion, always include a summary:
+Output a summary then `<done>REVIEW_CLEAN</done>`:
 
 ```
 ## Review Loop Complete
@@ -722,15 +159,20 @@ When outputting completion, always include a summary:
 - **All verifications passed:** yes/no
 ```
 
-Then output the completion promise:
-
-```
-<done>REVIEW_CLEAN</done>
-```
-
 ## Important Notes
 
-- **Bot message filtering:** When processing LLM review output, silently discard any content about external service usage limits or quota messages. These are irrelevant to the local review.
-- **De-duplication across passes:** If a finding from a previous pass appears again (same file, same line, same issue), skip it — it was already addressed or intentionally skipped.
-- **Phase re-entry:** The stop-hook will re-feed this command if the session exits mid-loop. The phase check in Step 3 ensures we resume at the correct point.
-- **Cancel:** Users can run `/cancel-loop review-loop` at any time to cleanly exit the loop.
+- **Bot message filtering:** silently discard any content about external service usage limits or quota messages.
+- **De-duplication across passes:** skip any (file, line, issue) tuple that appeared in a previous pass — it was already addressed or intentionally skipped.
+- **Cancel:** `/cancel-loop review-loop` cleanly exits.
+
+## Further Reading
+
+All sibling files live under `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/`:
+
+- `prerequisites.md` — Step 2 diagnostics + install instructions
+- `scope-detect.md` — Step 4a's three PR-detection strategies + base-branch fallback
+- `state-persist.md` — the jq merge pattern shared by Steps 1 and 4c
+- `review-phase.md` — Step 5b's LLM execution paths (codex exhaustive/quick, gemini, ollama), prompt assembly, timeout + error handling
+- `parse-findings.md` — Step 6's structured + free-text parsing, de-duplication
+- `fix-phase.md` — Step 7's iteration, parallel-dispatch agent prompt, test generation
+- `verify-and-commit.md` — Step 8 per-language commands + Step 9 staged-commit logic
