@@ -8,8 +8,7 @@ allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestio
 
 ## 0. State File Bootstrap
 
-Before calling setup-loop, check if a state file already exists with a non-empty phase (re-entry).
-If so, **skip** setup-loop to preserve custom fields (`args`, `pass`, `pr_number`, `base_branch`, `no_merge`, `llm`, `discovered_bots`).
+Before calling setup-loop, check if a state file already exists with a non-empty phase (re-entry). If so, **skip** setup-loop to preserve custom fields (`args`, `pass`, `pr_number`, `base_branch`, `no_merge`, `llm`, `discovered_bots`).
 
 ```bash
 STATE_FILE=".local/state/ship.loop.local.json"
@@ -29,77 +28,50 @@ fi
 
 Parse `$ARGUMENTS` to extract:
 
-- `--llm <value>`: LLM to use for reviews. Options: `codex` (default), `gemini`, `ollama`
-- `--passes <n>`: Maximum LLM review passes (default: 3)
-- `--no-merge`: Stop after bot approval, don't auto-merge
-- `--skip-coverage`: Skip the coverage verification and e2e testing phases entirely
-- `--coverage-threshold <n>`: Override default 60% threshold for changed-file coverage
-- `--tier <value>`: Gemini service tier. Options: `flex`, `standard`, `priority`. Only applies when `--llm gemini`. Default: not set (standard behavior).
-- Remaining text: ignored
+- `--llm <value>`: `codex` (default), `gemini`, `ollama`
+- `--passes <n>`: max LLM review passes (default: 3)
+- `--no-merge`: stop after bot approval, don't auto-merge
+- `--skip-coverage`: skip coverage + e2e phases entirely
+- `--coverage-threshold <n>`: override the default 60% threshold
+- `--tier <value>`: gemini service tier (`flex`/`standard`/`priority`; gemini only; default: unset)
 
-Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD` (default: 60), `GEMINI_TIER`.
+Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD` (default `60`), `GEMINI_TIER`.
 
-**Persist arguments to state file** for re-entry recovery. After parsing, merge these fields into `.local/state/ship.loop.local.json` using `jq`:
-
-```bash
-STATE_FILE=".local/state/ship.loop.local.json"
-TMP="$STATE_FILE.tmp"
-jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
-   --arg no_merge "$NO_MERGE" --arg pr_number "" --arg base_branch "" \
-   --arg bot_review_baseline "" --arg discovered_bots "" --arg has_ci "" \
-   --arg skip_coverage "$SKIP_COVERAGE" --arg coverage_threshold "$COVERAGE_THRESHOLD" \
-   --arg coverage_result "" --argjson coverage_tests_generated 0 \
-   --arg e2e_attempted "" --arg e2e_result "" --argjson e2e_pages_tested 0 \
-   --arg review_clean "" --arg head_sha "" --arg gemini_tier "$GEMINI_TIER" \
-   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, head_sha: $head_sha, gemini_tier: $gemini_tier}' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
+**Persist arguments** to `.local/state/ship.loop.local.json` via `jq` so the stop-hook can recover all fields on re-entry. The full jq invocation lives in `${CLAUDE_PLUGIN_ROOT}/lib/ship/state-fields.md` — fields written: `args, llm, pass, no_merge, pr_number, base_branch, bot_review_baseline, discovered_bots, has_ci, skip_coverage, coverage_threshold, coverage_result, coverage_tests_generated, e2e_attempted, e2e_result, e2e_pages_tested, review_clean, head_sha, gemini_tier`.
 
 ## 2. Re-entry Check
-
-Read the loop state file:
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
 STATE_FILE=".local/state/ship.loop.local.json"
-if [ -f "$STATE_FILE" ]; then
-  read_loop_state "$STATE_FILE"
-fi
+[ -f "$STATE_FILE" ] && read_loop_state "$STATE_FILE"
 ```
 
-If `PHASE` is set (non-empty), this is a re-entry from the stop-hook. Recover state from persisted fields using `jq`:
+If `PHASE` is set (non-empty), this is a stop-hook re-entry. Restore all fields listed in Step 1 from state file via `jq -r '.<field> // empty'`. If `review_clean == "true"`, set `REVIEW_CLEAN=true` to preserve the clean-review fast path.
 
-1. Read `args` field and re-parse to restore `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD`, `GEMINI_TIER`
-2. Read `pass`, `pr_number`, `base_branch`, `bot_review_baseline`, `llm`, `discovered_bots`, `has_ci`, `skip_coverage`, `coverage_threshold`, `coverage_result`, `coverage_tests_generated`, `e2e_attempted`, `e2e_result`, `e2e_pages_tested`, `review_clean`, `head_sha`, `gemini_tier` fields via `jq -r '.field // empty' "$STATE_FILE"`
-3. If `review_clean` is `"true"`, set `REVIEW_CLEAN=true` to preserve the clean-review fast path after re-entry
+Then jump to the matching phase:
 
-Then skip to the corresponding phase:
+| Phase | Step |
+|-------|------|
+| `reviewing` | Step 5 (Phase 1) |
+| `fixing` | Step 6 (Phase 1) |
+| `verifying` | Step 7 (Phase 1) |
+| `coverage-check` | Step 7.5 (Phase 1) |
+| `e2e-testing` | Step 7.6 (Phase 1) |
+| `pushing` | Step 9 (Phase 2) |
+| `ci-watch` | Step 10 (Phase 3) |
+| `bot-watching` | Step 11 (Phase 4) |
+| `addressing` | Step 12 (Phase 5) |
+| `merging` | Step 13 (Phase 6) |
 
-- `reviewing` → go to Step 5
-- `fixing` → go to Step 6
-- `verifying` → go to Step 7
-- `coverage-check` → go to Step 7.5
-- `e2e-testing` → go to Step 7.6
-- `pushing` → go to Step 9
-- `ci-watch` → go to Step 10
-- `bot-watching` → go to Step 11
-- `addressing` → go to Step 12
-- `merging` → go to Step 13
-
-If `PHASE` is empty or unset, this is a fresh start. Continue to Step 3.
+If `PHASE` is empty/unset → fresh start. Continue to Step 3.
 
 ## 3. Detect Context
-
-### 3a. Auto-detect base branch and PR
 
 ```bash
 CURRENT_BRANCH=$(git branch --show-current)
 PR_JSON=$(gh pr view --json number,baseRefName --jq '.' 2>/dev/null || echo "")
-```
 
-**If a PR exists**, use the PR's base branch (handles PRs targeting non-default branches like release branches):
-
-```bash
 if [ -n "$PR_JSON" ]; then
   PR_NUM=$(echo "$PR_JSON" | jq -r '.number')
   BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.baseRefName')
@@ -111,1309 +83,132 @@ else
 fi
 ```
 
-**CRITICAL:** If `CURRENT_BRANCH` equals `BASE_BRANCH` (e.g., both are `main`), **STOP** — do not ship from the default branch. Inform the user and ask how to proceed.
+**CRITICAL:** If `CURRENT_BRANCH == BASE_BRANCH` → **STOP**, do not ship from the default branch. Inform the user and ask how to proceed.
 
-Store `BASE_BRANCH` and `PR_NUM` (if found) in state file.
+If `git status --porcelain` shows uncommitted changes, ask the user: "Commit them before shipping, or abort?"
 
-### 3b. Check for uncommitted changes
-
-```bash
-git status --porcelain
-```
-
-If there are uncommitted changes, ask the user: "There are uncommitted changes. Commit them before shipping, or abort?"
+Persist `BASE_BRANCH` and `PR_NUM` (if found) in the state file.
 
 ## 4. Prerequisite Check
 
-Verify the selected LLM CLI is installed. **CRITICAL: Never silently fall back** — always present the user with options.
+Verify the selected LLM CLI is installed. **CRITICAL: Never silently fall back** — always use `AskUserQuestion`. The detection bash, diagnostic block, and four-option `AskUserQuestion` (**Retry** / **Debug / Install instructions** / **Use agent-based review** / **Abort**) live in `${CLAUDE_PLUGIN_ROOT}/lib/ship/prerequisites.md`.
 
-### 4a. Detect LLM CLI
-
-```bash
-LLM_AVAILABLE=true
-if [ "$LLM_CHOICE" = "codex" ]; then
-  if command -v codex &>/dev/null; then
-    CODEX_CMD="codex"
-  elif npx -y codex --version &>/dev/null 2>&1; then
-    CODEX_CMD="npx -y codex"
-  else
-    LLM_AVAILABLE=false
-  fi
-elif [ "$LLM_CHOICE" = "gemini" ]; then
-  command -v gemini >/dev/null 2>&1 || LLM_AVAILABLE=false
-elif [ "$LLM_CHOICE" = "ollama" ]; then
-  command -v ollama >/dev/null 2>&1 || LLM_AVAILABLE=false
-fi
-```
-
-### 4b. Handle CLI Not Found
-
-If `LLM_AVAILABLE` is `false`:
-
-1. Run diagnostics and display them:
-   ```bash
-   echo "=== LLM CLI Diagnostic ==="
-   echo "LLM selected: $LLM_CHOICE"
-   if [ "$LLM_CHOICE" = "codex" ]; then
-     echo "codex in PATH: $(command -v codex 2>/dev/null || echo 'NOT FOUND')"
-     echo "npx codex: $(npx -y codex --version 2>/dev/null || echo 'FAILED')"
-     echo "OPENAI_API_KEY set: $([ -n "${OPENAI_API_KEY:-}" ] && echo 'yes' || echo 'NO')"
-   elif [ "$LLM_CHOICE" = "gemini" ]; then
-     echo "gemini in PATH: $(command -v gemini 2>/dev/null || echo 'NOT FOUND')"
-   elif [ "$LLM_CHOICE" = "ollama" ]; then
-     echo "ollama in PATH: $(command -v ollama 2>/dev/null || echo 'NOT FOUND')"
-     echo "ollama serve running: $(curl -s http://localhost:11434/api/version 2>/dev/null || echo 'NOT RUNNING')"
-   fi
-   echo "========================="
-   ```
-
-2. Persist `llm_check_failed=true` to state file (for re-entry):
-   ```bash
-   TMP="$STATE_FILE.tmp"
-   jq '.llm_check_failed = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-   ```
-
-3. Use `AskUserQuestion` — **do NOT proceed without user input**:
-
-   **"`$LLM_CHOICE` CLI not found. How would you like to proceed?"**
-
-   | Option | Description |
-   |--------|-------------|
-   | **Retry** | Check again (after you install or fix `$LLM_CHOICE`) |
-   | **Debug / Install instructions** | Show install steps and help troubleshoot |
-   | **Use agent-based review** | Fall back to Claude agent review (no external LLM) |
-   | **Abort** | Stop the `/ship` workflow entirely |
-
-4. Handle the user's choice:
-   - **Retry** → Re-run the `command -v` / `npx` check from Step 4a. If the check succeeds, clear `llm_check_failed` from state file (`jq 'del(.llm_check_failed)' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`), set `LLM_AVAILABLE=true`, and continue to Step 5. If still fails, present options again.
-   - **Debug / Install instructions** → Display:
-     - codex: `npm install -g @openai/codex` or ensure `OPENAI_API_KEY` is set
-     - gemini: `npm install -g @google/gemini-cli`
-     - ollama: `brew install ollama && ollama serve`
-     After the user says they've fixed it, re-run the check from Step 4a. If still fails, present options again.
-   - **Use agent-based review** → Set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, persist to state file (`jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`), continue to Step 5.
-   - **Abort** → Run cleanup (`${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh ship`), stop.
-
-**On re-entry (Step 2):** Restore `USE_AGENT_REVIEW` from state file: `USE_AGENT_REVIEW=$(jq -r '.use_agent_review // empty' "$STATE_FILE")`. If `"true"`, set `CODEX_EXEC_FALLBACK=true` — do NOT re-ask (user already chose). Also check `llm_check_failed`: if `"true"` and `USE_AGENT_REVIEW` is not `"true"`, re-present the `AskUserQuestion` from Step 4b.3.
+**On re-entry (Step 2):** Restore `USE_AGENT_REVIEW` from state. If `"true"`, set `CODEX_EXEC_FALLBACK=true` — do NOT re-ask. If `llm_check_failed=="true"` AND `use_agent_review!="true"`, re-present the `AskUserQuestion`.
 
 ---
 
-## Phase 1: Local LLM Review (Steps 5-8)
+## Phase 1: Local LLM Review (Steps 5–8)
 
-### Step 5: Review Phase
+LLM review → fix → verify → coverage gate (final pass) → E2E smoke (when applicable) → commit → loop decision.
 
-Set phase to `reviewing`:
+**Coverage gate (Step 7.5, final pass only):** Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow Steps A–F with `BASE_BRANCH=origin/${BASE_BRANCH}`, `STATE_FILE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD` from parsed args.
 
-```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_phase ".local/state/ship.loop.local.json" "reviewing"
-PASS=$(jq -r '.pass // 0' ".local/state/ship.loop.local.json")
-```
+**Loop decision (Step 8):** clean review (`REVIEW_CLEAN=true`) OR `PASS >= MAX_PASSES` → Phase 2. Otherwise → back to Step 5. Always stage only fixed files (never `git add -A`).
 
-**Note:** The pass counter is incremented in Step 8 (after the review completes and findings are committed), not here. This prevents burning a pass number if the session exits during the review and re-enters.
-
-**Re-detect `$CODEX_CMD` on re-entry:** Re-entry from the stop-hook jumps directly to Step 5, skipping Step 4a where `$CODEX_CMD` is set. Re-run detection here to ensure the variable is populated:
-
-```bash
-if [ "$LLM_CHOICE" = "codex" ] && [ -z "${CODEX_CMD:-}" ]; then
-  if command -v codex &>/dev/null; then
-    CODEX_CMD="codex"
-  elif npx -y codex --version &>/dev/null 2>&1; then
-    CODEX_CMD="npx -y codex"
-  fi
-fi
-```
-
-#### 5a. Generate Diff
-
-Fetch the base branch to ensure the ref exists locally (handles cases where the base branch has never been checked out):
-
-```bash
-git fetch origin "$BASE_BRANCH" 2>/dev/null || true
-DIFF=$(git diff "origin/${BASE_BRANCH}...HEAD")
-```
-
-If the diff is empty, skip the review loop entirely — nothing to review. Proceed to Step 9 (pushing).
-
-#### 5b. Run LLM Review
-
-<!-- SYNC: codex-exec-review — keep aligned with review-loop.md Step 5b -->
-
-Execute review based on `LLM_CHOICE`:
-
-**Codex — Diff Size Estimation and Adaptive Timeout:**
-
-Before running `codex exec`, detect the timeout command and estimate diff size:
-
-```bash
-# Detect timeout command (macOS does not ship GNU timeout)
-if command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="gtimeout"
-elif command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="timeout"
-else
-  TIMEOUT_CMD=""
-fi
-
-DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
-DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git' || echo 0)
-echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
-
-# Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
-CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
-if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
-if [ -n "$TIMEOUT_CMD" ]; then
-  echo "Codex exec timeout: ${CODEX_TIMEOUT}s (via $TIMEOUT_CMD)"
-else
-  echo "No timeout command available — codex exec will run without timeout"
-fi
-```
-
-If the diff exceeds 3000 lines, warn the user and offer options **before** starting the review:
-
-Use `AskUserQuestion`:
-
-**"Large diff detected ($DIFF_LINES lines, $DIFF_FILES files). Codex exec may timeout on diffs this large. How would you like to proceed?"**
-
-| Option | Description |
-|--------|-------------|
-| **Proceed with codex exec** | Run with extended timeout (${CODEX_TIMEOUT}s) — may still timeout |
-| **Use `codex review --base`** | Faster but limited to 2-3 findings per pass (no structured output) |
-| **Use agent-based review** | Claude agent review (no external LLM) |
-| **Skip review** | Proceed to push without LLM review |
-
-If the user chooses `codex review --base`, set `QUICK_MODE=true` and use the quick-mode codex review path below. If agent-based review, set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`.
-
-**Codex (exhaustive mode via `codex exec`):**
-
-Use `codex exec` with a structured output schema to get ALL findings in one pass (bypasses the 2-3 finding limit of `codex review`).
-
-1. Assemble the review prompt by constructing a heredoc with these sections:
-   - The review instructions (find ALL issues, priority levels, categories, rules)
-   - `{REPO_GUIDELINES}` — auto-detect `AGENTS.md` or `CLAUDE.md` in repo root; include contents if found
-   - The diff from Step 5a
-
-2. Create a temporary schema file:
-
-```bash
-SCHEMA_FILE=$(mktemp /tmp/codex-review-schema-XXXXXX)
-cat > "$SCHEMA_FILE" <<'SCHEMA_EOF'
-{"type":"object","properties":{"findings":{"type":"array","items":{"type":"object","properties":{"title":{"type":"string","maxLength":80},"body":{"type":"string","minLength":1},"confidence_score":{"type":"number","minimum":0,"maximum":1},"priority":{"type":"integer","minimum":0,"maximum":3},"category":{"type":"string","enum":["correctness","security","performance","maintainability","developer-experience"]},"code_location":{"type":"object","properties":{"file_path":{"type":"string","minLength":1},"line_range":{"type":"object","properties":{"start":{"type":"integer","minimum":1},"end":{"type":"integer","minimum":1}},"required":["start","end"],"additionalProperties":false}},"required":["file_path","line_range"],"additionalProperties":false}},"required":["title","body","confidence_score","priority","category","code_location"],"additionalProperties":false}},"overall_correctness":{"type":"string","enum":["patch is correct","patch is incorrect"]},"overall_explanation":{"type":"string","minLength":1},"overall_confidence_score":{"type":"number","minimum":0,"maximum":1}},"required":["findings","overall_correctness","overall_explanation","overall_confidence_score"],"additionalProperties":false}
-SCHEMA_EOF
-```
-
-3. Write the assembled prompt to a temp file (avoids heredoc expansion issues with special characters in diffs), then execute with adaptive timeout:
-
-```bash
-PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
-echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
-
-# Use adaptive timeout from diff size estimation (default 120s if not set)
-CODEX_TIMEOUT="${CODEX_TIMEOUT:-120}"
-
-set +e
-if [ -n "$TIMEOUT_CMD" ]; then
-  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "${MODEL:-gpt-5.5}" -s read-only \
-    --output-schema "$SCHEMA_FILE" \
-    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
-else
-  REVIEW_JSON=$($CODEX_CMD exec -m "${MODEL:-gpt-5.5}" -s read-only \
-    --output-schema "$SCHEMA_FILE" \
-    - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
-fi
-CODEX_EXIT_CODE=$?
-CODEX_STDERR=$(cat "/tmp/codex-review-stderr-$$" 2>/dev/null)
-rm -f "/tmp/codex-review-stderr-$$"
-set -e
-
-# Strip codex exec headers (version/config info printed before JSON)
-REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
-# Guard: if stripping removed all output, codex exec returned no JSON
-if [ -z "$REVIEW_JSON" ] && [ "$CODEX_EXIT_CODE" -eq 0 ]; then
-  echo "WARNING: $CODEX_CMD exec produced no JSON output after header stripping"
-  REVIEW_JSON='{"error":"no JSON output"}'
-fi
-rm -f "$PROMPT_FILE" "$SCHEMA_FILE"
-```
-
-**If `CODEX_EXIT_CODE` is non-zero**, do NOT silently fall back. Handle based on exit code:
-
-- **Exit code 124 (timeout):** This is a known issue with large diffs. Compute the doubled timeout and display:
-  ```bash
-  DOUBLED_TIMEOUT=$(( CODEX_TIMEOUT * 2 ))
-  if [ "$DOUBLED_TIMEOUT" -gt 900 ]; then DOUBLED_TIMEOUT=900; fi
-  ```
-  ```
-  ## Codex exec timed out (${CODEX_TIMEOUT}s)
-
-  - **Diff size:** $DIFF_LINES lines across $DIFF_FILES files
-  - **Timeout used:** ${CODEX_TIMEOUT}s
-  - **Partial output:** (first 200 chars of any captured output, or "none")
-  - **Stderr:** (first 500 chars of $CODEX_STDERR)
-  ```
-
-  Use `AskUserQuestion`:
-
-  **"Codex exec timed out after ${CODEX_TIMEOUT}s. This typically happens with large diffs. How would you like to proceed?"**
-
-  | Option | Description |
-  |--------|-------------|
-  | **Retry with longer timeout** | Double the timeout to ${DOUBLED_TIMEOUT}s |
-  | **Use `codex review --base`** | Faster mode, limited to 2-3 findings per pass |
-  | **Drop `--output-schema`** | Run codex exec without structured output (faster, parse response manually) |
-  | **Use agent-based review** | Fall back to Claude agent review |
-  | **Abort** | Stop the `/ship` workflow |
-
-  For "Retry with longer timeout": set `CODEX_TIMEOUT=$DOUBLED_TIMEOUT` and re-run from Step 5b.3.
-  For "Drop `--output-schema`": re-run without the schema flag and parse the free-text response using the free-text parsing path in Step 5c. Set `CODEX_EXEC_FALLBACK=true`.
-
-- **Other non-zero exit codes:** Follow the general error handling below (Step 5b error handling).
-
-The review prompt must include these instructions:
-
-```text
-You are reviewing a code change (diff) for a pull request. Your task is to identify ALL issues — do not limit yourself to a small number. Report every actionable finding you discover.
-
-Focus on: Correctness (bugs, logic errors, race conditions, nil dereference), Security (injection, auth bypass, data exposure), Performance (O(n²) loops, unnecessary allocations), Maintainability (dead code, excessive complexity), Developer Experience (missing error context, unclear APIs).
-
-Rules:
-1. Only flag issues INTRODUCED by this diff.
-2. Every finding MUST cite the exact file path (relative to repo root) and line range.
-3. Verify line numbers against the diff — accuracy is critical.
-4. Priority: 0=critical, 1=high, 2=medium, 3=low.
-5. If the diff is clean, return an empty findings array.
-6. Do NOT stop after finding a few issues — review the ENTIRE diff.
-```
-
-4. Validate JSON. If invalid or empty, this is a review failure — do NOT fall through to the free-text clean-review path (which would treat empty output as `NO_ISSUES_FOUND`). Display the raw output (first 500 chars) so the user can see what went wrong. Use `AskUserQuestion`:
-
-   **"Codex exec returned invalid output. Review did not complete."**
-
-   | Option | Description |
-   |--------|-------------|
-   | **Retry** | Run `$CODEX_CMD exec` again |
-   | **Debug / Fix** | Investigate (show codex version, API key status, raw output) |
-   | **Use `codex review --base`** | Use the simpler codex review mode for this pass |
-   | **Use agent-based review** | Fall back to Claude agent review |
-   | **Abort** | Stop the `/ship` workflow |
-
-   Handle the user's choice accordingly. For "Use agent-based review", set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, persist to state file.
-
-**Codex (quick mode — `codex review --base`):**
-
-When the user selects `codex review --base` (from large-diff warning or timeout recovery), use the simpler review command. This is faster but limited to 2-3 findings per pass:
-
-```bash
-$CODEX_CMD review --base "$BASE_BRANCH" -c model="${MODEL:-gpt-5.5}"
-```
-
-Capture output as free-text `FINDINGS`. Set `CODEX_EXEC_FALLBACK=true` (tells Step 5c to skip JSON parsing and use free-text path). Persist `quick_mode=true` to state file for re-entry:
-
-```bash
-TMP="$STATE_FILE.tmp"
-jq '.quick_mode = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-```
-
-**Gemini:**
-
-If `GEMINI_TIER` is set and non-empty and `LLM_CHOICE` is `gemini`, display a warning:
-
-> **Note:** `--tier $GEMINI_TIER` was specified but the Gemini CLI does not support service tiers. The tier setting will be ignored for this review pass. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for updates.
-
-```bash
-gemini <<EOF
-Review the following code changes for bugs, security issues, performance problems, and best practice violations.
-
-Report each finding with: file path, line number, severity (error/warning/suggestion), and description.
-If there are no issues, respond with exactly: NO_ISSUES_FOUND
-
-\`\`\`diff
-$DIFF
-\`\`\`
-EOF
-```
-
-**Ollama:**
-
-```bash
-ollama run codellama <<EOF
-Review the following code changes for bugs, security issues, performance problems, and best practice violations.
-
-Report each finding with: file path, line number, severity (error/warning/suggestion), and description.
-If there are no issues, respond with exactly: NO_ISSUES_FOUND
-
-\`\`\`diff
-$DIFF
-\`\`\`
-EOF
-```
-
-Capture the output as `FINDINGS` (for gemini/ollama) or `REVIEW_JSON` (for codex).
-
-**Error handling for gemini/ollama exec:** The codex path already captures exit codes via the `set +e` block in Step 5b.3 above. For gemini and ollama, wrap the command similarly:
-
-```bash
-set +e
-if [ "$LLM_CHOICE" = "gemini" ]; then
-  FINDINGS=$(gemini <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
-elif [ "$LLM_CHOICE" = "ollama" ]; then
-  FINDINGS=$(ollama run codellama <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
-fi
-LLM_EXIT_CODE=$?
-LLM_STDERR=$(cat "/tmp/llm-review-stderr-$$" 2>/dev/null)
-rm -f "/tmp/llm-review-stderr-$$"
-set -e
-```
-
-If exit code is non-zero or output is empty, **do NOT silently fall back**. Instead:
-
-1. Display diagnostic information:
-   ```
-   ## LLM Review Failed
-
-   - **Command:** `$LLM_CHOICE ...`
-   - **Exit code:** $LLM_EXIT_CODE
-   - **Stderr:** (first 500 chars of $LLM_STDERR)
-   - **Output:** (first 200 chars, or "empty")
-   ```
-
-3. Use `AskUserQuestion` — **do NOT proceed without user input**:
-
-   **"`$LLM_CHOICE` exec failed (exit code $LLM_EXIT_CODE). How would you like to proceed?"**
-
-   | Option | Description |
-   |--------|-------------|
-   | **Retry** | Run the LLM review command again |
-   | **Debug / Fix** | Show diagnostics (version, API key, auth, network) and help troubleshoot |
-   | **Use agent-based review** | Fall back to Claude agent review for this pass |
-   | **Abort** | Stop the `/ship` workflow entirely |
-
-4. Handle the user's choice:
-   - **Retry** → Re-run the LLM review command from the beginning of Step 5b. If it fails again, present options again.
-   - **Debug / Fix** → Run diagnostics:
-     ```bash
-     echo "=== LLM Exec Diagnostic ==="
-     echo "Exit code: $LLM_EXIT_CODE"
-     echo "Stderr: $LLM_STDERR"
-     if [ "$LLM_CHOICE" = "codex" ]; then
-       echo "codex version: $($CODEX_CMD --version 2>/dev/null || echo 'UNKNOWN')"
-       echo "OPENAI_API_KEY set: $([ -n "${OPENAI_API_KEY:-}" ] && echo 'yes' || echo 'NO')"
-       echo "Auth file: $(ls -la ~/.codex/auth.json 2>/dev/null || echo 'NOT FOUND')"
-       echo "Network test: $(curl -s -o /dev/null -w '%{http_code}' https://api.openai.com/v1/models 2>/dev/null || echo 'FAILED')"
-     fi
-     echo "========================="
-     ```
-     After showing diagnostics, present the 4 options again.
-   - **Use agent-based review** → Set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, persist to state file (`jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"`), continue to agent-based review section below.
-   - **Abort** → Run cleanup (`${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh ship`), stop.
-
-**Agent-based review (ONLY when `USE_AGENT_REVIEW` is `true`):**
-
-This section executes **ONLY** when the user has explicitly chosen agent-based review via `AskUserQuestion` in Step 4b or the error handling above. It **NEVER** activates automatically.
-
-1. Set `CODEX_EXEC_FALLBACK=true` (tells Step 5c to skip JSON parsing)
-2. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md` as a base template. **Adapt for the detected project language** — if the project is not Go (no go.mod), replace Go-specific review criteria (Go idioms, `go test -race`, etc.) with language-appropriate equivalents. The prompt's structure (VERDICT, FINDINGS, SUMMARY) remains the same regardless of language.
-3. Fill in template variables:
-   - `{WORKTREE_PATH}` — absolute working directory
-   - `{CHANGED_FILES}` — list of files in the diff
-   - `{DIFF}` — the diff from Step 5a
-   - `{PATTERNS}` — "Follow existing project conventions"
-   - `{REPO_CONVENTIONS}` — from CLAUDE.md/AGENTS.md if present
-4. Dispatch: `Agent(prompt=<filled>, model=sonnet)`
-5. Parse the agent's structured response directly (skip Step 5c JSON parsing):
-   - `CLEAN` verdict → set `REVIEW_CLEAN=true`, persist to state file, skip Step 6
-   - `HAS_FINDINGS` → extract findings from the agent's FINDINGS section, use as free-text findings for Step 6
-
-#### 5c. Parse Findings
-
-**Structured JSON (codex exec mode):**
-
-When `LLM_CHOICE` is `codex` and `CODEX_EXEC_FALLBACK` is not `true`:
-
-1. Validate JSON: `printf '%s\n' "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, fall through to free-text parsing.
-2. Extract findings count, overall correctness, and confidence via `jq`.
-3. Filter findings with `confidence_score < 0.3` (likely false positives).
-4. If zero findings and `overall_correctness` is `"patch is correct"`: review is clean → set `REVIEW_CLEAN=true` and persist to state file. Skip Step 6 but still run Step 7. Proceed to Steps 7.5 and 7.6, skip Step 8's loop-back, proceed to Step 9.
-5. Display findings as formatted table sorted by priority then confidence.
-6. De-duplicate across passes using `(file_path, line_range.start, normalized title)`.
-7. Store findings in state file for re-entry.
-
-**Free-text (codex quick/fallback / gemini / ollama):**
-
-- If output equals `NO_ISSUES_FOUND` or has fewer than 20 characters: review is clean → set `REVIEW_CLEAN=true` and **persist it to state file** (`jq '.review_clean = "true"'`) for re-entry recovery. Skip Step 6 (fixing) but still run Step 7 (verify phase, including codegen detection) to catch generated file drift. Then proceed to Steps 7.5 and 7.6, skip Step 8's loop-back decision, and proceed directly to Step 9 (pushing) — do NOT re-run LLM review when the review was already clean
-- Otherwise: extract structured findings and display with pass number
-- **Filter bot noise:** Silently discard findings containing usage-limit or quota messages
-- **De-duplicate across passes:** If a finding from a previous pass appears again (same file, same line, same issue), skip it
-
-### Step 6: Fix Phase
-
-Set phase to `fixing`:
-
-```bash
-set_loop_phase ".local/state/ship.loop.local.json" "fixing"
-```
-
-For each finding from Step 5c:
-
-1. Read the relevant file and surrounding code context
-2. Evaluate the finding — is it valid and actionable?
-3. If valid: make the fix using Edit tool
-4. If not valid or intentionally skipped: record the reason
-5. For testable fixes (changes observable behavior): generate a corresponding test
-   - Check for existing test files (`_test.go`, `_test.ts`, `test_*.py`)
-   - If table-driven tests exist, add a new case
-   - If no test exists, create one following project conventions
-   - Verify the new test passes
-
-Track counts: `FIXED`, `SKIPPED` (with reasons).
-
-### Step 7: Verify Phase
-
-Set phase to `verifying`:
-
-```bash
-set_loop_phase ".local/state/ship.loop.local.json" "verifying"
-```
-
-Auto-detect project type and run appropriate verification:
-
-**Go** (go.mod exists):
-
-First, run code generation if a generation target is available:
-
-```bash
-if [ -f Makefile ]; then
-  GEN_TARGET=$(make -qp 2>/dev/null | awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' \
-    | grep -E '^(generate|gen|codegen|sqlc|proto|templ)$' | head -1 || true)
-  if [ -n "$GEN_TARGET" ]; then
-    # Capture pre-run snapshot of dirty/untracked files to distinguish generator output from fix-phase edits
-    GEN_SNAPSHOT=$(printf '%s\n%s' "$(git diff --name-only)" "$(git ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
-    echo "Running make $GEN_TARGET..."
-    if ! make "$GEN_TARGET" 2>&1; then
-      echo "WARNING: make $GEN_TARGET failed (tooling may not be installed). Skipping codegen check."
-      GEN_TARGET=""
-    fi
-  fi
-fi
-```
-
-If a codegen target ran successfully, check for modified or newly created generated files by comparing against a pre-run snapshot:
-
-```bash
-if [ -n "$GEN_TARGET" ]; then
-  # GEN_SNAPSHOT was captured before running the generator (see above)
-  GEN_MODIFIED=$(git diff --name-only)
-  GEN_UNTRACKED=$(git ls-files --others --exclude-standard)
-  GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
-  # Filter to only files that are NEW since the snapshot (not pre-existing edits from fix phase)
-  if [ -n "$GEN_SNAPSHOT" ]; then
-    GEN_NEW=$(comm -13 <(echo "$GEN_SNAPSHOT" | sort) <(echo "$GEN_ALL" | sort))
-  else
-    GEN_NEW="$GEN_ALL"
-  fi
-  if [ -n "$GEN_NEW" ]; then
-    echo "Generated code is stale. The following files changed after running generation:"
-    echo "$GEN_NEW"
-    echo "Staging regenerated files..."
-    echo "$GEN_NEW" | xargs git add
-  fi
-fi
-```
-
-Then run standard verification:
-
-```bash
-go build ./...
-go test ./...
-golangci-lint run 2>/dev/null || true
-```
-
-**Node/TypeScript** (package.json exists):
-
-```bash
-npm run build
-npm test
-npm run lint 2>/dev/null || true
-```
-
-**Rust** (Cargo.toml exists):
-
-```bash
-cargo build
-cargo test
-cargo clippy 2>/dev/null || true
-```
-
-**Python** (pyproject.toml or setup.py exists):
-
-```bash
-pytest 2>/dev/null || python -m pytest
-ruff check . 2>/dev/null || flake8 . 2>/dev/null || true
-```
-
-If any verification fails: analyze, fix, re-run until all pass.
-
-### Step 7.5: Coverage Verification (Changed Files)
-
-**This step runs only on the final pass** (when `PASS >= MAX_PASSES - 1` or when findings were clean in Step 5c). Running coverage on every LLM review iteration would be wasteful.
-
-Set phase to `coverage-check`:
-
-```bash
-set_loop_phase ".local/state/ship.loop.local.json" "coverage-check"
-```
-
-**Ship-specific skip condition:** Also skip this entire step if this is NOT the final pass (`PASS < MAX_PASSES - 1` AND findings were not clean). Proceed to Step 7.6.
-
-Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow Steps A through F with these parameters:
-
-| Variable | Value |
-|----------|-------|
-| `BASE_BRANCH` | `origin/${BASE_BRANCH}` (from Step 3) |
-| `STATE_FILE` | `.local/state/ship.loop.local.json` |
-| `SKIP_COVERAGE` | from parsed arguments |
-| `COVERAGE_THRESHOLD` | from parsed arguments (default: 60) |
-
-After coverage verification completes (or is skipped), continue to Step 7.6.
-
-Generated test files will be staged and committed in Step 8 alongside LLM review fixes.
-
-### Step 7.6: E2E Smoke Testing (Optional)
-
-This step performs browser-based smoke testing of web-facing changes using Chrome DevTools MCP. It is entirely optional and silently skips when conditions are not met.
-
-#### 7.6a. Skip Conditions
-
-Skip this entire step (proceed to Step 8) if ANY of these are true:
-
-- `SKIP_COVERAGE` is `true` (user wants speed — skip all quality gates beyond build/test/lint)
-- Chrome DevTools MCP tools are NOT available (check if `mcp__chrome-devtools-mcp__navigate_page` is in the available tools list — if not, skip silently)
-- The project has NO web components (none of the indicators below are present)
-- No web-facing files were changed in the diff
-
-**Web component indicators** (at least one must be true):
-- `.templ` files exist in the project
-- Changed Go files contain HTTP handler patterns: `http.Handler`, `echo.Context`, `gin.Context`, `chi.Router`, `http.HandleFunc`
-- `*.html`, `*.tsx`, `*.vue` files exist in the project
-
-**Web-facing change detection** (recompute changed files if not already set — they may be empty if Step 7.5 was skipped):
-```bash
-if [ -z "$CHANGED_FILES" ]; then
-  CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...HEAD")
-fi
-WEB_CHANGES=$(echo "$CHANGED_FILES" | grep -E '\.(templ|html|tsx|vue|jsx)$' || true)
-HANDLER_CHANGES=$(echo "$CHANGED_FILES" | grep '\.go$' | while read f; do
-  grep -l -E 'http\.Handler|echo\.Context|gin\.Context|chi\.Router|http\.HandleFunc|http\.ServeMux' "$f" 2>/dev/null
-done || true)
-```
-
-If both `WEB_CHANGES` and `HANDLER_CHANGES` are empty → skip to Step 8.
-
-#### 7.6b. Set Phase and Detect Dev Server
-
-Set phase to `e2e-testing`:
-
-```bash
-set_loop_phase ".local/state/ship.loop.local.json" "e2e-testing"
-```
-
-Detect the dev server command:
-
-1. Check for Air config: `.air.toml` or `air.toml` → command: `air`
-2. Check `Makefile` for targets: `run`, `serve`, `dev` → command: `make <target>`
-3. Check `package.json` scripts: `dev`, `start` → command: `npm run dev` or `npm start`
-4. Fallback for Go: `go run ./cmd/*/main.go` or `go run .`
-
-Detect the server port:
-- Parse Air config for proxy port or listen port
-- Check for `PORT` env var patterns in code
-- Check `.env` or `.env.local` for PORT
-- Default: `8080` for Go, `3000` for Node, `5173` for Vite
-
-#### 7.6c. Start Dev Server and Wait
-
-Start the dev server in background:
-
-```bash
-# Start server in background
-$DEV_SERVER_CMD &
-SERVER_PID=$!
-```
-
-Wait for server readiness (poll up to 30 seconds):
-
-```bash
-for i in $(seq 1 30); do
-  curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[23]' && break
-  sleep 1
-done
-```
-
-If server fails to start within 30 seconds → warn ("Dev server failed to start, skipping e2e tests") and skip to Step 8. Do NOT block shipping.
-
-#### 7.6d. Execute Smoke Tests
-
-For each changed handler/route/template, determine the URL path and test it:
-
-1. **Identify routes from changed files:**
-   - Parse Go handler registrations for URL patterns (e.g., `mux.HandleFunc("/api/users", ...)`)
-   - Parse templ file names to infer page routes
-   - If route detection fails, test the root path (`/`) as a baseline
-
-2. **For each route, execute the smoke test:**
-   - Navigate: Use `mcp__chrome-devtools-mcp__navigate_page` to load the URL
-   - Screenshot: Use `mcp__chrome-devtools-mcp__take_screenshot` to capture the rendered page
-   - Console check: Use `mcp__chrome-devtools-mcp__list_console_messages` to check for JavaScript errors
-   - Network check: Use `mcp__chrome-devtools-mcp__list_network_requests` to verify no failed requests (5xx responses)
-   - If the page contains forms related to changed code, test basic form interaction:
-     - Use `mcp__chrome-devtools-mcp__fill` to populate form fields
-     - Use `mcp__chrome-devtools-mcp__click` to submit
-     - Verify no errors after submission
-
-3. **Record results** for each page tested: URL, HTTP status, console errors (if any), screenshot path
-
-#### 7.6e. Cleanup and Report
-
-Kill the dev server:
-
-```bash
-kill $SERVER_PID 2>/dev/null || true
-```
-
-Persist e2e results in state file:
-
-```bash
-TMP=".local/state/ship.loop.local.json.tmp"
-jq --arg attempted "true" --arg result "$E2E_RESULT" --argjson pages "$PAGES_TESTED" \
-   '.e2e_attempted = $attempted | .e2e_result = $result | .e2e_pages_tested = $pages' \
-   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
-```
-
-Display e2e results:
-
-```
-## E2E Smoke Test Results
-
-| Route | Status | Console Errors | Screenshot |
-|-------|--------|---------------|------------|
-| / | 200 OK | None | ✓ captured |
-| /api/users | 200 OK | None | N/A (API) |
-| /dashboard | 500 Error | TypeError: ... | ✓ captured |
-
-Pages tested: 3 | Passed: 2 | Errors: 1
-```
-
-**E2E failure handling:**
-- Pages returning 500/404 → report as finding, show to user, but do NOT block shipping
-- Console JavaScript errors → report but do NOT block
-- MCP tool call fails mid-test → warn and skip remaining e2e tests
-- All results are informational — e2e issues are warnings, not gates
-
-Clean up transient files:
-
-```bash
-rm -f .local/state/coverage.out .local/state/coverage.json 2>/dev/null || true
-```
-
-### Step 8: Commit, Increment Pass, and Loop Decision
-
-Stage only the files modified during the fix phase AND any test files generated in Step 7.5f (do NOT use `git add -A`):
-
-```bash
-git add <list of files modified during fix phase>
-git add <list of test files generated in Step 7.5f, if any>
-```
-
-**Increment the pass counter** now that the review-fix-verify-coverage cycle is complete:
-
-```bash
-CURRENT_PASS=$(jq -r '.pass // 0' ".local/state/ship.loop.local.json")
-NEW_PASS=$((CURRENT_PASS + 1))
-TMP=".local/state/ship.loop.local.json.tmp"
-jq --argjson p "$NEW_PASS" '.pass = $p' ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
-PASS=$NEW_PASS
-```
-
-Only commit if there are staged changes:
-
-```bash
-TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".local/state/ship.loop.local.json")
-if ! git diff --cached --quiet; then
-  if [ "$TESTS_GEN" -gt 0 ] 2>/dev/null; then
-    git commit -m "$(cat <<EOF
-fix: address $LLM_CHOICE review findings (pass $PASS)
-
-- Generated tests for $TESTS_GEN uncovered functions
-EOF
-)"
-  else
-    git commit -m "fix: address $LLM_CHOICE review findings (pass $PASS)"
-  fi
-fi
-```
-
-Check if we should continue reviewing:
-
-- If `REVIEW_CLEAN` is `true` (review returned NO_ISSUES_FOUND) → proceed to Step 9 (no point re-reviewing clean code)
-- If `PASS >= MAX_PASSES` → proceed to Step 9
-- Otherwise → go back to Step 5 for next review pass
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/local-review.md` for: LLM execution paths (codex exhaustive/quick, gemini, ollama, agent-based fallback), structured-JSON vs free-text parsing, `confidence_score < 0.3` filter, codegen-drift check (`make generate|gen|codegen|sqlc|proto|templ`), E2E skip conditions, and the staged-commit + pass-counter increment.
 
 ---
 
 ## Phase 2: Push and PR Creation (Step 9)
 
-### Step 9: Pushing
-
-Set phase to `pushing`:
-
 ```bash
 set_loop_phase ".local/state/ship.loop.local.json" "pushing"
 ```
 
-#### 9a. Push to remote
+Push to remote (use the configured tracking remote and PR `headRefName`), ensure a PR exists (auto-detect template at `.github/pull_request_template.md` or `PULL_REQUEST_TEMPLATE.md`, else default `## Summary` + `## Test Plan`), capture `HEAD_SHA` and `BOT_REVIEW_BASELINE` immediately and persist both.
 
-Detect the correct remote and branch name from tracking config or PR metadata:
-
-```bash
-BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote" 2>/dev/null || echo "origin")
-PR_HEAD_BRANCH=$(gh pr view --json headRefName --jq '.headRefName' 2>/dev/null || git branch --show-current)
-git push -u "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
-```
-
-#### 9b. Ensure PR exists
-
-If `PR_NUM` is empty (no existing PR), create one:
-
-1. Check for a PR template at `.github/pull_request_template.md` (also check `.github/PULL_REQUEST_TEMPLATE.md`, `docs/`, repo root)
-2. If found, read the template and use its section structure
-3. If not found, use default format: `## Summary` + `## Test Plan`
-4. Generate conventional commit title from commits: `<type>(<scope>): <subject>`
-5. Check branch name and commit messages for issue references
-6. Create PR targeting the detected base branch:
-
-```bash
-gh pr create --base "$BASE_BRANCH" --title "<title>" --body "$(cat <<'EOF'
-<filled-in template or default body>
-EOF
-)"
-```
-
-Store the PR number:
-
-```bash
-PR_NUM=$(gh pr view --json number --jq '.number')
-```
-
-Persist `pr_number` in state file.
-
-#### 9c. Capture HEAD SHA and bot review baseline
-
-**CRITICAL: Capture immediately after push:**
-
-```bash
-HEAD_SHA=$(git rev-parse HEAD)
-echo "HEAD SHA captured: $HEAD_SHA"
-BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "Bot review baseline captured: $BOT_REVIEW_BASELINE"
-```
-
-Persist both `head_sha` and `bot_review_baseline` in state file.
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/push-and-pr.md` for the push command, PR creation logic, template detection, and the post-push capture block.
 
 ---
 
 ## Phase 3: CI Watch (Step 10)
 
-### Step 10: CI Watch
-
-Set phase to `ci-watch`:
-
 ```bash
 set_loop_phase ".local/state/ship.loop.local.json" "ci-watch"
 ```
 
-First, check if CI workflow files exist:
+**MANDATORY — NO EXCEPTIONS:** You MUST verify that CI checks correspond to the latest pushed `HEAD_SHA` before considering CI as passed. You MUST NOT:
 
-```bash
-HAS_WORKFLOWS=$(find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1)
-```
-
-If no workflow files exist → persist `has_ci: false` in state file and skip to Step 11.
-
-**If workflows exist**, persist `has_ci: true` in state file.
-
-**MANDATORY — NO EXCEPTIONS:** You MUST verify that CI checks correspond to the latest pushed commit before considering CI as passed. You MUST NOT:
 - Assume passing checks from a prior commit apply to the current commit
 - Rationalize that "only a minor fix was pushed so old checks are still valid"
 - Skip SHA verification because `gh pr checks --watch` returned success
 - Treat "no checks yet" as "checks passed"
 
-The ENTIRE purpose of CI is to validate the EXACT code being merged. Stale check results from a previous push are meaningless.
+The ENTIRE purpose of CI is to validate the EXACT code being merged. Stale check results are meaningless.
 
-#### 10a. Capture and verify HEAD SHA
+If no `.github/workflows/*.yml` files exist → persist `has_ci: false` and skip to Step 11.
 
-Read `head_sha` from state file (set during push in Step 9a, 10 retry, or 12c):
-
-```bash
-HEAD_SHA=$(jq -r '.head_sha // empty' ".local/state/ship.loop.local.json")
-if [ -z "$HEAD_SHA" ]; then
-  HEAD_SHA=$(git rev-parse HEAD)
-fi
-echo "Watching CI for commit: $HEAD_SHA"
-```
-
-#### 10b. Wait for checks to register for the correct SHA
-
-Poll until GitHub reports checks for the HEAD SHA (up to 120 seconds). Note: `pull_request`-triggered checks run on a merge commit, not the PR head SHA. Use the REST API which reliably reports check runs for a specific commit:
-
-```bash
-CI_READY=false
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
-for i in $(seq 1 12); do
-  CHECK_COUNT=$(gh api "repos/$OWNER/$REPO/commits/$HEAD_SHA/check-runs" \
-    --jq '.total_count' 2>/dev/null || echo "0")
-  if [ "$CHECK_COUNT" -gt 0 ]; then
-    CI_READY=true
-    break
-  fi
-  echo "No checks for $HEAD_SHA yet... ($i/12)"
-  sleep 10
-done
-```
-
-If STILL not ready after 120 seconds: ask the user via `AskUserQuestion`: "CI checks for commit {HEAD_SHA} have not appeared after 120 seconds. The repo has workflow files. Wait longer, or proceed without CI verification?"
-
-#### 10c. Watch checks for the correct SHA
-
-Once checks for HEAD_SHA are confirmed, watch them:
-
-```bash
-gh pr checks "$PR_NUM" --watch
-```
-
-#### 10d. Post-watch SHA validation
-
-After `--watch` completes, verify that the PR head hasn't changed (a concurrent push could have shifted it):
-
-```bash
-FINAL_SHA=$(gh pr view "$PR_NUM" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
-if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
-  echo "STOP: PR head shifted to SHA $FINAL_SHA during watch (expected $HEAD_SHA)."
-  echo "A new commit landed on this PR that was NOT reviewed locally."
-  echo "Restarting from review phase against the new HEAD."
-  HEAD_SHA="$FINAL_SHA"
-  # Fetch and checkout the new PR head so local review runs against the correct code
-  BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote" 2>/dev/null || echo "origin")
-  PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
-  git fetch "$BRANCH_REMOTE" "$PR_HEAD_BRANCH"
-  git checkout "$PR_HEAD_BRANCH"
-  git reset --hard "$BRANCH_REMOTE/$PR_HEAD_BRANCH"
-  # Persist new HEAD SHA, reset pass counter, and set phase to reviewing for correct re-entry
-  TMP=".local/state/ship.loop.local.json.tmp"
-  jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "reviewing" \
-    '.head_sha = $sha | .pass = $pass | .review_clean = $rc | .phase = $phase' \
-    ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
-  # Go back to Step 5 (reviewing)
-fi
-```
-
-#### 10e. CI failure handling
-
-If CI fails:
-1. Analyze the failure: `gh pr checks "$PR_NUM" --json name,state,description`
-2. Fix the issue
-3. Commit the fix
-4. Push: `git push`
-5. Capture HEAD SHA: `HEAD_SHA=$(git rev-parse HEAD)` and persist `head_sha` in state file
-6. Re-capture `BOT_REVIEW_BASELINE`: `BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)` and persist
-7. Re-watch CI (go back to Step 10b — wait for checks for the NEW SHA)
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/ci-watch.md` for: HEAD-SHA capture-and-verify, the 120s wait for checks to register against the SHA, `gh pr checks --watch`, post-watch SHA shift detection (concurrent push → fetch+reset to new HEAD, reset pass counter, set phase to `reviewing`, restart from Step 5), and CI failure recovery.
 
 ---
 
 ## Phase 4: Bot Watch (Step 11)
 
-### Step 11: Bot Discovery and Watch
-
-Set phase to `bot-watching` (distinct from address-review's `watching` phase to get ship-specific re-entry messages):
-
 ```bash
 set_loop_phase ".local/state/ship.loop.local.json" "bot-watching"
 ```
 
-#### 11a. Discover review bots
+Discover review bots via the GraphQL query for `reviews + reviewThreads + comments` author logins; also check `gh pr checks` names for status-only bots (e.g., Greptile). Match against `${CLAUDE_PLUGIN_ROOT}/skills/address-review/bot-registry.md`. Persist `discovered_bots` (comma-separated). If none found and `BOT_REVIEW_BASELINE` is recent (<2 min), `AskUserQuestion` whether to wait or proceed.
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/bot-registry.md` for the bot registry table.
+For polling, Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/watch-loop.md` Steps 12a–12d:
 
-Query **all** author sources — formal reviews, review thread comments, AND top-level PR comments (issue comments) — since some bots (e.g., Claude) signal via ordinary PR comments:
+- All bots approved → Step 13
+- New comments / `CHANGES_REQUESTED` → Step 12
+- Timeout (5 min) → `AskUserQuestion`
 
-```bash
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
-
-BOT_AUTHORS=$(gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        reviews(first: 100) {
-          nodes {
-            author { login }
-            state
-          }
-        }
-        reviewThreads(first: 100) {
-          nodes {
-            comments(first: 50) {
-              nodes {
-                author { login }
-              }
-            }
-          }
-        }
-        comments(first: 100) {
-          nodes {
-            author { login }
-          }
-        }
-      }
-    }
-  }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq -r '
-  [
-    .data.repository.pullRequest.reviews.nodes[].author.login,
-    .data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].author.login,
-    .data.repository.pullRequest.comments.nodes[].author.login
-  ] | unique | .[]
-')
-```
-
-Also check PR status checks for bots that signal via commit statuses rather than reviews (e.g., Greptile):
-
-```bash
-CHECK_BOTS=$(gh pr checks "$PR_NUM" --json name 2>/dev/null | jq -r '.[].name' 2>/dev/null || true)
-```
-
-Match both `BOT_AUTHORS` and `CHECK_BOTS` against the bot registry.
-
-**If no review bots detected yet:** This may be because async bots haven't posted their first review. If `BOT_REVIEW_BASELINE` was captured less than 2 minutes ago, ask the user whether to wait or proceed:
-
-Use `AskUserQuestion`: "No review bots detected yet. The push was recent — bots may still be starting. Wait for bots to respond, or proceed to merge without bot review?"
-
-If the user chooses to wait, poll up to 3 times (30s apart). If still no bots after retries → proceed to Step 13 (merging).
-
-**Persist discovered bots** to state file for re-entry recovery:
-
-```bash
-# Store as comma-separated list in state file
-# e.g., discovered_bots: chatgpt-codex-connector[bot],coderabbitai[bot]
-```
-
-#### 11b. Poll for bot approval
-
-Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/watch-loop.md` for the complete polling logic.
-
-Follow Steps 12a-12d from watch-loop.md:
-
-- **All bots approved** → proceed to Step 13 (merging)
-- **New comments / CHANGES_REQUESTED** → go to Step 12 (address feedback)
-- **Timeout (5 min)** → ask user via `AskUserQuestion`
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/bot-watch.md` for the full GraphQL query and the bot-not-detected-yet retry policy.
 
 ---
 
 ## Phase 5: Address Bot Feedback (Step 12)
 
-### Step 12: Address Feedback
-
-Set phase to `addressing` (distinct from `fixing` to ensure correct re-entry routing):
-
 ```bash
 set_loop_phase ".local/state/ship.loop.local.json" "addressing"
 ```
 
-#### 12a. Fetch and rebase against base branch
+Fetch and rebase against base (`git fetch origin "$BASE_BRANCH" && git rebase "origin/$BASE_BRANCH" || git rebase --abort`); if rebase aborts on conflicts, proceed without rebasing — user resolves manually.
 
-Before applying fixes, ensure the branch is up to date with the base to avoid conflicts:
+Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow **Steps 2–11 only** (skip Step 1 / loop init — we're already managed; skip Step 12 / bot-watch — we own that in Step 11).
 
-```bash
-git fetch origin "$BASE_BRANCH"
-git rebase "origin/$BASE_BRANCH" || git rebase --abort
-```
+**CRITICAL:** Capture `BOT_REVIEW_BASELINE` BEFORE pushing (catches fast bot responses). Then push, capture `HEAD_SHA` after push. Persist both. Return to Step 10 — re-watch CI for the new SHA.
 
-If the rebase fails (conflicts), abort and inform the user. Proceed with fixes without rebasing — the user can resolve conflicts manually.
-
-#### 12b. Apply address-review fixes
-
-Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow Steps 2-11 only:
-
-- **Skip Step 1** (loop init / PR checkout) — we're already on the branch, loop is managed by `/ship`
-- **Skip Step 12** (bot watch) — we handle that in Step 11 above
-- Do NOT create a second loop state file — all phases are managed under the `ship` loop
-
-#### 12c. Capture baseline BEFORE push, HEAD SHA AFTER push
-
-**CRITICAL:** Capture `BOT_REVIEW_BASELINE` before pushing, not after. This ensures we don't miss fast bot responses that arrive between the push and the timestamp capture:
-
-```bash
-BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-```
-
-Then push the fixes. After pushing, capture HEAD SHA:
-
-```bash
-git push
-HEAD_SHA=$(git rev-parse HEAD)
-echo "HEAD SHA captured: $HEAD_SHA"
-```
-
-Persist `bot_review_baseline` and `head_sha` in state file.
-
-Return to Step 10 (ci-watch) — set phase and re-watch CI for the new HEAD SHA before checking bot approval again.
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/address-bots.md` for the rebase-or-abort handling and the baseline-then-push ordering.
 
 ---
 
 ## Phase 6: Merge (Step 13)
 
-### Step 13: Merge
-
-Set phase to `merging`:
-
 ```bash
 set_loop_phase ".local/state/ship.loop.local.json" "merging"
 ```
 
-#### 13a. Final checks
+**CRITICAL: NEVER use `--admin`. NEVER bypass branch protection.** If merge fails due to protection, STOP and inform the user — do NOT retry with elevated privileges.
 
-1. Verify CI is green (skip if `has_ci` is `false` in state file — Step 10 already determined no CI exists): `gh pr checks "$PR_NUM"`
-2. Check for unresolved review threads:
-   ```bash
-   OWNER=$(gh repo view --json owner --jq '.owner.login')
-   REPO=$(gh repo view --json name --jq '.name')
-   UNRESOLVED=$(gh api graphql -f query='
-     query($owner: String!, $repo: String!, $pr: Int!) {
-       repository(owner: $owner, name: $repo) {
-         pullRequest(number: $pr) {
-           reviewThreads(first: 100) {
-             nodes { isResolved }
-           }
-         }
-       }
-     }
-   ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')
-   ```
-3. Check for **active** human `CHANGES_REQUESTED` (latest review per human reviewer, excluding bots):
-   ```bash
-   OWNER=$(gh repo view --json owner --jq '.owner.login')
-   REPO=$(gh repo view --json name --jq '.name')
-   BLOCKING_HUMANS=$(gh api graphql -f query='
-     query($owner: String!, $repo: String!, $pr: Int!) {
-       repository(owner: $owner, name: $repo) {
-         pullRequest(number: $pr) {
-           latestReviews(first: 50) {
-             nodes {
-               author { login }
-               state
-             }
-           }
-         }
-       }
-     }
-   ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.latestReviews.nodes[] | select(.state == "CHANGES_REQUESTED") | select(.author.login | test("\\[bot\\]$") | not)] | length')
-   ```
-
-If there are unresolved threads or human `CHANGES_REQUESTED`, inform the user and ask how to proceed.
-
-#### 13b. Check `--no-merge` flag
-
-If `NO_MERGE` is `true`:
-- Display summary (see below)
-- Output `<done>SHIPPED</done>`
-- Stop here
-
-#### 13c. Auto-detect merge strategy and merge
-
-```bash
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
-MERGE_SETTINGS=$(gh api "repos/$OWNER/$REPO" --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}' 2>/dev/null || echo '{}')
-```
-
-Determine the merge flag based on what the repo allows (prefer merge > squash > rebase):
-
-```bash
-MERGE_FLAG="--merge"
-if echo "$MERGE_SETTINGS" | jq -e '.merge == true' >/dev/null 2>&1; then
-  MERGE_FLAG="--merge"
-elif echo "$MERGE_SETTINGS" | jq -e '.squash == true' >/dev/null 2>&1; then
-  MERGE_FLAG="--squash"
-elif echo "$MERGE_SETTINGS" | jq -e '.rebase == true' >/dev/null 2>&1; then
-  MERGE_FLAG="--rebase"
-fi
-```
-
-#### 13d. Branch protection mergeability check
-
-**CRITICAL: Before attempting merge, verify that branch protection requirements are satisfied. NEVER bypass branch protection.**
-
-Query GitHub's mergeability status:
-
-```bash
-MERGE_STATE=$(gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        mergeStateStatus
-        mergeable
-      }
-    }
-  }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" --jq '.data.repository.pullRequest')
-
-MERGEABLE=$(echo "$MERGE_STATE" | jq -r '.mergeable')
-STATE_STATUS=$(echo "$MERGE_STATE" | jq -r '.mergeStateStatus')
-
-# Check if repo uses a merge queue (URL-encode branch name for slash-containing branches)
-ENCODED_BRANCH=$(printf '%s' "$BASE_BRANCH" | jq -sRr @uri)
-HAS_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/rules/branches/$ENCODED_BRANCH" 2>/dev/null | jq '[.[] | select(.type == "merge_queue")] | length > 0' 2>/dev/null || echo "false")
-```
-
-GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions. **Follow the decision logic below strictly — do not invent reasons to merge when a state is not covered:**
-
-Decision logic:
-
-- If `MERGEABLE` is `UNKNOWN` or `STATE_STATUS` is `UNKNOWN`: retry up to 6 times (5s apart). If still `UNKNOWN` after retries, ask the user via `AskUserQuestion` whether to proceed or wait.
-- If `MERGEABLE` is `CONFLICTING`:
-  - **STOP** — display "PR has merge conflicts. Resolve conflicts before merging."
-  - Clean up loop state and stop without `<done>SHIPPED</done>`
-- If `STATE_STATUS` is `BLOCKED`:
-  - **If the repo uses a merge queue** (`HAS_MERGE_QUEUE` is true): proceed to merge — `gh pr merge` will enqueue the PR correctly.
-  - **If no merge queue**: **STOP immediately** — do NOT attempt merge. Display: "Branch protection requirements not met (status: BLOCKED). Cannot merge." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user what is blocking and stop.
-- If `STATE_STATUS` is `CLEAN` or `STATE_STATUS` is `HAS_HOOKS`: proceed to merge. These are the two states that mean "all checks passed and requirements satisfied."
-- If `STATE_STATUS` is `BEHIND` and `MERGEABLE` is `MERGEABLE`: proceed to merge. `BEHIND` only means the base branch moved forward — GitHub still allows merging if the repo does not require branches to be up-to-date. If the merge fails due to a "strict" branch protection rule, the error will be caught in Step 13e.
-- If `STATE_STATUS` is `UNSTABLE` and `MERGEABLE` is `MERGEABLE`: proceed to merge. `UNSTABLE` means some non-required or informational checks failed, but branch protection is still satisfied. GitHub allows the merge. If the merge fails, the error will be caught in Step 13e.
-- **For ANY other `STATE_STATUS` value** (including but not limited to `DIRTY`, `DRAFT`): **STOP immediately.** Display: "PR is not ready to merge (mergeStateStatus: {STATE_STATUS}). Resolve the issue before merging." Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`. Do NOT output `<done>SHIPPED</done>`. Inform the user and stop.
-
-#### 13e. Merge the PR
-
-**CRITICAL: NEVER use `--admin` flag. NEVER use any flag or method that bypasses branch protection. If the merge fails due to branch protection, STOP and inform the user — do NOT retry with elevated privileges.**
-
-For merge-queue repos, omit the merge strategy flag — `gh pr merge` will enqueue the PR automatically:
-
-```bash
-if [ "$HAS_MERGE_QUEUE" = "true" ]; then
-  gh pr merge "$PR_NUM" --delete-branch
-else
-  gh pr merge "$PR_NUM" $MERGE_FLAG --delete-branch
-fi
-```
-
-If the merge command fails (non-zero exit code):
-- Do NOT retry with `--admin` or any other bypass flag
-- Display the error output to the user
-- Clean up loop state: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`
-- Do NOT output `<done>SHIPPED</done>`
-- Stop and let the user resolve the blocking issue
-
-#### 13f. Display summary
-
-Read coverage and e2e results from state file. The coverage workflow may
-have skipped the gate (e.g. all changed files were `package main`); in that
-case `coverage_skip_reason` is set and `coverage_result` is empty. Render a
-textual reason in the summary instead of `<COV_RESULT>%`:
-
-```bash
-COV_RESULT=$(jq -r '.coverage_result // ""' ".local/state/ship.loop.local.json")
-COV_SKIP_REASON=$(jq -r '.coverage_skip_reason // ""' ".local/state/ship.loop.local.json")
-COV_THRESHOLD=$(jq -r '.coverage_threshold // "60"' ".local/state/ship.loop.local.json")
-TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".local/state/ship.loop.local.json")
-E2E_ATTEMPTED=$(jq -r '.e2e_attempted // ""' ".local/state/ship.loop.local.json")
-E2E_RESULT=$(jq -r '.e2e_result // "skipped"' ".local/state/ship.loop.local.json")
-E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
-
-# Coverage line: prefer skip_reason when present, then numeric value, else "skipped".
-if [ -n "$COV_SKIP_REASON" ]; then
-  case "$COV_SKIP_REASON" in
-    all-main) COV_LINE="skipped — all changed files are \`package main\`" ;;
-    *)        COV_LINE="skipped — $COV_SKIP_REASON" ;;
-  esac
-elif [ -n "$COV_RESULT" ]; then
-  COV_LINE="${COV_RESULT}% (threshold: ${COV_THRESHOLD}%)"
-else
-  COV_LINE="skipped"
-fi
-```
-
-```
-## Ship Complete
-
-- **PR:** #<PR_NUM>
-- **LLM:** <llm>
-- **Review passes:** <n>
-- **Findings addressed:** <n>
-- **Coverage (changed files):** <COV_LINE>
-- **Tests generated:** <TESTS_GEN>
-- **E2E tests:** <E2E_PAGES> pages tested, <E2E_RESULT> — or "skipped — no web components" / "skipped — MCP unavailable"
-- **CI:** green
-- **Bot approvals:** <list or "none required">
-- **Merge strategy:** <merge|squash|rebase>
-- **Merged:** yes (or "skipped — --no-merge")
-```
-
-Output `<done>SHIPPED</done>`
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/merge.md` for: final-checks (CI green, no unresolved threads, no human `CHANGES_REQUESTED`), `--no-merge` early exit, merge-strategy auto-detection (`--merge` > `--squash` > `--rebase`), the full `mergeStateStatus` decision tree (`UNKNOWN`/`CONFLICTING`/`BLOCKED`/`CLEAN`/`HAS_HOOKS`/`BEHIND`/`UNSTABLE`/other), merge-queue handling, and the summary-line rendering (uses `coverage_skip_reason` to avoid `N/A%`). Output `<done>SHIPPED</done>` after the merge succeeds.
 
 ---
 
 ## Phase Flow Summary
 
 ```
-Step 5-8: local-review
-  reviewing → fixing → verifying → [coverage-check] → [e2e-testing] → commit
-    ↓
-Step 9: pushing
-    ↓
-Step 10: ci-watch
-    ↓
-Step 11: bot-watch (bot-watching)
-    ↓                ↓
-    ↓          Step 12: address-feedback (addressing)
-    ↓                ↓
-    ↓          → back to Step 10 (ci-watch)
-    ↓
-Step 13: merging
-    ↓
-<done>SHIPPED</done>
+5–8 local-review → 9 pushing → 10 ci-watch → 11 bot-watch ⇄ 12 addressing
+                                                ↓
+                                            13 merging → <done>SHIPPED</done>
 ```
 
-**Note:** Steps in `[brackets]` are conditional — coverage-check runs only on the final pass and when `--skip-coverage` is not set. E2E testing runs only when Chrome DevTools MCP is available and the project has web components.
-
-## Re-entry Matrix
-
-| Phase at exit | Re-entry behavior |
-|---|---|
-| `reviewing` | Resume LLM review pass |
-| `fixing` | Continue fixing LLM review findings |
-| `verifying` | Re-run verification |
-| `coverage-check` | Re-run coverage analysis on changed files |
-| `e2e-testing` | Re-run e2e tests (restart dev server if needed) |
-| `pushing` | Resume push and PR creation |
-| `ci-watch` | Resume CI monitoring |
-| `bot-watching` | Resume bot approval polling |
-| `addressing` | Resume addressing bot review feedback (Steps 2-11 of address-review) |
-| `merging` | Resume merge attempt |
+`[coverage-check]` runs only on the final pass when `--skip-coverage` isn't set. `[e2e-testing]` runs only when MCP is available AND the project has web components.
 
 ## Verification Gate (HARD — applies before ANY completion signal)
 
-Before outputting `<done>SHIPPED</done>`, every claim MUST have FRESH evidence from THIS session:
+Before outputting `<done>SHIPPED</done>`, every claim MUST have FRESH evidence from THIS session — actual command output, not narrative:
 
-1. **"Tests pass"** → show actual `go test` output with "ok" lines and zero failures. Not "I ran the tests earlier" — run them NOW.
-2. **"Build succeeds"** → show actual `go build ./...` output with exit code 0.
-3. **"CI passes"** → show actual `gh pr checks` output with all checks green.
-4. **"Bot approvals received"** → show actual `gh pr view --json reviews --jq '.reviews[] | {author: .author.login, state: .state}'` output with APPROVED states.
-5. **"PR merged"** → show actual merge output or `gh pr view` showing MERGED state.
+- **"Tests pass"** → `go test` output with "ok" lines, zero failures
+- **"Build succeeds"** → `go build ./...` exit 0
+- **"CI passes"** → `gh pr checks` with all checks green
+- **"Bot approvals"** → `gh pr view --json reviews --jq '.reviews[] | {author: .author.login, state: .state}'` with APPROVED
+- **"PR merged"** → merge output or `gh pr view` showing MERGED
 
-**Red-flag language check** — if you are about to write any of the following, STOP and run verification instead:
-- "should work" / "should be fine"
-- "probably" / "likely"
-- "I believe" / "I think"
-- "Done!" / "Shipped!" without preceding command output showing proof
+**Red-flag language check** — if you are about to write "should work" / "should be fine" / "probably" / "likely" / "I believe" / "I think" / "Done!" / "Shipped!" without preceding command output proving it, STOP and run verification instead.
 
 ## Completion Criteria
 
@@ -1428,8 +223,21 @@ Output `<done>SHIPPED</done>` ONLY when ALL of these are true:
 7. Bot approvals received (or no bots configured) — with output shown above
 8. PR merged (or `--no-merge` specified) — with output shown above
 
-**Safety note:** If you've iterated 15+ times without completion, document what's blocking and ask the user for guidance.
+**Safety note:** If you've iterated 15+ times without completion, document what's blocking and ask the user.
 
 ## Cancel
 
-Users can run `/cancel-loop ship` at any time to cleanly exit the loop.
+`/cancel-loop ship` cleanly exits the loop.
+
+## Further Reading
+
+All sibling files live under `${CLAUDE_PLUGIN_ROOT}/lib/ship/`:
+
+- `state-fields.md` — full jq invocation for Step 1's persist; field name reference
+- `prerequisites.md` — Step 4 LLM diagnostic output
+- `local-review.md` — Phase 1 (Steps 5–8): review/fix/verify/coverage/e2e/commit
+- `push-and-pr.md` — Phase 2 (Step 9): push, PR creation, template detection, baseline capture
+- `ci-watch.md` — Phase 3 (Step 10): SHA-anchored CI watch, post-watch shift detection, failure recovery
+- `bot-watch.md` — Phase 4 (Step 11): GraphQL bot discovery, retry-on-empty policy
+- `address-bots.md` — Phase 5 (Step 12): rebase, address-review delegation, baseline-then-push ordering
+- `merge.md` — Phase 6 (Step 13): final checks, merge strategy detection, mergeStateStatus tree, summary rendering
