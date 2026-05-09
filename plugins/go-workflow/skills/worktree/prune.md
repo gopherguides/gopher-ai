@@ -1,17 +1,10 @@
----
-name: prune-worktree
-description: "Batch-clean all completed git worktrees. Trigger on 'prune worktrees', 'clean up worktrees'."
----
+# Worktree — Prune
 
-# Prune Worktrees
-
-Batch cleanup of all git worktrees for issues that are closed and branches that are merged.
+Batch cleanup of all git worktrees for issues that are closed and branches that are merged. Loaded by `SKILL.md` when the user wants to clean up multiple worktrees at once.
 
 ## Usage
 
-```
-$prune-worktree
-```
+User-facing slash command: `/prune-worktree` (no args). Skill invocation: `$worktree` (with prune intent).
 
 ## Steps
 

@@ -33,7 +33,7 @@ Confirm the issue exists and is open. Read the title, body, labels, and comments
 
 Ask the user: "Would you like to create a worktree for isolated work on issue #$ISSUE_NUM?"
 
-- **Yes**: Invoke the `$create-worktree` skill with the issue number, then continue working from the worktree path
+- **Yes**: Invoke the `$worktree` skill (create action) with the issue number, then continue working from the worktree path
 - **No**: Stay in the current directory and create a branch in Step 4
 
 If already inside a git worktree (check: `git rev-parse --git-dir` differs from `git rev-parse --git-common-dir`), skip this step entirely.
