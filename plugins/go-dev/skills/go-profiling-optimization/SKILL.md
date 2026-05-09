@@ -1,6 +1,6 @@
 ---
 name: go-profiling-optimization
-description: "Profile and optimize Go performance: pprof, allocations, escape analysis, sync.Pool, GOGC, benchmarks. Trigger for any Go perf, profiling, or runtime tuning question."
+description: "Profile and optimize Go performance: pprof CPU/memory/block/mutex profiles, allocation analysis, escape analysis, sync.Pool, GOGC/GOMEMLIMIT tuning, benchmarks with -benchmem, PGO workflow, execution tracing. Use when user asks 'why is this slow', 'is this allocating', mentions pprof/profiling, runs benchmarks, or needs to reduce p99 latency. SKIP for general Go idioms — use `go` skill."
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 

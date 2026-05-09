@@ -1,6 +1,6 @@
 ---
 name: ship
-description: "Ship a PR end-to-end: verify, push, create PR, watch CI, merge. Trigger on 'ship', 'ship it', 'push and merge'."
+description: "Ship a PR end-to-end: local verify (build, test, lint), push, create or update PR, watch CI to green, address review bot feedback, merge with auto-delete. NEVER uses --admin merge. Triggers: 'ship', 'ship it', 'push and merge', 'land this PR'. SKIP if user just wants to open a PR without merging — use `create-pr` instead."
 disable-model-invocation: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: tailwind-best-practices
-description: "Tailwind CSS guidance: utility-first patterns, theme/color config, dark mode, responsive design, v4 syntax, content/source paths. Trigger for any Tailwind-related styling question."
+description: "Tailwind CSS v4 guidance: utility-first patterns, @theme directive for color/spacing/font config, @source for content paths, dark mode, responsive design, oklch colors, custom variants, v4 vs v3 differences. Use when user writes Tailwind utility classes, configures @theme or @source in CSS, asks about v4 syntax, or styles components."
 ---
 
 # Tailwind CSS v4 Best Practices

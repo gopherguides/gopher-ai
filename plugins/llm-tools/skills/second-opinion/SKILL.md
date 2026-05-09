@@ -1,6 +1,6 @@
 ---
 name: second-opinion
-description: "Get a second LLM opinion on complex architectural decisions, design trade-offs, library/framework choices, or security-sensitive code. Trigger when uncertain or facing 'should I' calls."
+description: "Get a second LLM opinion via codex/gemini/ollama on architectural decisions, design trade-offs, library or framework choices, and security-sensitive code. Use when uncertain on a 'should I' call, want a sanity check before a high-stakes commit, or facing a contested code review. SKIP for routine questions where one model's answer is clearly sufficient."
 ---
 
 # Second Opinion Skill
