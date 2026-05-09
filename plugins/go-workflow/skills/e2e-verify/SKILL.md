@@ -168,24 +168,40 @@ Read `pr-results-comment.md` for the structured PR comment: build results table,
 
 ---
 
-## Step 7: Finish (mode-specific)
+## Step 7: Finish (mode-specific, gated)
 
-Read `mode-finish.md` for the mode → finish-action mapping, the `run-full-ci` label add, the `fix-and-ship` CI watch loop, and the `/go-workflow:ship` invocation rules.
+Read `mode-finish.md` for the **Step 7.0 E2E gate** (mandatory pre-check that
+halts on UI-visible E2E failure with `<done>E2E_FAIL</done>`), then the mode →
+finish-action mapping, the `run-full-ci` label add, the `fix-and-ship` CI
+watch loop, and the `/go-workflow:ship` invocation rules.
+
+**Critical:** the gate is non-negotiable. UI-visible PRs that fail E2E must
+exit with `<done>E2E_FAIL</done>` — no labels, no ship.
 
 ---
 
 ## Completion Criteria
 
-Output `<done>VERIFIED</done>` when ALL of these are true:
+The loop terminates on a `<done>…</done>` sentinel. Which sentinel you emit
+depends on `E2E_RESULT` and whether the diff is UI-visible:
+
+| `E2E_RESULT` | UI-visible diff | Non-UI diff |
+|---|---|---|
+| `pass` | `<done>VERIFIED</done>` | `<done>VERIFIED</done>` |
+| `skipped` | not allowed — must be `pass` or a fail state | `<done>VERIFIED</done>` |
+| `fail`, `partial`, `skipped-server-failed`, `missing-browser-tooling`, `uninspected-screenshots` | post comment, then `<done>E2E_FAIL</done>`. No labels, no ship. | not applicable |
+
+Output `<done>VERIFIED</done>` only when ALL of these are true:
 
 1. Branch rebased onto base (or already up to date)
 2. Build passes (go build, go test)
 3. Review addressed (if `fix-and-verify` or `fix-and-ship` mode)
-4. E2E tests completed (pass or skipped — never blocks)
+4. E2E gate passed per the table above (UI: `pass`; non-UI: `skipped`)
 5. Results posted to PR as a comment
-6. Mode-specific finish action completed
+6. Mode-specific finish action completed (only reached when the E2E gate passed)
 
-**When ALL criteria are met, output exactly:** `<done>VERIFIED</done>`
+If the E2E gate failed on a UI-visible diff, output `<done>E2E_FAIL</done>`
+after Step 6 instead. Do not invoke `/go-workflow:ship`. Do not add labels.
 
 **Safety:** If 15+ iterations without success, document blockers and ask user.
 
