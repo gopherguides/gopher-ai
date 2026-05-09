@@ -188,7 +188,7 @@ For full API usage examples, see [API Usage Reference](../references/api-usage.m
 ## References
 
 - Existing gopher-ai command: `plugins/go-dev/commands/test-gen.md`
-- Go best practices skill: `plugins/go-dev/skills/go-best-practices/`
+- Go skill: `plugins/go-dev/skills/go/`
 - [Go Testing](https://go.dev/doc/tutorial/add-a-test)
 
 ---

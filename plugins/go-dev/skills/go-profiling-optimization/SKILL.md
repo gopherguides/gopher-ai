@@ -82,10 +82,10 @@ For PGO and execution-tracing walk-throughs — Read `examples.md`.
 
 ## Cross-References
 
-- → go-concurrency for sync.Pool hot-path patterns and goroutine scheduling
-- → go-error-handling for error-path performance considerations
-- → systematic-debugging for diagnosing performance regressions
-- → go-testing for benchmark test patterns
+- → `go` skill (concurrency.md) for sync.Pool hot-path patterns and goroutine scheduling
+- → `go` skill (errors.md) for error-path performance considerations
+- → `go` skill (debugging.md) for diagnosing performance regressions
+- → `go` skill (testing.md) for benchmark test patterns
 
 <!-- cache:end -->
 

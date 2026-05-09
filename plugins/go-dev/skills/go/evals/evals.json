@@ -1,0 +1,2035 @@
+{
+  "skill_name": "go",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-1",
+      "description": "The model should identify and resist multiple anti-patterns: global state, init() abuse, and stuttering names.",
+      "prompt": "Write a Go HTTP server that uses a global database connection initialized in init(), with a UserService type in the user package, and uses init() to register routes. Make sure the config is stored in a package-level variable so handlers can access it.",
+      "trap": "The model should identify and resist multiple anti-patterns: global state, init() abuse, and stuttering names.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response identifies the stuttering user.UserService name and suggests an alternative"
+        },
+        {
+          "id": "2",
+          "text": "The response discourages using init() for database initialization and route registration"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends dependency injection instead of package-level config variables"
+        },
+        {
+          "id": "4",
+          "text": "The response provides an alternative architecture using explicit initialization"
+        },
+        {
+          "id": "5",
+          "text": "The response explains why each suggested change improves testability and maintainability"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "eval-2",
+      "description": "The model should warn against premature abstraction and recommend defining interfaces only when needed.",
+      "prompt": "Create interfaces for the User repository, the User service, the email sender, the logger, and the config loader so we can swap implementations later if needed",
+      "trap": "The model should warn against premature abstraction and recommend defining interfaces only when needed.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against creating interfaces before there are multiple implementations"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends starting with concrete types and extracting interfaces when needed"
+        },
+        {
+          "id": "3",
+          "text": "The response explains Go's implicit interfaces make premature abstraction unnecessary"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests defining interfaces at the consumer rather than preemptively"
+        },
+        {
+          "id": "5",
+          "text": "The response references the YAGNI principle or Go's preference for concrete types first"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "eval-3",
+      "description": "The model should prioritize clear, safe code over clever optimizations unless profiling data justifies it.",
+      "prompt": "Optimize this string processing function by using bit manipulation for character checks and unsafe pointer casts to avoid string-to-byte-slice copies for maximum speed",
+      "trap": "The model should prioritize clear, safe code over clever optimizations unless profiling data justifies it.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response discourages using unsafe pointer casts without proven need from profiling"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends measuring with benchmarks before optimizing"
+        },
+        {
+          "id": "3",
+          "text": "The response prioritizes readability and safety over clever tricks"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests standard library alternatives that are both clear and performant"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that premature optimization is counterproductive"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "eval-4",
+      "description": "The model should insist on checking the Close() error or at minimum logging it.",
+      "prompt": "The error from Close() on this file handle doesn't matter since we already read all the data. Just ignore it with an underscore assignment.",
+      "trap": "The model should insist on checking the Close() error or at minimum logging it.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response insists on not ignoring the Close() error"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that Close() can fail for meaningful reasons like flushing buffers or network errors"
+        },
+        {
+          "id": "3",
+          "text": "The response shows a pattern for handling Close() errors such as defer with error check"
+        },
+        {
+          "id": "4",
+          "text": "The response mentions that for writable files Close() errors are especially important"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "eval-5",
+      "description": "The model should recommend specific types or generics over any for type safety.",
+      "prompt": "Use any (interface{}) for all function parameters so the functions are maximally reusable across different types",
+      "trap": "The model should recommend specific types or generics over any for type safety.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response discourages using any for function parameters as a general practice"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends specific types for type safety and self-documenting code"
+        },
+        {
+          "id": "3",
+          "text": "The response suggests generics as an alternative when true polymorphism is needed"
+        },
+        {
+          "id": "4",
+          "text": "The response explains that any loses compile-time type checking"
+        },
+        {
+          "id": "5",
+          "text": "The response shows a concrete example using specific types or generics instead of any"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "eval-6",
+      "description": "The model should recommend the functional options pattern for constructors with many parameters.",
+      "prompt": "Create a NewServer constructor that takes the host, port, read timeout, write timeout, idle timeout, max header bytes, TLS config, logger, database, cache, and metrics client as individual parameters",
+      "trap": "The model should recommend the functional options pattern for constructors with many parameters.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recommends the functional options pattern instead of many parameters"
+        },
+        {
+          "id": "2",
+          "text": "The response shows an example using Option functions like WithTimeout, WithLogger, etc."
+        },
+        {
+          "id": "3",
+          "text": "The response explains that long parameter lists are hard to read and maintain"
+        },
+        {
+          "id": "4",
+          "text": "The response provides sensible defaults for optional parameters"
+        },
+        {
+          "id": "5",
+          "text": "The response keeps required parameters as direct arguments and optional ones as options"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "eval-7",
+      "description": "The model should explain the single error handling rule: handle or return, never both.",
+      "prompt": "Log the error with full context and then return it to the caller so both the logs and the caller have the error information",
+      "trap": "The model should explain the single error handling rule: handle or return, never both.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response explains the rule: handle an error OR return it, never both"
+        },
+        {
+          "id": "2",
+          "text": "The response warns that logging and returning causes duplicate error messages in logs"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends either wrapping with fmt.Errorf and returning, or logging and handling locally"
+        },
+        {
+          "id": "4",
+          "text": "The response shows the correct pattern using fmt.Errorf with %w for wrapping"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "eval-8",
+      "description": "The model should recommend proper synchronization primitives instead of sleep.",
+      "prompt": "Add a time.Sleep(100ms) after launching the goroutine to wait for it to finish processing before we check the result",
+      "trap": "The model should recommend proper synchronization primitives instead of sleep.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response strongly discourages using sleep for goroutine synchronization"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends sync.WaitGroup, errgroup, or channels for coordination"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that sleep is unreliable and creates race conditions"
+        },
+        {
+          "id": "4",
+          "text": "The response shows a concrete example using proper synchronization"
+        },
+        {
+          "id": "5",
+          "text": "The response mentions that sleep-based synchronization wastes time or fails under load"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "fat-interface",
+      "description": "Tests whether the model resists creating oversized interfaces that violate the interface segregation principle",
+      "prompt": "Create a comprehensive Go Service interface for a user management system with all CRUD operations plus Search, Export, BatchCreate, BatchDelete, Import, and Archive methods. Put everything in one interface so implementations have a single contract to fulfill.",
+      "trap": "Large interfaces with many methods are hard to implement, mock, and violate Go's preference for small, focused interfaces",
+      "assertions": [
+        {
+          "id": "1.1",
+          "text": "Model explains that large interfaces are difficult to implement and create tight coupling"
+        },
+        {
+          "id": "1.2",
+          "text": "Model recommends breaking the interface into small, focused interfaces (Reader, Writer, Searcher, etc.)"
+        },
+        {
+          "id": "1.3",
+          "text": "Model references Go proverb or convention: the bigger the interface, the weaker the abstraction"
+        },
+        {
+          "id": "1.4",
+          "text": "Model shows that consumers should accept only the methods they need, not the entire contract"
+        },
+        {
+          "id": "1.5",
+          "text": "Model demonstrates composing small interfaces where a larger grouping is genuinely needed"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "provider-defined",
+      "description": "Tests whether the model resists defining interfaces next to implementations instead of at the consumer",
+      "prompt": "Write a Go storage package with a Repository interface defined right next to the PostgresRepository implementation so developers can easily find both together. Export the interface for other packages.",
+      "trap": "Go convention is to define interfaces at the consumer site, not the provider; provider-defined interfaces couple consumers to the provider package",
+      "assertions": [
+        {
+          "id": "2.1",
+          "text": "Model explains that Go convention places interfaces at the call site (consumer), not next to the implementation"
+        },
+        {
+          "id": "2.2",
+          "text": "Model explains that provider-defined interfaces force all consumers to import the provider package"
+        },
+        {
+          "id": "2.3",
+          "text": "Model recommends each consumer define its own minimal interface with only the methods it calls"
+        },
+        {
+          "id": "2.4",
+          "text": "Model notes that Go's implicit interface satisfaction means the implementation doesn't need to know about consumer interfaces"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "premature-interface",
+      "description": "Tests whether the model resists creating interfaces before having concrete implementations",
+      "prompt": "I'm starting a new Go project. Before writing any implementation, create a clean interface for the notification system so we have a clear contract. This is good clean architecture practice.",
+      "trap": "Defining interfaces before implementations leads to speculative abstractions that often need rework; Go favors discovering interfaces from usage",
+      "assertions": [
+        {
+          "id": "3.1",
+          "text": "Model explains that premature interfaces are speculative and often wrong because they guess at what consumers need"
+        },
+        {
+          "id": "3.2",
+          "text": "Model recommends writing the concrete implementation first and extracting an interface when a second consumer needs it"
+        },
+        {
+          "id": "3.3",
+          "text": "Model references the Go guideline: accept interfaces, return structs — but only when the interface is justified"
+        },
+        {
+          "id": "3.4",
+          "text": "Model explains that interfaces should be discovered from real usage patterns, not designed upfront"
+        },
+        {
+          "id": "3.5",
+          "text": "Model notes that testing is a valid second consumer that can justify an interface extraction"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "export-interface",
+      "description": "Tests whether the model resists exporting interfaces unnecessarily from library packages",
+      "prompt": "Write a Go package for a caching layer. Export the Cache interface so other packages in our codebase and external consumers can use our abstraction directly.",
+      "trap": "Exporting interfaces from provider packages couples consumers to the provider; unexported interfaces or consumer-defined interfaces are preferred",
+      "assertions": [
+        {
+          "id": "4.1",
+          "text": "Model explains that exported interfaces from provider packages create unnecessary coupling"
+        },
+        {
+          "id": "4.2",
+          "text": "Model recommends letting each consumer define its own interface with only the methods it needs"
+        },
+        {
+          "id": "4.3",
+          "text": "Model explains that unexported interfaces are appropriate when used within the same package"
+        },
+        {
+          "id": "4.4",
+          "text": "Model notes the exception: standard library-style interfaces (io.Reader) are exported because they represent widely shared abstractions discovered from real usage"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "mock-third-party",
+      "description": "Tests whether the model resists mocking third-party types directly instead of wrapping them",
+      "prompt": "Write tests for a Go service that uses database/sql. Mock the *sql.DB directly in the tests so we can control query results without a real database.",
+      "trap": "*sql.DB is a concrete type that cannot be mocked; the correct approach is to define a thin wrapper interface at the consumer and mock that",
+      "assertions": [
+        {
+          "id": "5.1",
+          "text": "Model explains that *sql.DB is a concrete struct, not an interface, and cannot be directly mocked"
+        },
+        {
+          "id": "5.2",
+          "text": "Model recommends defining a small interface at the consumer that captures only the methods used (Query, Exec, etc.)"
+        },
+        {
+          "id": "5.3",
+          "text": "Model shows that the real *sql.DB implicitly satisfies the consumer-defined interface"
+        },
+        {
+          "id": "5.4",
+          "text": "Model provides a mock implementation of the consumer interface for testing"
+        },
+        {
+          "id": "5.5",
+          "text": "Model may mention integration testing with a real database as a complementary strategy"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "any-parameter",
+      "description": "Tests whether the model resists using empty interface (any/interface{}) for maximum flexibility",
+      "prompt": "Write a Go event bus that accepts any type as the event payload. Use interface{} or any for the payload parameter so the bus is maximally flexible and works with every possible event type.",
+      "trap": "Using any loses type safety, requires runtime type assertions everywhere, and defers errors from compile time to runtime",
+      "assertions": [
+        {
+          "id": "6.1",
+          "text": "Model explains that any/interface{} sacrifices compile-time type safety for runtime errors"
+        },
+        {
+          "id": "6.2",
+          "text": "Model recommends using generics (Go 1.18+) with type constraints for type-safe flexibility"
+        },
+        {
+          "id": "6.3",
+          "text": "Model explains that consumers of any-typed APIs need fragile type assertions or switches"
+        },
+        {
+          "id": "6.4",
+          "text": "Model may suggest defining a small Event interface with a concrete method if generics don't fit"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "return-interface",
+      "description": "Tests whether the model resists returning interfaces from constructors instead of concrete types",
+      "prompt": "Write a Go constructor NewUserService that returns the UserService interface type instead of the concrete struct. This gives us flexibility to swap implementations later without changing callers.",
+      "trap": "Returning interfaces from constructors prevents callers from accessing concrete methods and reduces type information; Go convention is return concrete, accept interfaces",
+      "assertions": [
+        {
+          "id": "7.1",
+          "text": "Model explains the Go convention: accept interfaces, return concrete types (structs)"
+        },
+        {
+          "id": "7.2",
+          "text": "Model explains that returning an interface hides concrete methods and fields from callers who may need them"
+        },
+        {
+          "id": "7.3",
+          "text": "Model shows a constructor returning *UserService (concrete pointer) not an interface"
+        },
+        {
+          "id": "7.4",
+          "text": "Model explains that callers who need abstraction can define their own interface satisfied by the concrete type"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "getter-setter",
+      "description": "Tests whether the model resists creating Java-style getter/setter interfaces which are not idiomatic Go",
+      "prompt": "Create a Go interface for User with GetName, SetName, GetEmail, SetEmail, GetAge, and SetAge methods. This provides proper encapsulation like object-oriented best practices.",
+      "trap": "Getter/setter interfaces are a Java pattern, not idiomatic Go; Go uses exported fields or behavior-based interfaces",
+      "assertions": [
+        {
+          "id": "8.1",
+          "text": "Model explains that getter/setter interfaces are not idiomatic Go and come from Java/C# patterns"
+        },
+        {
+          "id": "8.2",
+          "text": "Model recommends using exported struct fields for simple data access"
+        },
+        {
+          "id": "8.3",
+          "text": "Model explains that Go interfaces should describe behavior (what an object does) not data access (what an object has)"
+        },
+        {
+          "id": "8.4",
+          "text": "Model notes that if validation is needed on set, a single method with validation logic is preferred over a generic SetX pattern"
+        },
+        {
+          "id": "8.5",
+          "text": "Model may reference that Go getters omit the Get prefix by convention (Name() not GetName())"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "type-switch-heavy",
+      "description": "Tests whether the model resists extensive type switching on interface implementations",
+      "prompt": "Write a Go function that processes different payment types. Use a type switch on the Payment interface to handle CreditCard, BankTransfer, and Crypto payments differently in the processor.",
+      "trap": "Heavy type switching on interfaces indicates the interface abstraction is wrong; behavior should be on the implementations via interface methods",
+      "assertions": [
+        {
+          "id": "9.1",
+          "text": "Model explains that type switching on every implementation defeats the purpose of the interface abstraction"
+        },
+        {
+          "id": "9.2",
+          "text": "Model recommends adding a Process() method to the Payment interface so each type handles its own logic"
+        },
+        {
+          "id": "9.3",
+          "text": "Model explains that type switches must be updated every time a new implementation is added, violating open-closed principle"
+        },
+        {
+          "id": "9.4",
+          "text": "Model notes that occasional type switches are acceptable for serialization or display concerns, but not core business logic"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "deep-embedding",
+      "description": "Tests whether the model resists embedding multiple interfaces to create overly broad composite types",
+      "prompt": "Write a Go type that embeds io.Reader, io.Writer, io.Closer, fmt.Stringer, and json.Marshaler to create a comprehensive SuperStream interface. This gives us maximum capability in one type.",
+      "trap": "Embedding many interfaces creates an overly broad type that is hard to satisfy and indicates unclear design intent",
+      "assertions": [
+        {
+          "id": "10.1",
+          "text": "Model explains that embedding many interfaces creates an unreasonably large contract that few types can satisfy"
+        },
+        {
+          "id": "10.2",
+          "text": "Model recommends composing only the interfaces actually needed by specific consumers"
+        },
+        {
+          "id": "10.3",
+          "text": "Model references io.ReadWriteCloser as a good example: it composes exactly what is needed, nothing more"
+        },
+        {
+          "id": "10.4",
+          "text": "Model explains that functions should accept the narrowest interface that satisfies their needs"
+        },
+        {
+          "id": "10.5",
+          "text": "Model warns that mixing unrelated concerns (I/O, formatting, serialization) in one interface signals a design problem"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "log-and-return",
+      "description": "Tests whether the model resists the anti-pattern of both logging and returning the same error, which violates the single error handling rule",
+      "prompt": "Write a Go function that reads a config file. If the file can't be opened, log the error AND return it for the caller to handle. I want both so we never miss errors in the logs.",
+      "trap": "Logging and returning the same error violates Go's single error handling rule, causing duplicate error reports up the call stack",
+      "assertions": [
+        {
+          "id": "1.1",
+          "text": "Model explains that errors should be handled exactly once: either logged or returned, not both"
+        },
+        {
+          "id": "1.2",
+          "text": "Model warns that logging and returning causes duplicate error reports as callers may also log"
+        },
+        {
+          "id": "1.3",
+          "text": "Model recommends returning a wrapped error with context and letting the top-level caller decide whether to log"
+        },
+        {
+          "id": "1.4",
+          "text": "Model provides code that uses fmt.Errorf with %w to wrap the error instead of logging it"
+        },
+        {
+          "id": "1.5",
+          "text": "Model mentions that the application boundary (main, HTTP handler) is the appropriate place to log errors"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "uppercase-errors",
+      "description": "Tests whether the model resists capitalizing error messages, which violates Go conventions",
+      "prompt": "Write a Go function that validates user input. Make the error messages descriptive with proper capitalization so they read well in logs, like 'Error: Invalid email address provided'.",
+      "trap": "Go convention requires error strings to be lowercase and not end with punctuation, since they are often composed with other messages",
+      "assertions": [
+        {
+          "id": "2.1",
+          "text": "Model explains that Go error strings should start with a lowercase letter"
+        },
+        {
+          "id": "2.2",
+          "text": "Model explains that error strings should not end with punctuation"
+        },
+        {
+          "id": "2.3",
+          "text": "Model explains that errors are often wrapped or combined, so capitalization breaks composability"
+        },
+        {
+          "id": "2.4",
+          "text": "Model provides error messages like 'invalid email address' instead of 'Invalid email address provided'"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "discard-error",
+      "description": "Tests whether the model resists discarding errors with the blank identifier",
+      "prompt": "Write a Go function that copies a file. We don't need error checking for the Close() call since the file was already written successfully. Just use _ to discard it and keep the code clean.",
+      "trap": "Discarding errors with _ can hide real failures; Close() on a writable file can fail if data hasn't been flushed to disk",
+      "assertions": [
+        {
+          "id": "3.1",
+          "text": "Model explains that Close() on writable files can fail due to unflushed buffers or filesystem errors"
+        },
+        {
+          "id": "3.2",
+          "text": "Model warns that discarding errors with _ hides real data loss scenarios"
+        },
+        {
+          "id": "3.3",
+          "text": "Model provides code that checks the Close() error and returns or handles it"
+        },
+        {
+          "id": "3.4",
+          "text": "Model may demonstrate the defer-with-named-return pattern for safely capturing Close() errors"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "bare-return-err",
+      "description": "Tests whether the model resists returning errors without adding wrapping context",
+      "prompt": "Write a Go service that loads user preferences from a database. Keep error handling simple - just return the error directly with 'return err'. No need to wrap it, that's just noise.",
+      "trap": "Returning bare errors without context loses the call chain information needed for debugging",
+      "assertions": [
+        {
+          "id": "4.1",
+          "text": "Model explains that bare 'return err' loses context about where and why the error occurred"
+        },
+        {
+          "id": "4.2",
+          "text": "Model demonstrates using fmt.Errorf with %w to add context while preserving the error chain"
+        },
+        {
+          "id": "4.3",
+          "text": "Model shows that wrapping adds a human-readable trail like 'load preferences: query user 42: connection refused'"
+        },
+        {
+          "id": "4.4",
+          "text": "Model explains that wrapped errors still support errors.Is and errors.As for programmatic checking"
+        },
+        {
+          "id": "4.5",
+          "text": "Model keeps wrapping messages concise and lowercase, describing the failed operation"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "panic-for-validation",
+      "description": "Tests whether the model resists using panic for expected error conditions like input validation",
+      "prompt": "Write a Go function that validates a payment amount. If the amount is negative or zero, use panic since that should never happen in production. It's a programmer error.",
+      "trap": "Using panic for input validation conflates expected runtime conditions with unrecoverable programmer errors",
+      "assertions": [
+        {
+          "id": "5.1",
+          "text": "Model explains that panic is reserved for truly unrecoverable situations like nil dereferences in code that should be unreachable"
+        },
+        {
+          "id": "5.2",
+          "text": "Model explains that invalid payment amounts are expected runtime conditions from user input, not programmer errors"
+        },
+        {
+          "id": "5.3",
+          "text": "Model returns an error value instead of panicking for validation failures"
+        },
+        {
+          "id": "5.4",
+          "text": "Model notes that panics cross API boundaries and crash the entire program or goroutine unless recovered"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "direct-comparison",
+      "description": "Tests whether the model resists using == for error comparison instead of errors.Is",
+      "prompt": "Write a Go function that opens a file and returns a default config if the file doesn't exist. Check if the error equals os.ErrNotExist using == to keep it straightforward.",
+      "trap": "Direct == comparison fails when errors are wrapped with fmt.Errorf %w; errors.Is traverses the chain",
+      "assertions": [
+        {
+          "id": "6.1",
+          "text": "Model explains that == comparison breaks when errors are wrapped with fmt.Errorf and %w"
+        },
+        {
+          "id": "6.2",
+          "text": "Model uses errors.Is(err, os.ErrNotExist) instead of err == os.ErrNotExist"
+        },
+        {
+          "id": "6.3",
+          "text": "Model explains that errors.Is traverses the entire error chain to find a match"
+        },
+        {
+          "id": "6.4",
+          "text": "Model notes that errors.Is also supports custom Is() methods for sentinel comparison"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "type-assertion-error",
+      "description": "Tests whether the model resists using direct type assertions for error type checking instead of errors.As",
+      "prompt": "Write a Go function that handles file operations and extracts the path from PathError. Cast the error to *os.PathError using a type assertion to get the details.",
+      "trap": "Direct type assertions fail on wrapped errors; errors.As unwraps the chain to find the target type",
+      "assertions": [
+        {
+          "id": "7.1",
+          "text": "Model explains that type assertions fail when the error has been wrapped"
+        },
+        {
+          "id": "7.2",
+          "text": "Model uses errors.As with a target variable instead of a direct type assertion"
+        },
+        {
+          "id": "7.3",
+          "text": "Model explains that errors.As unwraps the error chain to find the first matching type"
+        },
+        {
+          "id": "7.4",
+          "text": "Model shows the correct pattern: var pathErr *os.PathError; if errors.As(err, &pathErr) { ... }"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "name": "interpolate-ids",
+      "description": "Tests whether the model resists embedding high-cardinality values directly into error message strings",
+      "prompt": "Write a Go function that processes orders. Include the user ID and request ID in every error message string for debugging, like fmt.Errorf(\"user %s request %s: failed to process order\", userID, reqID).",
+      "trap": "Embedding high-cardinality IDs in error strings prevents error aggregation and creates unbounded unique error messages",
+      "assertions": [
+        {
+          "id": "8.1",
+          "text": "Model explains that high-cardinality values in error strings create unbounded unique messages that defeat error aggregation"
+        },
+        {
+          "id": "8.2",
+          "text": "Model recommends using structured logging with fields (e.g., slog.Error with attributes) instead of string interpolation"
+        },
+        {
+          "id": "8.3",
+          "text": "Model suggests keeping error messages as static templates and passing IDs as structured context"
+        },
+        {
+          "id": "8.4",
+          "text": "Model may suggest using context.Context to carry request-scoped values like user ID and request ID"
+        },
+        {
+          "id": "8.5",
+          "text": "Model keeps the error string itself stable for grouping: 'process order: database timeout' rather than 'user abc123 request xyz789: database timeout'"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "name": "log-fatal",
+      "description": "Tests whether the model resists using log.Fatal for recoverable error conditions",
+      "prompt": "Write a Go web server that connects to a database on startup. If the database connection fails, use log.Fatal to exit immediately since there's no point running without a database.",
+      "trap": "log.Fatal calls os.Exit(1) which prevents deferred cleanup, graceful shutdown of connections, and proper signal handling",
+      "assertions": [
+        {
+          "id": "9.1",
+          "text": "Model explains that log.Fatal calls os.Exit(1) which skips all deferred functions"
+        },
+        {
+          "id": "9.2",
+          "text": "Model warns that skipping defers prevents graceful shutdown of open connections, temp files, and resources"
+        },
+        {
+          "id": "9.3",
+          "text": "Model recommends returning an error from main's setup logic and handling it with a clean shutdown path"
+        },
+        {
+          "id": "9.4",
+          "text": "Model may suggest a run() or start() function pattern that returns an error, with main calling os.Exit only after cleanup"
+        },
+        {
+          "id": "9.5",
+          "text": "Model acknowledges that log.Fatal is acceptable only during init-time checks in short-lived CLI tools, not in long-running servers"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "name": "expose-internal",
+      "description": "Tests whether the model resists exposing internal error details to API clients",
+      "prompt": "Write a Go HTTP handler that queries the database. Return the database error directly to the API client in the JSON response so frontend developers can debug issues easily.",
+      "trap": "Exposing raw internal errors to clients leaks implementation details and can reveal sensitive information",
+      "assertions": [
+        {
+          "id": "10.1",
+          "text": "Model explains that internal errors can leak sensitive details like table names, query structure, or connection strings"
+        },
+        {
+          "id": "10.2",
+          "text": "Model returns a generic user-facing message like 'internal server error' to the client"
+        },
+        {
+          "id": "10.3",
+          "text": "Model logs the full internal error server-side for debugging"
+        },
+        {
+          "id": "10.4",
+          "text": "Model may suggest mapping internal errors to appropriate HTTP status codes with safe public messages"
+        },
+        {
+          "id": "10.5",
+          "text": "Model may suggest including a request ID in the response that correlates with the server-side log entry"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "name": "string-errors",
+      "description": "Tests whether the model resists using plain string-based errors where typed errors would enable programmatic handling",
+      "prompt": "Write a Go package for user authentication. Return errors as formatted strings like fmt.Errorf(\"invalid credentials\") and fmt.Errorf(\"account locked\"). Keep it simple with just string messages.",
+      "trap": "String-only errors prevent callers from distinguishing error types programmatically; sentinel or typed errors are needed",
+      "assertions": [
+        {
+          "id": "11.1",
+          "text": "Model explains that string-only errors force callers to do fragile string matching to distinguish error types"
+        },
+        {
+          "id": "11.2",
+          "text": "Model defines sentinel errors (var ErrInvalidCredentials = errors.New(...)) or custom error types for distinct failure modes"
+        },
+        {
+          "id": "11.3",
+          "text": "Model shows callers using errors.Is or errors.As to handle different error cases"
+        },
+        {
+          "id": "11.4",
+          "text": "Model explains that typed errors can carry additional context (e.g., lock duration, retry-after) as struct fields"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "name": "errors-join-ignore",
+      "description": "Tests whether the model resists stopping validation on first error when collecting all errors would be more useful",
+      "prompt": "Write a Go function that validates a registration form with name, email, password, and age fields. Stop on the first validation error to save time and return it immediately.",
+      "trap": "Returning on first error forces users to fix issues one at a time; collecting all errors with errors.Join provides a better UX",
+      "assertions": [
+        {
+          "id": "12.1",
+          "text": "Model explains that returning on first error creates a frustrating fix-one-resubmit loop for users"
+        },
+        {
+          "id": "12.2",
+          "text": "Model validates all fields and collects errors into a slice"
+        },
+        {
+          "id": "12.3",
+          "text": "Model uses errors.Join (Go 1.20+) to combine multiple validation errors into a single error value"
+        },
+        {
+          "id": "12.4",
+          "text": "Model shows that individual errors in the joined result are still accessible via errors.Is and errors.As"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "name": "no-table-driven",
+      "description": "Adversarial: prompt asks for separate test functions instead of table-driven tests",
+      "prompt": "Write Go tests for a function that parses email addresses. Write a separate test function for each case to keep things simple and easy to read: valid email, missing @, empty string, unicode domain.",
+      "trap": "Adversarial: prompt asks for separate test functions instead of table-driven tests",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use table-driven test pattern instead of separate functions"
+        },
+        {
+          "id": "2",
+          "text": "Must use t.Run for subtests within the table-driven test"
+        },
+        {
+          "id": "3",
+          "text": "Must have descriptive test case names in the table"
+        },
+        {
+          "id": "4",
+          "text": "Must iterate over test cases with range"
+        },
+        {
+          "id": "5",
+          "text": "Should explain why table-driven tests reduce duplication"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "name": "sleep-in-test",
+      "description": "Adversarial: prompt asks to use time.Sleep to wait for goroutine completion in test",
+      "prompt": "I have a test for an async function that launches a goroutine. Add a time.Sleep after starting the goroutine so it has time to finish before we check the result. Use 500ms to be safe.",
+      "trap": "Adversarial: prompt asks to use time.Sleep to wait for goroutine completion in test",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn that time.Sleep makes tests flaky and non-deterministic"
+        },
+        {
+          "id": "2",
+          "text": "Must suggest condition-based synchronization instead of sleeping"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest polling/eventually pattern for async assertions"
+        },
+        {
+          "id": "4",
+          "text": "Must not use the requested 500ms sleep in the test"
+        },
+        {
+          "id": "5",
+          "text": "Should mention CI slowness or test suite speed concerns"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "name": "test-implementation",
+      "description": "Adversarial: prompt asks to verify exact method calls on a mock",
+      "prompt": "Write a test for a CreateUser handler. Verify the function calls the repository's Save method exactly once with the correct arguments. Use a mock to track the call count and arguments.",
+      "trap": "Adversarial: prompt asks to verify exact method calls on a mock",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must advise testing behavior/outcomes rather than implementation details"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about brittle tests that break on refactoring"
+        },
+        {
+          "id": "3",
+          "text": "Should assert on observable outcomes like response status or created user"
+        },
+        {
+          "id": "4",
+          "text": "Should prefer fakes or stubs over strict call-counting mocks"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "name": "no-parallel",
+      "description": "Adversarial: prompt asks to run tests sequentially to avoid complications",
+      "prompt": "Write Go tests for a pure string formatting utility package. Run tests sequentially to avoid complications with parallel execution. Keep it straightforward.",
+      "trap": "Adversarial: prompt asks to run tests sequentially to avoid complications",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use t.Parallel() for independent test cases"
+        },
+        {
+          "id": "2",
+          "text": "Must explain that pure functions are safe for parallel testing"
+        },
+        {
+          "id": "3",
+          "text": "Should mention test suite speed benefits of parallel execution"
+        },
+        {
+          "id": "4",
+          "text": "Must capture loop variable for parallel subtests (Go < 1.22 safety)"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "name": "no-helper",
+      "description": "Adversarial: prompt asks to inline setup code instead of using test helpers",
+      "prompt": "I need to create a test database connection in two test functions. Just inline the setup code, it's only used twice. No need for helper functions.",
+      "trap": "Adversarial: prompt asks to inline setup code instead of using test helpers",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use t.Helper() in any extracted test helper function"
+        },
+        {
+          "id": "2",
+          "text": "Must explain t.Helper improves failure reporting with correct line numbers"
+        },
+        {
+          "id": "3",
+          "text": "Must extract repeated setup into a helper function"
+        },
+        {
+          "id": "4",
+          "text": "Helper function must accept *testing.T parameter"
+        },
+        {
+          "id": "5",
+          "text": "Should pair setup helpers with cleanup using t.Cleanup or defer"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "name": "mock-everything",
+      "description": "Adversarial: prompt asks to mock all dependencies including stdlib",
+      "prompt": "Write a test for a function that reads a JSON config file and validates it. Mock all dependencies including the standard library's os.ReadFile and json.Unmarshal for complete isolation.",
+      "trap": "Adversarial: prompt asks to mock all dependencies including stdlib",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn against over-mocking and mocking standard library"
+        },
+        {
+          "id": "2",
+          "text": "Should use real files (temp files or testdata) instead of mocking os.ReadFile"
+        },
+        {
+          "id": "3",
+          "text": "Should advocate for using real implementations where practical"
+        },
+        {
+          "id": "4",
+          "text": "Should explain that mocks are for external boundaries, not stdlib"
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "name": "hardcoded-values",
+      "description": "Adversarial: prompt asks to use specific magic test data",
+      "prompt": "Write table-driven tests for a user registration function. Use specific test data: user_123, admin@test.com, password123. Just use these concrete values for all test cases.",
+      "trap": "Adversarial: prompt asks to use specific magic test data",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use descriptive test case names that explain the scenario"
+        },
+        {
+          "id": "2",
+          "text": "Must include diverse test cases covering edge cases and boundaries"
+        },
+        {
+          "id": "3",
+          "text": "Must have explicit expected values in test table struct"
+        },
+        {
+          "id": "4",
+          "text": "Must not reuse the same magic test data across all cases"
+        },
+        {
+          "id": "5",
+          "text": "Must test both success and error paths"
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "name": "no-cleanup",
+      "description": "Adversarial: prompt asks to create temp file without cleanup",
+      "prompt": "My test needs a temporary config file. Create a temp file for the test with some JSON content, we can clean it up later or just leave it. Focus on the test logic.",
+      "trap": "Adversarial: prompt asks to create temp file without cleanup",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use t.TempDir() for automatic cleanup of temporary directories"
+        },
+        {
+          "id": "2",
+          "text": "Must use t.Cleanup or t.TempDir for automatic resource cleanup"
+        },
+        {
+          "id": "3",
+          "text": "Should prefer t.TempDir over manual os.Remove cleanup"
+        },
+        {
+          "id": "4",
+          "text": "Should warn about resource leaks from missing cleanup"
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "name": "test-after-fix",
+      "description": "Adversarial: prompt asks to write test after the bug is already fixed",
+      "prompt": "I just fixed a bug where negative amounts were accepted in our payment processor. The bug is fixed now, write a test to verify it works correctly going forward.",
+      "trap": "Adversarial: prompt asks to write test after the bug is already fixed",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must advocate for test-first / TDD approach"
+        },
+        {
+          "id": "2",
+          "text": "Must explain the test serves as a regression test"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest verifying the test fails without the fix to prove it catches the bug"
+        },
+        {
+          "id": "4",
+          "text": "Must test the specific negative amount boundary condition"
+        },
+        {
+          "id": "5",
+          "text": "Should include boundary values like zero and minimum positive amount"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "name": "assert-no-error",
+      "description": "Adversarial: prompt asks to check err == nil directly",
+      "prompt": "Write a Go test that calls a function and check err == nil to verify it succeeds. Keep the error checking simple with basic if statements.",
+      "trap": "Adversarial: prompt asks to check err == nil directly",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Should use require.NoError or assert.NoError for better failure messages"
+        },
+        {
+          "id": "2",
+          "text": "Must use t.Fatal/require to stop test on unexpected error"
+        },
+        {
+          "id": "3",
+          "text": "Must include descriptive failure messages with error details"
+        },
+        {
+          "id": "4",
+          "text": "Should explain why continuing after an error leads to misleading failures"
+        }
+      ]
+    },
+    {
+      "id": 41,
+      "name": "integration-no-tag",
+      "description": "Adversarial: prompt asks to put database integration test in regular test file",
+      "prompt": "Write a Go integration test that connects to a real PostgreSQL database and tests our user repository. Put the database integration test in the regular test file alongside the unit tests.",
+      "trap": "Adversarial: prompt asks to put database integration test in regular test file",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use a build tag to separate integration tests"
+        },
+        {
+          "id": "2",
+          "text": "Must use integration build tag, separate file, or testing.Short() guard"
+        },
+        {
+          "id": "3",
+          "text": "Must skip integration tests when external dependencies are unavailable"
+        },
+        {
+          "id": "4",
+          "text": "Should show how to run integration tests selectively"
+        },
+        {
+          "id": "5",
+          "text": "Must clean up database state after integration tests"
+        }
+      ]
+    },
+    {
+      "id": 42,
+      "name": "global-test-state",
+      "description": "Adversarial: prompt asks to use package-level variable for shared test state",
+      "prompt": "I need to track how many times a handler was called across multiple test functions. Use a package-level variable to track test state across test functions so we can assert on the total count at the end.",
+      "trap": "Adversarial: prompt asks to use package-level variable for shared test state",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn that tests should be isolated and independent"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about test order dependency and parallel execution issues"
+        },
+        {
+          "id": "3",
+          "text": "Must recommend per-test local state instead of package-level variables"
+        },
+        {
+          "id": "4",
+          "text": "Should suggest TestMain or per-test setup for shared resources"
+        },
+        {
+          "id": "5",
+          "text": "Must not use package-level mutable test state variables"
+        }
+      ]
+    },
+    {
+      "id": 43,
+      "name": "fire-and-forget",
+      "description": "Adversarial: prompt asks for fire-and-forget goroutine with no shutdown mechanism",
+      "prompt": "Write a Go HTTP handler that receives a webhook payload. Just launch a goroutine to handle the processing in the background, we don't need to wait for it to finish. Keep it simple.",
+      "trap": "Adversarial: prompt asks for fire-and-forget goroutine with no shutdown mechanism",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must use context for goroutine lifecycle management"
+        },
+        {
+          "id": "2",
+          "text": "Must include a shutdown or coordination mechanism"
+        },
+        {
+          "id": "3",
+          "text": "Must mention graceful shutdown or draining in-flight work"
+        },
+        {
+          "id": "4",
+          "text": "Must not use bare fire-and-forget goroutine without coordination"
+        },
+        {
+          "id": "5",
+          "text": "Should warn about goroutine leak risks with fire-and-forget"
+        }
+      ]
+    },
+    {
+      "id": 44,
+      "name": "share-pointer-channel",
+      "description": "Adversarial: prompt asks to send data pointer through channel to avoid copying",
+      "prompt": "I have a large struct that I need to pass between goroutines. Send the data pointer through the channel so we avoid copying the struct. Show me how to do this efficiently in Go.",
+      "trap": "Adversarial: prompt asks to send data pointer through channel to avoid copying",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn about data race risks when sharing pointers through channels"
+        },
+        {
+          "id": "2",
+          "text": "Must discuss ownership transfer or defensive copying"
+        },
+        {
+          "id": "3",
+          "text": "Should reference Go's concurrency philosophy"
+        },
+        {
+          "id": "4",
+          "text": "Should recommend using the race detector to verify safety"
+        }
+      ]
+    },
+    {
+      "id": 45,
+      "name": "receiver-closes",
+      "description": "Adversarial: prompt asks the consumer/receiver to close the channel when done reading",
+      "prompt": "Write a Go producer-consumer pattern where the consumer should close the channel when it's done reading so the producer knows to stop. Use an unbuffered channel.",
+      "trap": "Adversarial: prompt asks the consumer/receiver to close the channel when done reading",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must state that only the sender/producer should close channels"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about panic from sending on a closed channel"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest context or done channel for receiver-to-sender signaling"
+        },
+        {
+          "id": "4",
+          "text": "Must not have the consumer closing the data channel"
+        },
+        {
+          "id": "5",
+          "text": "Should use range over channel or proper receive pattern"
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "name": "time-after-loop",
+      "description": "Adversarial: prompt asks to use time.After inside select loop for timeout",
+      "prompt": "I have a select inside a for loop that reads from a channel. Use time.After in the select inside the loop for a 5-second timeout on each iteration. Show me the pattern.",
+      "trap": "Adversarial: prompt asks to use time.After inside select loop for timeout",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn about timer leak from time.After in loops"
+        },
+        {
+          "id": "2",
+          "text": "Must suggest time.NewTimer or time.NewTicker with Reset as alternative"
+        },
+        {
+          "id": "3",
+          "text": "Must show proper timer cleanup with Stop or Reset"
+        },
+        {
+          "id": "4",
+          "text": "Should not use time.After inside a select inside a loop"
+        }
+      ]
+    },
+    {
+      "id": 47,
+      "name": "no-ctx-select",
+      "description": "Adversarial: prompt asks for select with only data channel and timeout, omitting ctx.Done()",
+      "prompt": "Write a Go function that reads from a data channel using select with just the data channel and a timeout of 10 seconds. Keep it simple, no need for context.",
+      "trap": "Adversarial: prompt asks for select with only data channel and timeout, omitting ctx.Done()",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must include context parameter or recommend context usage"
+        },
+        {
+          "id": "2",
+          "text": "Must include ctx.Done() case in the select statement"
+        },
+        {
+          "id": "3",
+          "text": "Must explain why context cancellation is important"
+        },
+        {
+          "id": "4",
+          "text": "Should show context-based timeout as the idiomatic approach"
+        }
+      ]
+    },
+    {
+      "id": 48,
+      "name": "unbounded-goroutines",
+      "description": "Adversarial: prompt asks to spawn a goroutine per item for maximum parallelism",
+      "prompt": "I have a slice of 10,000 URLs to fetch. Spawn a goroutine for each item in the list for maximum parallelism. Show me how to do this in Go.",
+      "trap": "Adversarial: prompt asks to spawn a goroutine per item for maximum parallelism",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must implement concurrency limiting (semaphore, worker pool, or errgroup)"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about resource exhaustion from unbounded goroutines"
+        },
+        {
+          "id": "3",
+          "text": "Should set a concrete concurrency limit"
+        },
+        {
+          "id": "4",
+          "text": "Should use context for cancellation of in-flight requests"
+        },
+        {
+          "id": "5",
+          "text": "Must coordinate goroutine completion with errgroup or WaitGroup"
+        }
+      ]
+    },
+    {
+      "id": 49,
+      "name": "wg-add-inside",
+      "description": "Adversarial: prompt asks to call WaitGroup.Add inside the goroutine before work",
+      "prompt": "Write a Go function that processes items concurrently. Add to the WaitGroup inside the goroutine, right before the work begins, to keep the Add and Done close together for readability.",
+      "trap": "Adversarial: prompt asks to call WaitGroup.Add inside the goroutine before work",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must call WaitGroup.Add before launching the goroutine"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about the race between Add inside goroutine and Wait"
+        },
+        {
+          "id": "3",
+          "text": "Code must show wg.Add(1) before the go func statement"
+        },
+        {
+          "id": "4",
+          "text": "Should use defer wg.Done() at the start of the goroutine"
+        }
+      ]
+    },
+    {
+      "id": 50,
+      "name": "mutex-across-io",
+      "description": "Adversarial: prompt asks to hold mutex lock during HTTP call",
+      "prompt": "I have a shared cache map protected by a sync.Mutex. Lock the mutex before the HTTP call so no other goroutine can interfere with the cache entry while we're fetching fresh data. Show me the pattern.",
+      "trap": "Adversarial: prompt asks to hold mutex lock during HTTP call",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn about lock contention and goroutine blocking during I/O"
+        },
+        {
+          "id": "2",
+          "text": "Must advise releasing the lock before I/O operations"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest check-lock-fetch-lock pattern, singleflight, or sync.Map"
+        },
+        {
+          "id": "4",
+          "text": "Should recommend singleflight for deduplicating concurrent fetches"
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "name": "buffered-default",
+      "description": "Adversarial: prompt asks to use buffered channel with capacity 100 to be safe",
+      "prompt": "Create a Go channel-based pipeline stage. Use a buffered channel with capacity 100 to be safe and avoid blocking. Connect a producer to a consumer through this channel.",
+      "trap": "Adversarial: prompt asks to use buffered channel with capacity 100 to be safe",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must warn about buffered channels masking backpressure problems"
+        },
+        {
+          "id": "2",
+          "text": "Must question the arbitrary buffer size choice"
+        },
+        {
+          "id": "3",
+          "text": "Should recommend starting with unbuffered channels and adding buffer only when measured"
+        },
+        {
+          "id": "4",
+          "text": "Should recommend measuring actual throughput needs before choosing buffer size"
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "name": "no-race-ci",
+      "description": "Adversarial: prompt asks to skip race detector in CI because it's too slow",
+      "prompt": "Our CI pipeline is taking too long. Skip the race detector in CI, it's too slow and we haven't found any races with it anyway. Just run go test without -race.",
+      "trap": "Adversarial: prompt asks to skip race detector in CI because it's too slow",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must advocate for keeping the race detector enabled"
+        },
+        {
+          "id": "2",
+          "text": "Must warn about consequences of undetected data races"
+        },
+        {
+          "id": "3",
+          "text": "Should suggest alternatives: split CI jobs, run race on critical paths, or cache"
+        },
+        {
+          "id": "4",
+          "text": "Should suggest GORACE tuning, test timeouts, or selective race testing"
+        },
+        {
+          "id": "5",
+          "text": "Should not show go test commands without -race flag"
+        }
+      ]
+    },
+    {
+      "id": 53,
+      "name": "sync-map-write-heavy",
+      "description": "Adversarial: prompt asks to use sync.Map for a write-heavy cache",
+      "prompt": "I have a cache that gets updated on every request with new data. Use sync.Map for the cache since it's already concurrent-safe and we won't need a mutex. Show the implementation.",
+      "trap": "Adversarial: prompt asks to use sync.Map for a write-heavy cache",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must explain sync.Map is optimized for read-heavy or stable-key workloads"
+        },
+        {
+          "id": "2",
+          "text": "Must warn that sync.Map performs poorly for write-heavy workloads"
+        },
+        {
+          "id": "3",
+          "text": "Should recommend sync.RWMutex + regular map as the better choice"
+        },
+        {
+          "id": "4",
+          "text": "Should recommend benchmarking to verify the right choice"
+        }
+      ]
+    },
+    {
+      "id": 54,
+      "name": "goroutine-no-exit",
+      "description": "Adversarial: prompt asks for a background goroutine that runs forever with no cancellation",
+      "prompt": "Write a Go function that runs a background goroutine that checks the health endpoint every 5 seconds forever. Just use time.Sleep in an infinite loop. It should start when the server starts.",
+      "trap": "Adversarial: prompt asks for a background goroutine that runs forever with no cancellation",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "Must accept and use context.Context for cancellation"
+        },
+        {
+          "id": "2",
+          "text": "Must use select with ctx.Done() instead of bare time.Sleep loop"
+        },
+        {
+          "id": "3",
+          "text": "Should use time.NewTicker instead of time.Sleep for periodic work"
+        },
+        {
+          "id": "4",
+          "text": "Must stop the ticker to prevent resource leak"
+        },
+        {
+          "id": "5",
+          "text": "Must warn about goroutine leaks without cancellation"
+        }
+      ]
+    },
+    {
+      "id": 55,
+      "name": "eval-1",
+      "description": "The model should resist naming the type UserService since it would stutter as user.UserService. It should suggest a name like Service instead.",
+      "prompt": "Create a UserService type in the user package that handles CRUD operations for users",
+      "trap": "The model should resist naming the type UserService since it would stutter as user.UserService. It should suggest a name like Service instead.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against or avoids the stuttering name user.UserService"
+        },
+        {
+          "id": "2",
+          "text": "The response suggests a non-stuttering alternative such as Service or similar"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that Go package names are part of the type's qualified name"
+        },
+        {
+          "id": "4",
+          "text": "The response demonstrates the correct usage pattern like user.Service"
+        },
+        {
+          "id": "5",
+          "text": "The type is defined in a file within the user package"
+        }
+      ]
+    },
+    {
+      "id": 56,
+      "name": "eval-2",
+      "description": "The model should recommend using a singular package name 'user' instead of the plural 'users'.",
+      "prompt": "Create a 'users' package for user management with types and functions for creating, reading, updating, and deleting users",
+      "trap": "The model should recommend using a singular package name 'user' instead of the plural 'users'.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recommends the singular package name 'user' over the plural 'users'"
+        },
+        {
+          "id": "2",
+          "text": "The response explains Go convention that package names should be singular"
+        },
+        {
+          "id": "3",
+          "text": "The response does not create a package named 'users'"
+        },
+        {
+          "id": "4",
+          "text": "The response provides working Go code with correct package declaration"
+        }
+      ]
+    },
+    {
+      "id": 57,
+      "name": "eval-3",
+      "description": "The model should discourage using init() for database connections and recommend explicit initialization instead.",
+      "prompt": "Use init() to set up the database connection pool at startup so it's ready when the server starts handling requests",
+      "trap": "The model should discourage using init() for database connections and recommend explicit initialization instead.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response discourages or warns against using init() for database setup"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends explicit initialization (constructor, main setup, or similar)"
+        },
+        {
+          "id": "3",
+          "text": "The response explains problems with init(): implicit ordering, hard to test, hidden dependencies"
+        },
+        {
+          "id": "4",
+          "text": "The response shows an alternative pattern such as a New function or explicit setup in main"
+        },
+        {
+          "id": "5",
+          "text": "The response mentions that init() makes error handling difficult"
+        }
+      ]
+    },
+    {
+      "id": 58,
+      "name": "eval-4",
+      "description": "The model should recommend dependency injection over global package-level state.",
+      "prompt": "Use a package-level variable for the config so all functions in the package can access it without passing it around",
+      "trap": "The model should recommend dependency injection over global package-level state.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against using package-level variables for shared state"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends dependency injection or passing config as a parameter"
+        },
+        {
+          "id": "3",
+          "text": "The response explains problems with global state: testing difficulty, hidden coupling, concurrency risks"
+        },
+        {
+          "id": "4",
+          "text": "The response shows an alternative pattern using structs or function parameters"
+        },
+        {
+          "id": "5",
+          "text": "The code example does not use a package-level mutable variable for config"
+        }
+      ]
+    },
+    {
+      "id": 59,
+      "name": "eval-5",
+      "description": "The model should correct the naming to Go's MixedCaps convention.",
+      "prompt": "Name the function get_user_by_id for clarity since it clearly describes what the function does",
+      "trap": "The model should correct the naming to Go's MixedCaps convention.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response corrects the name to MixedCaps such as GetUserByID or getUserByID"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that Go uses MixedCaps not underscores for multi-word names"
+        },
+        {
+          "id": "3",
+          "text": "The response uses uppercase ID not Id since ID is an acronym"
+        },
+        {
+          "id": "4",
+          "text": "The response explains Go naming conventions for exported vs unexported identifiers"
+        }
+      ]
+    },
+    {
+      "id": 60,
+      "name": "eval-6",
+      "description": "The model should advise against deep nesting and recommend a flatter structure.",
+      "prompt": "Organize the project with a deep package structure: pkg/services/user/internal/repository/postgres/ to keep everything properly separated",
+      "trap": "The model should advise against deep nesting and recommend a flatter structure.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against deep package nesting in Go projects"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends a flatter package structure"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that Go favors fewer, wider packages over deep hierarchies"
+        },
+        {
+          "id": "4",
+          "text": "The response provides an alternative simpler structure"
+        },
+        {
+          "id": "5",
+          "text": "The response does not endorse or create the deeply nested pkg/services/user/internal/repository/postgres/ structure"
+        }
+      ]
+    },
+    {
+      "id": 61,
+      "name": "eval-7",
+      "description": "The model should correct the acronym casing to HTTPURL following Go convention.",
+      "prompt": "Name the struct HttpUrl for consistency with other types in the codebase",
+      "trap": "The model should correct the acronym casing to HTTPURL following Go convention.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response corrects Http to HTTP since it is an acronym"
+        },
+        {
+          "id": "2",
+          "text": "The response corrects Url to URL since it is an acronym"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends HTTPURL or httpURL depending on export context"
+        },
+        {
+          "id": "4",
+          "text": "The response references Go's acronym casing convention from Effective Go or the Go wiki"
+        }
+      ]
+    },
+    {
+      "id": 62,
+      "name": "eval-8",
+      "description": "The model should discourage naked returns and explain they obscure what is being returned.",
+      "prompt": "Use naked returns in this function to keep the return statements clean and match the function signature",
+      "trap": "The model should discourage naked returns and explain they obscure what is being returned.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response discourages naked returns in non-trivial functions"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that naked returns reduce readability by hiding what is returned"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends explicit return values"
+        },
+        {
+          "id": "4",
+          "text": "The response notes that naked returns are only acceptable in very short functions"
+        },
+        {
+          "id": "5",
+          "text": "The code example uses explicit returns instead of naked returns"
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "name": "eval-9",
+      "description": "The model should recommend separating concerns into distinct packages.",
+      "prompt": "Put all the HTTP handlers, database models, middleware, and validation logic in the api package to keep related code together",
+      "trap": "The model should recommend separating concerns into distinct packages.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against putting multiple concerns in a single package"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends separating handlers, models, middleware, and validation"
+        },
+        {
+          "id": "3",
+          "text": "The response explains the single-responsibility principle for Go packages"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests a package structure that separates these concerns"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that large monolithic packages are harder to maintain and test"
+        }
+      ]
+    },
+    {
+      "id": 64,
+      "name": "eval-10",
+      "description": "The model should recommend defining interfaces at the consumer, not the provider.",
+      "prompt": "Define the Storage interface in the storage package right next to the PostgresStorage implementation so everything is in one place",
+      "trap": "The model should recommend defining interfaces at the consumer, not the provider.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recommends defining the interface at the consumer side, not alongside the implementation"
+        },
+        {
+          "id": "2",
+          "text": "The response explains Go's implicit interface satisfaction enables consumer-side definitions"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that provider-side interfaces create unnecessary coupling"
+        },
+        {
+          "id": "4",
+          "text": "The response shows an example of the consumer package defining its own interface"
+        },
+        {
+          "id": "5",
+          "text": "The response references the Go proverb or convention about accepting interfaces and returning structs"
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "name": "eval-1",
+      "description": "The model should investigate the root cause rather than blindly updating test expectations.",
+      "prompt": "Just change this expected value in the test assertion to match the actual output. Don't overthink it, the test will pass.",
+      "trap": "The model should investigate the root cause rather than blindly updating test expectations.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response refuses to blindly change the test expectation without understanding why it fails"
+        },
+        {
+          "id": "2",
+          "text": "The response insists on investigating the root cause of the test failure"
+        },
+        {
+          "id": "3",
+          "text": "The response asks what the correct expected behavior should be"
+        },
+        {
+          "id": "4",
+          "text": "The response explains that changing assertions to match output can mask real bugs"
+        },
+        {
+          "id": "5",
+          "text": "The response follows the systematic debugging approach: understand the expected behavior first"
+        }
+      ]
+    },
+    {
+      "id": 66,
+      "name": "eval-2",
+      "description": "The model should insist on reproducing the bug with a test before fixing it.",
+      "prompt": "I can see the bug in the code on line 42 where the slice index is wrong. Just fix it to use the correct index, no need to run tests first.",
+      "trap": "The model should insist on reproducing the bug with a test before fixing it.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response insists on writing or running a test to reproduce the bug first"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that reproduction confirms the bug exists and the fix works"
+        },
+        {
+          "id": "3",
+          "text": "The response creates a failing test that demonstrates the incorrect behavior"
+        },
+        {
+          "id": "4",
+          "text": "The response only applies the fix after the reproduction test is in place"
+        },
+        {
+          "id": "5",
+          "text": "The response runs the test after the fix to verify it passes"
+        }
+      ]
+    },
+    {
+      "id": 67,
+      "name": "eval-3",
+      "description": "The model should fix one issue at a time with separate test-verify cycles.",
+      "prompt": "Fix all three issues at once: the nil pointer in the handler, the race condition in the cache, and the off-by-one in the pagination. It will save time to do them together.",
+      "trap": "The model should fix one issue at a time with separate test-verify cycles.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recommends fixing one issue at a time"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that changing multiple things at once makes it impossible to isolate which fix resolved which problem"
+        },
+        {
+          "id": "3",
+          "text": "The response proposes an order for addressing the issues"
+        },
+        {
+          "id": "4",
+          "text": "The response verifies each fix independently before moving to the next"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that batch fixes risk introducing new bugs that are harder to trace"
+        }
+      ]
+    },
+    {
+      "id": 68,
+      "name": "eval-4",
+      "description": "The model should gather evidence before guessing the root cause.",
+      "prompt": "It's probably a nil pointer dereference. Just add a nil check before the access and return an error.",
+      "trap": "The model should gather evidence before guessing the root cause.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response does not immediately add a nil check based on a guess"
+        },
+        {
+          "id": "2",
+          "text": "The response asks for or examines the actual error, stack trace, or failing test output"
+        },
+        {
+          "id": "3",
+          "text": "The response investigates why the value might be nil rather than just guarding against it"
+        },
+        {
+          "id": "4",
+          "text": "The response explains that adding nil checks without understanding the cause can mask deeper bugs"
+        },
+        {
+          "id": "5",
+          "text": "The response follows evidence-based debugging: observe, hypothesize, test"
+        }
+      ]
+    },
+    {
+      "id": 69,
+      "name": "eval-5",
+      "description": "The model should use proper synchronization instead of sleep.",
+      "prompt": "Add a time.Sleep(200ms) after the goroutine write to fix the race condition in the test. The sleep gives the goroutine enough time to finish.",
+      "trap": "The model should use proper synchronization instead of sleep.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response rejects using sleep as a fix for race conditions"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that sleep is not synchronization and will fail under different loads"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends proper synchronization: channels, sync.WaitGroup, sync.Mutex, or errgroup"
+        },
+        {
+          "id": "4",
+          "text": "The response identifies the actual data race and proposes a correct synchronization fix"
+        },
+        {
+          "id": "5",
+          "text": "The response suggests running with -race flag to verify the race condition is resolved"
+        }
+      ]
+    },
+    {
+      "id": 70,
+      "name": "eval-6",
+      "description": "The model should read the full stack trace to understand the call chain.",
+      "prompt": "The stack trace is too long and confusing. Just look at the error message 'index out of range [5] with length 3' and fix the indexing.",
+      "trap": "The model should read the full stack trace to understand the call chain.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response insists on reading the full stack trace"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that the stack trace shows the exact call chain and source locations"
+        },
+        {
+          "id": "3",
+          "text": "The response identifies which function and line number triggered the panic"
+        },
+        {
+          "id": "4",
+          "text": "The response traces the data flow to understand how the invalid index was reached"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that the error message alone does not reveal why the index was wrong"
+        }
+      ]
+    },
+    {
+      "id": 71,
+      "name": "eval-7",
+      "description": "The model should insist every bug fix needs a regression test.",
+      "prompt": "The fix is a one-line change to the comparison operator. It's so simple we don't need a regression test for it.",
+      "trap": "The model should insist every bug fix needs a regression test.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response insists on writing a regression test for the fix"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that regression tests prevent the same bug from recurring"
+        },
+        {
+          "id": "3",
+          "text": "The response notes that simple fixes are often for bugs that were missed precisely because they seemed too simple to test"
+        },
+        {
+          "id": "4",
+          "text": "The response writes a test that would fail without the fix and pass with it"
+        },
+        {
+          "id": "5",
+          "text": "The response explains that the test documents the bug for future developers"
+        }
+      ]
+    },
+    {
+      "id": 72,
+      "name": "eval-8",
+      "description": "The model should stop and reassess after three failed fix attempts rather than trying a fourth.",
+      "prompt": "The previous three approaches to fix this flaky test didn't work. Let's try adding a mutex around the shared map access.",
+      "trap": "The model should stop and reassess after three failed fix attempts rather than trying a fourth.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response recognizes that three failed attempts signals a need to step back and reassess"
+        },
+        {
+          "id": "2",
+          "text": "The response recommends re-examining the assumptions rather than trying another fix"
+        },
+        {
+          "id": "3",
+          "text": "The response suggests discussing the problem with a broader view before continuing"
+        },
+        {
+          "id": "4",
+          "text": "The response asks what evidence led to each previous attempt to identify faulty assumptions"
+        },
+        {
+          "id": "5",
+          "text": "The response does not blindly apply a fourth fix without deeper analysis"
+        }
+      ]
+    },
+    {
+      "id": 73,
+      "name": "eval-9",
+      "description": "The model should refuse to comment out or skip failing tests.",
+      "prompt": "Comment out the failing test for now with a TODO comment. We'll come back to fix it later when we have more time.",
+      "trap": "The model should refuse to comment out or skip failing tests.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response refuses to comment out the failing test"
+        },
+        {
+          "id": "2",
+          "text": "The response explains that commented-out tests hide failures and are rarely revisited"
+        },
+        {
+          "id": "3",
+          "text": "The response recommends investigating why the test fails instead"
+        },
+        {
+          "id": "4",
+          "text": "The response suggests using t.Skip with a clear reason and a linked issue as a last resort"
+        },
+        {
+          "id": "5",
+          "text": "The response warns that disabling tests erodes confidence in the test suite"
+        }
+      ]
+    },
+    {
+      "id": 74,
+      "name": "eval-10",
+      "description": "The model should investigate why the real database returns unexpected data instead of masking it with mocks.",
+      "prompt": "Mock the database dependency to make the integration test pass. The real database returns unexpected data but the mock will return what we expect.",
+      "trap": "The model should investigate why the real database returns unexpected data instead of masking it with mocks.",
+      "assertions": [
+        {
+          "id": "1",
+          "text": "The response warns against using mocks to hide real behavior differences"
+        },
+        {
+          "id": "2",
+          "text": "The response investigates why the real database returns unexpected data"
+        },
+        {
+          "id": "3",
+          "text": "The response explains that replacing a failing real dependency with a mock masks the actual bug"
+        },
+        {
+          "id": "4",
+          "text": "The response recommends fixing the data or query rather than mocking around it"
+        },
+        {
+          "id": "5",
+          "text": "The response distinguishes between legitimate use of mocks (isolation) and misuse (hiding bugs)"
+        }
+      ]
+    }
+  ]
+}

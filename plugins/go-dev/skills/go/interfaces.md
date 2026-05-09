@@ -1,20 +1,16 @@
----
-name: go-interfaces
-description: "Design and review Go interfaces: composition, embedding, type assertions/switches, io.Reader/Writer, implicit satisfaction, decorator/middleware patterns. Trigger when user designs an API, asks 'should this be an interface', mentions middleware/decorators, or pastes Go code defining interface types."
-allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
----
+# Go — Interfaces
 
-# Go Interfaces
+Loaded by `SKILL.md` when the user is designing or reviewing Go interfaces.
 
 You are a Go API designer. Interfaces are contracts discovered from usage, not hierarchies designed up front. The smaller the interface, the more useful it is.
 
-## Activation Modes
+## Activation modes
 
 ### Coding Mode
 
 When designing new interfaces or refactoring existing ones, apply the discovery-over-design principle. Before creating an interface, identify at least two concrete types that need it. If only one implementation exists, use a concrete type until a second consumer or implementation demands abstraction.
 
-When the right interface shape is genuinely uncertain, see the divergent-generation pattern in **go-best-practices** ("When the Right Design Is Unclear") — spawn parallel sub-agents under different design constraints and compare.
+When the right interface shape is genuinely uncertain, see the divergent-generation pattern in `SKILL.md` ("When the right design is unclear") — spawn parallel sub-agents under different design constraints and compare.
 
 ### Review Mode
 
@@ -40,13 +36,13 @@ grep -rn "type.*interface {" --include="*.go" | head -50
 
 **Sub-agent 3 — Usage Patterns**: Find uses of `interface{}`, `any`, type assertions, and large type switches. Each is a potential design smell worth investigating.
 
-## Core Principle
+## Core principle
 
 > The bigger the interface, the weaker the abstraction. — Rob Pike
 
 Discover interfaces from concrete usage. Do not design them speculatively. An interface earns its existence when two or more consumers need the same behavior, or when you need to decouple a dependency for testing.
 
-## Best Practices
+## Best practices
 
 1. **Accept interfaces, return concrete types.** Functions that accept interfaces are flexible for callers. Functions that return concrete types give callers full access without type assertions.
 
@@ -72,14 +68,14 @@ Discover interfaces from concrete usage. Do not design them speculatively. An in
 
 12. **Test against the interface, not the concrete type.** If your function accepts an `io.Reader`, test it with various readers (`strings.NewReader`, `bytes.Buffer`, a custom stub), not just `*os.File`.
 
-## Reference Material
+## Reference material
 
 For detailed patterns and examples, see:
 
-- [references/interface-design.md](references/interface-design.md) — discovery pattern, sizing guidelines, definition location, composition, embedding, standard library examples, decision table
-- [references/interface-patterns.md](references/interface-patterns.md) — decorator, middleware, functional options, adapter, and strategy patterns with code examples
+- `references/interface-design.md` — discovery pattern, sizing guidelines, definition location, composition, embedding, standard library examples, decision table
+- `references/interface-patterns.md` — decorator, middleware, functional options, adapter, and strategy patterns with code examples
 
-## Anti-Patterns
+## Anti-patterns
 
 - **Premature interface** — defining an interface before a second implementation exists. Use the concrete type until a real second consumer or a test-double need demands abstraction.
 - **Interface defined next to its implementation** — couples the abstraction to the provider. Define the interface at the consumer (the package that calls it), not the package that satisfies it.
@@ -87,12 +83,8 @@ For detailed patterns and examples, see:
 - **Oversized interfaces** (5+ methods) — every method is a constraint that reduces the number of types that can satisfy it. Compose small single-purpose interfaces instead (`io.ReadWriter` = `io.Reader` + `io.Writer`).
 - **Exporting an interface that only your package consumes** — pollutes the public API surface. Keep it unexported until external packages need to provide alternative implementations.
 
-## Cross-References
+## Cross-references (within `go` skill)
 
-- Use **go-error-handling** for error interface patterns (`error`, custom error types, `errors.Is`/`errors.As`)
-- Use **go-testing** for mock/stub patterns via interfaces (test doubles, fakes, dependency injection)
-- Use **go-code-organization** for package boundaries and where interfaces sit in the package structure
-
----
-
-*Powered by [Gopher Guides](https://gopherguides.com) training materials.*
+- See `errors.md` for error interface patterns (`error`, custom error types, `errors.Is`/`errors.As`)
+- See `testing.md` for mock/stub patterns via interfaces (test doubles, fakes, dependency injection)
+- See `organization.md` for package boundaries and where interfaces sit in the package structure

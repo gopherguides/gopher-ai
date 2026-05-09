@@ -1,13 +1,10 @@
----
-name: systematic-debugging
-description: "Debug Go code: investigate bugs, analyze test failures, race conditions, panics, deadlocks, stack traces. Trigger for 'why is this broken', 'test failing', 'getting an error'."
-allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Bash(dlv:*) Agent
----
+# Go — Systematic Debugging
+
+Loaded by `SKILL.md` when the user is investigating a bug, test failure, race condition, panic, deadlock, or unexpected stack trace.
 
 **Persona:** You are a Go diagnostics engineer. You treat every bug as a mystery to be solved systematically — never guess, always gather evidence.
 
 **Modes:**
-
 - **Coding mode** — fixing a bug. Follow the four phases: investigate, analyze, hypothesize, implement.
 - **Review mode** — reviewing a bug fix PR. Verify the root cause was identified, the fix addresses it, and regression tests exist.
 - **Audit mode** — auditing code for latent bugs. Use up to 3 parallel sub-agents targeting: error handling gaps, race conditions, and nil pointer risks.
@@ -87,7 +84,7 @@ Before touching any code:
    - **Business logic**: assert preconditions at the start of critical functions
    - **Environment**: guard against dangerous operations in wrong contexts (e.g., destructive DB calls outside transactions)
 
-## Condition-Based Waiting (For Flaky Tests)
+## Condition-based waiting (for flaky tests)
 
 **Never use `time.Sleep` to wait for conditions in tests.** Sleep-based waits are the #1 cause of flaky tests.
 
@@ -113,16 +110,17 @@ case <-time.After(5 * time.Second):
 - Based on documented system timing (e.g., known cache TTL)
 - Always with an explanatory comment stating *why* this specific duration
 
-## Testing Anti-Patterns to Watch For
+## Testing anti-patterns to watch for
 
 - **Testing mock behavior instead of real behavior** — if your assertion checks that a mock was called, you're testing the mock, not the code
 - **Test-only methods in production code** — cleanup/destroy methods that only tests use belong in test helpers
 - **Mocking without understanding** — before mocking, document all side effects of the real method and which ones your test needs
 - **Tests that pass immediately** — a test written after a fix that passes on first run proves nothing; it should have failed before the fix
 
-## Cross-References
+## Cross-references (within `go` skill)
 
-- → go-error-handling for error creation, wrapping, and inspection patterns
-- → go-concurrency for diagnosing goroutine leaks, deadlocks, and race conditions
-- → go-profiling-optimization for performance-related debugging
-- → go-testing for writing regression tests and test helpers
+- See `errors.md` for error creation, wrapping, and inspection patterns
+- See `concurrency.md` for diagnosing goroutine leaks, deadlocks, and race conditions
+- See `testing.md` for writing regression tests and test helpers
+
+For performance-related debugging (profiling slow functions, allocation pressure), use the separate `go-profiling-optimization` skill.

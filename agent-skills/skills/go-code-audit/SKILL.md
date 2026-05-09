@@ -148,7 +148,7 @@ Style improvements, naming refinements, or minor optimizations.
 
 ## References
 
-- Existing gopher-ai skill: `plugins/go-dev/skills/go-best-practices/`
+- Existing gopher-ai skill: `plugins/go-dev/skills/go/`
 - Gopher Guides API: `plugins/gopher-guides/skills/gopher-guides/`
 - [Effective Go](https://go.dev/doc/effective_go)
 - [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
