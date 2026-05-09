@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 179
+# Total entries: 180
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0322d4a7ddc204a9bf5addfec4e512edaea92ab8f4ebdd0541ca099330a09408 worktree
 03dac3a27d6da4b0a0c64ff6511df17004747e20b47a1691b4f9f030478877b9 commit
@@ -35,6 +35,7 @@
 2ec0cf8b235fc84a5fcdec7bc5a24e70a041e5c5577aeac501ed3eef935d7223 htmx
 2ece765192998e4d350a135655c09827d7243be6c3c40482731602cf1edea06d second-opinion
 3155f0eae71b98f96dd1312634acfe73141dafdd4c56d0fce7b04c7944fe6ff0 htmx
+32c14129fbef4be88e9fc5cea945816138d85293c91c4d60c0e5c5ca0e058898 templui
 32e6d4dec52d80db5aedd06f807f7fe1808c43c1051e8ffe313c32983a901210 address-review
 32fb4e28684eb6ded5a4007732c539ce5e0e2225fe36a4c8289219c0abac239c templui
 3619d0757ba93e27c2a489dde48d128d6f2b36e9119c268d891807506fca0f0e review-deep

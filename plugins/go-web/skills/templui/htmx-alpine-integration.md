@@ -1,6 +1,14 @@
-# HTMX + Alpine.js Integration
+# HTMX + Alpine.js Integration (when using Alpine alongside templUI)
 
-HTMX and Alpine.js work great together. Use HTMX for server communication, Alpine for client-side enhancements.
+**templUI itself does not use Alpine.js** — its components are vanilla JS via Script() templates (per templui.io: "Zero JS frameworks"). This document covers the **separate, optional** decision to use Alpine.js as a client-side state layer **alongside** templUI in your app.
+
+If you don't need Alpine for app-level state, skip this file — templUI + HTMX + Script() is enough for most apps.
+
+If you've decided to add Alpine, the patterns below show how it composes with HTMX (and indirectly with templUI components since they share the DOM).
+
+## When to Use Each
+
+HTMX and Alpine.js work well together when both are needed. Use HTMX for server communication, Alpine for client-side enhancements.
 
 ## When to Use Each
 
