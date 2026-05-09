@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 160
+# Total entries: 161
 03dac3a27d6da4b0a0c64ff6511df17004747e20b47a1691b4f9f030478877b9 commit
 03dffb69f33f5e2549a05bb03daf154260288c350ccbea60804f373bda3b3d08 gopher-guides
 04f549258f56aee10034e6d678038954f94b5aec679b286edb2ff8c2aae23e69 htmx
@@ -25,6 +25,7 @@
 23a3a947abe2703b270473845edbd009798ab7cc8585d3f5b7c00721a86465ae create-worktree
 2656ea1fdf9b4e5d9512f6ca9d72147cd52a8d838d0304d85ff8dbf819cc542f complete-issue
 268241ea357f8423f4025fabe0ef026258e8ee5e1e84512f25293b836e02d1e3 e2e-verify
+271a1c41a77bf182feba2130189c505d9135cd4f64c9aaedb7d61a31f0dd4c48 e2e-verify
 2a903a9c729ed072861576c51f94926e17148734c577aa7e01501666f0be5cbf remove-worktree
 2ec03af0dc688eae8184c68f048231a0d2d5119e53b833689f6e2912fa287a64 tailwind-best-practices
 2ec0cf8b235fc84a5fcdec7bc5a24e70a041e5c5577aeac501ed3eef935d7223 htmx
