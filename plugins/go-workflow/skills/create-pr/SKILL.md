@@ -1,6 +1,6 @@
 ---
 name: create-pr
-description: "Create a pull request following the repo's PR template. Trigger on 'create PR', 'open PR', 'submit PR'."
+description: "Create a pull request following the repo's PR template (Summary + Test plan sections). Pushes the current branch first if needed. Use when user explicitly wants to open a PR without immediately merging it. Triggers: 'create PR', 'open PR', 'submit PR', 'make a PR'. SKIP for end-to-end ship flows where the user wants verify+CI+merge — use `ship` skill instead."
 ---
 
 # Create PR

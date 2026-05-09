@@ -1,6 +1,6 @@
 ---
 name: commit
-description: "Create a git commit with auto-generated conventional message. Trigger on 'commit', 'save my work'."
+description: "Create a git commit with an auto-generated conventional commit message based on the staged diff. Reviews changes, picks type (feat/fix/refactor/chore/docs/test/style), drafts a focused message, asks to confirm. Triggers: 'commit', 'commit these changes', 'save my work', 'make a commit'. Does not push — pair with `ship` for the full flow."
 ---
 
 # Commit

@@ -1,6 +1,6 @@
 ---
 name: tmux-start
-description: "Start an issue in a new tmux window: create worktree, kick off /start-issue autonomously."
+description: "Start an issue in a new tmux window: create the worktree, launch /start-issue autonomously in that window, leave the user free in their current window. Use when user has tmux running and wants to begin issue work without context-switching their session. Triggers: 'tmux start issue #N', 'start in new window'."
 disable-model-invocation: true
 ---
 

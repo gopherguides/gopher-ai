@@ -1,6 +1,6 @@
 ---
 name: address-review
-description: "Address PR review feedback: fetch comments, fix in code, verify, push, resolve threads, request re-review. Use when reviewers/bots left feedback to apply."
+description: "Address feedback on a pull request: fetch human and bot review comments (CodeRabbit, codex review), classify, fix in code, regenerate generated files, verify with build/test, push, resolve threads, optionally request re-review. Use when reviewers or bots have left comments to apply, or after seeing 'changes requested' on a PR."
 argument-hint: "[PR-number] [--no-watch]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion", "Agent"]
 ---

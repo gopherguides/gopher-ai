@@ -1,6 +1,6 @@
 ---
 name: gemini-image
-description: "Generate images via Google Gemini AI. Trigger for image/picture/graphic/illustration/banner/logo/icon generation requests."
+description: "Generate images via Google Gemini AI (gemini-3.1-flash-image-preview or pro). Supports model selection, aspect ratios, resolutions (1K/2K/512), batch generation, image editing. Triggers: image, picture, photo, graphic, illustration, banner, logo, icon, thumbnail, header, hero image. Use when user wants AI-generated visual output."
 ---
 
 # Gemini Image Generation
