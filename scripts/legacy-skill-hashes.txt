@@ -7,7 +7,8 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 161
+# Total entries: 163
+0322d4a7ddc204a9bf5addfec4e512edaea92ab8f4ebdd0541ca099330a09408 worktree
 03dac3a27d6da4b0a0c64ff6511df17004747e20b47a1691b4f9f030478877b9 commit
 03dffb69f33f5e2549a05bb03daf154260288c350ccbea60804f373bda3b3d08 gopher-guides
 04f549258f56aee10034e6d678038954f94b5aec679b286edb2ff8c2aae23e69 htmx
@@ -124,6 +125,7 @@ c7c13c4e8192f9bc3cc70357aa8bdfb5822e2947d718f0acf1bfcb7a0c0bd5d3 second-opinion
 c7c5c23255852b704844870b0408350e6b7fe70bee7fef1185907cf8080e9120 templui
 c8563895537de2011ed3226e3390618249425058a9ca5316d0774d59d4f6736d address-review
 c8cfdc55f68a4860358b86b8b68437149e2acc34f2e05b523fa2e7fa47959b02 address-review
+c980435dab14d8ddde8ac50119e7579213e2c76afdb7a45c639f1ce41c6aed99 start-issue
 cb5a7e0e22e20159e65eaff8896e4b73f22b2cedb2518fe8f9d939f284ba909d go-concurrency
 ce3ea6c9bfa53b7ba03b5803061c4e8345132e111c18b3b16cd2f4d838e63540 go-code-organization
 ce487c7f7c1cda0c899c04a360c8de75859edd8532aef51d158e8f870a983000 prune-worktree

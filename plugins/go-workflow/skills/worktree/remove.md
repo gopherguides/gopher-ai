@@ -1,17 +1,10 @@
----
-name: remove-worktree
-description: "Remove a specific git worktree interactively. Trigger on 'remove worktree', 'delete worktree'."
----
+# Worktree — Remove
 
-# Remove Worktree
-
-Interactively select and safely remove a single git worktree.
+Interactively select and safely remove a single git worktree. Loaded by `SKILL.md` when the user wants to delete a specific worktree.
 
 ## Usage
 
-```
-$remove-worktree
-```
+User-facing slash command: `/remove-worktree` (interactive, no args). Skill invocation: `$worktree` (with remove intent).
 
 ## Steps
 

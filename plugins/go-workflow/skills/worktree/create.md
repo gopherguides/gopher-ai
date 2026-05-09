@@ -1,22 +1,10 @@
----
-name: create-worktree
-description: "Create a git worktree for an issue or PR. Trigger on 'create worktree', 'worktree for issue #N'."
----
+# Worktree — Create
 
-# Create Worktree
-
-Create an isolated git worktree for working on a GitHub issue or PR.
+Create an isolated git worktree for a GitHub issue or PR. Loaded by `SKILL.md` when the user wants to start work on an issue.
 
 ## Usage
 
-```
-$create-worktree <issue-or-pr-number>
-```
-
-## Prerequisites
-
-- GitHub CLI (`gh`) installed and authenticated
-- Must be inside a git repository
+User-facing slash command: `/create-worktree <issue-or-pr-number>`. Skill invocation: `$worktree` (with create intent).
 
 ## Steps
 
@@ -113,4 +101,4 @@ echo "Branch: $BRANCH_NAME"
 
 After creating a worktree, all file operations must use the worktree's absolute path. The worktree is a separate copy of the repo — edits there do not affect the original directory.
 
-When done with the worktree, use `$remove-worktree` or `$prune-worktree` to clean up.
+When done with the worktree, see `remove.md` (single removal) or `prune.md` (batch cleanup) — both siblings of this file under the `worktree` skill.
