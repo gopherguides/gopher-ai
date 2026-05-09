@@ -4,7 +4,7 @@ description: Weekly analysis of test coverage gaps with auto-generated improveme
 schedule: weekly
 skills:
   - go-test-coverage
-  - go-best-practices
+  - go
 ---
 
 # Weekly Test Coverage

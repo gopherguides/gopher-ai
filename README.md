@@ -234,7 +234,7 @@ Skills are auto-invoked behaviors that activate based on context. Available acro
 
 | Skill | Triggers When |
 |-------|---------------|
-| `go-best-practices` | Writing Go code, asking about patterns, code reviews |
+| `go` | Writing/reviewing Go code: interfaces, errors, concurrency, testing, organization, debugging |
 | `second-opinion` | Architecture decisions, security code, "sanity check" requests |
 | `tailwind-best-practices` | Working with Tailwind CSS classes, themes, utilities |
 | `templui` | Building Go/Templ web apps, HTMX/Alpine.js integration |

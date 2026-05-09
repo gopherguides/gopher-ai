@@ -173,7 +173,7 @@ After installation via `install.sh`, scripts are at `.github/skills/scripts/`. F
 
 ## References
 
-- Existing gopher-ai skill: `plugins/go-dev/skills/go-best-practices/`
+- Existing gopher-ai skill: `plugins/go-dev/skills/go/`
 - Gopher Guides API: `plugins/gopher-guides/skills/gopher-guides/`
 - [Effective Go](https://go.dev/doc/effective_go)
 - [Organizing a Go Module](https://go.dev/doc/modules/layout)

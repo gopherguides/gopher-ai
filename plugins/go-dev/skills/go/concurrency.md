@@ -1,24 +1,20 @@
----
-name: go-concurrency
-description: "Write/review concurrent Go: goroutines, channels, select, sync, errgroup, singleflight, worker pools, fan-out/in. Catches leaks, races, channel ownership. Trigger on `go` statements, channels, select, sync.*, errgroup, or goroutine lifecycle/races/deadlocks questions."
-allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
----
+# Go — Concurrency
 
-# Go Concurrency
+Loaded by `SKILL.md` when the user is writing or reviewing concurrent Go.
 
 You are a Go concurrency engineer. Every goroutine is a liability until proven necessary — correctness and leak-freedom come before performance.
 
 ## Modes
 
-### Coding Mode
+### Coding mode
 
 When implementing concurrent code, follow the goroutine checklist before spawning any goroutine. Write the shutdown path first, then the happy path.
 
-### Review Mode
+### Review mode
 
 When reviewing a PR, check for goroutine leaks, missing context propagation, channel ownership violations, and incorrect synchronization. Flag any goroutine without a clear exit mechanism.
 
-### Audit Mode
+### Audit mode
 
 When auditing a codebase for concurrency issues, use up to 5 parallel sub-agents:
 
@@ -28,11 +24,11 @@ When auditing a codebase for concurrency issues, use up to 5 parallel sub-agents
 4. **Timer leaks** — find `time.After` in loops and `select` statements missing `ctx.Done()`
 5. **Mutex usage** — find mutexes held across I/O or network calls, and evaluate `sync.Map` vs `RWMutex` choices
 
-## Core Principle
+## Core principle
 
 Every goroutine must have a clear owner, a predictable exit, and proper error propagation. If you cannot answer "how does this goroutine stop?", do not start it.
 
-## Core Rules
+## Core rules
 
 1. Every goroutine must have a clear exit mechanism (context, done channel, WaitGroup)
 2. Share memory by communicating — channels transfer ownership explicitly
@@ -46,7 +42,7 @@ Every goroutine must have a clear owner, a predictable exit, and proper error pr
 10. Call `wg.Add` before `go` — calling inside the goroutine races with `Wait`
 11. Always run `go test -race ./...` in CI
 
-## Goroutine Checklist
+## Goroutine checklist
 
 Before spawning a goroutine, answer every question:
 
@@ -56,7 +52,7 @@ Before spawning a goroutine, answer every question:
 - [ ] Who owns the channels it reads from and writes to? (sender closes, receiver reads)
 - [ ] Should this be synchronous instead? (concurrency adds complexity — justify it)
 
-## Decision Tables
+## Decision tables
 
 ### Channel vs Mutex vs Atomic
 
@@ -78,7 +74,7 @@ Before spawning a goroutine, answer every question:
 | Wait + cancel siblings on first error | errgroup.WithContext | Context cancellation on failure |
 | Wait + limit concurrency | errgroup.SetLimit(n) | Built-in worker pool |
 
-## Anti-Patterns
+## Anti-patterns
 
 | Mistake | Problem | Fix |
 |---|---|---|
@@ -93,19 +89,16 @@ Before spawning a goroutine, answer every question:
 | Missing `default` in non-blocking send | Goroutine blocks when channel is full | Add `default` case for non-blocking behavior |
 | Range over channel without close | Range blocks forever waiting for more values | Sender must close channel when done |
 
-## Reference Files
+## Reference files
 
 - `references/channels-and-select.md` — channel patterns, select idioms, ownership rules
 - `references/sync-primitives.md` — Mutex, RWMutex, atomic, sync.Map, sync.Pool, sync.Once, WaitGroup, errgroup, singleflight
 - `references/pipelines.md` — fan-out/fan-in, worker pools, generator chains, bounded concurrency
 
-## Cross-References
+## Cross-references (within `go` skill)
 
-- **go-error-handling** — error propagation patterns in goroutines and errgroup
-- **go-profiling-optimization** — false sharing, sync.Pool hot-path optimization, mutex contention profiling
-- **systematic-debugging** — debugging goroutine leaks, deadlocks, and race conditions
-- **go-testing** — concurrent test patterns, race detector, goleak integration
+- See `errors.md` for error propagation patterns in goroutines and errgroup
+- See `debugging.md` for debugging goroutine leaks, deadlocks, and race conditions
+- See `testing.md` for concurrent test patterns, race detector, goleak integration
 
----
-
-*Powered by [Gopher Guides](https://gopherguides.com) training materials.*
+For mutex contention profiling, false sharing, and `sync.Pool` hot-path optimization, use the separate `go-profiling-optimization` skill.
