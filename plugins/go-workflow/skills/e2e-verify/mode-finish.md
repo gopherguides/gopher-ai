@@ -1,9 +1,29 @@
 # E2E Verify — Mode-Specific Finish Actions
 
-Loaded by `SKILL.md` Step 7. Maps `MODE` to the closing action and contains
-the `fix-and-ship` CI-watch loop and `/go-workflow:ship` invocation rules.
+Loaded by `SKILL.md` Step 7. Contains the **E2E gate** (must run before any
+finish action), maps `MODE` to the closing action, and contains the
+`fix-and-ship` CI-watch loop and `/go-workflow:ship` invocation rules.
 
-## Mode → Action Table
+## Step 7.0: E2E Gate (applies to every mode before any finish action)
+
+**Before** doing anything in the per-mode table below, evaluate `E2E_RESULT`:
+
+- **UI-visible diff** (`WEB_CHANGES`, `HANDLER_CHANGES`, or layout-sensitive
+  keywords detected — see `e2e-test-execution.md` §5a.1):
+  - `E2E_RESULT=pass` → continue to the per-mode finish action below.
+  - `E2E_RESULT` is anything else (`fail`, `partial`, `skipped-server-failed`,
+    `missing-browser-tooling`, `uninspected-screenshots`) → **stop**. Do NOT
+    add `run-full-ci`. Do NOT add `e2e-verified`. Do NOT invoke
+    `/go-workflow:ship`. The Step 6 comment already records the failure with
+    findings. Output `<done>E2E_FAIL</done>` so the loop exits without a
+    verified state.
+- **Non-UI diff** (no web indicators, no UI-facing files changed):
+  - `E2E_RESULT=skipped` → continue to the per-mode finish action below
+    (treated as the success path).
+  - Any non-`skipped` value on a non-UI diff is a logic error — investigate
+    before continuing.
+
+## Step 7.1: Mode → Action Table (only reached when the gate above passed)
 
 | Mode | Action |
 |------|--------|
