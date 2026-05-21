@@ -352,28 +352,75 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
 
 Generated test files will be staged + committed in Step 8 alongside LLM review fixes.
 
-## Step 7.6: E2E Smoke Testing (optional)
+## Step 7.6: E2E Smoke Testing (blocking for UI-visible diffs)
 
-### Skip Conditions
+### Skip vs. block decision
 
-Skip to Step 8 if ANY of:
+E2E is a gate for UI-visible diffs. Skipping is allowed only when there is
+nothing visual to verify, or when a previous `/go-workflow:e2e-verify` pass is
+explicitly being reused.
 
-- `SKIP_COVERAGE=true`
-- Chrome DevTools MCP tools NOT available (check `mcp__chrome-devtools-mcp__navigate_page` in tool list)
-- Project has NO web components (none of: `.templ` files, Go HTTP handler patterns `http.Handler|echo.Context|gin.Context|chi.Router|http.HandleFunc`, `*.html` / `*.tsx` / `*.vue` files)
-- No web-facing files were changed in the diff
+Skip to Step 8 only when ONE of:
+
+- Project has NO web components (none of: `.templ` files, Go HTTP handler
+  patterns `http.Handler|echo.Context|gin.Context|chi.Router|http.HandleFunc`,
+  `*.html` / `*.tsx` / `*.vue` files).
+- No UI-visible files were changed in the diff.
+- `SKIP_COVERAGE=true` AND the PR is already marked `e2e-verified` or the
+  current loop state shows a prior passing E2E result. This is the deliberate
+  reuse path used after `/go-workflow:e2e-verify`; `--skip-coverage` alone is
+  not permission to skip E2E.
+
+Block the workflow when the diff is UI-visible and E2E cannot run or fails:
+
+- Chrome DevTools MCP tools are NOT available.
+- The dev server is unreachable and cannot be started, or project guidance says
+  the user must start it.
+- The dev server does not become ready within 30 seconds.
+- Browser smoke tests find route failures, console errors, network 5xx errors,
+  or MCP/browser failures before all required pages are inspected.
 
 ```bash
 if [ -z "$CHANGED_FILES" ]; then
   CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...HEAD")
 fi
-WEB_CHANGES=$(echo "$CHANGED_FILES" | grep -E '\.(templ|html|tsx|vue|jsx)$' || true)
-HANDLER_CHANGES=$(echo "$CHANGED_FILES" | grep '\.go$' | while read f; do
+WEB_CHANGES=$(echo "$CHANGED_FILES" | grep -E '\.(templ|html|css|tsx|vue|jsx)$' || true)
+JS_CHANGES=$(echo "$CHANGED_FILES" | grep -E '(^|/)(cmd|web|ui|assets|static|templates)/.*\.js$' || true)
+HANDLER_CHANGES=$(echo "$CHANGED_FILES" | grep '\.go$' | while IFS= read -r f; do
   grep -l -E 'http\.Handler|echo\.Context|gin\.Context|chi\.Router|http\.HandleFunc|http\.ServeMux' "$f" 2>/dev/null
 done || true)
+UI_VISIBLE_CHANGES=$(printf '%s\n%s\n%s\n' "$WEB_CHANGES" "$JS_CHANGES" "$HANDLER_CHANGES" | sed '/^$/d')
 ```
 
-If both `WEB_CHANGES` and `HANDLER_CHANGES` are empty → skip to Step 8.
+If `UI_VISIBLE_CHANGES` is empty, persist:
+
+```bash
+TMP=".local/state/ship.loop.local.json.tmp"
+jq --arg required "false" --arg attempted "false" --arg result "skipped" --arg reason "no-ui-visible-changes" --argjson pages 0 \
+   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
+   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+```
+
+Then skip to Step 8.
+
+If `UI_VISIBLE_CHANGES` is non-empty and Chrome DevTools MCP tools are missing,
+persist:
+
+```bash
+TMP=".local/state/ship.loop.local.json.tmp"
+jq --arg required "true" --arg attempted "false" --arg result "blocked" --arg reason "missing-browser-tooling" --argjson pages 0 \
+   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
+   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+```
+
+Display:
+
+```
+E2E PREREQUISITE MISSING - Chrome DevTools MCP tooling is unavailable for a UI-visible diff.
+No merge. Fix the browser tooling or run /go-workflow:e2e-verify successfully, then re-run /go-workflow:ship.
+```
+
+Stop the workflow. Do not continue to push, CI watch, or merge.
 
 ### Set phase, detect dev server
 
@@ -387,16 +434,51 @@ Detect port: Air config, `PORT` env var, `.env`/`.env.local`, defaults `8080` (G
 
 ### Start server, wait for readiness
 
+First check whether the detected URL is already responding. If it is not
+responding, start `DEV_SERVER_CMD` only when project guidance permits the agent
+to start the dev server. If guidance says the user/operator owns the dev server,
+do not start it from `/ship`; block with the prerequisite message below.
+
 ```bash
-$DEV_SERVER_CMD &
-SERVER_PID=$!
+if curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[1234]'; then
+  SERVER_ALREADY_RUNNING=true
+elif [ -n "${DEV_SERVER_CMD:-}" ]; then
+  # If AGENTS.md, CLAUDE.md, or project docs say the user runs the dev server,
+  # leave DEV_SERVER_CMD unset and block below instead of starting it.
+  $DEV_SERVER_CMD &
+  SERVER_PID=$!
+  SERVER_ALREADY_RUNNING=false
+else
+  SERVER_ALREADY_RUNNING=false
+  SERVER_START_SKIPPED=true
+fi
+
 for i in $(seq 1 30); do
-  curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[23]' && break
+  curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[1234]' && break
   sleep 1
 done
 ```
 
-If server fails to start within 30s → warn and skip to Step 8. Do NOT block shipping.
+If the server is still unreachable after 30 seconds, or no start was attempted
+because project guidance requires the user to run it, persist a blocked result:
+
+```bash
+TMP=".local/state/ship.loop.local.json.tmp"
+jq --arg required "true" --arg attempted "false" --arg result "blocked" --arg reason "dev-server-unavailable" --argjson pages 0 \
+   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
+   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+```
+
+Display:
+
+```
+E2E PREREQUISITE MISSING - local dev server is not responding at http://localhost:$PORT.
+Start it (`make dev` or the project equivalent), then re-run `/go-workflow:ship`.
+Pages tested: 0
+No merge.
+```
+
+Stop the workflow. Do not continue to push, CI watch, or merge.
 
 ### Execute smoke tests
 
@@ -410,14 +492,23 @@ For each changed handler/route/template, identify the URL path and:
 
 Record per page: URL, HTTP status, console errors, screenshot path.
 
+If any page has an unexpected 4xx/5xx status, console JavaScript errors, failed
+5xx network requests, browser tooling errors, or an uninspected screenshot,
+persist `e2e_result="blocked"` with an explanatory `e2e_skip_reason`, display
+the failed route(s), and stop the workflow. No merge.
+
 ### Cleanup and report
 
 ```bash
-kill $SERVER_PID 2>/dev/null || true
+if [ "${SERVER_ALREADY_RUNNING:-false}" != "true" ]; then
+  if [ -n "${SERVER_PID:-}" ]; then
+    kill "$SERVER_PID" 2>/dev/null || true
+  fi
+fi
 
 TMP=".local/state/ship.loop.local.json.tmp"
-jq --arg attempted "true" --arg result "$E2E_RESULT" --argjson pages "$PAGES_TESTED" \
-   '.e2e_attempted = $attempted | .e2e_result = $result | .e2e_pages_tested = $pages' \
+jq --arg required "true" --arg attempted "true" --arg result "$E2E_RESULT" --arg reason "${E2E_SKIP_REASON:-}" --argjson pages "$PAGES_TESTED" \
+   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
    ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
 
 rm -f .local/state/coverage.out .local/state/coverage.json 2>/dev/null || true
@@ -436,12 +527,9 @@ Display:
 Pages tested: N | Passed: N | Errors: N
 ```
 
-E2E failures are informational, NEVER block:
-
-- 500/404 → report as finding, don't block
-- Console JS errors → report, don't block
-- MCP tool fails mid-test → warn, skip remaining
-- All results are warnings, not gates
+For UI-visible diffs, only `e2e_result="passed"` allows `/ship` to continue.
+`e2e_result="blocked"` is a hard stop and must not be summarized as
+verification complete.
 
 ## Step 8: Commit, Increment Pass, Loop Decision
 
