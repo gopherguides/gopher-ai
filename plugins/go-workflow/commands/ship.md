@@ -31,13 +31,15 @@ Parse `$ARGUMENTS` to extract:
 - `--llm <value>`: `codex` (default), `gemini`, `ollama`
 - `--passes <n>`: max LLM review passes (default: 3)
 - `--no-merge`: stop after bot approval, don't auto-merge
-- `--skip-coverage`: skip coverage + e2e phases entirely
+- `--skip-coverage`: skip coverage analysis. E2E may be reused only when a
+  prior `/go-workflow:e2e-verify` pass is recorded; it is not skipped
+  automatically for UI-visible diffs.
 - `--coverage-threshold <n>`: override the default 60% threshold
 - `--tier <value>`: gemini service tier (`flex`/`standard`/`priority`; gemini only; default: unset)
 
 Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`, `COVERAGE_THRESHOLD` (default `60`), `GEMINI_TIER`.
 
-**Persist arguments** to `.local/state/ship.loop.local.json` via `jq` so the stop-hook can recover all fields on re-entry. The full jq invocation lives in `${CLAUDE_PLUGIN_ROOT}/lib/ship/state-fields.md` — fields written: `args, llm, pass, no_merge, pr_number, base_branch, bot_review_baseline, discovered_bots, has_ci, skip_coverage, coverage_threshold, coverage_result, coverage_tests_generated, e2e_attempted, e2e_result, e2e_pages_tested, review_clean, head_sha, gemini_tier`.
+**Persist arguments** to `.local/state/ship.loop.local.json` via `jq` so the stop-hook can recover all fields on re-entry. The full jq invocation lives in `${CLAUDE_PLUGIN_ROOT}/lib/ship/state-fields.md` — fields written: `args, llm, pass, no_merge, pr_number, base_branch, bot_review_baseline, discovered_bots, has_ci, skip_coverage, coverage_threshold, coverage_result, coverage_tests_generated, e2e_required, e2e_attempted, e2e_result, e2e_skip_reason, e2e_pages_tested, review_clean, head_sha, gemini_tier`.
 
 ## 2. Re-entry Check
 
@@ -196,7 +198,10 @@ set_loop_phase ".local/state/ship.loop.local.json" "merging"
                                             13 merging → <done>SHIPPED</done>
 ```
 
-`[coverage-check]` runs only on the final pass when `--skip-coverage` isn't set. `[e2e-testing]` runs only when MCP is available AND the project has web components.
+`[coverage-check]` runs only on the final pass when `--skip-coverage` isn't set.
+`[e2e-testing]` is mandatory for UI-visible diffs. Missing MCP/browser tooling
+or an unavailable dev server records `e2e_result=blocked` and stops before push
+or merge. Non-UI diffs may record `e2e_result=skipped`.
 
 ## Verification Gate (HARD — applies before ANY completion signal)
 
@@ -216,7 +221,8 @@ Output `<done>SHIPPED</done>` ONLY when ALL of these are true:
 
 1. LLM review passes completed (clean or max passes reached)
 2. Coverage verified for changed files (or skipped via `--skip-coverage`)
-3. E2E smoke tests passed (or skipped — no web components / MCP unavailable)
+3. E2E smoke tests passed for UI-visible diffs (or skipped only because the
+   diff is non-UI / no web components)
 4. Changes pushed to remote
 5. PR exists
 6. CI passes (or no CI configured) — with output shown above

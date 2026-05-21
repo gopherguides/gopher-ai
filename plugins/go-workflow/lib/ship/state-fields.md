@@ -13,9 +13,10 @@ jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
    --arg bot_review_baseline "" --arg discovered_bots "" --arg has_ci "" \
    --arg skip_coverage "$SKIP_COVERAGE" --arg coverage_threshold "$COVERAGE_THRESHOLD" \
    --arg coverage_result "" --argjson coverage_tests_generated 0 \
-   --arg e2e_attempted "" --arg e2e_result "" --argjson e2e_pages_tested 0 \
+   --arg e2e_required "" --arg e2e_attempted "" --arg e2e_result "" \
+   --arg e2e_skip_reason "" --argjson e2e_pages_tested 0 \
    --arg review_clean "" --arg head_sha "" --arg gemini_tier "$GEMINI_TIER" \
-   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, head_sha: $head_sha, gemini_tier: $gemini_tier}' \
+   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_required: $e2e_required, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_skip_reason: $e2e_skip_reason, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, head_sha: $head_sha, gemini_tier: $gemini_tier}' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
@@ -40,8 +41,10 @@ routing and subsequent steps depend on these exact names.
 | `coverage_result` | string | Step E.3 of coverage-verification.md | Aggregate percent, or empty when skipped |
 | `coverage_skip_reason` | string | Step E.3 of coverage-verification.md | Empty when computed; `"all-main"` when every changed file was `package main` |
 | `coverage_tests_generated` | int | Step F of coverage-verification.md | Count of new tests created |
+| `e2e_required` | string | Step 7.6 | `"true"` when the diff is UI-visible and browser E2E is required |
 | `e2e_attempted` | string | Step 7.6e | `"true"` when E2E ran |
-| `e2e_result` | string | Step 7.6e | `"passed"` / `"errors"` / `"skipped"` |
+| `e2e_result` | string | Step 7.6e | `"passed"` / `"blocked"` / `"skipped"`; `blocked` means required E2E did not pass and merge must stop |
+| `e2e_skip_reason` | string | Step 7.6e | Empty on pass; otherwise machine-readable reason such as `"no-ui-visible-changes"`, `"missing-browser-tooling"`, or `"dev-server-unavailable"` |
 | `e2e_pages_tested` | int | Step 7.6e | Number of routes tested |
 | `review_clean` | string | Step 5c | `"true"` when LLM returned no findings — fast-path past Step 6 on re-entry |
 | `head_sha` | string | Step 9c, 10e, 12c | Latest pushed commit; CI watch is anchored to this |

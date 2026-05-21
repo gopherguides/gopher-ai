@@ -48,6 +48,28 @@ BLOCKING_HUMANS=$(gh api graphql -f query='
 
 If unresolved threads OR active human `CHANGES_REQUESTED` exist, inform the user and ask how to proceed.
 
+4. Check the local E2E gate recorded during Phase 1. A UI-visible diff that did
+   not complete browser E2E must stop here even if CI is green:
+
+```bash
+E2E_REQUIRED=$(jq -r '.e2e_required // "false"' ".local/state/ship.loop.local.json")
+E2E_RESULT=$(jq -r '.e2e_result // "skipped"' ".local/state/ship.loop.local.json")
+E2E_SKIP_REASON=$(jq -r '.e2e_skip_reason // ""' ".local/state/ship.loop.local.json")
+E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
+
+if [ "$E2E_REQUIRED" = "true" ] && [ "$E2E_RESULT" != "passed" ]; then
+  echo "E2E PREREQUISITE MISSING - UI-visible diff has no passing browser E2E result."
+  echo "E2E status: ${E2E_RESULT}; reason: ${E2E_SKIP_REASON:-unknown}; pages tested: ${E2E_PAGES}"
+  echo "No merge. Start the dev server or fix E2E, then re-run /go-workflow:ship."
+  "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
+  exit 1
+fi
+```
+
+This is a backstop for re-entry and manual phase jumps. Do not prompt to merge
+when `e2e_result` is `blocked`; the operator must explicitly fix or rerun the
+workflow.
+
 ## 13b. `--no-merge` early exit
 
 If `NO_MERGE=true`:
@@ -153,6 +175,8 @@ TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".local/state/ship.loop.local
 E2E_ATTEMPTED=$(jq -r '.e2e_attempted // ""' ".local/state/ship.loop.local.json")
 E2E_RESULT=$(jq -r '.e2e_result // "skipped"' ".local/state/ship.loop.local.json")
 E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
+E2E_REQUIRED=$(jq -r '.e2e_required // "false"' ".local/state/ship.loop.local.json")
+E2E_SKIP_REASON=$(jq -r '.e2e_skip_reason // ""' ".local/state/ship.loop.local.json")
 
 # Coverage line: prefer skip_reason when present, then numeric value, else "skipped".
 if [ -n "$COV_SKIP_REASON" ]; then
@@ -165,6 +189,25 @@ elif [ -n "$COV_RESULT" ]; then
 else
   COV_LINE="skipped"
 fi
+
+# E2E line: never render missing required E2E as complete.
+if [ -z "$E2E_RESULT" ]; then
+  E2E_RESULT="skipped"
+fi
+
+if [ "$E2E_REQUIRED" = "true" ] && [ "$E2E_RESULT" != "passed" ]; then
+  E2E_LINE="blocked - ${E2E_SKIP_REASON:-required E2E did not pass}; ${E2E_PAGES} pages tested"
+  VERIFICATION_LINE="Verification partial - E2E was blocked. Unit, integration, lint, and CI may have passed, but browser verification did not."
+elif [ "$E2E_RESULT" = "skipped" ] && [ -n "$E2E_SKIP_REASON" ]; then
+  E2E_LINE="skipped - $E2E_SKIP_REASON"
+  VERIFICATION_LINE="Verification partial - E2E was skipped because $E2E_SKIP_REASON."
+elif [ "$E2E_RESULT" = "skipped" ]; then
+  E2E_LINE="skipped"
+  VERIFICATION_LINE="Verification partial - E2E was skipped."
+else
+  E2E_LINE="${E2E_PAGES} pages tested, ${E2E_RESULT}"
+  VERIFICATION_LINE="Verification complete."
+fi
 ```
 
 ```
@@ -176,11 +219,13 @@ fi
 - **Findings addressed:** <n>
 - **Coverage (changed files):** <COV_LINE>
 - **Tests generated:** <TESTS_GEN>
-- **E2E tests:** <E2E_PAGES> pages tested, <E2E_RESULT> — or "skipped — no web components" / "skipped — MCP unavailable"
+- **E2E tests:** <E2E_LINE>
 - **CI:** green
 - **Bot approvals:** <list or "none required">
 - **Merge strategy:** <merge|squash|rebase>
 - **Merged:** yes (or "skipped — --no-merge")
+
+<VERIFICATION_LINE>
 ```
 
 Output `<done>SHIPPED</done>`.
