@@ -6,6 +6,30 @@ allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestio
 
 # Ship PR
 
+## GraphQL Budget Discipline (read first)
+
+GitHub meters **two separate** hourly budgets: ~5,000 **GraphQL points/hr** and
+~5,000 **REST requests/hr**. Tools that drive a GitHub Project board (e.g.
+Detent) already spend the GraphQL budget on ProjectV2 polling (Projects v2 is
+GraphQL-only). If this skill *also* leans on GraphQL for routine PR ops, the two
+collide and exhaust the shared pool — a CI-watch loop alone can burn hundreds of
+GraphQL points per PR. **Keep this skill's work on the REST budget:**
+
+- **CI status / watch:** `gh api repos/<o>/<r>/commits/<sha>/check-runs` or
+  `gh run watch <run-id> --exit-status`. Avoid looping `gh pr checks --watch` /
+  `gh pr view` to poll CI (GraphQL-routed).
+- **PR / mergeability / state reads:** `gh api repos/<o>/<r>/pulls/<N>` (REST,
+  has `mergeable`/`mergeable_state`) instead of `gh pr view --json` or
+  `gh api graphql` mergeState queries.
+- **Merge:** `gh api --method PUT repos/<o>/<r>/pulls/<N>/merge -f merge_method=<m> -f sha=<sha>`
+  instead of `gh pr merge` (GraphQL).
+- **Reserve GraphQL** only for things with no REST equivalent (ProjectV2
+  fields). If a GraphQL call hits `rate limit exceeded`, the REST budget is
+  almost certainly fine — switch to REST, don't wait for the reset.
+
+(The same discipline applies to the other go-workflow skills — `e2e-verify`,
+`address-review`, `complete-issue`.)
+
 ## 0. State File Bootstrap
 
 Before calling setup-loop, check if a state file already exists with a non-empty phase (re-entry).
