@@ -49,9 +49,9 @@ DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
 DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git' || echo 0)
 echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
 
-# Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
-CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
-if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
+# Adaptive timeout sized for high reasoning effort: 300s base + 4s per 100 lines, capped at 900s
+CODEX_TIMEOUT=$(( 300 + (DIFF_LINES / 25) ))
+if [ "$CODEX_TIMEOUT" -gt 900 ]; then CODEX_TIMEOUT=900; fi
 ```
 
 If `DIFF_LINES > 3000`, ask via `AskUserQuestion`:
@@ -85,15 +85,17 @@ SCHEMA_EOF
 ```bash
 PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
-CODEX_TIMEOUT="${CODEX_TIMEOUT:-120}"
+CODEX_TIMEOUT="${CODEX_TIMEOUT:-300}"
 
 set +e
 if [ -n "$TIMEOUT_CMD" ]; then
   REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "${MODEL:-gpt-5.5}" -s read-only \
+    -c model_reasoning_effort="high" \
     --output-schema "$SCHEMA_FILE" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
 else
   REVIEW_JSON=$($CODEX_CMD exec -m "${MODEL:-gpt-5.5}" -s read-only \
+    -c model_reasoning_effort="high" \
     --output-schema "$SCHEMA_FILE" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
 fi
@@ -133,7 +135,7 @@ Rules:
 
 ```bash
 DOUBLED_TIMEOUT=$(( CODEX_TIMEOUT * 2 ))
-if [ "$DOUBLED_TIMEOUT" -gt 900 ]; then DOUBLED_TIMEOUT=900; fi
+if [ "$DOUBLED_TIMEOUT" -gt 1800 ]; then DOUBLED_TIMEOUT=1800; fi
 ```
 
 Display diff size, timeout used, partial output, stderr. `AskUserQuestion`:
@@ -174,7 +176,7 @@ If `codex exec` returns non-JSON or empty output (and exit code 0), do NOT fall 
 ### Codex Quick Mode (`codex review --base`)
 
 ```bash
-$CODEX_CMD review --base "$BASE_BRANCH" -c model="${MODEL:-gpt-5.5}"
+$CODEX_CMD review --base "$BASE_BRANCH" -c model="${MODEL:-gpt-5.5}" -c model_reasoning_effort="high"
 ```
 
 Capture output as free-text `FINDINGS`. Set `CODEX_EXEC_FALLBACK=true`. Persist `quick_mode=true`:

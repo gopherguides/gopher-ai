@@ -62,7 +62,7 @@ Only skip if the user explicitly chooses "Skip this LLM".
 
 ## 2. Select Models (Optional)
 
-For each LLM, ask if user wants to specify a model. Defaults: **OpenAI** `gpt-5.2`, **Gemini** `gemini-2.5-flash`, **Ollama** first available code model (codellama, deepseek-coder, etc.).
+For each LLM, ask if user wants to specify a model. Defaults: **OpenAI** `gpt-5.5`, **Gemini** `gemini-2.5-flash`, **Ollama** first available code model (codellama, deepseek-coder, etc.).
 
 ## 3. Include Context (Optional)
 
@@ -103,7 +103,7 @@ Run in parallel where possible. Use `CLEAN_PROMPT`:
 
 ```bash
 # OpenAI (only if CODEX_AVAILABLE=true)
-$CODEX_CMD exec -m <model> -s read-only --skip-git-repo-check "$CLEAN_PROMPT"
+$CODEX_CMD exec -m <model> -s read-only -c model_reasoning_effort="high" --skip-git-repo-check "$CLEAN_PROMPT"
 
 # Gemini
 gemini "$CLEAN_PROMPT" -m <model>
@@ -119,7 +119,7 @@ If `codex exec` fails (non-zero exit or no output), do NOT silently skip. Displa
 ```markdown
 ## LLM Comparison: <prompt>
 
-### OpenAI (gpt-5.2)
+### OpenAI (gpt-5.5)
 [Response]
 
 ---
@@ -186,7 +186,7 @@ After the report, if review-fix detection was active: check if ANY LLM produced 
 ```markdown
 ## LLM Comparison: Should I use channels or mutexes for this shared counter?
 
-### OpenAI (gpt-5.2)
+### OpenAI (gpt-5.5)
 For a simple shared counter, a mutex is more appropriate. Channels are designed for communication between goroutines, not protecting shared state. Use `sync/atomic` for even better performance.
 
 ### Gemini (gemini-2.5-flash)
