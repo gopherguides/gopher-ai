@@ -35,6 +35,11 @@ If the diff is empty, skip the review loop entirely — proceed to Phase 2 (Step
 
 ### 5b. Run LLM Review
 
+**Cross-model default:** the value of this stage is a second model's
+perspective. When the diff was written by Claude (the usual case), keep the
+`codex` default. When the diff was written by Codex (wtcodex flows), prefer
+`--llm fable` so a different model family reviews the work.
+
 <!-- SYNC: codex-exec-review — keep aligned with review-loop.md Step 5b -->
 
 #### Codex — Diff Size Estimation and Adaptive Timeout
@@ -143,12 +148,13 @@ Display diff size, timeout used, partial output, stderr. `AskUserQuestion`:
 | Option | Description |
 |--------|-------------|
 | **Retry with longer timeout** | Double the timeout to ${DOUBLED_TIMEOUT}s |
+| **Switch to Fable subagent review** | Same prompt + schema via a Claude subagent — no timeout, no extra cost |
 | **Use `codex review --base`** | Faster mode, limited to 2-3 findings per pass |
 | **Drop `--output-schema`** | Run codex exec without structured output (faster, parse free-text) |
 | **Use agent-based review** | Fall back to Claude agent review |
 | **Abort** | Stop the `/ship` workflow |
 
-For "Retry": set `CODEX_TIMEOUT=$DOUBLED_TIMEOUT` and re-run. For "Drop --output-schema": set `CODEX_EXEC_FALLBACK=true`.
+For "Retry": set `CODEX_TIMEOUT=$DOUBLED_TIMEOUT` and re-run. For "Switch to Fable subagent review": set `LLM_CHOICE=fable` for this pass, re-assemble the prompt and schema (steps 1–2 above), and run the Fable section below. For "Drop --output-schema": set `CODEX_EXEC_FALLBACK=true`.
 
 #### Other non-zero exit codes
 
@@ -185,6 +191,51 @@ Capture output as free-text `FINDINGS`. Set `CODEX_EXEC_FALLBACK=true`. Persist 
 TMP="$STATE_FILE.tmp"
 jq '.quick_mode = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
+
+### Fable — Claude Subagent (`LLM_CHOICE=fable`)
+
+<!-- SYNC: fable-subagent-review — keep aligned with llm-tools lib/review-loop/review-phase.md -->
+
+Review by a fresh-context Claude subagent. No external CLI, no API key, no
+timeout wrapper — the subagent runs on the session's subscription and inherits
+the session's model. A fresh context window means the reviewer has none of the
+implementer's assumptions loaded, which is what makes it a genuine second read.
+
+1. **Assemble the prompt and schema** exactly as in the Codex Exhaustive
+   section above (same review instructions, `{REPO_GUIDELINES}`, diff, and
+   `$SCHEMA_FILE` contents) — both backends consume the same evidence so
+   findings are comparable.
+2. **Append the output contract** to the prompt:
+
+   ```text
+   ## Output Format
+
+   Respond with ONLY a single JSON object (no markdown fences, no prose
+   before or after) conforming exactly to this JSON Schema:
+
+   <contents of $SCHEMA_FILE>
+   ```
+
+3. **Dispatch** a subagent via the `Agent` tool with the assembled prompt. Do
+   not override the model — it inherits the session's model. Capture the
+   subagent's final text as `REVIEW_JSON`, strip any accidental markdown
+   fences, and validate with `jq empty`.
+4. **Parse** via the structured-JSON path in 5c — identical handling to codex
+   exhaustive (confidence filter, priority sort, de-duplication, state file).
+
+**Error handling:** invalid JSON from the subagent is a review failure — do
+NOT fall through to the free-text clean path. Display the raw output (first
+500 chars), then `AskUserQuestion`: **Retry** / **Debug** (show raw output) /
+**Use agent-based review** / **Abort**.
+
+**Running under Codex CLI (no Agent tool):** never shell out to `claude -p` —
+headless print mode bills metered API usage, not the subscription. Instead
+drive an interactive Claude window via tmux: write the assembled prompt to a
+temp file, then `tmux send-keys -t <claude-window> "Read <prompt-file> and
+follow it; write the JSON result to <result-file>" Enter`, and poll for the
+result file. If no Claude tmux window is available, ask the user via
+`AskUserQuestion` (open one / switch to codex / skip) — never silently switch
+backends.
 
 ### Gemini
 
@@ -251,7 +302,7 @@ This section runs **ONLY** when the user explicitly chose agent-based review. It
 
 ### 5c. Parse Findings
 
-**Structured JSON** (`LLM_CHOICE=codex` AND `CODEX_EXEC_FALLBACK!=true`):
+**Structured JSON** ((`LLM_CHOICE=codex` AND `CODEX_EXEC_FALLBACK!=true`) OR `LLM_CHOICE=fable`):
 
 1. Validate JSON: `printf '%s\n' "$REVIEW_JSON" | jq empty 2>/dev/null`. If invalid, fall through to free-text.
 2. Extract findings count, overall correctness, confidence via `jq`.

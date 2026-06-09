@@ -1,5 +1,5 @@
 ---
-argument-hint: "[--llm codex|gemini|ollama] [--max-passes <n>] [--quick] [--tier flex|standard|priority] [scope hint]"
+argument-hint: "[--llm codex|gemini|ollama|fable] [--max-passes <n>] [--quick] [--tier flex|standard|priority] [scope hint]"
 description: "Iterative LLM review loop: review, fix, verify, repeat until clean"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---
@@ -12,13 +12,15 @@ allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestio
 
 Parse `$ARGUMENTS` to extract:
 
-- `--llm <value>`: `codex` (default), `gemini`, `ollama`
+- `--llm <value>`: `codex` (default), `gemini`, `ollama`, `fable` (Claude subagent — no external CLI)
 - `--max-passes <n>`: max review passes (default: 5)
 - `--quick`: use `codex review` instead of `codex exec` (faster, limited to 2-3 findings per pass; codex only)
 - `--tier <value>`: gemini service tier (`flex`/`standard`/`priority`; gemini only; default: unset)
 - Remaining text: scope hint
 
 Store as `LLM_CHOICE`, `MAX_PASSES`, `QUICK_MODE` (default `false`), `GEMINI_TIER`, `SCOPE_HINT`.
+
+**Cross-model default:** the value of this review is a second model's perspective. When the diff was written by Claude (the usual case), keep the `codex` default. When the diff was written by Codex (wtcodex flows), prefer `--llm fable` so a different model family reviews the work.
 
 **Persist** to `.local/state/review-loop.loop.local.json` via `jq` (merge `args`, `pass: 0`, `quick_mode`, `gemini_tier`) so the stop-hook can restore on re-entry. See `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/state-persist.md` for the exact jq invocation; the same pattern repeats in Step 4c.
 
@@ -34,8 +36,11 @@ case "$LLM_CHOICE" in
             || LLM_AVAILABLE=false ;;
   gemini) command -v gemini >/dev/null 2>&1 || LLM_AVAILABLE=false ;;
   ollama) command -v ollama >/dev/null 2>&1 || LLM_AVAILABLE=false ;;
+  fable)  LLM_AVAILABLE=true ;;  # no CLI — runs as a Claude subagent (see review-phase.md)
 esac
 ```
+
+For `fable`: no external CLI is required, but the path depends on the orchestrator. In a Claude Code session, the Agent tool dispatches the review subagent (subscription-billed). Under Codex CLI there is no Agent tool — **never shell out to `claude -p`** (headless print mode bills metered API usage, not the subscription); use the tmux-driven interactive Claude window path described in `review-phase.md`. If neither is available, ask the user via `AskUserQuestion` — do not silently switch backends.
 
 If `LLM_AVAILABLE=false` → ask the user via `AskUserQuestion` with options **Retry** / **Debug / Install instructions** / **Abort**. On **Abort**, run `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "review-loop"` and output `<done>REVIEW_CLEAN</done>`.
 
@@ -74,6 +79,7 @@ Use a **single `AskUserQuestion` call** with two questions.
 - **codex:** `gpt-5.5` (Recommended), `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark` (ChatGPT Pro only)
 - **gemini:** `gemini-2.5-pro` (Recommended), `gemini-2.5-flash`
 - **ollama:** `codellama` (Recommended), `llama3`, `deepseek-coder`, Custom
+- **fable:** skip Q2 entirely — the review subagent inherits the session's Claude model
 
 ### 4c. Auto-Detect Base Branch & Conditional Follow-Up
 
@@ -97,7 +103,7 @@ set_loop_phase ".local/state/review-loop.loop.local.json" "reviewing"
 - Uncommitted: `git diff HEAD` (don't add `--cached`, it duplicates staged hunks); include untracked file content via `git ls-files --others --exclude-standard`
 - Specific files: `git diff ${BASE_BRANCH}...HEAD -- <file_paths>`
 
-**Run LLM review** — four paths (codex exhaustive `exec --output-schema`, codex quick `review`, gemini, ollama). Each includes diff-size warning, adaptive timeout for codex, and `AskUserQuestion`-based error handling — never silently fail.
+**Run LLM review** — five paths (codex exhaustive `exec --output-schema`, codex quick `review`, gemini, ollama, fable Claude-subagent). Each includes diff-size warning, adaptive timeout for codex, and `AskUserQuestion`-based error handling — never silently fail.
 
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/review-phase.md` for prompt-template assembly, `gtimeout`/`timeout` detection, 3000-line large-diff warning, exit-code 124 timeout handling, "Drop --output-schema" / "Use codex review --base" fallback options, gemini/ollama heredocs, and the `GEMINI_TIER` warning text.
 
