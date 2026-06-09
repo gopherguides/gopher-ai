@@ -38,9 +38,9 @@ DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
 DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git' || echo 0)
 echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
 
-# Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
-CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
-if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
+# Adaptive timeout sized for high reasoning effort: 300s base + 4s per 100 lines, capped at 900s
+CODEX_TIMEOUT=$(( 300 + (DIFF_LINES / 25) ))
+if [ "$CODEX_TIMEOUT" -gt 900 ]; then CODEX_TIMEOUT=900; fi
 ```
 
 ### Large-diff warning (>3000 lines)
@@ -75,10 +75,12 @@ echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 set +e
 if [ -n "$TIMEOUT_CMD" ]; then
   REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "$MODEL" -s read-only \
+    -c model_reasoning_effort="high" \
     --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
 else
   REVIEW_JSON=$($CODEX_CMD exec -m "$MODEL" -s read-only \
+    -c model_reasoning_effort="high" \
     --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
 fi
@@ -103,7 +105,7 @@ rm -f "$PROMPT_FILE"
 
 ```bash
 DOUBLED_TIMEOUT=$(( CODEX_TIMEOUT * 2 ))
-if [ "$DOUBLED_TIMEOUT" -gt 900 ]; then DOUBLED_TIMEOUT=900; fi
+if [ "$DOUBLED_TIMEOUT" -gt 1800 ]; then DOUBLED_TIMEOUT=1800; fi
 ```
 
 Display diff size, timeout used, partial output, and stderr. Then ask:
@@ -154,14 +156,14 @@ Standard `codex review`, faster but capped at 2-3 findings per pass.
 
 ```bash
 # For changes vs branch:
-$CODEX_CMD review --base "$BASE_BRANCH" -c model="$MODEL"
+$CODEX_CMD review --base "$BASE_BRANCH" -c model="$MODEL" -c model_reasoning_effort="high"
 
 # For uncommitted:
-$CODEX_CMD review --uncommitted -c model="$MODEL"
+$CODEX_CMD review --uncommitted -c model="$MODEL" -c model_reasoning_effort="high"
 
 # For specific files or when scope hint is provided, use stdin:
 DIFF=$(git diff ${BASE_BRANCH}...HEAD -- <files>)
-$CODEX_CMD review -c model="$MODEL" - <<EOF
+$CODEX_CMD review -c model="$MODEL" -c model_reasoning_effort="high" - <<EOF
 $DIFF
 
 ## Review Instructions

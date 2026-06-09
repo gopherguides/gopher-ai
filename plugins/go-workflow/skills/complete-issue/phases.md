@@ -33,16 +33,16 @@ an adaptive timeout sized to the diff:
 DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
 DIFF=$(git diff "origin/${DEFAULT_BRANCH}...HEAD")
 DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
-# Adaptive timeout: 120s base + 2s per 100 lines, capped at 600s
-CODEX_TIMEOUT=$(( 120 + (DIFF_LINES / 50) ))
-if [ "$CODEX_TIMEOUT" -gt 600 ]; then CODEX_TIMEOUT=600; fi
+# Adaptive timeout sized for high reasoning effort: 300s base + 4s per 100 lines, capped at 900s
+CODEX_TIMEOUT=$(( 300 + (DIFF_LINES / 25) ))
+if [ "$CODEX_TIMEOUT" -gt 900 ]; then CODEX_TIMEOUT=900; fi
 # Detect timeout command (macOS does not ship GNU timeout)
 if command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout"
 elif command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout"
 else TIMEOUT_CMD=""; fi
 ```
 
-If `$TIMEOUT_CMD` is available, invoke `$TIMEOUT_CMD $CODEX_TIMEOUT $CODEX_CMD exec` with structured output. If no timeout command is available, run `$CODEX_CMD exec` without a timeout wrapper.
+If `$TIMEOUT_CMD` is available, invoke `$TIMEOUT_CMD $CODEX_TIMEOUT $CODEX_CMD exec -c model_reasoning_effort="high"` with structured output. If no timeout command is available, run `$CODEX_CMD exec -c model_reasoning_effort="high"` without a timeout wrapper. Reasoning effort is always pinned to `high`.
 
 If the diff exceeds 3000 lines, warn the user via `AskUserQuestion` BEFORE starting:
 
@@ -51,7 +51,7 @@ If the diff exceeds 3000 lines, warn the user via `AskUserQuestion` BEFORE start
 Forward the user's choice to the appropriate code path:
 
 - **Proceed** → run codex with the adaptive timeout above.
-- **Use `codex review --base`** → swap the command for `codex review --base origin/${DEFAULT_BRANCH}`.
+- **Use `codex review --base`** → swap the command for `codex review --base origin/${DEFAULT_BRANCH} -c model_reasoning_effort="high"`.
 - **Agent review** → dispatch an Agent subagent (sonnet) with the diff and the same review checklist.
 - **Skip** → warn and proceed directly to Phase 3.
 

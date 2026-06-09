@@ -11,11 +11,12 @@ Use recommended defaults without prompting. Display a brief configuration summar
 ```
 Exec config (defaults — add --ask to customize):
   Model:    gpt-5.5
+  Effort:   high
   Context:  None
   Sandbox:  workspace-write
 ```
 
-Store: model = "gpt-5.5", context = "No", sandbox = "workspace-write". Proceed directly to Step 4 (Run Codex).
+Store: model = "gpt-5.5", context = "No", sandbox = "workspace-write". Reasoning effort is always `high` (pinned via `-c model_reasoning_effort="high"` on every codex invocation — not user-configurable). Proceed directly to Step 4 (Run Codex).
 
 ## If `INTERACTIVE_MODE` is `true` (`--ask` flag provided)
 
@@ -26,9 +27,9 @@ Ask the user which model to use:
 | Model | Best For |
 |-------|----------|
 | gpt-5.5 | Latest frontier model, best overall |
-| gpt-5.5-pro | Maximum performance on complex tasks |
-| gpt-5.3-codex | Previous generation frontier model |
-| gpt-5.1-codex-mini | Simple tasks, cost-efficient |
+| gpt-5.4 | Previous flagship, strong coding and reasoning |
+| gpt-5.4-mini | Fast and cost-efficient for lighter tasks |
+| gpt-5.3-codex-spark | Near-instant iteration (ChatGPT Pro only) |
 
 Default: `gpt-5.5`
 
@@ -83,7 +84,7 @@ Default: `read-only` (interactive). Always request confirmation before using `da
 ### If context was NOT requested
 
 ```bash
-$CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check "$CODEX_PROMPT"
+$CODEX_CMD exec -m <model> -s <mode> -c model_reasoning_effort="high" --skip-git-repo-check "$CODEX_PROMPT"
 ```
 
 ### If context WAS requested
@@ -108,7 +109,7 @@ Use the session context above to inform your review/analysis. The context descri
 being worked on in a previous AI coding session."
 
 printf '%s\n' "$EXEC_PROMPT" > "$PROMPT_FILE"
-$CODEX_CMD exec -m <model> -s <mode> --skip-git-repo-check - < "$PROMPT_FILE"
+$CODEX_CMD exec -m <model> -s <mode> -c model_reasoning_effort="high" --skip-git-repo-check - < "$PROMPT_FILE"
 rm -f "$PROMPT_FILE"
 trap - EXIT
 ```
