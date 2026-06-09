@@ -50,7 +50,10 @@ When conditions are met, offer specific options:
 > - `/codex review` - Get OpenAI's analysis
 > - `/gemini <specific question>` - Ask Google Gemini
 > - `/ollama <question>` - Use a local model (keeps data private)
+> - `/llm-tools:review-loop --llm fable` - Fresh-context Claude subagent review (no external CLI, no extra cost)
 > - `/llm-compare <question>` - Compare multiple models
+
+**Cross-model rule:** a second opinion is most valuable from a different model family than the one that wrote the code. If Claude wrote it, suggest codex/gemini/ollama first. If Codex wrote it (wtcodex flows), suggest the fable review. Never invoke Fable via `claude -p` — headless print mode bills metered API usage, not the subscription; use the subagent path (or a tmux-driven interactive Claude window when orchestrating from Codex).
 
 **Tailor the suggestion to the context:**
 
@@ -127,6 +130,7 @@ When suggesting, be specific about which command fits best:
 | Situation | Best Command |
 |-----------|--------------|
 | Code review | `/codex review` |
+| Code written by Codex | `/llm-tools:review-loop --llm fable` (cross-model: Claude reviews Codex's work) |
 | Quick question | `/gemini <question>` |
 | Sensitive/private code | `/ollama <question>` |
 | Want multiple views | `/llm-compare <question>` |

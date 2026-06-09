@@ -20,8 +20,17 @@ elif [ "$LLM_CHOICE" = "gemini" ]; then
   command -v gemini >/dev/null 2>&1 || LLM_AVAILABLE=false
 elif [ "$LLM_CHOICE" = "ollama" ]; then
   command -v ollama >/dev/null 2>&1 || LLM_AVAILABLE=false
+elif [ "$LLM_CHOICE" = "fable" ]; then
+  LLM_AVAILABLE=true  # no CLI — runs as a Claude subagent (see local-review.md)
 fi
 ```
+
+For `fable`: no external CLI is required in a Claude Code session — the Agent
+tool dispatches the review subagent (subscription-billed). Under Codex CLI
+there is no Agent tool — **never shell out to `claude -p`** (headless print
+mode bills metered API usage, not the subscription); use the tmux-driven
+interactive Claude window path described in `local-review.md`. If neither is
+available, present the `AskUserQuestion` below.
 
 ## Diagnostic Output
 

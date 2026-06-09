@@ -1,5 +1,5 @@
 ---
-argument-hint: "[--llm codex|gemini|ollama] [--passes <n>] [--no-merge] [--skip-coverage] [--coverage-threshold <n>] [--tier flex|standard|priority]"
+argument-hint: "[--llm codex|gemini|ollama|fable] [--passes <n>] [--no-merge] [--skip-coverage] [--coverage-threshold <n>] [--tier flex|standard|priority]"
 description: "Ship a PR: LLM review, coverage gate, e2e tests, push, CI watch, bot approval, merge"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page"]
 ---
@@ -52,7 +52,7 @@ fi
 
 Parse `$ARGUMENTS` to extract:
 
-- `--llm <value>`: `codex` (default), `gemini`, `ollama`
+- `--llm <value>`: `codex` (default), `gemini`, `ollama`, `fable` (Claude subagent — no external CLI; prefer when the diff was written by Codex so a different model family reviews it)
 - `--passes <n>`: max LLM review passes (default: 3)
 - `--no-merge`: stop after bot approval, don't auto-merge
 - `--skip-coverage`: skip coverage analysis. E2E may be reused only when a
@@ -131,7 +131,7 @@ LLM review → fix → verify → coverage gate (final pass) → E2E smoke (when
 
 **Loop decision (Step 8):** clean review (`REVIEW_CLEAN=true`) OR `PASS >= MAX_PASSES` → Phase 2. Otherwise → back to Step 5. Always stage only fixed files (never `git add -A`).
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/local-review.md` for: LLM execution paths (codex exhaustive/quick, gemini, ollama, agent-based fallback), structured-JSON vs free-text parsing, `confidence_score < 0.3` filter, codegen-drift check (`make generate|gen|codegen|sqlc|proto|templ`), E2E skip conditions, and the staged-commit + pass-counter increment.
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/local-review.md` for: LLM execution paths (codex exhaustive/quick, fable Claude-subagent, gemini, ollama, agent-based fallback), structured-JSON vs free-text parsing, `confidence_score < 0.3` filter, codegen-drift check (`make generate|gen|codegen|sqlc|proto|templ`), E2E skip conditions, and the staged-commit + pass-counter increment.
 
 ---
 

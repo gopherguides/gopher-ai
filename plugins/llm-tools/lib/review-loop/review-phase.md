@@ -1,9 +1,9 @@
 # Review Loop — Review Phase Execution (Step 5b)
 
-Loaded by `commands/review-loop.md` Step 5b. Owns the four LLM execution paths
-(codex exhaustive `exec --output-schema`, codex quick `review`, gemini, ollama),
-the prompt-template assembly, the timeout detection, the large-diff warning,
-and all `AskUserQuestion`-based error handling.
+Loaded by `commands/review-loop.md` Step 5b. Owns the five LLM execution paths
+(codex exhaustive `exec --output-schema`, codex quick `review`, gemini, ollama,
+fable Claude-subagent), the prompt-template assembly, the timeout detection,
+the large-diff warning, and all `AskUserQuestion`-based error handling.
 
 ## Codex — Exhaustive Mode (default, `QUICK_MODE=false`)
 
@@ -174,6 +174,55 @@ EOF
 ```
 
 Capture output as free-text `FINDINGS`.
+
+## Fable — Claude Subagent (`LLM_CHOICE=fable`)
+
+<!-- SYNC: fable-subagent-review — keep aligned with go-workflow lib/ship/local-review.md -->
+
+Review by a fresh-context Claude subagent. No external CLI, no API key, no
+timeout wrapper — the subagent runs on the session's subscription and inherits
+the session's model. A fresh context window means the reviewer has none of the
+implementer's assumptions loaded, which is what makes it a genuine second read.
+
+**Step 1 — Assemble the prompt.** Identical to codex exhaustive Steps 1–2:
+read `${CLAUDE_PLUGIN_ROOT}/prompts/codex-review.md`, fill `{DIFF}`,
+`{SCOPE_HINT}`, `{REPO_GUIDELINES}`, `{PR_CONTEXT}`. Both backends consume the
+same assembled prompt — keep them identical so findings are comparable.
+
+**Step 2 — Append the output contract.** Read
+`${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json` and append to the prompt:
+
+```text
+## Output Format
+
+Respond with ONLY a single JSON object (no markdown fences, no prose before or
+after) conforming exactly to this JSON Schema:
+
+<contents of schemas/codex-review.json>
+```
+
+**Step 3 — Dispatch.** Spawn a subagent via the `Agent` tool with the
+assembled prompt. Do not override the model — it inherits the session's model.
+Capture the subagent's final text as `REVIEW_JSON`, strip any accidental
+markdown fences, and validate with `jq empty`.
+
+**Step 4 — Parse.** Feed `REVIEW_JSON` through the same structured-JSON path
+as codex exhaustive (Step 6 of `review-loop.md`): validate, filter
+`confidence_score < 0.3`, sort by priority then confidence, de-duplicate
+across passes.
+
+**Error handling:** if the subagent returns invalid JSON, do NOT fall through
+to the free-text clean path. Display the raw output (first 500 chars), then
+`AskUserQuestion`: **Retry** / **Debug** (show raw output) / **Skip review**.
+
+**Running under Codex CLI (no Agent tool):** never shell out to `claude -p` —
+headless print mode bills metered API usage, not the subscription. Instead
+drive an interactive Claude window via tmux: write the assembled prompt to a
+temp file, then `tmux send-keys -t <claude-window> "Read <prompt-file> and
+follow it; write the JSON result to <result-file>" Enter`, and poll for the
+result file. If no Claude tmux window is available, ask the user via
+`AskUserQuestion` (open one / switch to codex / skip) — never silently switch
+backends.
 
 ## Gemini
 
