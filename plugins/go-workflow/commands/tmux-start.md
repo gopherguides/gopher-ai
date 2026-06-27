@@ -1,6 +1,6 @@
 ---
 argument-hint: "<issue-number>"
-description: "Create worktree + tmux window and kick off /start-issue autonomously"
+description: "Start issue work in a new tmux window"
 allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(tmux:*)", "Bash(pwd:*)", "Bash(echo:*)", "Bash(cd:*)", "Bash(basename:*)", "Bash(sleep:*)", "Bash(if:*)", "Bash(cp:*)", "Bash(for:*)", "Bash(find:*)", "Bash(mkdir:*)", "Bash(*worktree-state*)", "Read", "AskUserQuestion"]
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: worktree
-description: "Manage git worktrees for issue/PR isolation. Use when user says 'create worktree', 'worktree for issue #N', 'remove worktree', 'delete worktree', 'prune worktrees', 'clean up worktrees', or wants an isolated workspace per issue. Three actions: create (one new worktree from default branch), remove (interactively delete one with safety checks), prune (batch-remove all completed worktrees where issue is closed AND branch is merged)."
+description: "Create, remove, or prune git worktrees for issue/PR isolation. Use when the user asks for a worktree, wants an isolated workspace per issue, or wants completed worktrees cleaned up."
 ---
 
 # Worktree
