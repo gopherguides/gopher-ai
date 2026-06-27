@@ -352,9 +352,9 @@ for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   # Find a blob with this hash from git history and reconstruct it as a stale install.
   # The inner subshell exits as soon as a match is printed; no `head -1` needed.
   STALE_BLOB=$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
-    | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1, $2}' \
+    | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
     | (
-        while read blob path; do
+        while read -r blob path; do
           h=$(git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
           if [ "$h" = "$HISTORICAL_HASH" ] && [ "$(basename "$(dirname "$path")")" = "$skill_name" ]; then
             echo "$blob"
@@ -418,8 +418,8 @@ if [ ! -f "$ROOT_DIR/scripts/legacy-skill-hashes.txt" ]; then
   ERRORS=$((ERRORS + 1))
 else
   EXPECTED=$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
-      | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1, $2}' \
-      | while read blob path; do
+      | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
+      | while read -r blob path; do
           skill_name=$(basename "$(dirname "$path")")
           h=$(cd "$ROOT_DIR" && git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
           [ -n "$h" ] && echo "$h $skill_name"
@@ -682,7 +682,6 @@ seed_fake_marketplace_clone() {
 
 # Helper: build a stubbed PATH that has a no-op `codex` and core utilities.
 build_stub_path() {
-  local out="$1"
   local stub_dir
   stub_dir="$(mktemp -d)"
   cat > "$stub_dir/codex" <<'STUB'
@@ -832,7 +831,7 @@ cat > "$TMP_PLUGIN_JSON" <<'EOF'
 }
 EOF
 RESULT=$(awk '/^json_author_email\(\) \{/,/^\}/' "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" \
-  | { cat; echo 'json_author_email "$1"'; } | bash -s "$TMP_PLUGIN_JSON" 2>/dev/null)
+  | { cat; echo "json_author_email \"\$1\""; } | bash -s "$TMP_PLUGIN_JSON" 2>/dev/null)
 if [ "$RESULT" = "support@gopherguides.com" ]; then
   echo "OK"
 else

@@ -24,7 +24,7 @@ HOOK_MANIFEST="$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt"
 
 cd "$ROOT_DIR"
 
-if [[ ! -d .git ]]; then
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
     echo "error: scripts/regen-legacy-hashes.sh must be run from a git clone" >&2
     exit 1
 fi
@@ -57,7 +57,7 @@ TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
 git rev-list --objects --all 2>/dev/null \
-    | awk '$2 ~ /^plugins\/[^/]+\/skills\/[^/]+\/SKILL\.md$/ {print $1, $2}' \
+    | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
     | while read -r blob path; do
         skill_name="$(basename "$(dirname "$path")")"
         hash="$(git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')"
