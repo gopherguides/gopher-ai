@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verify /ship treats missing UI E2E prerequisites as a blocking condition.
+# Verify $ship treats missing UI E2E prerequisites as a blocking condition.
 
 set -euo pipefail
 

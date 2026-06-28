@@ -221,13 +221,13 @@ fi
 if ! grep -q '{{args}}' "$OLLAMA_TOML"; then
   GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-llm-tools/commands/ollama.toml (missing Gemini args placeholder)"
 fi
-if ! grep -qF '!{if [ -f ".local/state/ship.loop.local.json" ]' "$SHIP_TOML"; then
+if [ -f "$SHIP_TOML" ] && ! grep -qF '!{if [ -f ".local/state/ship.loop.local.json" ]' "$SHIP_TOML"; then
   GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-go-workflow/commands/ship.toml (missing Gemini shell substitution)"
 fi
-if ! grep -qF '!{ISSUE_NUM=' "$START_ISSUE_TOML"; then
+if [ -f "$START_ISSUE_TOML" ] && ! grep -qF '!{ISSUE_NUM=' "$START_ISSUE_TOML"; then
   GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-go-workflow/commands/start-issue.toml (missing Gemini shell command line)"
 fi
-if ! grep -qF -- '- Issue details: !{ISSUE_NUM=' "$START_ISSUE_TOML"; then
+if [ -f "$START_ISSUE_TOML" ] && ! grep -qF -- '- Issue details: !{ISSUE_NUM=' "$START_ISSUE_TOML"; then
   GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-go-workflow/commands/start-issue.toml (missing inline Gemini shell substitution)"
 fi
 if [ -n "$GEMINI_SCHEMA_ERRORS" ]; then
@@ -461,7 +461,7 @@ for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   [ -n "$HISTORICAL_HASH" ] || continue
   # Find a blob with this hash from git history and reconstruct it as a stale install.
   # The inner subshell exits as soon as a match is printed; no `head -1` needed.
-  STALE_BLOB=$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
+  STALE_BLOB=$(cd "$ROOT_DIR" && git rev-list --objects HEAD 2>/dev/null \
     | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
     | (
         while read -r blob path; do
@@ -527,7 +527,7 @@ if [ ! -f "$ROOT_DIR/scripts/legacy-skill-hashes.txt" ]; then
   echo "FAIL (manifest missing — run scripts/regen-legacy-hashes.sh)"
   ERRORS=$((ERRORS + 1))
 else
-  EXPECTED=$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
+  EXPECTED=$(cd "$ROOT_DIR" && git rev-list --objects HEAD 2>/dev/null \
       | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
       | while read -r blob path; do
           skill_name=$(basename "$(dirname "$path")")
