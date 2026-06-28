@@ -38,8 +38,8 @@ make coverage
 If testing from within the gopher-ai monorepo:
 
 ```bash
-make audit SKILLS_SCRIPTS=../../agent-skills/scripts
-make coverage SKILLS_SCRIPTS=../../agent-skills/scripts
+make audit SKILLS_SCRIPTS=../../scripts
+make coverage SKILLS_SCRIPTS=../../scripts
 ```
 
 ## Makefile Targets
