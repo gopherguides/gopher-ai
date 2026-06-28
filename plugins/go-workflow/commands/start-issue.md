@@ -19,6 +19,8 @@ allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestio
 > - `--coverage-threshold <n>`: Override default 60% coverage threshold
 > - `--no-agents`: Use single-session workflow instead of subagent dispatch (for small/simple issues)
 >
+> **Subagent model policy:** Default orchestrated mode uses the agent prompt frontmatter: Explore runs on Haiku, Spec Review and Quality Review run on Sonnet, and Implementer inherits the parent session model. To override all subagent models for a run, set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking the command. Use `--no-agents` to run without subagent dispatch.
+>
 > **Workflow:**
 > 1. Fetch issue details, labels, and comments
 > 2. Optionally create a git worktree for isolated work
@@ -56,6 +58,14 @@ Store the parsed flags:
 - `SKIP_COVERAGE`: `true` if `--skip-coverage` was passed, `false` otherwise
 - `COVERAGE_THRESHOLD`: the value after `--coverage-threshold`, or `60` if not specified
 - `NO_AGENTS`: `true` if `--no-agents` was passed, `false` otherwise
+
+Subagent model policy in orchestrated mode:
+- Explore: `haiku`
+- Implementer: `inherit`
+- Spec Review: `sonnet`
+- Quality Review: `sonnet`
+
+Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking `/start-issue` to override all subagent models for a run. Use `--no-agents` to bypass subagents entirely.
 
 ## Loop Initialization
 
@@ -206,7 +216,7 @@ Analyze the issue to determine if it's a **bug fix** or **new feature**:
 
 ### Subagent-Orchestrated (default — when `NO_AGENTS=false`)
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/start-issue/orchestrated-workflow.md` for the full 12-step procedure: duplicate check (bugs only), branch creation, Explore subagent dispatch, design approach (features only), task decomposition + parallel-dispatch decision, Implementer subagent dispatch (parallel or sequential), spec-compliance review (opus), quality review (sonnet), verify (build/test/lint), Step 9.5 coverage gate, security review, submit (PR template detection + creation), watch CI.
+→ Read `${CLAUDE_PLUGIN_ROOT}/lib/start-issue/orchestrated-workflow.md` for the full 12-step procedure: duplicate check (bugs only), branch creation, Explore subagent dispatch, design approach (features only), task decomposition + parallel-dispatch decision, Implementer subagent dispatch (parallel or sequential), frontmatter-pinned spec-compliance review, frontmatter-pinned quality review, verify (build/test/lint), Step 9.5 coverage gate, security review, submit (PR template detection + creation), watch CI.
 
 ### Manual (`--no-agents` fallback)
 

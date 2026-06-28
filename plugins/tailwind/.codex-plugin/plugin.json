@@ -1,6 +1,6 @@
 {
   "name": "tailwind",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Tailwind CSS v4 tools for initialization, auditing, migration, and optimization",
   "author": {
     "name": "Gopher Guides",

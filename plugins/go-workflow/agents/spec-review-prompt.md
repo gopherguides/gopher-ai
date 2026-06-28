@@ -1,6 +1,7 @@
 ---
 name: spec-review-prompt
 description: Verify an implementation matches its issue requirements — spec compliance only, no code-quality opinions.
+model: sonnet
 ---
 
 # Spec Compliance Review Agent Prompt

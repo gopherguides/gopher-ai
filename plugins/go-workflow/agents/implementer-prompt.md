@@ -1,6 +1,7 @@
 ---
 name: implementer-prompt
 description: Implement one focused task in a Go codebase using strict test-driven development.
+model: inherit
 ---
 
 # Implementer Agent Prompt

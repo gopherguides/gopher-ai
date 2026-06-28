@@ -5,6 +5,26 @@ The orchestrator (the trunk's session) retains all control flow, verification
 gates, and external interactions; subagents handle exploration,
 implementation, and review.
 
+## Subagent Model Policy
+
+Each prompt under `${CLAUDE_PLUGIN_ROOT}/agents/` declares its default `model`
+frontmatter. Do not pass a per-dispatch model in this workflow unless the user
+explicitly requests a one-off override; doing so would mask the prompt's model
+policy.
+
+Defaults:
+
+| Agent prompt | Model policy | Purpose |
+|--------------|--------------|---------|
+| `explore-prompt.md` | `haiku` | Read-only codebase exploration |
+| `implementer-prompt.md` | `inherit` | TDD implementation keeps the parent session's model |
+| `spec-review-prompt.md` | `sonnet` | Mechanical requirements checklist |
+| `quality-review-prompt.md` | `sonnet` | Go idiom, complexity, security, and test review |
+
+To override all subagent models for a run, set `CLAUDE_CODE_SUBAGENT_MODEL`
+before invoking `/start-issue` or `/complete-issue`. To avoid subagents
+entirely, pass `--no-agents`.
+
 ## Step 1: Check for Duplicates (Bug Fix Only)
 
 If issue is a **bug**:
@@ -38,7 +58,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/agents/explore-prompt.md` and fill in:
 Dispatch:
 
 ```
-Agent(prompt=<filled template>, model=sonnet, subagent_type=Explore)
+Agent(prompt=<filled template>, subagent_type=Explore)
 ```
 
 Store the results: `RELEVANT_FILES`, `PATTERNS`, `ROOT_CAUSE` (bugs) or `INTEGRATION_POINTS` (features), `PROPOSED_CHANGES`, `TASK_DECOMPOSITION`.
@@ -91,12 +111,12 @@ For each task, read `${CLAUDE_PLUGIN_ROOT}/agents/implementer-prompt.md` and fil
 
 - **Parallel** (independent tasks with disjoint files):
   ```
-  For each task: Agent(prompt=<filled>, model=sonnet, run_in_background=true)
+  For each task: Agent(prompt=<filled>, run_in_background=true)
   Wait for all to complete. Collect results.
   ```
 - **Sequential** (dependent tasks or overlapping files):
   ```
-  For each task in order: Agent(prompt=<filled>, model=sonnet)
+  For each task in order: Agent(prompt=<filled>)
   ```
 
 **Handle subagent status:**
@@ -125,7 +145,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/agents/spec-review-prompt.md` and fill in:
 - `{CHANGED_FILES}` — list of all files changed
 - `{DIFF}` — the full diff
 
-Dispatch: `Agent(prompt=<filled>, model=opus)`
+Dispatch: `Agent(prompt=<filled>)`
 
 **If VERDICT = FAIL:** address missing requirements by re-dispatching implementer subagent(s) for the gaps. Re-run spec review (max 2 retry cycles).
 
@@ -135,7 +155,7 @@ Dispatch: `Agent(prompt=<filled>, model=opus)`
 
 Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md` and fill in `{WORKTREE_PATH}`, `{CHANGED_FILES}`, `{DIFF}`, `{PATTERNS}` (from Explore), `{REPO_CONVENTIONS}` (from CLAUDE.md/AGENTS.md).
 
-Dispatch: `Agent(prompt=<filled>, model=sonnet)`
+Dispatch: `Agent(prompt=<filled>)`
 
 **If HAS_FINDINGS:**
 

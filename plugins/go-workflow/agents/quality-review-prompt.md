@@ -1,6 +1,7 @@
 ---
 name: quality-review-prompt
 description: Review code quality for an implementation that has already passed spec review — style, idioms, complexity, tests.
+model: sonnet
 ---
 
 # Code Quality Review Agent Prompt
