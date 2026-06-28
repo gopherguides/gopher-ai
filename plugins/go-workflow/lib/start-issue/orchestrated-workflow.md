@@ -12,6 +12,10 @@ frontmatter. Do not pass a per-dispatch model in this workflow unless the user
 explicitly requests a one-off override; doing so would mask the prompt's model
 policy.
 
+When dispatching, always set `subagent_type` to the prompt file's frontmatter
+`name` so Claude Code loads that custom subagent definition and applies its
+model policy.
+
 Defaults:
 
 | Agent prompt | Model policy | Purpose |
@@ -58,7 +62,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/agents/explore-prompt.md` and fill in:
 Dispatch:
 
 ```
-Agent(prompt=<filled template>, subagent_type=Explore)
+Agent(prompt=<filled template>, subagent_type=explore-prompt)
 ```
 
 Store the results: `RELEVANT_FILES`, `PATTERNS`, `ROOT_CAUSE` (bugs) or `INTEGRATION_POINTS` (features), `PROPOSED_CHANGES`, `TASK_DECOMPOSITION`.
@@ -111,12 +115,12 @@ For each task, read `${CLAUDE_PLUGIN_ROOT}/agents/implementer-prompt.md` and fil
 
 - **Parallel** (independent tasks with disjoint files):
   ```
-  For each task: Agent(prompt=<filled>, run_in_background=true)
+  For each task: Agent(prompt=<filled>, subagent_type=implementer-prompt, run_in_background=true)
   Wait for all to complete. Collect results.
   ```
 - **Sequential** (dependent tasks or overlapping files):
   ```
-  For each task in order: Agent(prompt=<filled>)
+  For each task in order: Agent(prompt=<filled>, subagent_type=implementer-prompt)
   ```
 
 **Handle subagent status:**
@@ -145,7 +149,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/agents/spec-review-prompt.md` and fill in:
 - `{CHANGED_FILES}` — list of all files changed
 - `{DIFF}` — the full diff
 
-Dispatch: `Agent(prompt=<filled>)`
+Dispatch: `Agent(prompt=<filled>, subagent_type=spec-review-prompt)`
 
 **If VERDICT = FAIL:** address missing requirements by re-dispatching implementer subagent(s) for the gaps. Re-run spec review (max 2 retry cycles).
 
@@ -155,7 +159,7 @@ Dispatch: `Agent(prompt=<filled>)`
 
 Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md` and fill in `{WORKTREE_PATH}`, `{CHANGED_FILES}`, `{DIFF}`, `{PATTERNS}` (from Explore), `{REPO_CONVENTIONS}` (from CLAUDE.md/AGENTS.md).
 
-Dispatch: `Agent(prompt=<filled>)`
+Dispatch: `Agent(prompt=<filled>, subagent_type=quality-review-prompt)`
 
 **If HAS_FINDINGS:**
 
