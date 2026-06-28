@@ -80,12 +80,12 @@ Allowed values: `pass`, `fail`, `partial`, `skipped`, `skipped-server-failed`,
 
 **Gate (per `SKILL.md` Step 7):**
 - UI-visible diff → only `pass` proceeds. Any other value blocks shipping:
-  no `run-full-ci` label, no `e2e-verified` label, no `/go-workflow:ship`.
+  no `run-full-ci` label, no `e2e-verified` label, no `$ship`.
 - Non-UI diff → `skipped` is the success path.
 
 If this section reports anything other than `pass` (UI-visible) or `skipped`
 (non-UI), the workflow has stopped. Address the findings above and re-run
-`/go-workflow:e2e-verify`.
+`$e2e-verify`.
 
 ### Summary
 
@@ -126,8 +126,8 @@ is identical across modes.
 | `verify` | "Verification complete. Ready for review." |
 | `fix-and-verify` | "Review feedback addressed and verified. `run-full-ci` label added." |
 | `investigate` | "Investigation complete. See findings above." |
-| `ship-prep` | "Ship prep complete. `run-full-ci` label added. Ready for `/ship`." |
-| `ship` | "Verified and shipping via `/ship`." |
+| `ship-prep` | "Ship prep complete. `run-full-ci` label added. Ready for `$ship`." |
+| `ship` | "Verified and shipping via `$ship`." |
 | `fix-and-ship` | "Review addressed, verified, and shipping. `run-full-ci` label added." |
 
 **Fail path** (`E2E_RESULT` is `fail`, `partial`, `skipped-server-failed`,
@@ -136,7 +136,7 @@ is identical across modes.
 
 > E2E verification failed (`$E2E_RESULT`). Workflow stopped — no labels added,
 > no ship invoked. Address the findings above and re-run
-> `/go-workflow:e2e-verify`.
+> `$e2e-verify`.
 
 ## 6d. Add Labels (gated on `E2E_RESULT`)
 

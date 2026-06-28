@@ -404,16 +404,19 @@ mkdir -p "$SKILLS_DIR"
 # pointing PATH at the original location minus jq's directory.
 JQ_PATH="$(command -v jq 2>/dev/null || true)"
 if [ -n "$JQ_PATH" ]; then
-  # Rebuild a sanitized PATH without jq's bin dir.
-  JQ_DIR="$(dirname "$JQ_PATH")"
-  SAFE_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v "^${JQ_DIR}\$" | tr '\n' ':' | sed 's/:$//')
-  if HOME="$TMP_HOME" PATH="$SAFE_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes >/tmp/gopher-ai-cleanup-nojq.log 2>&1; then
+  TMP_BIN=$(mktemp -d)
+  for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum shasum git sort uniq stat ln readlink cut mv; do
+    cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
+    [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
+  done
+  if HOME="$TMP_HOME" PATH="$TMP_BIN" bash "$ROOT_DIR/scripts/install-codex.sh" --cleanup --yes >/tmp/gopher-ai-cleanup-nojq.log 2>&1; then
     echo "OK"
   else
     echo "FAIL (cleanup should not require jq)"
     sed -n '1,40p' /tmp/gopher-ai-cleanup-nojq.log
     ERRORS=$((ERRORS + 1))
   fi
+  rm -rf "$TMP_BIN"
 else
   echo "SKIP (jq not installed locally)"
 fi

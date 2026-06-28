@@ -1,6 +1,6 @@
 # Ship — Step 4 Prerequisite Diagnostics
 
-Loaded by `commands/ship.md` Step 4 when the selected LLM CLI is not
+Loaded by `skills/ship/SKILL.md` Step 4 when the selected LLM CLI is not
 available. Print diagnostics, persist failure, then route the user via
 `AskUserQuestion`.
 
@@ -66,7 +66,7 @@ jq '.llm_check_failed = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE
 | **Retry** | Check again (after you install or fix `$LLM_CHOICE`) |
 | **Debug / Install instructions** | Show install steps and help troubleshoot |
 | **Use agent-based review** | Fall back to Claude agent review (no external LLM) |
-| **Abort** | Stop the `/ship` workflow entirely |
+| **Abort** | Stop the `$ship` workflow entirely |
 
 ### Retry
 

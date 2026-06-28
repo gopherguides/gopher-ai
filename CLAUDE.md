@@ -46,10 +46,10 @@ plugins/
 
 ### Issue Worktree Flow
 
-The `/start-issue`, `/fix-issue`, `/add-feature`, and `/prune-worktree` commands work together:
+The `start-issue` workflow and worktree commands work together:
 
-1. `/start-issue <num>` creates a worktree at `../${reponame}-issue-<num>-<title>/` from the default branch
-2. `/fix-issue` or `/add-feature` implements changes with TDD approach
+1. `$start-issue <num>` offers to create a worktree at `../${reponame}-issue-<num>-<title>/` from the default branch
+2. The issue workflow implements changes with a TDD approach
 3. `/prune-worktree` cleans up worktrees for closed/merged issues
 
 Requires `gh` CLI authenticated.
@@ -74,7 +74,7 @@ The `shared/` directory contains code used by multiple plugins:
 
 **Hook ownership**: Only `go-workflow` has hooks registered:
 - **SessionStart hook** (`codex-cleanup-on-start.sh`): Auto-removes legacy gopher-ai skill files left in `~/.codex/skills/` from older `--user` installs. Gated by a per-version marker file (`~/.codex/.gopher-ai-cleanup-<version>`) so it's nearly free on subsequent sessions. Reads the shipped manifest at `hooks/legacy-skill-hashes.txt` (kept in sync with `scripts/legacy-skill-hashes.txt` by `regen-legacy-hashes.sh`). Removal requires three checks: matching skill name, matching frontmatter `name:`, and matching SKILL.md sha256 in the manifest — false positives are essentially impossible.
-- **Stop hook** (`stop-hook.sh`): Persistent loop management for `/start-issue` style commands
+- **Stop hook** (`stop-hook.sh`): Persistent loop management for `start-issue` style workflows
 - **PreToolUse hook** (`pre-tool-use.sh`): Validates environment, tools, and git state before tool execution:
   - Checks for required env vars (GOPHER_GUIDES_API_KEY, GITHUB_TOKEN, OPENAI_API_KEY) contextually
   - Blocks execution if required tools are missing (golangci-lint, templ, gh, node)

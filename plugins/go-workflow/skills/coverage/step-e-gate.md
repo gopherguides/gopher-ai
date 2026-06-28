@@ -52,7 +52,7 @@ Every changed file is `package main` → emit this exact one-line warning,
 "all-main"`, `coverage_result = ""`), and return to the calling command's next
 step. Do NOT call `AskUserQuestion`; there is no signal to act on, and
 silently passing would hide the fact that no gate ran. Skipping Step E.3 here
-would leave the calling command (e.g. `/ship`) unable to render the correct
+would leave the calling skill (e.g. `$ship`) unable to render the correct
 summary line.
 
 ```
@@ -136,7 +136,7 @@ else
 fi
 ```
 
-**Caller contract:** Callers that render a summary line (e.g. `/ship` Step
+**Caller contract:** Callers that render a summary line (e.g. `$ship` Step
 13f) must check `coverage_skip_reason` before formatting `coverage_result`
 with a percent sign. If `coverage_skip_reason` is non-empty, render a textual
 reason (e.g. `skipped — all changed files are package main`) instead of

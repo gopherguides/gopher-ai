@@ -1,6 +1,6 @@
 # Ship — Phase 3: CI Watch (Step 10)
 
-Loaded by `commands/ship.md` Phase 3. Owns SHA-anchored CI watching.
+Loaded by `skills/ship/SKILL.md` Phase 3. Owns SHA-anchored CI watching.
 
 ## 10a. Capture and verify HEAD SHA
 

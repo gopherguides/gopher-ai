@@ -1,6 +1,6 @@
 # Start-Issue — Manual Workflow (`--no-agents` fallback)
 
-Loaded by `commands/start-issue.md` when `NO_AGENTS=true`. Single-session
+Loaded by `skills/start-issue/SKILL.md` when `NO_AGENTS=true`. Single-session
 flow for simple issues where subagent overhead is not justified.
 
 ## Bug Fix (Manual)

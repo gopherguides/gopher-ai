@@ -4,7 +4,7 @@
 
 ### 1a. Checkout PR Branch
 
-Ensure we are on the correct PR branch before rebasing. This handles the case where `/e2e-verify 42` is run from a different branch:
+Ensure we are on the correct PR branch before rebasing. This handles the case where `$e2e-verify 42` is run from a different branch:
 
 ```bash
 PR_NUM="${PR_NUM:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"

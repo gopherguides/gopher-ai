@@ -1,6 +1,6 @@
 # Coverage Verification (Shared Reference)
 
-This document is referenced by both `/ship` and `/start-issue`. It's a router:
+This document is referenced by both `$ship` and `$start-issue`. It's a router:
 each step (A through F) gives the contract — what must be true on entry, what
 must be true on return — and points to the sibling that owns the implementation.
 Follow Steps A through F using the parameters provided by the calling command.
