@@ -131,6 +131,66 @@ else
 fi
 
 CODEX_PLUGIN_COUNT=$(jq '.plugins | length' "$CODEX_MARKETPLACE")
+echo -n "Gemini command TOMLs use prompt schema... "
+GEMINI_SCHEMA_ERRORS=""
+GEMINI_COMMAND_COUNT=0
+EXPECTED_GEMINI_COMMAND_COUNT=$(find "$ROOT_DIR/plugins" -path "*/commands/*.md" -type f | wc -l | tr -d ' ')
+for f in "$ROOT_DIR"/dist/gemini/gopher-ai-*/commands/*.toml; do
+  [ -f "$f" ] || continue
+  GEMINI_COMMAND_COUNT=$((GEMINI_COMMAND_COUNT + 1))
+  REL_PATH="${f#"$ROOT_DIR"/}"
+
+  if ! grep -q '^description[[:space:]]*=' "$f"; then
+    GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (missing top-level description)"
+  fi
+  if ! grep -q '^prompt[[:space:]]*=' "$f"; then
+    GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (missing top-level prompt)"
+  fi
+  if grep -Eq '^\[(command|options)\]' "$f"; then
+    GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (contains unsupported table)"
+  fi
+  if grep -Eq '^(name|argumentHint|excludeTools)[[:space:]]*=' "$f"; then
+    GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (contains unsupported field)"
+  fi
+  if grep -qF "\$ARGUMENTS" "$f"; then
+    GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (contains unmapped \$ARGUMENTS)"
+  fi
+  if grep -qF '!`' "$f"; then
+    GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (contains Claude shell substitution syntax)"
+  fi
+  if awk '/^!/ && substr($0, 2, 1) != "{" && substr($0, 2, 1) != "[" { found = 1 } END { exit found ? 0 : 1 }' "$f"; then
+    GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (contains unwrapped Claude shell command line)"
+  fi
+done
+OLLAMA_TOML="$ROOT_DIR/dist/gemini/gopher-ai-llm-tools/commands/ollama.toml"
+SHIP_TOML="$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/commands/ship.toml"
+START_ISSUE_TOML="$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/commands/start-issue.toml"
+if [ "$GEMINI_COMMAND_COUNT" -ne "$EXPECTED_GEMINI_COMMAND_COUNT" ]; then
+  GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  expected $EXPECTED_GEMINI_COMMAND_COUNT generated commands, got $GEMINI_COMMAND_COUNT"
+fi
+if ! grep -q '# Use Local Models via Ollama' "$OLLAMA_TOML"; then
+  GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-llm-tools/commands/ollama.toml (missing markdown body)"
+fi
+if ! grep -q '{{args}}' "$OLLAMA_TOML"; then
+  GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-llm-tools/commands/ollama.toml (missing Gemini args placeholder)"
+fi
+if ! grep -qF '!{if [ -f ".local/state/ship.loop.local.json" ]' "$SHIP_TOML"; then
+  GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-go-workflow/commands/ship.toml (missing Gemini shell substitution)"
+fi
+if ! grep -qF '!{ISSUE_NUM=' "$START_ISSUE_TOML"; then
+  GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-go-workflow/commands/start-issue.toml (missing Gemini shell command line)"
+fi
+if ! grep -qF -- '- Issue details: !{ISSUE_NUM=' "$START_ISSUE_TOML"; then
+  GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-go-workflow/commands/start-issue.toml (missing inline Gemini shell substitution)"
+fi
+if [ -n "$GEMINI_SCHEMA_ERRORS" ]; then
+  echo "FAIL"
+  printf '%b\n' "$GEMINI_SCHEMA_ERRORS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK ($GEMINI_COMMAND_COUNT commands)"
+fi
+
 echo -n "Codex repo install writes matching marketplace entries... "
 TMP_REPO=$(mktemp -d)
 if ! "$ROOT_DIR/scripts/install-codex.sh" --repo "$TMP_REPO" >/tmp/gopher-ai-install-repo.log 2>&1; then

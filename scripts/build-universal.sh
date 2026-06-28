@@ -295,12 +295,9 @@ convert_command_to_toml() {
     local cmd_name="$2"
 
     local description=""
-    local argument_hint=""
-    local model=""
-    local allowed_tools=""
-
     local in_frontmatter=false
     local frontmatter=""
+    local body=""
 
     while IFS= read -r line; do
         if [[ "$line" == "---" ]]; then
@@ -316,47 +313,142 @@ convert_command_to_toml() {
         fi
     done < "$cmd_file"
 
-    description=$(echo "$frontmatter" | grep -E '^description:' | sed 's/^description:[[:space:]]*//' | tr -d '"' || echo "")
-    argument_hint=$(echo "$frontmatter" | grep -E '^argument-hint:' | sed 's/^argument-hint:[[:space:]]*//' | tr -d '"' || echo "")
-    model=$(echo "$frontmatter" | grep -E '^model:' | sed 's/^model:[[:space:]]*//' | tr -d '"' || echo "")
-    allowed_tools=$(echo "$frontmatter" | grep -E '^allowed-tools:' | sed 's/^allowed-tools:[[:space:]]*//' || echo "")
-
-    local exclude_tools="[]"
-    if [[ -n "$allowed_tools" ]]; then
-        exclude_tools=$(convert_allowlist_to_denylist "$allowed_tools")
-    fi
+    description=$(extract_frontmatter_value "$frontmatter" "description")
+    description=$(strip_wrapping_quotes "$description")
+    description=$(toml_escape_basic_string "$description")
+    body=$(extract_markdown_body "$cmd_file")
+    body=${body//\$ARGUMENTS/\{\{args\}\}}
+    body=$(convert_gemini_prompt_body "$body")
 
     cat << EOF
 # Generated from $cmd_name.md
 # gopher-ai v$VERSION
-
-[command]
-name = "$cmd_name"
 description = "$description"
 EOF
 
-    if [[ -n "$argument_hint" ]]; then
-        echo "argumentHint = \"$argument_hint\""
-    fi
-
-    if [[ -n "$model" ]]; then
-        echo "model = \"$model\""
-    fi
-
-    echo ""
-    echo "[options]"
-    echo "excludeTools = $exclude_tools"
+    emit_toml_multiline_string "prompt" "$body"
 }
 
-convert_allowlist_to_denylist() {
-    local allowlist="$1"
+extract_frontmatter_value() {
+    local frontmatter="$1"
+    local key="$2"
 
-    if [[ "$allowlist" == *"Bash"* && "$allowlist" != *"Bash("* ]]; then
-        echo "[]"
+    awk -v key="$key" '
+        index($0, key ":") == 1 {
+            sub("^[^:]*:[[:space:]]*", "")
+            print
+            exit
+        }
+    ' <<< "$frontmatter"
+}
+
+strip_wrapping_quotes() {
+    local value="$1"
+
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+        value="${value#\"}"
+        value="${value%\"}"
+    fi
+
+    printf '%s' "$value"
+}
+
+toml_escape_basic_string() {
+    local value="$1"
+
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+
+    printf '%s' "$value"
+}
+
+extract_markdown_body() {
+    local file="$1"
+
+    awk '
+        /^---$/ {
+            delimiters++
+            if (delimiters == 2) {
+                body = 1
+                next
+            }
+        }
+        body { print }
+    ' "$file"
+}
+
+emit_toml_multiline_string() {
+    local key="$1"
+    local value="$2"
+
+    if [[ "$value" != *"'''"* ]]; then
+        printf "%s = '''\n%s\n'''\n" "$key" "$value"
         return
     fi
 
-    echo "[]"
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    printf '%s = """\n%s\n"""\n' "$key" "$value"
+}
+
+convert_gemini_prompt_body() {
+    local value="$1"
+
+    awk '
+        function convert_inline(line,    out, i, c, cmd, escaped) {
+            out = ""
+            i = 1
+
+            while (i <= length(line)) {
+                c = substr(line, i, 1)
+                if (c == "!" && substr(line, i + 1, 1) == "`") {
+                    i += 2
+                    cmd = ""
+                    escaped = 0
+
+                    while (i <= length(line)) {
+                        c = substr(line, i, 1)
+                        if (escaped) {
+                            if (c == "`") {
+                                cmd = cmd c
+                            } else {
+                                cmd = cmd "\\" c
+                            }
+                            escaped = 0
+                        } else if (c == "\\") {
+                            escaped = 1
+                        } else if (c == "`") {
+                            break
+                        } else {
+                            cmd = cmd c
+                        }
+                        i++
+                    }
+
+                    if (escaped) {
+                        cmd = cmd "\\"
+                    }
+                    out = out "!{" cmd "}"
+                    if (i <= length(line) && substr(line, i, 1) == "`") {
+                        i++
+                    }
+                } else {
+                    out = out c
+                    i++
+                }
+            }
+
+            return out
+        }
+
+        {
+            line = convert_inline($0)
+            if (line ~ /^![^\[{]/) {
+                line = "!{" substr(line, 2) "}"
+            }
+            print line
+        }
+    ' <<< "$value"
 }
 
 create_archives() {
