@@ -1,6 +1,6 @@
 # Start-Issue — Subagent-Orchestrated Workflow
 
-Loaded by `commands/start-issue.md` when `NO_AGENTS=false` (the default).
+Loaded by `skills/start-issue/SKILL.md` when `NO_AGENTS=false` (the default).
 The orchestrator (the trunk's session) retains all control flow, verification
 gates, and external interactions; subagents handle exploration,
 implementation, and review.
@@ -26,7 +26,7 @@ Defaults:
 | `quality-review-prompt.md` | `sonnet` | Go idiom, complexity, security, and test review |
 
 To override all subagent models for a run, set `CLAUDE_CODE_SUBAGENT_MODEL`
-before invoking `/start-issue` or `/complete-issue`. To avoid subagents
+before invoking `$start-issue` or `$complete-issue`. To avoid subagents
 entirely, pass `--no-agents`.
 
 ## Step 1: Check for Duplicates (Bug Fix Only)

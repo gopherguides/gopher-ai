@@ -1,6 +1,6 @@
 # Ship — Phase 6: Merge (Step 13)
 
-Loaded by `commands/ship.md` Phase 6. Owns the final-checks block, merge
+Loaded by `skills/ship/SKILL.md` Phase 6. Owns the final-checks block, merge
 strategy detection, mergeStateStatus decision tree, and summary rendering.
 
 **CRITICAL: NEVER use `--admin` flag. NEVER use any flag/method that bypasses branch protection.** If the merge fails due to protection, STOP and inform the user — do NOT retry with elevated privileges.
@@ -60,7 +60,7 @@ E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
 if [ "$E2E_REQUIRED" = "true" ] && [ "$E2E_RESULT" != "passed" ]; then
   echo "E2E PREREQUISITE MISSING - UI-visible diff has no passing browser E2E result."
   echo "E2E status: ${E2E_RESULT}; reason: ${E2E_SKIP_REASON:-unknown}; pages tested: ${E2E_PAGES}"
-  echo "No merge. Start the dev server or fix E2E, then re-run /go-workflow:ship."
+  echo "No merge. Start the dev server or fix E2E, then re-run \$ship."
   "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
   exit 1
 fi

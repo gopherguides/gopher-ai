@@ -2,7 +2,7 @@
 
 Loaded by `SKILL.md` Step 7. Contains the **E2E gate** (must run before any
 finish action), maps `MODE` to the closing action, and contains the
-`fix-and-ship` CI-watch loop and `/go-workflow:ship` invocation rules.
+`fix-and-ship` CI-watch loop and `$ship` invocation rules.
 
 ## Step 7.0: E2E Gate (applies to every mode before any finish action)
 
@@ -14,7 +14,7 @@ finish action), maps `MODE` to the closing action, and contains the
   - `E2E_RESULT` is anything else (`fail`, `partial`, `skipped-server-failed`,
     `missing-browser-tooling`, `uninspected-screenshots`) → **stop**. Do NOT
     add `run-full-ci`. Do NOT add `e2e-verified`. Do NOT invoke
-    `/go-workflow:ship`. The Step 6 comment already records the failure with
+    `$ship`. The Step 6 comment already records the failure with
     findings. Output `<done>E2E_FAIL</done>` so the loop exits without a
     verified state.
 - **Non-UI diff** (no web indicators, no UI-facing files changed):
@@ -31,8 +31,8 @@ finish action), maps `MODE` to the closing action, and contains the
 | `fix-and-verify` | Add `run-full-ci` label. Report results. Output `<done>VERIFIED</done>` |
 | `investigate` | Report findings (no label). Output `<done>VERIFIED</done>` |
 | `ship-prep` | Add `run-full-ci` label. Report results. Output `<done>VERIFIED</done>` |
-| `ship` | Set phase to `shipping`. Invoke `/go-workflow:ship` |
-| `fix-and-ship` | Add `run-full-ci` label. Set phase to `shipping`. Watch CI → invoke `/go-workflow:ship --skip-coverage` |
+| `ship` | Set phase to `shipping`. Invoke `$ship` |
+| `fix-and-ship` | Add `run-full-ci` label. Set phase to `shipping`. Watch CI → invoke `$ship --skip-coverage` |
 
 ## Add the `run-full-ci` Label
 
@@ -58,8 +58,8 @@ for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
 
 ## Ship Invocation Rules
 
-- **`ship` mode** → `/go-workflow:ship` (full coverage + e2e gates).
-- **`fix-and-ship` mode** → `/go-workflow:ship --skip-coverage`. Coverage and
+- **`ship` mode** → `$ship` (full coverage + e2e gates).
+- **`fix-and-ship` mode** → `$ship --skip-coverage`. Coverage and
   E2E tests already ran in Steps 1-2 and Step 5 of this skill, so re-running
-  them in `/ship` would be wasted work and could surface flakes that were
+  them in `$ship` would be wasted work and could surface flakes that were
   already accepted.

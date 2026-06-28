@@ -10,9 +10,9 @@ disable-model-invocation: true
 
 Autonomous end-to-end pipeline: **issue number in → merged PR out.**
 
-Chains: `/start-issue` → codex review → `/e2e-verify fix-and-ship`
+Chains: `$start-issue` → codex review → `$e2e-verify fix-and-ship`
 
-The `/start-issue` phase owns subagent model tiering through agent prompt
+The `$start-issue` phase owns subagent model tiering through agent prompt
 frontmatter: Explore uses Haiku, Spec Review and Quality Review use Sonnet,
 and Implementer inherits the parent session model. To override all subagent
 models for a run, set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking
@@ -43,7 +43,7 @@ done
 
 if [ -z "$ISSUE_NUM" ]; then
   echo "Error: Issue number is required."
-  echo "Usage: /complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
+  echo "Usage: \$complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
   exit 1
 fi
 
@@ -62,15 +62,15 @@ Phase → step routing:
 
 ---
 
-## Phase 1: Implement (`/start-issue`)
+## Phase 1: Implement (`$start-issue`)
 
 ```bash
 set_loop_phase "$STATE_FILE" "implementing"
 ```
 
-Invoke `/go-workflow:start-issue $ISSUE_NUM $FLAGS`. Read `phases.md` for the full sub-step list (fetch issue, create worktree, detect type, explore, design, TDD, verify, coverage, security review, commit/push/PR, watch CI).
+Invoke `$start-issue $ISSUE_NUM $FLAGS`. Read `phases.md` for the full sub-step list (fetch issue, create worktree, detect type, explore, design, TDD, verify, coverage, security review, commit/push/PR, watch CI).
 
-After `/start-issue` completes, detect the PR number and worktree context, reassign `STATE_FILE` to an absolute path (because CWD may have changed if a worktree was created), and persist:
+After `$start-issue` completes, detect the PR number and worktree context, reassign `STATE_FILE` to an absolute path (because CWD may have changed if a worktree was created), and persist:
 
 ```bash
 PR_NUM=$(gh pr view --json number --jq '.number' 2>/dev/null)
@@ -136,7 +136,7 @@ git push
 set_loop_phase "$STATE_FILE" "verifying"
 ```
 
-Invoke `/go-workflow:e2e-verify $PR_NUM fix-and-ship`. This runs the full e2e-verify workflow in `fix-and-ship` mode (rebase, build, address review, E2E browser tests, post results, add `run-full-ci` label, watch CI, invoke `/go-workflow:ship`).
+Invoke `$e2e-verify $PR_NUM fix-and-ship`. This runs the full e2e-verify workflow in `fix-and-ship` mode (rebase, build, address review, E2E browser tests, post results, add `run-full-ci` label, watch CI, invoke `$ship`).
 
 ---
 
@@ -150,7 +150,7 @@ Output `<done>COMPLETE</done>` when ALL of these are true:
 4. E2E verification completed
 5. Results posted to PR
 6. CI passes
-7. PR merged (via `/ship`)
+7. PR merged (via `$ship`)
 
 **When ALL criteria are met, output exactly:** `<done>COMPLETE</done>`
 
@@ -158,6 +158,6 @@ Output `<done>COMPLETE</done>` when ALL of these are true:
 
 ## Further Reading
 
-- `phases.md` — full sub-step lists for Phase 1 (`/start-issue`) and the codex run for Phase 2
+- `phases.md` — full sub-step lists for Phase 1 (`$start-issue`) and the codex run for Phase 2
 - `loop-state.md` — bootstrap, re-entry, and persist blocks
 - `codex-fallback.md` — `AskUserQuestion` flows for codex unavailable / runtime failure / timeout

@@ -7,7 +7,7 @@ Go `get_pkg` comment-aware package extractor, and the gated/info partitioning.
 ## Collect changed files
 
 Detect changed files including committed, uncommitted, staged, and untracked
-files. Uncommitted/untracked changes are common when called from `/start-issue`
+files. Uncommitted/untracked changes are common when called from `$start-issue`
 before the commit step:
 
 ```bash

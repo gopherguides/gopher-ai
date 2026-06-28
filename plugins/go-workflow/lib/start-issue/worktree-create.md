@@ -1,6 +1,6 @@
 # Start-Issue — Worktree Creation
 
-Loaded by `commands/start-issue.md` when the user picked "Yes, create worktree".
+Loaded by `skills/start-issue/SKILL.md` when the user picked "Yes, create worktree".
 Owns the full worktree creation procedure including env-file copy and state-file
 registration.
 

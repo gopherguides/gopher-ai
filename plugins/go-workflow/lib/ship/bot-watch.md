@@ -1,6 +1,6 @@
 # Ship — Phase 4: Bot Discovery and Watch (Step 11)
 
-Loaded by `commands/ship.md` Phase 4.
+Loaded by `skills/ship/SKILL.md` Phase 4.
 
 ## 11a. Discover review bots
 

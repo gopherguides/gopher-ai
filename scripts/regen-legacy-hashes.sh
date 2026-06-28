@@ -48,15 +48,16 @@ EOF
     exit 1
 fi
 
-# Collect every blob OID that has ever existed at a path matching
-# plugins/<plugin>/skills/<skill>/SKILL.md, then emit <sha256> <skill_name>
-# pairs. The skill name is necessary to preserve per-skill ownership during
-# manifest-based cleanup — a hash that originated from skill A must not be
-# accepted as proof of ownership for a candidate in directory B.
+# Collect every blob OID that has ever existed in this branch history at a path
+# matching plugins/<plugin>/skills/<skill>/SKILL.md, then emit
+# <sha256> <skill_name> pairs. The skill name is necessary to preserve
+# per-skill ownership during manifest-based cleanup — a hash that originated
+# from skill A must not be accepted as proof of ownership for a candidate in
+# directory B.
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
-git rev-list --objects --all 2>/dev/null \
+git rev-list --objects HEAD 2>/dev/null \
     | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
     | while read -r blob path; do
         skill_name="$(basename "$(dirname "$path")")"

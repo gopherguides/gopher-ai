@@ -1,6 +1,6 @@
 # Ship — State File Fields
 
-Loaded by `commands/ship.md` Step 1 when persisting initial arguments.
+Loaded by `skills/ship/SKILL.md` Step 1 when persisting initial arguments.
 Owns the full `jq` invocation and field-name reference.
 
 ## Step 1 Initial Persist

@@ -45,9 +45,10 @@ echo "MODE=$MODE PR_ARG=$PR_ARG"
 PR_NUM="${PR_ARG:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"
 if [ -z "$PR_NUM" ]; then
   echo "Error: No PR found for current branch and no PR number provided."
-  echo "Usage: /e2e-verify [PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
+  echo "Usage: \$e2e-verify [PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
   exit 1
 fi
+gh pr view "$PR_NUM" --json number >/dev/null 2>&1 || { echo "Error: PR #$PR_NUM does not exist"; exit 1; }
 echo "Working on PR #$PR_NUM in mode: $MODE"
 ```
 
@@ -75,8 +76,8 @@ Phase → step routing:
 | `fix-and-verify` | 1-2, 3, 5-6 | Add `run-full-ci` label, report |
 | `investigate` | 1-2, 4, 5-6 | Report findings (no label) |
 | `ship-prep` | 1-2, 5-6 | Add `run-full-ci` label, report |
-| `ship` | 1-2, 5-6, 7 | Run `/go-workflow:ship` |
-| `fix-and-ship` | 1-2, 3, 5-6, 7 | Add `run-full-ci` label → watch CI → `/go-workflow:ship` |
+| `ship` | 1-2, 5-6, 7 | Run `$ship` |
+| `fix-and-ship` | 1-2, 3, 5-6, 7 | Add `run-full-ci` label → watch CI → `$ship` |
 
 ---
 
@@ -174,7 +175,7 @@ Read `pr-results-comment.md` for the structured PR comment: build results table,
 Read `mode-finish.md` for the **Step 7.0 E2E gate** (mandatory pre-check that
 halts on UI-visible E2E failure with `<done>E2E_FAIL</done>`), then the mode →
 finish-action mapping, the `run-full-ci` label add, the `fix-and-ship` CI
-watch loop, and the `/go-workflow:ship` invocation rules.
+watch loop, and the `$ship` invocation rules.
 
 **Critical:** the gate is non-negotiable. UI-visible PRs that fail E2E must
 exit with `<done>E2E_FAIL</done>` — no labels, no ship.
@@ -202,7 +203,7 @@ Output `<done>VERIFIED</done>` only when ALL of these are true:
 6. Mode-specific finish action completed (only reached when the E2E gate passed)
 
 If the E2E gate failed on a UI-visible diff, output `<done>E2E_FAIL</done>`
-after Step 6 instead. Do not invoke `/go-workflow:ship`. Do not add labels.
+after Step 6 instead. Do not invoke `$ship`. Do not add labels.
 
 **Safety:** If 15+ iterations without success, document blockers and ask user.
 

@@ -1,6 +1,7 @@
 ---
 name: create-pr
 description: "Create a pull request using the repo PR template. Use when the user wants to open or submit a PR without immediately merging it. SKIP for end-to-end ship flows; use `ship` instead."
+allowed-tools: ["Read", "Bash(git:*)", "Bash(gh:*)", "Bash(cat:*)", "Bash(ls:*)", "Glob", "AskUserQuestion"]
 ---
 
 # Create PR
@@ -52,6 +53,10 @@ If a template directory exists (`.github/PULL_REQUEST_TEMPLATE/`), list template
 
 ### Step 5: Build PR Body
 
+PR titles, bodies, and test-plan entries describe modules, contracts, and
+observable behavior, not file paths, line numbers, or current internal layout.
+Acceptance criteria are stated as behaviors a reviewer can verify.
+
 **If a template was found**: Use its exact section structure. Fill in every section based on the commits and diff. Do not omit or skip sections.
 
 **If no template**: Use this default format:
@@ -69,6 +74,7 @@ If a template directory exists (`.github/PULL_REQUEST_TEMPLATE/`), list template
 Look for issue references in:
 - Branch name (e.g., `issue-42-`, `fix/42-`)
 - Commit messages
+- Arguments passed to this skill
 
 Include `Fixes #<number>` or `Closes #<number>` in the PR body.
 

@@ -1,6 +1,7 @@
 ---
 name: commit
 description: "Create a git commit with an auto-generated conventional message from staged changes. Use for 'commit', 'save my work', or 'make a commit'. Does not push; use `ship` for the full flow."
+allowed-tools: ["Bash(git add:*)", "Bash(git status:*)", "Bash(git commit:*)", "Bash(git diff:*)", "Bash(git log:*)", "Bash(git branch:*)", "Bash(git checkout:*)", "Bash(git remote:*)", "AskUserQuestion"]
 ---
 
 # Commit
@@ -23,6 +24,7 @@ Run these commands to understand the current state:
 git status
 git diff HEAD
 git branch --show-current
+git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"
 git log --oneline -10
 ```
 
@@ -35,7 +37,7 @@ DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed '
 CURRENT=$(git branch --show-current)
 ```
 
-If `$CURRENT` matches the default branch:
+If `$CURRENT` is `main`, `master`, or matches the default branch:
 1. Stop — do not commit to the main branch
 2. Ask the user how to proceed:
    - Create a feature branch first, then commit

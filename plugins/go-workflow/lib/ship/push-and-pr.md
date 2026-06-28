@@ -1,6 +1,6 @@
 # Ship — Phase 2: Push and PR Creation (Step 9)
 
-Loaded by `commands/ship.md` Phase 2.
+Loaded by `skills/ship/SKILL.md` Phase 2.
 
 ## Step 9a — Push to remote
 

@@ -208,7 +208,7 @@ file_matches_known_skill_content() {
     # 3. Live git history (covers blobs committed after the manifest was regen'd).
     if (cd "$ROOT_DIR" && [[ -d .git ]]) 2>/dev/null; then
         local blobs
-        blobs="$(cd "$ROOT_DIR" && git rev-list --objects --all 2>/dev/null \
+        blobs="$(cd "$ROOT_DIR" && git rev-list --objects HEAD 2>/dev/null \
             | awk -v name="$skill_name" '$2 ~ "^plugins/[^/]+/skills/"name"/SKILL.md$" {print $1}' \
             | sort -u)"
         if [[ -n "$blobs" ]]; then
