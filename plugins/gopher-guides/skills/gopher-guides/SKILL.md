@@ -1,6 +1,6 @@
 ---
 name: gopher-guides
-description: "Authoritative Gopher Guides Go training materials accessed via MCP. Use when reviewing Go code with the user asking 'what's idiomatic?', 'how do professionals do this?', or 'what would Gopher Guides recommend?' — pulls from a curated reference of Go conventions and patterns. SKIP for general Go idiom questions handled by the `go` skill."
+description: "Authoritative Gopher Guides Go training materials accessed via REST API/cache wrapper. Use when reviewing Go code and the user explicitly asks 'what would Gopher Guides recommend?', 'how do professionals do this?', or wants training-material-backed practices/examples/audit. SKIP for general Go idiom questions handled by the `go` skill."
 ---
 
 # Gopher Guides Professional Training
@@ -67,7 +67,8 @@ The cache wrapper is at `${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh`.
 If you need to bypass the cache, use curl directly:
 
 ```bash
-curl -s -X POST -H "Authorization: Bearer $GOPHER_GUIDES_API_KEY" \
+curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
+  --expand-header "Authorization: Bearer {{GOPHER_GUIDES_API_KEY}}" \
   -H "Content-Type: application/json" \
   -d '{"topic": "error handling"}' \
   https://gopherguides.com/api/gopher-ai/practices
