@@ -83,6 +83,7 @@ Customize rule severity in [`config/severity.yaml`](config/severity.yaml). See t
 - [API Reference](../docs/api/README.md) — REST API documentation
 - [API Usage](references/api-usage.md) — Quick API examples
 - [Demo Repository](examples/demo-repo/) — Sample project with intentional issues
+- [Marketing Materials](marketing/) — Draft awesome-copilot submission, blog post, and video outline
 
 ## License
 
