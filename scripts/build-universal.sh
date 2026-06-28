@@ -318,6 +318,7 @@ convert_command_to_toml() {
     description=$(toml_escape_basic_string "$description")
     body=$(extract_markdown_body "$cmd_file")
     body=${body//\$ARGUMENTS/\{\{args\}\}}
+    body=$(convert_gemini_prompt_body "$body")
 
     cat << EOF
 # Generated from $cmd_name.md
@@ -388,6 +389,66 @@ emit_toml_multiline_string() {
     value=${value//\\/\\\\}
     value=${value//\"/\\\"}
     printf '%s = """\n%s\n"""\n' "$key" "$value"
+}
+
+convert_gemini_prompt_body() {
+    local value="$1"
+
+    awk '
+        function convert_inline(line,    out, i, c, cmd, escaped) {
+            out = ""
+            i = 1
+
+            while (i <= length(line)) {
+                c = substr(line, i, 1)
+                if (c == "!" && substr(line, i + 1, 1) == "`") {
+                    i += 2
+                    cmd = ""
+                    escaped = 0
+
+                    while (i <= length(line)) {
+                        c = substr(line, i, 1)
+                        if (escaped) {
+                            if (c == "`") {
+                                cmd = cmd c
+                            } else {
+                                cmd = cmd "\\" c
+                            }
+                            escaped = 0
+                        } else if (c == "\\") {
+                            escaped = 1
+                        } else if (c == "`") {
+                            break
+                        } else {
+                            cmd = cmd c
+                        }
+                        i++
+                    }
+
+                    if (escaped) {
+                        cmd = cmd "\\"
+                    }
+                    out = out "!{" cmd "}"
+                    if (i <= length(line) && substr(line, i, 1) == "`") {
+                        i++
+                    }
+                } else {
+                    out = out c
+                    i++
+                }
+            }
+
+            return out
+        }
+
+        {
+            line = convert_inline($0)
+            if (line ~ /^![^\[{]/) {
+                line = "!{" substr(line, 2) "}"
+            }
+            print line
+        }
+    ' <<< "$value"
 }
 
 create_archives() {

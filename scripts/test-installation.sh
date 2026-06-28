@@ -155,8 +155,16 @@ for f in "$ROOT_DIR"/dist/gemini/gopher-ai-*/commands/*.toml; do
   if grep -qF "\$ARGUMENTS" "$f"; then
     GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (contains unmapped \$ARGUMENTS)"
   fi
+  if grep -qF '!`' "$f"; then
+    GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (contains Claude shell substitution syntax)"
+  fi
+  if awk '/^!/ && substr($0, 2, 1) != "{" && substr($0, 2, 1) != "[" { found = 1 } END { exit found ? 0 : 1 }' "$f"; then
+    GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  $REL_PATH (contains unwrapped Claude shell command line)"
+  fi
 done
 OLLAMA_TOML="$ROOT_DIR/dist/gemini/gopher-ai-llm-tools/commands/ollama.toml"
+SHIP_TOML="$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/commands/ship.toml"
+START_ISSUE_TOML="$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/commands/start-issue.toml"
 if [ "$GEMINI_COMMAND_COUNT" -ne "$EXPECTED_GEMINI_COMMAND_COUNT" ]; then
   GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  expected $EXPECTED_GEMINI_COMMAND_COUNT generated commands, got $GEMINI_COMMAND_COUNT"
 fi
@@ -165,6 +173,15 @@ if ! grep -q '# Use Local Models via Ollama' "$OLLAMA_TOML"; then
 fi
 if ! grep -q '{{args}}' "$OLLAMA_TOML"; then
   GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-llm-tools/commands/ollama.toml (missing Gemini args placeholder)"
+fi
+if ! grep -qF '!{if [ -f ".local/state/ship.loop.local.json" ]' "$SHIP_TOML"; then
+  GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-go-workflow/commands/ship.toml (missing Gemini shell substitution)"
+fi
+if ! grep -qF '!{ISSUE_NUM=' "$START_ISSUE_TOML"; then
+  GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-go-workflow/commands/start-issue.toml (missing Gemini shell command line)"
+fi
+if ! grep -qF -- '- Issue details: !{ISSUE_NUM=' "$START_ISSUE_TOML"; then
+  GEMINI_SCHEMA_ERRORS="$GEMINI_SCHEMA_ERRORS\n  dist/gemini/gopher-ai-go-workflow/commands/start-issue.toml (missing inline Gemini shell substitution)"
 fi
 if [ -n "$GEMINI_SCHEMA_ERRORS" ]; then
   echo "FAIL"
