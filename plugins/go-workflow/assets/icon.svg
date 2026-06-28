@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Go Workflow</title>
+  <desc id="desc">Connected workflow nodes inside a rounded square.</desc>
+  <defs>
+    <linearGradient id="bg" x1="72" x2="440" y1="64" y2="448" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f766e"/>
+      <stop offset="0.55" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#0f172a" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <path d="M151 177h105c58 0 105 47 105 105v53" fill="none" stroke="#dff7ff" stroke-width="30" stroke-linecap="round"/>
+  <path d="M304 315l57 57 57-57" fill="none" stroke="#dff7ff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <g filter="url(#shadow)">
+    <circle cx="151" cy="177" r="64" fill="#f8fafc"/>
+    <circle cx="256" cy="177" r="42" fill="#22d3ee"/>
+    <circle cx="361" cy="372" r="64" fill="#f8fafc"/>
+  </g>
+  <circle cx="151" cy="177" r="26" fill="#0f766e"/>
+  <circle cx="361" cy="372" r="26" fill="#2563eb"/>
+</svg>
