@@ -1,6 +1,7 @@
 ---
 name: worktree
 description: "Create, remove, or prune git worktrees for issue/PR isolation. Use when the user asks for a worktree, wants an isolated workspace per issue, or wants completed worktrees cleaned up."
+disable-model-invocation: true
 ---
 
 # Worktree
