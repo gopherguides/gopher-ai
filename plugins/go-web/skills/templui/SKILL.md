@@ -1,6 +1,6 @@
 ---
 name: templui
-description: "templUI component library for Go templ apps. templUI is vanilla JavaScript only — zero JS frameworks (per templui.io). Covers Script() setup, Go variable interpolation into inline JavaScript, HTML-to-templ conversion, HTMX integration, and optional Alpine.js as a separate app-level state layer. Use when user pastes templ code, builds UI in a templ project, asks 'how do I add an icon/button/dialog/dropdown' in templ, or interpolates Go state into client-side scripts."
+description: "templUI component library for Go templ apps. templUI is vanilla JavaScript only - zero JS frameworks (per templui.io). Covers Script() setup, Go variable interpolation into inline JavaScript, HTML-to-templ conversion, HTMX integration, and optional Alpine.js as a separate app-level state layer. Use when user pastes templUI/templ code, builds templUI components, asks 'how do I add an icon/button/dialog/dropdown' in templ, or interpolates Go state into client-side scripts. SKIP generic htmx issues with no templUI/component context."
 ---
 
 # templUI Best Practices

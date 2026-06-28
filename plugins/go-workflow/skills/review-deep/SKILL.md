@@ -1,6 +1,6 @@
 ---
 name: review-deep
-description: "Deep-review a PR or branch with issue and repo context, then fix actionable findings. Use for 'review my changes', 'check this PR', or post-implementation quality/spec review requests."
+description: "Deep-review a PR or branch with issue and repo context, then fix actionable findings. Use for 'review my changes', 'check this PR', or post-implementation quality/spec review requests. SKIP existing human/bot review comments that need replies/thread resolution; use address-review."
 argument-hint: "[PR-number|--issue <N>] [--post] [--scope <hint>]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---
