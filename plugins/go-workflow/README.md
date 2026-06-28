@@ -24,6 +24,15 @@ Or install via marketplace:
 | `/remove-worktree` | Interactively select and remove a git worktree |
 | `/prune-worktree` | Batch cleanup of all completed issue worktrees |
 
+## Skill Invocation Modes
+
+| Mode | Skills |
+|------|--------|
+| Slash-only | `start-issue`, `address-review`, `worktree` (`/create-worktree`, `/remove-worktree`, `/prune-worktree`), `e2e-verify`, `ship`, `complete-issue`, `tmux-start` |
+| Auto-triggerable | `commit`, `create-pr`, `review-deep` |
+
+Slash-only skills still run through their slash commands, but their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$<skill>` in Codex. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
+
 ## Workflows
 
 ### Start Issue

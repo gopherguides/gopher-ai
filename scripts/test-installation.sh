@@ -131,6 +131,53 @@ else
 fi
 
 CODEX_PLUGIN_COUNT=$(jq '.plugins | length' "$CODEX_MARKETPLACE")
+
+echo -n "Codex slash-only skills disable implicit invocation... "
+CODEX_POLICY_ERRORS=""
+for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
+  skill_file="$skill_dir/SKILL.md"
+  [ -f "$skill_file" ] || continue
+
+  if ! awk '
+    /^---$/ { delimiters++; next }
+    delimiters == 1 && /^disable-model-invocation:[[:space:]]*true[[:space:]]*$/ { found = 1 }
+    delimiters == 2 { exit }
+    END { exit found ? 0 : 1 }
+  ' "$skill_file"; then
+    continue
+  fi
+
+  rel_path="${skill_dir#"$ROOT_DIR"/}"
+  plugin_name=$(printf '%s\n' "$rel_path" | cut -d/ -f2)
+  skill_name=$(basename "$skill_dir")
+  policy_file="$skill_dir/agents/openai.yaml"
+  dist_policy_file="$ROOT_DIR/dist/codex/plugins/$plugin_name/skills/$skill_name/agents/openai.yaml"
+
+  if [ ! -f "$policy_file" ]; then
+    CODEX_POLICY_ERRORS="$CODEX_POLICY_ERRORS\n  $rel_path (missing agents/openai.yaml)"
+    continue
+  fi
+
+  if ! ruby -ryaml -e 'data = YAML.load_file(ARGV[0]); exit(data.is_a?(Hash) && data.dig("policy", "allow_implicit_invocation") == false ? 0 : 1)' "$policy_file"; then
+    CODEX_POLICY_ERRORS="$CODEX_POLICY_ERRORS\n  $rel_path (source policy does not set allow_implicit_invocation: false)"
+  fi
+
+  if [ -f "$ROOT_DIR/plugins/$plugin_name/.codex-plugin/plugin.json" ]; then
+    if [ ! -f "$dist_policy_file" ]; then
+      CODEX_POLICY_ERRORS="$CODEX_POLICY_ERRORS\n  dist/codex/plugins/$plugin_name/skills/$skill_name/agents/openai.yaml (missing from Codex dist)"
+    elif ! ruby -ryaml -e 'data = YAML.load_file(ARGV[0]); exit(data.is_a?(Hash) && data.dig("policy", "allow_implicit_invocation") == false ? 0 : 1)' "$dist_policy_file"; then
+      CODEX_POLICY_ERRORS="$CODEX_POLICY_ERRORS\n  dist/codex/plugins/$plugin_name/skills/$skill_name/agents/openai.yaml (dist policy does not set allow_implicit_invocation: false)"
+    fi
+  fi
+done
+if [ -n "$CODEX_POLICY_ERRORS" ]; then
+  echo "FAIL"
+  printf '%b\n' "$CODEX_POLICY_ERRORS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Gemini command TOMLs use prompt schema... "
 GEMINI_SCHEMA_ERRORS=""
 GEMINI_COMMAND_COUNT=0

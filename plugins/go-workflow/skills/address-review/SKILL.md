@@ -3,6 +3,7 @@ name: address-review
 description: "Address pull request review feedback from humans or bots. Use when comments, requested changes, or CodeRabbit/codex review findings need code fixes, verification, push updates, and thread resolution."
 argument-hint: "[PR-number] [--no-watch]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion", "Agent"]
+disable-model-invocation: true
 ---
 
 # Address PR Review Comments
