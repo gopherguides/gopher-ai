@@ -24,6 +24,10 @@ This is purely informational — `/start-issue` owns the implementation. The
 trunk in `SKILL.md` does the post-completion bookkeeping (PR detection,
 worktree-CWD reassignment, state persistence).
 
+`/start-issue` also owns subagent model tiering. Its orchestrated workflow uses
+the `model` frontmatter in `agents/*.md` unless the user sets
+`CLAUDE_CODE_SUBAGENT_MODEL` before invoking `/complete-issue`.
+
 ## Phase 2: Codex Run
 
 After detection succeeds in `SKILL.md`, run codex review on the PR diff with

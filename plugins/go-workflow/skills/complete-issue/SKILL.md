@@ -12,6 +12,13 @@ Autonomous end-to-end pipeline: **issue number in → merged PR out.**
 
 Chains: `/start-issue` → codex review → `/e2e-verify fix-and-ship`
 
+The `/start-issue` phase owns subagent model tiering through agent prompt
+frontmatter: Explore uses Haiku, Spec Review and Quality Review use Sonnet,
+and Implementer inherits the parent session model. To override all subagent
+models for a run, set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking
+`$complete-issue`; pass `--no-agents` through to run the start phase without
+subagents.
+
 ## Parse Arguments
 
 ```bash

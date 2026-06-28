@@ -38,6 +38,22 @@ The `/start-issue` command provides an intelligent issue-to-PR workflow:
    - **Feature**: Plans approach → Implementation → Tests → `feat/` branch
 5. **Asks for clarification** if the type can't be determined automatically
 
+#### Subagent Model Tiering
+
+The default orchestrated flow pins read-heavy and review subagents to cheaper
+models through agent prompt frontmatter:
+
+| Agent | Model policy |
+|-------|--------------|
+| Explore | Haiku |
+| Implementer | Inherits the parent session model |
+| Spec Review | Sonnet |
+| Quality Review | Sonnet |
+
+Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before running `/start-issue` or
+`/complete-issue` to override all subagent models for that run. Use
+`--no-agents` to switch to the single-session workflow.
+
 ### Address Review
 
 The `/address-review` command handles PR review feedback automatically:

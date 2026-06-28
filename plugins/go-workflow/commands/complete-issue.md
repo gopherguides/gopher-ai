@@ -18,6 +18,12 @@ The ultimate pipeline: **issue number in → merged PR out.**
 2. Runs codex self-review and addresses findings
 3. Runs E2E verification and ships via `/e2e-verify fix-and-ship`
 
+Subagent model tiering is owned by `/start-issue`: Explore runs on Haiku,
+Spec Review and Quality Review run on Sonnet, and Implementer inherits the
+parent session model. To override all subagent models for a run, set
+`CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking `/complete-issue`; use
+`--no-agents` to run the start phase without subagents.
+
 **Examples:**
 - `/complete-issue 42` — complete issue #42 end-to-end
 - `/complete-issue 42 --skip-coverage` — skip coverage gate

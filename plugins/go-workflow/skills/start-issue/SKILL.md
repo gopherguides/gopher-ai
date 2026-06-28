@@ -10,13 +10,28 @@ Full issue-to-PR workflow: fetch issue, create worktree, detect type, implement 
 ## Usage
 
 ```
-$start-issue <issue-number>
+$start-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]
 ```
 
 ## Prerequisites
 
 - GitHub CLI (`gh`) installed and authenticated
 - Git repository with remote `origin`
+
+## Subagent Model Policy
+
+Default orchestrated mode uses model frontmatter from `agents/*.md`:
+
+| Agent | Model policy |
+|-------|--------------|
+| Explore | `haiku` |
+| Implementer | `inherit` |
+| Spec Review | `sonnet` |
+| Quality Review | `sonnet` |
+
+Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking `$start-issue` to
+override all subagent models for a run. Use `--no-agents` to run the
+single-session workflow without subagent dispatch.
 
 ## Workflow
 
