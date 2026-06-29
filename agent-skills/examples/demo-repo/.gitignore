@@ -1,0 +1,3 @@
+# Compiled binary from `go build` in this demo module (module name = gopher-ai-demo).
+# The validation gate builds to /tmp; ignore any in-place build so it never dirties the tree.
+/gopher-ai-demo
