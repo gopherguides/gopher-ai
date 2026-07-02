@@ -394,7 +394,7 @@ set_loop_phase ".local/state/ship.loop.local.json" "coverage-check"
 
 **Skip when:** `PASS < MAX_PASSES - 1` AND findings were not clean. Proceed to Step 7.6.
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow Steps A through F with:
+Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow Steps A through F with:
 
 | Variable | Value |
 |----------|-------|

@@ -1,0 +1,23 @@
+package layouts
+
+import (
+    "{{PROJECT_NAME}}/internal/meta"
+    "{{PROJECT_NAME}}/components/sidebar"
+    "{{PROJECT_NAME}}/components/dialog"
+)
+
+templ Base(m meta.PageMeta) {
+    <!DOCTYPE html>
+    <html lang="en">
+        <head>
+            <meta charset="UTF-8"/>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+            @MetaTags(m)
+            <link rel="stylesheet" href="/static/css/output.css"/>
+            <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+            @sidebar.Script()
+            @dialog.Script()
+        </head>
+        // ... rest of body
+    </html>
+}

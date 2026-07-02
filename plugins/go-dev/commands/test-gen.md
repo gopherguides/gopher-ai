@@ -1,7 +1,7 @@
 ---
 argument-hint: "<file|function>"
 description: "Generate comprehensive Go tests with table-driven patterns"
-allowed-tools: ["Bash", "Read", "Write", "Glob", "Grep", "AskUserQuestion"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(go:*)", "Bash(grep:*)", "Read", "Write", "Glob", "Grep", "AskUserQuestion"]
 ---
 
 **If `$ARGUMENTS` is empty or not provided:**

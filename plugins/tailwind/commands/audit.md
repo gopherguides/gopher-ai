@@ -1,7 +1,7 @@
 ---
 argument-hint: "[path] [--fix]"
 description: "Audit Tailwind CSS usage for best practices and consistency"
-allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities", "mcp__tailwindcss__convert_css_to_tailwind"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(fd:*)", "Bash(grep:*)", "Bash(ls:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities", "mcp__tailwindcss__convert_css_to_tailwind"]
 ---
 
 # Audit Tailwind CSS Usage

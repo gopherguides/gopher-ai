@@ -128,21 +128,12 @@ After releasing, users must refresh their local cache:
 
 This script works around known Claude Code cache invalidation bugs ([#14061](https://github.com/anthropics/claude-code/issues/14061), [#15621](https://github.com/anthropics/claude-code/issues/15621)).
 
-## Prompt Caching for Skills
+## Token Efficiency for Skills and Commands
 
-Large skill files (400+ lines) use `<!-- cache:start -->` / `<!-- cache:end -->` markers to delineate static reference content eligible for prompt caching. When Claude Code loads skill content into context, these markers indicate cache-stable content blocks that remain unchanged across interactions.
-
-**How it works:**
-- Content between cache markers is static reference material (patterns, best practices, component docs)
-- Claude's prompt caching can cache these blocks, reducing token costs by up to 90% on cache hits
-- Cache has a 5-minute TTL that refreshes on each use
-
-**Cached skill files:**
-- `plugins/go-web/skills/templui/SKILL.md` (~408 lines) — templUI component patterns, HTMX/Alpine integration
-- `plugins/tailwind/skills/tailwind-best-practices/SKILL.md` (~446 lines) — Tailwind v4 syntax, theme config, best practices
+Skill and command bodies enter the context window when invoked and stay there for the session, so every line is a recurring token cost. Prompt caching happens automatically at the API level; there is no in-file marker syntax that affects it.
 
 **Guidelines:**
-- Add cache markers to any skill file exceeding ~300 lines of static content
-- Place `<!-- cache:start -->` after the YAML frontmatter closing `---`
-- Place `<!-- cache:end -->` at the end of the file
-- Do not include dynamic or frequently-changing content within cache markers
+- Keep SKILL.md under 500 lines. Structure large skills as a thin router: overview + workflow in SKILL.md, detail in supporting files referenced one level deep (see `go`, `htmx`, `templui`, and the go-workflow skills for the pattern)
+- Supporting files (references, templates, examples) cost zero tokens until Claude reads them — prefer them over inline content for anything static, mutually exclusive, or rarely needed
+- Prefer executable scripts over inline code blocks: script contents never enter context, only their output
+- Frontmatter `description` should state what the skill does plus WHEN/WHEN NOT to use it, in third person; put the key use case first (the skill listing truncates long descriptions)

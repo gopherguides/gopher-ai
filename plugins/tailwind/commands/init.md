@@ -1,7 +1,7 @@
 ---
 argument-hint: "[project-path]"
 description: "Initialize Tailwind CSS v4 in an existing project"
-allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__install_tailwind", "mcp__tailwindcss__get_tailwind_config_guide"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(node:*)", "Bash(npm:*)", "Bash(npx:*)", "Bash(ls:*)", "Bash(fd:*)", "Bash(grep:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__install_tailwind", "mcp__tailwindcss__get_tailwind_config_guide"]
 ---
 
 # Initialize Tailwind CSS v4

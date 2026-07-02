@@ -1,7 +1,7 @@
 ---
 argument-hint: "[path] [--dry-run]"
 description: "Find and remove dead Go code, orphaned tests, and complexity issues"
-allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "Agent"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(go:*)", "Bash(git:*)", "Bash(staticcheck:*)", "Bash(deadcode:*)", "Bash(gocyclo:*)", "Bash(gocognit:*)", "Bash(goimports:*)", "Bash(which:*)", "Bash(head:*)", "Bash(echo:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "Agent"]
 ---
 
 **If `$ARGUMENTS` is empty or not provided:**

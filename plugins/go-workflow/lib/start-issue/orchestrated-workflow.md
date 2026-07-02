@@ -181,7 +181,7 @@ If any step fails, fix the issue and re-run until all green.
 
 ## Step 9.5: Coverage Verification
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow Steps A through F with:
+Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow Steps A through F with:
 
 | Variable | Value |
 |----------|-------|

@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--tier flex|standard|priority] <prompt>"
 description: "Compare responses from multiple LLMs"
-allowed-tools: ["Bash", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(codex:*)", "Bash(gemini:*)", "Bash(ollama:*)", "Bash(npx:*)", "Bash(command:*)", "Bash(echo:*)", "Bash(git:*)", "Bash(cat:*)", "Read", "AskUserQuestion"]
 ---
 
 # Compare Multiple LLMs

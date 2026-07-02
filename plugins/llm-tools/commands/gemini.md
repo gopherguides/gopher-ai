@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--tier flex|standard|priority] <prompt>"
 description: "Delegate a task to Google Gemini CLI"
-allowed-tools: ["Bash", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(gemini:*)", "Bash(npm:*)", "Bash(which:*)", "Bash(cat:*)", "Bash(git:*)", "Bash(echo:*)", "Read", "AskUserQuestion"]
 ---
 
 # Delegate to Gemini

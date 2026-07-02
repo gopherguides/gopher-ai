@@ -1,7 +1,7 @@
 ---
 argument-hint: "<prompt>"
 description: "Use local models via Ollama (private, data stays local)"
-allowed-tools: ["Bash", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(ollama:*)", "Bash(which:*)", "Bash(cat:*)", "Bash(git:*)", "Bash(sleep:*)", "Read", "AskUserQuestion"]
 ---
 
 # Use Local Models via Ollama

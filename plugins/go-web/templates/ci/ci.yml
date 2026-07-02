@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.6
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Go tools
+        run: |
+          go install github.com/a-h/templ/cmd/templ@latest
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Generate code
+        run: go generate ./...
+      - name: Run tests
+        run: go test -v -race ./...
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install Go tools
+        run: |
+          go install github.com/a-h/templ/cmd/templ@latest
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Generate code
+        run: go generate ./...
+      - name: Build
+        run: go build -o bin/{{PROJECT_NAME}} ./cmd/server
+
+  # === SQLC Query Validation Job ===
+  # GENERATOR: Include ONLY the job matching the selected database engine.
+
+  # --- For PostgreSQL projects: ---
+  sqlc-vet:
+    name: SQLC Query Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 3
+          --health-start-period 5s
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+      - name: Install tools
+        run: |
+          go install github.com/pressly/goose/v3/cmd/goose@latest
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+      - name: Run migrations
+        env:
+          DATABASE_URL: "postgresql://test:test@localhost:5432/testdb?sslmode=disable"
+        run: |
+          goose -dir internal/database/migrations postgres "$DATABASE_URL" up
+      - name: Validate SQL queries
+        env:
+          DATABASE_URL: "postgresql://test:test@localhost:5432/testdb?sslmode=disable"
+        run: |
+          sqlc vet -f sqlc/sqlc.yaml
+
+  # --- For SQLite projects: ---
+  # sqlc-vet:
+  #   name: SQLC Query Validation
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 5
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #     - uses: actions/setup-go@v6
+  #       with:
+  #         go-version: '1.25'
+  #     - name: Install tools
+  #       run: |
+  #         go install github.com/pressly/goose/v3/cmd/goose@latest
+  #         go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+  #     - name: Setup database and run migrations
+  #       env:
+  #         DATABASE_URL: "./data/test.db"
+  #       run: |
+  #         mkdir -p data
+  #         goose -dir internal/database/migrations sqlite3 "$DATABASE_URL" up
+  #     - name: Validate SQL queries
+  #       env:
+  #         DATABASE_URL: "./data/test.db"
+  #       run: |
+  #         sqlc vet -f sqlc/sqlc.yaml
+
+  # --- For MySQL projects: ---
+  # sqlc-vet:
+  #   name: SQLC Query Validation
+  #   runs-on: ubuntu-latest
+  #   timeout-minutes: 10
+  #   services:
+  #     mysql:
+  #       image: mysql:8
+  #       env:
+  #         MYSQL_ROOT_PASSWORD: test
+  #         MYSQL_DATABASE: testdb
+  #       options: >-
+  #         --health-cmd "mysqladmin ping -h localhost"
+  #         --health-interval 5s
+  #         --health-timeout 3s
+  #         --health-retries 3
+  #         --health-start-period 10s
+  #       ports:
+  #         - 3306:3306
+  #   steps:
+  #     - uses: actions/checkout@v5
+  #     - uses: actions/setup-go@v6
+  #       with:
+  #         go-version: '1.25'
+  #     - name: Install tools
+  #       run: |
+  #         go install github.com/pressly/goose/v3/cmd/goose@latest
+  #         go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+  #     - name: Run migrations
+  #       env:
+  #         DATABASE_URL: "root:test@tcp(localhost:3306)/testdb"
+  #       run: |
+  #         goose -dir internal/database/migrations mysql "$DATABASE_URL" up
+  #     - name: Validate SQL queries
+  #       env:
+  #         DATABASE_URL: "root:test@tcp(localhost:3306)/testdb"
+  #       run: |
+  #         sqlc vet -f sqlc/sqlc.yaml

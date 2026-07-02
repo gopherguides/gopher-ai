@@ -1,7 +1,7 @@
 ---
 argument-hint: "[path] [--check]"
 description: "Auto-fix Go linting issues with golangci-lint"
-allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(golangci-lint:*)", "Bash(gofmt:*)", "Bash(goimports:*)", "Bash(gofumpt:*)", "Bash(go:*)", "Bash(git:*)", "Bash(ls:*)", "Bash(echo:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 
 **If `$ARGUMENTS` is empty or not provided:**
@@ -238,45 +238,6 @@ Still apply all fixes as normal, but output JSON to stdout instead of the markdo
 ```
 
 This signals the loop to exit. If you output this prematurely, linting issues may remain.
-
----
-
-## Structured Output (`--json`)
-
-When `$ARGUMENTS` contains `--json`, output **only** valid JSON matching this schema instead of markdown. Do not include any text outside the JSON object.
-
-```json
-{
-  "fixes": [
-    {
-      "file": "string — file path relative to project root",
-      "line": "number — line number of the issue",
-      "rule": "string — linter rule name (e.g. 'errcheck', 'govet')",
-      "severity": "string — 'error', 'warning', or 'info'",
-      "fix": "string — description of the fix applied"
-    }
-  ],
-  "summary": {
-    "errors": "number — total errors found",
-    "warnings": "number — total warnings found",
-    "fixed": "number — total issues auto-fixed"
-  }
-}
-```
-
-**Example:**
-
-```json
-{
-  "fixes": [
-    {"file": "pkg/api/handler.go", "line": 45, "rule": "errcheck", "severity": "error", "fix": "Added error check for db.Close()"},
-    {"file": "pkg/db/query.go", "line": 23, "rule": "gofmt", "severity": "warning", "fix": "Reformatted function signature"}
-  ],
-  "summary": {"errors": 1, "warnings": 1, "fixed": 2}
-}
-```
-
-Strip the `--json` flag from `$ARGUMENTS` before parsing path and options.
 
 ---
 

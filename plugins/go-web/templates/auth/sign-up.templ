@@ -1,0 +1,15 @@
+package pages
+
+import (
+    "{{PROJECT_NAME}}/templates/layouts"
+    "{{PROJECT_NAME}}/templates/components/clerk"
+    "{{PROJECT_NAME}}/internal/meta"
+)
+
+templ SignUp(m meta.PageMeta, clerkPublishableKey string) {
+    @layouts.Base(m, clerkPublishableKey) {
+        <div class="flex min-h-[60vh] items-center justify-center">
+            @clerk.SignUp("/dashboard", "/sign-in")
+        </div>
+    }
+}

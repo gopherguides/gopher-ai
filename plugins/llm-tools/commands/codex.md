@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--ask] <prompt>"
 description: "Delegate a task to OpenAI Codex CLI"
-allowed-tools: ["Bash", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(codex:*)", "Bash(npx:*)", "Bash(command:*)", "Bash(echo:*)", "Bash(git:*)", "Bash(gh:*)", "Bash(find:*)", "Bash(md5sum:*)", "Read", "AskUserQuestion"]
 ---
 
 # Delegate to Codex

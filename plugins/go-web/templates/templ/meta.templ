@@ -1,0 +1,37 @@
+package layouts
+
+import "{{PROJECT_NAME}}/internal/meta"
+
+templ MetaTags(m meta.PageMeta) {
+    <title>{ m.Title } | { meta.SiteNameFromCtx(ctx) }</title>
+    if m.Description != "" {
+        <meta name="description" content={ m.Description }/>
+    }
+    if m.Canonical != "" {
+        <link rel="canonical" href={ m.Canonical }/>
+    }
+    if m.NoIndex {
+        <meta name="robots" content="noindex, nofollow"/>
+    }
+
+    // Open Graph - site name always from context
+    <meta property="og:title" content={ m.Title }/>
+    <meta property="og:site_name" content={ meta.SiteNameFromCtx(ctx) }/>
+    <meta property="og:type" content={ m.OGType }/>
+    if m.Description != "" {
+        <meta property="og:description" content={ m.Description }/>
+    }
+    if m.OGImage != "" {
+        <meta property="og:image" content={ m.OGImage }/>
+    }
+
+    // Twitter Card
+    <meta name="twitter:card" content="summary_large_image"/>
+    <meta name="twitter:title" content={ m.Title }/>
+    if m.Description != "" {
+        <meta name="twitter:description" content={ m.Description }/>
+    }
+    if m.OGImage != "" {
+        <meta name="twitter:image" content={ m.OGImage }/>
+    }
+}

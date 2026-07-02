@@ -1,7 +1,7 @@
 ---
 argument-hint: "[file|path] [--json]"
 description: "Validate bash code blocks in markdown command and skill files"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "AskUserQuestion"]
+allowed-tools: ["Bash(find:*)", "Bash(awk:*)", "Bash(mktemp:*)", "Bash(bash:*)", "Bash(sh:*)", "Bash(zsh:*)", "Bash(shellcheck:*)", "Bash(grep:*)", "Bash(timeout:*)", "Bash(gtimeout:*)", "Bash(env:*)", "Bash(rm:*)", "Read", "Glob", "Grep", "AskUserQuestion"]
 ---
 
 **If `$ARGUMENTS` is empty or not provided:**

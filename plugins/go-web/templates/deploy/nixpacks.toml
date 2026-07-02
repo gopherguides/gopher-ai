@@ -1,0 +1,21 @@
+[phases.setup]
+nixpkgsArchive = 'a1bab9e494f5f4939442a57a58d0449a109593fe'
+nixPkgs = ["go_1_25", "nodejs_20"]
+
+[phases.install]
+cmds = [
+    "npm install",
+    "go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest",
+    "go install github.com/a-h/templ/cmd/templ@latest",
+]
+
+[phases.build]
+cmds = [
+    "/root/go/bin/sqlc generate -f sqlc/sqlc.yaml",
+    "/root/go/bin/templ generate",
+    "npx @tailwindcss/cli -i static/css/input.css -o static/css/output.css --minify",
+    "go build -o out ./cmd/server",
+]
+
+[start]
+cmd = "./out"

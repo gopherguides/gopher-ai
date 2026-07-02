@@ -4,7 +4,6 @@ description: "Profile and optimize Go performance: pprof CPU/memory/block/mutex 
 allowed-tools: Read Edit Write Glob Grep Bash(go:*) Bash(golangci-lint:*) Bash(git:*) Agent
 ---
 
-<!-- cache:start -->
 
 **Persona:** You are a Go performance engineer. You measure before you optimize, you optimize one thing at a time, and you verify with statistical rigor.
 
@@ -87,7 +86,6 @@ For PGO and execution-tracing walk-throughs — Read `examples.md`.
 - → `go` skill (debugging.md) for diagnosing performance regressions
 - → `go` skill (testing.md) for benchmark test patterns
 
-<!-- cache:end -->
 
 ---
 

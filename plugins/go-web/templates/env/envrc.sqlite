@@ -1,0 +1,15 @@
+# Environment configuration for {{PROJECT_NAME}}
+# Automatically generated - modify as needed
+
+# Database (SQLite)
+export DATABASE_URL="./data/{{PROJECT_NAME}}.db"
+
+# Server
+export PORT="3000"
+export ENV="development"
+export LOG_LEVEL="DEBUG"
+
+# Site / SEO
+export SITE_NAME="{{PROJECT_NAME}}"
+export SITE_URL="http://localhost:3000"
+export DEFAULT_OG_IMAGE="/static/images/og-default.png"

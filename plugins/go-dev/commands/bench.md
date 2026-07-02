@@ -1,7 +1,7 @@
 ---
 argument-hint: "<file|function|package>"
 description: "Generate and run Go benchmarks with profiling and optimization analysis"
-allowed-tools: ["Bash", "Read", "Write", "Glob", "Grep", "AskUserQuestion"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(go:*)", "Bash(benchstat:*)", "Bash(which:*)", "Bash(grep:*)", "Bash(ls:*)", "Bash(cp:*)", "Read", "Write", "Glob", "Grep", "AskUserQuestion"]
 ---
 
 **If `$ARGUMENTS` is empty or not provided:**

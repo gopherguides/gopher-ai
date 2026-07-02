@@ -1,7 +1,7 @@
 ---
 argument-hint: "[path]"
 description: "Run full pre-push verification: build, test, lint, vet, dev-server checks"
-allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(go:*)", "Bash(golangci-lint:*)", "Bash(templ:*)", "Bash(sqlc:*)", "Bash(awk:*)", "Bash(tail:*)", "Bash(command:*)", "Bash(echo:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 
 **If `$ARGUMENTS` is empty or not provided:**
