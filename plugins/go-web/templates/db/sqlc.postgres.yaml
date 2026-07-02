@@ -1,0 +1,23 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "queries/"
+    schema: "../internal/database/migrations/"
+    database:
+      uri: ${DATABASE_URL}
+      managed: false
+    gen:
+      go:
+        package: "sqlc"
+        out: "../internal/database/sqlc"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true
+        overrides:
+          - db_type: "uuid"
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+          - db_type: "timestamptz"
+            go_type: "time.Time"

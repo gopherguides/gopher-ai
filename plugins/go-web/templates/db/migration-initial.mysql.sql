@@ -1,0 +1,11 @@
+-- +goose Up
+CREATE TABLE examples (
+    id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- +goose Down
+DROP TABLE IF EXISTS examples;

@@ -11,7 +11,7 @@ flow for simple issues where subagent overhead is not justified.
 4. **TDD Red — IRON LAW: No fix code before this test.** If you already wrote fix code, DELETE IT. Write a failing test. Run it. Verify it fails FOR THE RIGHT REASON. **Red flag: test passes immediately = wrong test.**
 5. **TDD Green**: implement minimal fix. Run test. Verify it passes.
 6. **Verify**: `go build ./...` + `go test ./...` + `golangci-lint run` (if installed)
-7. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md`, follow Steps A-F
+7. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md`, follow Steps A-F
 8. **Security review**: govulncheck, scan for secrets/injection/traversal
 9. **Submit**: commit, push, create PR with template (per orchestrated Step 11)
 10. **Watch CI**: `gh pr checks --watch`, fix failures
@@ -25,7 +25,7 @@ flow for simple issues where subagent overhead is not justified.
 5. **TDD Red — IRON LAW: No implementation code before these tests.** If you already wrote code, DELETE IT. Write comprehensive tests (happy path, edge cases, errors). Each test = ONE behavior. Run them. Verify they fail FOR THE RIGHT REASONS. **Red flag: test passes immediately = wrong test.**
 6. **TDD Green**: implement minimal code. Run tests. Verify all pass.
 7. **Verify**: `go build ./...` + `go test ./...` + `golangci-lint run` (if installed)
-8. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md`, follow Steps A-F
+8. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md`, follow Steps A-F
 9. **Security review**: govulncheck, scan for secrets/injection/traversal
 10. **Submit**: commit, push, create PR with template (per orchestrated Step 11)
 11. **Watch CI**: `gh pr checks --watch`, fix failures

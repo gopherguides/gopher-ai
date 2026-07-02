@@ -82,47 +82,6 @@ Always mention `/ollama` as an option when the code might be sensitive:
 
 > For proprietary code, `/ollama` keeps everything local - your code never leaves your machine.
 
-## Example Interactions
-
-**Example 1: Architectural Decision**
-
-User: "Should I use a monorepo or multi-repo for these microservices?"
-
-Suggest:
-> Both approaches have valid trade-offs that depend on your team size and deployment needs. For a decision this impactful, would you like another perspective?
->
-> - `/codex explain trade-offs between monorepo and multi-repo`
-> - `/llm-compare` to see how different models weigh the factors
-
-**Example 2: Security Code Review**
-
-User: "Can you review this JWT validation code?"
-
-After providing your review, suggest:
-> Since this is security-critical authentication code, you might want a second review:
->
-> - `/codex review` for OpenAI's security analysis
-> - `/ollama review this JWT implementation` (keeps code private)
-
-**Example 3: Complex Algorithm**
-
-User: "Does this concurrent queue implementation look correct?"
-
-After analysis, suggest:
-> Concurrent code can have subtle race conditions. Want a second opinion?
->
-> - `/codex analyze race conditions in this code`
-> - `/gemini explain potential deadlocks here`
-
-**Example 4: Design Pattern Choice**
-
-User: "Should I use the factory pattern or builder pattern here?"
-
-Suggest:
-> Both patterns could work here with different trade-offs. Want to see how other models approach this?
->
-> - `/llm-compare "factory vs builder pattern for <context>"` for multiple perspectives
-
 ## Integration with Other Commands
 
 When suggesting, be specific about which command fits best:

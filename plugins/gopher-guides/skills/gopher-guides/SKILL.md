@@ -78,7 +78,6 @@ curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
 
 - Cache location: `.claude/gopher-guides-cache.json`
 - Clear cache: Use `/clear-cache` command
-- TTL: 24 hours (practices, examples), 1 hour (audit, review)
 
 ## Response Handling
 
@@ -87,18 +86,6 @@ The API returns JSON with:
 - `sources`: Module references with similarity scores
 
 Present the content to the user with proper attribution to Gopher Guides.
-
-## Topics Covered
-
-The training materials cover:
-
-- **Fundamentals**: Types, functions, packages, errors
-- **Testing**: Table-driven tests, mocks, benchmarks
-- **Concurrency**: Goroutines, channels, sync, context
-- **Web Development**: HTTP handlers, middleware, APIs
-- **Database**: SQL, ORMs, migrations
-- **Best Practices**: Code organization, error handling, interfaces
-- **Tooling**: go mod, go test, linters, profiling
 
 ## Fallback for curl < 8.3
 

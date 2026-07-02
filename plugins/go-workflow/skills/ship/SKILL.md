@@ -57,7 +57,7 @@ elif [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then
   echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."
   exit 1
 else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" '{"reviewing":"Resume LLM review pass.","fixing":"Continue fixing LLM review findings.","verifying":"Re-run verification: build, test, lint.","coverage-check":"Resume coverage analysis for changed files.","e2e-testing":"Resume e2e testing. Restart dev server if needed.","pushing":"Resume push and PR creation.","ci-watch":"Resume CI monitoring. Run gh pr checks and fix any failures.","bot-watching":"Resume bot approval polling (Step 11). Check discovered bots for approval status. If bots request changes, go to Step 12. If all approved, go to Step 13.","addressing":"Resume addressing bot review feedback (Steps 2-11 of address-review). After fixes, return to CI watch.","merging":"Verify CI green and bot approval, then merge the PR."}'
+  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" "$(jq -c . "${CLAUDE_PLUGIN_ROOT}/lib/ship/resume-messages.json")"
 fi
 ```
 
@@ -161,7 +161,7 @@ LLM review → fix → verify → coverage gate (final pass) → E2E smoke (when
 applicable) → commit → loop decision.
 
 **Coverage gate (Step 7.5, final pass only):** Read
-`${CLAUDE_PLUGIN_ROOT}/skills/coverage/coverage-verification.md` and follow
+`${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow
 Steps A–F with `BASE_BRANCH=origin/${BASE_BRANCH}`, `STATE_FILE`,
 `SKIP_COVERAGE`, `COVERAGE_THRESHOLD` from parsed args.
 

@@ -1,0 +1,12 @@
+{
+  "reviewing": "Resume LLM review pass.",
+  "fixing": "Continue fixing LLM review findings.",
+  "verifying": "Re-run verification: build, test, lint.",
+  "coverage-check": "Resume coverage analysis for changed files.",
+  "e2e-testing": "Resume e2e testing. Restart dev server if needed.",
+  "pushing": "Resume push and PR creation.",
+  "ci-watch": "Resume CI monitoring. Run gh pr checks and fix any failures.",
+  "bot-watching": "Resume bot approval polling (Step 11). Check discovered bots for approval status. If bots request changes, go to Step 12. If all approved, go to Step 13.",
+  "addressing": "Resume addressing bot review feedback (Steps 2-11 of address-review). After fixes, return to CI watch.",
+  "merging": "Verify CI green and bot approval, then merge the PR."
+}

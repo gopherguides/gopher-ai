@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--tier flex|standard|priority] <description of image to generate>"
 description: "Generate images using Google Gemini AI"
-allowed-tools: ["Bash", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(curl:*)", "Bash(python3:*)", "Bash(echo:*)", "Bash(export:*)", "Bash(which:*)", "Bash(cat:*)", "Bash(rm:*)", "Read", "AskUserQuestion"]
 ---
 
 # Generate Image with Gemini

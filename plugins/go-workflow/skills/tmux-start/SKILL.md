@@ -1,6 +1,6 @@
 ---
 name: tmux-start
-description: "Start issue work in a new tmux window with its own worktree. Use when the user has tmux running and wants issue startup to continue outside the current session."
+description: "Start issue work in a new tmux window with its own worktree. Use when the user has tmux running and wants issue startup to continue outside the current session. SKIP when not inside a tmux session ($TMUX unset) or when the user wants to work in the current session; use start-issue directly."
 argument-hint: "<issue-number>"
 allowed-tools: ["Bash(git:*)", "Bash(gh:*)", "Bash(tmux:*)", "Bash(pwd:*)", "Bash(echo:*)", "Bash(cd:*)", "Bash(basename:*)", "Bash(sleep:*)", "Bash(if:*)", "Bash(cp:*)", "Bash(for:*)", "Bash(find:*)", "Bash(mkdir:*)", "Bash(*worktree-state*)", "Read", "AskUserQuestion"]
 disable-model-invocation: true

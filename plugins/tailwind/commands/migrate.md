@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--check]"
 description: "Migrate Tailwind CSS v3 configuration to v4 CSS-based config"
-allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_config_guide"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(npm:*)", "Bash(ls:*)", "Bash(grep:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_config_guide"]
 ---
 
 # Migrate Tailwind CSS v3 to v4

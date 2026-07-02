@@ -1,7 +1,7 @@
 ---
 argument-hint: "[log-path]"
 description: "Auto-detect build system, parse errors, and fix until clean"
-allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(go:*)", "Bash(npm:*)", "Bash(templ:*)", "Bash(sqlc:*)", "Bash(jq:*)", "Bash(awk:*)", "Bash(ls:*)", "Bash(tail:*)", "Bash(sleep:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 
 **Usage:** `/build-fix [log-path]`

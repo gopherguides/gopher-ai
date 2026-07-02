@@ -1,6 +1,6 @@
 ---
 name: gemini-image
-description: "Generate images via Google Gemini AI (gemini-3.1-flash-image-preview or pro). Supports model selection, aspect ratios, resolutions (1K/2K/512), batch generation, image editing. Trigger when user wants AI-generated visual output: image, picture, photo, graphic, illustration, banner, logo, icon, thumbnail, header, hero image. SKIP screenshot inspection or image analysis with no generation/edit request."
+description: "Generate images via the Google Gemini API. Supports model selection, aspect ratios, resolutions (1K/2K/512), batch generation, image editing. Trigger when user wants AI-generated visual output: image, picture, photo, graphic, illustration, banner, logo, icon, thumbnail, header, hero image. SKIP screenshot inspection or image analysis with no generation/edit request."
 ---
 
 # Gemini Image Generation
@@ -33,7 +33,7 @@ Stop and wait for the user to set the key. If `python3` is missing, inform the u
 
 Extract the image description from the user's request and confirm it. Then collect (ask the user or infer from context):
 
-- **Model** — `gemini-3.1-flash-image-preview` (default, fastest) or `gemini-2.5-flash-image` (more reliable for `imageConfig`)
+- **Model** — pick from the model table in `reference.md` (it lists the current default and trade-offs)
 - **Aspect ratio** — infer from "banner"/"avatar"/"vertical"/etc., default `1:1`
 - **Resolution** — `1K` default; `2K`, `4K`, or `512` available
 - **Service tier** — `standard` default; `flex` (~50% cheaper, may queue) or `priority` (~80% more, fastest)
@@ -46,7 +46,7 @@ Export the gathered values as environment variables. **Always single-quote** use
 
 ```bash
 export GEMINI_PROMPT='<user image description, single-quote wrapped>'
-export GEMINI_MODEL='<selected model, e.g. gemini-3.1-flash-image-preview>'
+export GEMINI_MODEL='<selected model from the reference.md table>'
 export GEMINI_ASPECT_RATIO='<selected ratio, e.g. 1:1>'
 export GEMINI_IMAGE_SIZE='<selected resolution, e.g. 1K>'
 export GEMINI_REF_IMAGE='<reference image path, or empty>'

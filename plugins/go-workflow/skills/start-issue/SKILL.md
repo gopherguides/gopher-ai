@@ -39,7 +39,7 @@ Ask the user: "What issue number would you like to work on?"
 
 ## Subagent Model Policy
 
-Default orchestrated mode uses model frontmatter from `agents/*.md`:
+Default orchestrated mode uses model frontmatter from `${CLAUDE_PLUGIN_ROOT}/agents/*.md`:
 
 | Agent | Model policy |
 |-------|--------------|

@@ -1,0 +1,22 @@
+# Copy this file to .envrc and edit with your values
+# Then run: direnv allow
+
+# Database
+# PostgreSQL: postgres://user:pass@localhost:5432/dbname?sslmode=disable
+# SQLite: ./data/{{PROJECT_NAME}}.db
+# MySQL: user:pass@tcp(localhost:3306)/dbname
+export DATABASE_URL="YOUR_DATABASE_URL_HERE"
+
+# Server
+export PORT="3000"
+export ENV="development"
+export LOG_LEVEL="DEBUG"
+
+# Site / SEO (used for meta tags, OG, etc.)
+export SITE_NAME="{{PROJECT_NAME}}"
+export SITE_URL="http://localhost:3000"
+export DEFAULT_OG_IMAGE="/static/images/og-default.png"
+
+# CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY if Clerk selected
+# BREVO_API_KEY if Brevo selected
+# STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, STRIPE_WEBHOOK_SECRET if Stripe selected

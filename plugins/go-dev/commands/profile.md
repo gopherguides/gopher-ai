@@ -1,7 +1,7 @@
 ---
 argument-hint: "<file|function|package>"
 description: "Profile Go code, identify bottlenecks, optimize, and verify improvements"
-allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "Agent", "AskUserQuestion"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(go:*)", "Bash(benchstat:*)", "Bash(rg:*)", "Bash(which:*)", "Read", "Write", "Edit", "Glob", "Grep", "Agent", "AskUserQuestion"]
 ---
 
 **If `$ARGUMENTS` is empty or not provided:**

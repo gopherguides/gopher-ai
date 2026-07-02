@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--llm codex|gemini|ollama|fable] [--max-passes <n>] [--quick] [--tier flex|standard|priority] [scope hint]"
 description: "Iterative LLM review loop: review, fix, verify, repeat until clean"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(*cleanup-loop.sh*)", "Bash(source:*)", "Bash(codex:*)", "Bash(gemini:*)", "Bash(ollama:*)", "Bash(npx:*)", "Bash(command:*)", "Bash(jq:*)", "Bash(git:*)", "Bash(gh:*)", "Bash(go:*)", "Bash(npm:*)", "Bash(timeout:*)", "Bash(gtimeout:*)", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---
 
 # Iterative LLM Review Loop
