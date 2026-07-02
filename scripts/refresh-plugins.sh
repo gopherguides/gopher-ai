@@ -128,19 +128,21 @@ if command -v jq &> /dev/null; then
     for entry in "${UPDATED_PLUGINS[@]}"; do
         p_name="${entry%%:*}"
         p_version="${entry##*:}"
+        # Scope must be "user" (no projectPath): project-scoped entries only
+        # load when Claude is launched from that exact projectPath, which
+        # silently disables all plugin skills in every other directory.
         jq --arg name "${p_name}@gopher-ai" \
            --arg path "$CACHE_DIR/$p_name/$p_version" \
            --arg ver "$p_version" \
            --arg ts "$NOW" \
            --arg sha "$GIT_SHA" \
            '.plugins[$name] = [{
-                "scope": "project",
+                "scope": "user",
                 "installPath": $path,
                 "version": $ver,
                 "installedAt": $ts,
                 "lastUpdated": $ts,
-                "gitCommitSha": $sha,
-                "projectPath": env.HOME
+                "gitCommitSha": $sha
             }]' "$TMPFILE" > "$TMPFILE2" \
             && mv "$TMPFILE2" "$TMPFILE"
     done
