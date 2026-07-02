@@ -70,7 +70,7 @@ export GEMINI_RESPONSE_FILE="$RESPONSE_FILE"
 echo "HTTP status: $HTTP_STATUS"
 ```
 
-If `HTTP_STATUS` is 429, wait 30s and retry once. If 400/403, see `troubleshooting.md`. Only proceed if 200.
+If `HTTP_STATUS` is 429, wait 30s and retry once. If 400/403/404, see `troubleshooting.md` — a 404 (or 400 naming the model) usually means the model ID was retired; the "Model Not Found" section there shows how to discover current IDs and retry. Only proceed if 200.
 
 ## 5. Extract and Save Image
 
