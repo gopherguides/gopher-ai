@@ -4,7 +4,7 @@ tracker:
   github_status_source: label
   repository: gopherguides/gopher-ai
   status_label_prefix: "detent:"
-  write_probe_issue: gopherguides/gopher-ai#53
+  write_probe_issue: gopherguides/gopher-ai#187
   http_max_idle_conns: 100
   http_max_idle_conns_per_host: 32
   http_idle_conn_timeout_ms: 90000
@@ -71,7 +71,10 @@ agent:
     path: .detent/skills
     max_skills_in_prompt: 50
 codex:
-  command: codex app-server
+  # Pin the model explicitly so session telemetry records it and budget
+  # pricing can be computed; a bare `codex app-server` leaves the model
+  # field empty in telemetry (doctor empty_model_telemetry finding).
+  command: codex --config 'model="gpt-5.5"' app-server
   approval_policy: never
   thread_sandbox: workspace-write
   turn_sandbox_policy:
