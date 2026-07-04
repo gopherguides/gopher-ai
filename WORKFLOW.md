@@ -166,10 +166,10 @@ Use the current Detent state as the source of truth for which section applies.
 
 ### For Merging
 
-1. Confirm `$go-workflow:ship` is available in the Codex environment. If it is
+1. Confirm `$ship` is available in the Codex environment. If it is
    unavailable, keep the issue in `Merging` and record the missing ship workflow
    as an external blocker in the `## Codex Workpad`.
-2. Invoke and follow `$go-workflow:ship`.
+2. Invoke and follow `$ship`.
 3. Do not call `gh pr merge` directly outside the ship workflow.
 4. End with exactly one terminal outcome:
    - pull request merged and issue moved to `Done`;
