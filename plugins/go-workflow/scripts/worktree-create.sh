@@ -29,11 +29,12 @@ slugify() {
 }
 
 main_repo_root() {
+  local source_dir="$1"
   local git_common_dir
-  git_common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || die "Not inside a git repository"
+  git_common_dir=$(git -C "$source_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || die "Not inside a git repository"
   case "$git_common_dir" in
     */.git) printf '%s\n' "${git_common_dir%/.git}" ;;
-    *) git rev-parse --show-toplevel ;;
+    *) git -C "$source_dir" rev-parse --show-toplevel ;;
   esac
 }
 
@@ -85,11 +86,26 @@ existing_worktree_path() {
   local repo_root="$1"
   local issue_num="$2"
   git -C "$repo_root" worktree list --porcelain \
-    | awk -v marker="refs/heads/issue-${issue_num}-" '
+    | awk -v marker="refs/heads/issue-${issue_num}-" -v primary_path="$repo_root" '
       /^worktree / { path = substr($0, 10) }
       /^branch / {
         branch = substr($0, 8)
-        if (index(branch, marker) == 1) {
+        if (path != primary_path && index(branch, marker) == 1) {
+          print path
+          exit
+        }
+      }'
+}
+
+branch_checked_out_path() {
+  local repo_root="$1"
+  local branch_name="$2"
+  git -C "$repo_root" worktree list --porcelain \
+    | awk -v target="refs/heads/${branch_name}" '
+      /^worktree / { path = substr($0, 10) }
+      /^branch / {
+        branch = substr($0, 8)
+        if (branch == target) {
           print path
           exit
         }
@@ -248,7 +264,7 @@ run_create() {
   gh auth status >/dev/null 2>&1 || die "gh not authenticated. Run: gh auth login"
   [ -d "$SOURCE_DIR" ] || die "Source directory not found: $SOURCE_DIR"
 
-  MAIN_REPO_ROOT=$(main_repo_root)
+  MAIN_REPO_ROOT=$(main_repo_root "$SOURCE_DIR")
   DEFAULT_BRANCH=$(default_branch "$MAIN_REPO_ROOT")
   resolve_item "$number"
 
@@ -266,6 +282,11 @@ run_create() {
     WORKTREE_ABS_PATH=$(cd "$existing_path" && pwd)
     echo "WORKTREE_EXISTS: $WORKTREE_ABS_PATH"
   else
+    local checked_out_path
+    checked_out_path=$(branch_checked_out_path "$MAIN_REPO_ROOT" "$BRANCH_NAME")
+    if [ "$checked_out_path" = "$MAIN_REPO_ROOT" ]; then
+      die "Branch $BRANCH_NAME is checked out in the primary checkout. Switch the primary checkout to another branch, then rerun."
+    fi
     git -C "$MAIN_REPO_ROOT" fetch origin "$DEFAULT_BRANCH"
     git -C "$MAIN_REPO_ROOT" branch -D "$BRANCH_NAME" 2>/dev/null || true
     git -C "$MAIN_REPO_ROOT" worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"
