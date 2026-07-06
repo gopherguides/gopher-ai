@@ -4,7 +4,6 @@ tracker:
   github_status_source: label
   repository: gopherguides/gopher-ai
   status_label_prefix: "detent:"
-  write_probe_issue: gopherguides/gopher-ai#187
   http_max_idle_conns: 100
   http_max_idle_conns_per_host: 32
   http_idle_conn_timeout_ms: 90000
