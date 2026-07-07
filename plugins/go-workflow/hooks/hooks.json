@@ -1,5 +1,4 @@
 {
-  "description": "Hooks for go-workflow plugin",
   "hooks": {
     "SessionStart": [
       {
