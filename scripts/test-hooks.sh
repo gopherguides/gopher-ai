@@ -16,7 +16,7 @@ TOTAL=0
 for hook_file in $HOOK_FILES; do
   TOTAL=$((TOTAL + 1))
   PLUGIN_DIR=$(dirname "$hook_file")
-  REL_PATH="${hook_file#$ROOT_DIR/}"
+  REL_PATH="${hook_file#"$ROOT_DIR"/}"
 
   # Test: hooks.json is valid JSON
   echo -n "  $REL_PATH is valid JSON... "
@@ -27,13 +27,31 @@ for hook_file in $HOOK_FILES; do
   fi
   echo "OK"
 
+  echo -n "  $REL_PATH uses supported top-level keys... "
+  UNSUPPORTED_KEYS=$(jq -r 'keys_unsorted - ["hooks"] | join(", ")' "$hook_file")
+  if [ -n "$UNSUPPORTED_KEYS" ]; then
+    echo "FAIL (unsupported: $UNSUPPORTED_KEYS)"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+
+  echo -n "  $REL_PATH has hooks object... "
+  if ! jq -e '.hooks | type == "object"' "$hook_file" >/dev/null 2>&1; then
+    echo "FAIL"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+
   # Test: All referenced command scripts exist
   # Extract command paths from hooks.json (they use ${CLAUDE_PLUGIN_ROOT} prefix)
   COMMANDS=$(jq -r '.. | .command? // empty' "$hook_file" 2>/dev/null | sort -u)
+  PLUGIN_ROOT=$(dirname "$PLUGIN_DIR")
 
   for cmd in $COMMANDS; do
     # Replace ${CLAUDE_PLUGIN_ROOT} with the actual plugin directory (parent of hooks/)
-    ACTUAL_PATH=$(echo "$cmd" | sed "s|\${CLAUDE_PLUGIN_ROOT}|$(dirname "$PLUGIN_DIR")|g")
+    ACTUAL_PATH="${cmd//\$\{CLAUDE_PLUGIN_ROOT\}/$PLUGIN_ROOT}"
 
     echo -n "  Referenced script exists: ${cmd}... "
     if [ ! -f "$ACTUAL_PATH" ]; then
