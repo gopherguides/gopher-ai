@@ -204,9 +204,11 @@ Requires `GOPHER_GUIDES_API_KEY` environment variable.
 
 Multi-LLM integration for second opinions and task delegation.
 
+For interactive Codex use in Claude Code, llm-tools prefers OpenAI's official `codex@openai-codex` plugin when installed and falls back to the built-in Codex CLI flow when it is missing or declined. Both paths share `~/.codex` auth/config; scripted gopher-ai review pipelines continue to use the CLI flow for structured automation.
+
 | Command | Description |
 |---------|-------------|
-| `/codex <prompt>` | Delegate tasks to OpenAI Codex CLI |
+| `/llm-tools:codex <prompt>` | Delegate tasks to Codex with official-plugin routing and CLI fallback |
 | `/gemini <prompt>` | Query Google Gemini for analysis |
 | `/ollama <prompt>` | Use local models (data stays on your machine) |
 | `/llm-compare <prompt>` | Compare responses from multiple LLMs |
