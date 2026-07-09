@@ -17,7 +17,7 @@ Or install via marketplace:
 
 | Command | Description |
 |---------|-------------|
-| `/codex <prompt>` | Delegate tasks to OpenAI Codex CLI |
+| `/llm-tools:codex <prompt>` | Delegate tasks to Codex with official-plugin routing and CLI fallback |
 | `/gemini <prompt>` | Query Google Gemini for analysis |
 | `/ollama <prompt>` | Use local models (data stays on your machine) |
 | `/llm-compare <prompt>` | Compare responses from multiple LLMs |
@@ -44,6 +44,21 @@ npm install -g @google/gemini-cli
 # Ollama (local models)
 brew install ollama
 ```
+
+## Interactive Codex in Claude Code
+
+For interactive Codex review and delegation inside Claude Code, install OpenAI's official Codex plugin:
+
+```bash
+/plugin marketplace add openai/codex-plugin-cc
+/plugin install codex@openai-codex
+/reload-plugins
+/codex:setup
+```
+
+When `codex@openai-codex` is installed, `/llm-tools:codex` prefers the official `/codex:review`, `/codex:adversarial-review`, and `/codex:rescue` commands. If the official plugin is missing, `/llm-tools:codex` warns, offers those install steps, and can proceed with the built-in `codex exec` / `codex review` CLI fallback.
+
+Both paths use the same `~/.codex` authentication and configuration. Scripted gopher-ai pipelines such as `review-loop`, `complete-issue`, and `ship` stay on the CLI flow so they can continue using structured `codex exec --output-schema` automation.
 
 ## Codex Model Defaults
 

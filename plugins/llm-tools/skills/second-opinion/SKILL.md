@@ -47,7 +47,8 @@ When conditions are met, offer specific options:
 
 > This involves [type of decision]. Would you like a second opinion from another LLM?
 >
-> - `/codex review` - Get OpenAI's analysis
+> - `/codex:review` - Get OpenAI's analysis via the official Codex Claude Code plugin when installed
+> - `/llm-tools:codex review <scope>` - Use gopher-ai's Codex CLI fallback when the official plugin is missing or declined
 > - `/gemini <specific question>` - Ask Google Gemini
 > - `/ollama <question>` - Use a local model (keeps data private)
 > - `/llm-tools:review-loop --llm fable` - Fresh-context Claude subagent review (no external CLI, no extra cost)
@@ -55,16 +56,18 @@ When conditions are met, offer specific options:
 
 **Cross-model rule:** a second opinion is most valuable from a different model family than the one that wrote the code. If Claude wrote it, suggest codex/gemini/ollama first. If Codex wrote it (wtcodex flows), suggest the fable review. Never invoke Fable via `claude -p` — headless print mode bills metered API usage, not the subscription; use the subagent path (or a tmux-driven interactive Claude window when orchestrating from Codex).
 
+**Codex routing rule:** in Claude Code, prefer `/codex:review`, `/codex:adversarial-review`, or `/codex:rescue` from `codex@openai-codex` when that official plugin is installed. If it is not installed, use `/llm-tools:codex ...`; that command warns, prints the official plugin install steps, and can proceed with the existing Codex CLI fallback.
+
 **Tailor the suggestion to the context:**
 
 For security-sensitive code:
-> Since this involves authentication logic, you might want a second security review. Try `/codex review` or `/ollama` (keeps code local) for another perspective.
+> Since this involves authentication logic, you might want a second security review. Try `/codex:adversarial-review` if the official Codex plugin is installed, `/llm-tools:codex review` for the CLI fallback, or `/ollama` (keeps code local) for another perspective.
 
 For architectural decisions:
 > This is a significant architectural choice. Different models sometimes weigh trade-offs differently. Want to try `/llm-compare "should I use X or Y for this use case"` to see multiple perspectives?
 
 For complex algorithms:
-> This algorithm has some complexity. A second set of eyes might catch edge cases. Try `/codex explain the edge cases in this algorithm`.
+> This algorithm has some complexity. A second set of eyes might catch edge cases. Try `/codex:rescue explain the edge cases in this algorithm` if the official Codex plugin is installed, or `/llm-tools:codex explain the edge cases in this algorithm` for the CLI fallback.
 
 ## When NOT to Suggest
 
@@ -88,9 +91,10 @@ When suggesting, be specific about which command fits best:
 
 | Situation | Best Command |
 |-----------|--------------|
-| Code review | `/codex review` |
+| Code review | `/codex:review` when installed; otherwise `/llm-tools:codex review` |
+| Challenge review | `/codex:adversarial-review` when installed; otherwise `/llm-tools:codex review --ask` |
 | Code written by Codex | `/llm-tools:review-loop --llm fable` (cross-model: Claude reviews Codex's work) |
 | Quick question | `/gemini <question>` |
 | Sensitive/private code | `/ollama <question>` |
 | Want multiple views | `/llm-compare <question>` |
-| Complex reasoning task | `/codex` or `/ollama` with larger models |
+| Complex reasoning task | `/codex:rescue` when installed; otherwise `/llm-tools:codex` or `/ollama` with larger models |
