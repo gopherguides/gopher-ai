@@ -92,13 +92,13 @@ agent:
       enabled: true
       max_drafts_per_run: 1
 codex:
-  # Pin the model explicitly so session telemetry records it and budget
-  # pricing can be computed; a bare `codex app-server` leaves the model
-  # field empty in telemetry (doctor empty_model_telemetry finding).
-  # Trade-off: pins break if OpenAI retires the model — bump when the CLI
-  # default generation changes. Reasoning effort stays at provider default;
-  # not all models accept a model_reasoning_effort override.
-  command: codex --config 'model="gpt-5.6-sol"' app-server
+  # Deliberately unpinned: the Codex CLI default manages the model, so this
+  # survives provider model retirements and picks up generation upgrades
+  # automatically. Telemetry resolves the effective model from the session
+  # since digitaldrywood/detent#1103, so pricing attribution works without
+  # a pin. Reasoning effort stays at provider default; not all models
+  # accept a model_reasoning_effort override.
+  command: codex app-server
   approval_policy: never
   thread_sandbox: workspace-write
   turn_sandbox_policy:
