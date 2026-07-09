@@ -74,16 +74,17 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    ' .claude-plugin/marketplace.json > /tmp/marketplace.json.tmp && \
    mv /tmp/marketplace.json.tmp .claude-plugin/marketplace.json
    ```
-   - **IMPORTANT**: Also update each individual `plugin.json` (Claude Code uses these for cache paths):
+   - **IMPORTANT**: Also update each individual `plugin.json` (Claude Code and Codex use these for cache paths):
    ```bash
-   for pjson in plugins/*/.claude-plugin/plugin.json; do
+   for pjson in plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json; do
+     [ -f "$pjson" ] || continue
      jq --arg v "NEW_VERSION" '.version = $v' "$pjson" > /tmp/pj.tmp && mv /tmp/pj.tmp "$pjson"
    done
    ```
 
 5. **Commit and Tag**
    ```bash
-   git add .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json
+   git add .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json plugins/*/.codex-plugin/plugin.json
    git commit -m "chore: release vX.Y.Z"
    git tag -a vX.Y.Z -m "Release vX.Y.Z"
    ```

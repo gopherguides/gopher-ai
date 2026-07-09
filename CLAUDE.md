@@ -111,12 +111,13 @@ Use the `/release` command from the productivity plugin to create releases:
 
 ### Version Sync Requirement
 
-**Critical**: Claude Code uses `plugin.json` version (not `marketplace.json`) to create cache directories. Both files must stay in sync:
+**Critical**: Claude Code and Codex use `plugin.json` versions (not only `marketplace.json`) to create cache directories. All manifest versions must stay in sync:
 
 - `.claude-plugin/marketplace.json` - Marketplace-level versions
-- `plugins/<name>/.claude-plugin/plugin.json` - Individual plugin versions
+- `plugins/<name>/.claude-plugin/plugin.json` - Individual Claude Code plugin versions
+- `plugins/<name>/.codex-plugin/plugin.json` - Individual Codex plugin versions
 
-The `/release` command handles this automatically. If manually bumping versions, update both locations.
+The `/release` command handles this automatically. If manually bumping versions, update all three locations.
 
 ### Cache Refresh
 

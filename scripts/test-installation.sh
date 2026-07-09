@@ -112,6 +112,28 @@ else
   echo "OK"
 fi
 
+echo -n "Codex plugin.json versions match marketplace... "
+CODEX_PLUGIN_JSON_MISMATCHES=""
+for i in $(seq 0 $((PLUGIN_COUNT - 1))); do
+  NAME=$(jq -r ".plugins[$i].name" "$MARKETPLACE")
+  EXPECTED_VER=$(jq -r ".plugins[$i].version" "$MARKETPLACE")
+  CODEX_PLUGIN_JSON="$ROOT_DIR/plugins/$NAME/.codex-plugin/plugin.json"
+  if [ -f "$CODEX_PLUGIN_JSON" ]; then
+    ACTUAL_VER=$(jq -r '.version // empty' "$CODEX_PLUGIN_JSON" 2>/dev/null)
+    if [ -z "$ACTUAL_VER" ]; then
+      CODEX_PLUGIN_JSON_MISMATCHES="$CODEX_PLUGIN_JSON_MISMATCHES $NAME(codex-plugin.json:missing-version)"
+    elif [ "$ACTUAL_VER" != "$EXPECTED_VER" ]; then
+      CODEX_PLUGIN_JSON_MISMATCHES="$CODEX_PLUGIN_JSON_MISMATCHES $NAME(codex-plugin.json:$ACTUAL_VER!=marketplace:$EXPECTED_VER)"
+    fi
+  fi
+done
+if [ -n "$CODEX_PLUGIN_JSON_MISMATCHES" ]; then
+  echo "FAIL:$CODEX_PLUGIN_JSON_MISMATCHES"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Codex distribution builds... "
 if ! "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-build.log 2>&1; then
   echo "FAIL"
