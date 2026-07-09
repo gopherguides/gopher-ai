@@ -75,6 +75,10 @@ agent:
   auto_promote:
     enabled: true
     quiet_seconds: 0
+    # gate_wait_state source: completed issues wait in In Progress for the PR
+    # gate (CI green), then promote directly to Merging. Human Review is never
+    # entered unless the optout label is applied or the gate wait times out.
+    gate_wait_state: source
     optout_label: requires-human-review
     allowed_issue_labels: []
     rework_limit: 3
@@ -208,19 +212,23 @@ Use the current Detent state as the source of truth for which section applies.
 8. Open or update a pull request that references the issue.
 9. Re-check pull request comments, inline review comments, and CI after the
    latest push.
-10. Move the issue to `Human Review` only after the pull request is open, not a
-    draft, references the issue, validation is green, and no actionable review
-    comments remain.
+10. Do NOT move the issue to `Human Review`. Leave the issue in `In Progress`
+    and update the Workpad `detent-status` block to `status: complete` with
+    `blockers: []` once the pull request is open, not a draft, references the
+    issue, validation is green, and no actionable review comments remain.
+    Detent auto-promotes the issue directly to `Merging` when the PR gate
+    (CI) is green.
 
 ### For In Progress
 
 1. Re-read the issue, pull request, comments, and `## Codex Workpad`, including
    the `detent-status` block.
 2. Continue from the current repository and tracker state.
-3. If implementation is complete, run the full pre-review gate, update the
-   Workpad block to `status: complete` with `blockers: []` and
-   `human_action: null`, and move the issue to `Human Review` only when the
-   gate passes.
+3. If implementation is complete, run the full pre-review gate, then update
+   the Workpad block to `status: complete` with `blockers: []` and
+   `human_action: null` only when the gate passes. Do NOT move the issue to
+   `Human Review`; leave it in `In Progress` and let Detent auto-promote it
+   to `Merging` once the PR gate is green.
 
 ### For Rework
 
@@ -229,7 +237,10 @@ Use the current Detent state as the source of truth for which section applies.
 3. Fix the requested changes.
 4. Push updates to the pull request.
 5. Run the full pre-review gate again.
-6. Move the issue back to `Human Review` only when the gate passes.
+6. When the gate passes, update the Workpad `detent-status` block to
+   `status: complete` and leave the issue in `In Progress`; Detent
+   auto-promotes it back to `Merging` once the PR gate is green. Do NOT move
+   it to `Human Review`.
 
 ### For Merging
 
