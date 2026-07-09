@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--llm codex|gemini|ollama|fable] [--max-passes <n>] [--quick] [--tier flex|standard|priority] [scope hint]"
 description: "Iterative LLM review loop: review, fix, verify, repeat until clean"
-allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(*cleanup-loop.sh*)", "Bash(source:*)", "Bash(codex:*)", "Bash(gemini:*)", "Bash(ollama:*)", "Bash(npx:*)", "Bash(command:*)", "Bash(jq:*)", "Bash(git:*)", "Bash(gh:*)", "Bash(go:*)", "Bash(npm:*)", "Bash(timeout:*)", "Bash(gtimeout:*)", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(*cleanup-loop.sh*)", "Bash(source:*)", "Bash(codex:*)", "Bash(gemini:*)", "Bash(ollama:*)", "Bash(npx:*)", "Bash(command:*)", "Bash(jq:*)", "Bash(git:*)", "Bash(gh:*)", "Bash(go:*)", "Bash(npm:*)", "Bash(timeout:*)", "Bash(gtimeout:*)", "Bash(sleep:*)", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---
 
 # Iterative LLM Review Loop
@@ -78,7 +78,11 @@ Use a **single `AskUserQuestion` call** with two questions.
 
 - **codex:** Provider default (Recommended; latest recommended Codex model), Custom model ID
 - **gemini:** Auto (Recommended; CLI routes to the best current model), Custom model ID
-- **ollama:** run `ollama list` first; build options from installed models,
+- **ollama:** before building model choices, run `ollama ps 2>/dev/null`. If
+  the local server is not running, ask whether to start Ollama, choose another
+  LLM, or abort. If the user chooses to start it, run `ollama serve &`, wait
+  briefly with `sleep 2`, then retry `ollama ps 2>/dev/null`. Only after the
+  server is running, run `ollama list`; build options from installed models,
   recommending the first model whose name contains `code` or `coder`
   (case-insensitive), otherwise the first installed model. If no models are
   installed, offer Custom plus example pull suggestions such as `qwen3-coder`,

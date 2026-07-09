@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--tier flex|standard|priority] <prompt>"
 description: "Compare responses from multiple LLMs"
-allowed-tools: ["Bash(codex:*)", "Bash(gemini:*)", "Bash(ollama:*)", "Bash(npx:*)", "Bash(command:*)", "Bash(echo:*)", "Bash(git:*)", "Bash(cat:*)", "Read", "AskUserQuestion"]
+allowed-tools: ["Bash(codex:*)", "Bash(gemini:*)", "Bash(ollama:*)", "Bash(npx:*)", "Bash(command:*)", "Bash(echo:*)", "Bash(git:*)", "Bash(cat:*)", "Bash(sleep:*)", "Read", "AskUserQuestion"]
 ---
 
 # Compare Multiple LLMs
@@ -64,10 +64,25 @@ Only skip if the user explicitly chooses "Skip this LLM".
 
 For each LLM, ask if user wants to specify a model. Defaults: **OpenAI** provider default with no `-m` flag, **Gemini** CLI Auto routing with no `-m` flag.
 
-For Ollama, run `ollama list` and build model choices from installed local
-models. Default to the first installed model whose name contains `code` or
-`coder` (case-insensitive), otherwise the first installed model. If no Ollama
-models are installed, ask whether to pull an example model such as
+For Ollama, verify the local server is running before listing models:
+
+```bash
+ollama ps 2>/dev/null
+```
+
+If the server is not running, ask whether to start Ollama, skip Ollama, or
+abort. If the user chooses to start it:
+
+```bash
+ollama serve &
+sleep 2
+ollama ps 2>/dev/null
+```
+
+Only after the server is running, run `ollama list` and build model choices from
+installed local models. Default to the first installed model whose name contains
+`code` or `coder` (case-insensitive), otherwise the first installed model. If no
+Ollama models are installed, ask whether to pull an example model such as
 `qwen3-coder`, `qwen2.5-coder`, or `deepseek-coder-v2`, choose a custom model,
 skip Ollama, or abort.
 
