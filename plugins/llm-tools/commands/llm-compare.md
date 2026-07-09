@@ -62,7 +62,14 @@ Only skip if the user explicitly chooses "Skip this LLM".
 
 ## 2. Select Models (Optional)
 
-For each LLM, ask if user wants to specify a model. Defaults: **OpenAI** provider default with no `-m` flag, **Gemini** CLI Auto routing with no `-m` flag, **Ollama** first available code model (codellama, deepseek-coder, etc.).
+For each LLM, ask if user wants to specify a model. Defaults: **OpenAI** provider default with no `-m` flag, **Gemini** CLI Auto routing with no `-m` flag.
+
+For Ollama, run `ollama list` and build model choices from installed local
+models. Default to the first installed model whose name contains `code` or
+`coder` (case-insensitive), otherwise the first installed model. If no Ollama
+models are installed, ask whether to pull an example model such as
+`qwen3-coder`, `qwen2.5-coder`, or `deepseek-coder-v2`, choose a custom model,
+skip Ollama, or abort.
 
 If the user specifies a custom OpenAI model, store it as `OPENAI_MODEL`; otherwise leave `OPENAI_MODEL` unset or empty.
 If the user specifies a custom Gemini model, store it as `GEMINI_MODEL`; otherwise leave `GEMINI_MODEL` unset or empty.
@@ -141,7 +148,7 @@ If `codex exec` fails (non-zero exit or no output), do NOT silently skip. Displa
 
 ---
 
-### Ollama (codellama:34b)
+### Ollama (<selected Ollama model>)
 [Response]
 
 ---
@@ -204,7 +211,7 @@ For a simple shared counter, a mutex is more appropriate. Channels are designed 
 ### Gemini (CLI default)
 Both work, but: Mutex — simpler for protecting shared state; Channels — better for coordination. For a counter specifically, consider `sync/atomic.Int64` which avoids locking entirely.
 
-### Ollama (codellama:34b)
+### Ollama (<selected local model>)
 Use `sync.Mutex` for the counter. Channels add unnecessary complexity. The Go proverb "share memory by communicating" applies when you need coordination, not just protection.
 
 ## Analysis

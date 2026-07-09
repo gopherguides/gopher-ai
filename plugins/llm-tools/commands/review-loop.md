@@ -78,7 +78,11 @@ Use a **single `AskUserQuestion` call** with two questions.
 
 - **codex:** Provider default (Recommended; latest recommended Codex model), Custom model ID
 - **gemini:** Auto (Recommended; CLI routes to the best current model), Custom model ID
-- **ollama:** `codellama` (Recommended), `llama3`, `deepseek-coder`, Custom
+- **ollama:** run `ollama list` first; build options from installed models,
+  recommending the first model whose name contains `code` or `coder`
+  (case-insensitive), otherwise the first installed model. If no models are
+  installed, offer Custom plus example pull suggestions such as `qwen3-coder`,
+  `qwen2.5-coder`, or `deepseek-coder-v2`.
 - **fable:** skip Q2 entirely — the review subagent inherits the session's Claude model
 
 ### 4c. Auto-Detect Base Branch & Conditional Follow-Up
