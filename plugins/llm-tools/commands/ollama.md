@@ -23,14 +23,11 @@ This command runs prompts through local models via Ollama. Your data stays on yo
 | `/ollama suggest Go idioms for this function` | Best practices |
 | `/ollama what security issues do you see` | Security analysis |
 
-**Recommended Models for Code:**
-
-| Model | Best For |
-|-------|----------|
-| `codellama:34b` | Code generation, large context |
-| `deepseek-coder:33b` | Code review, analysis |
-| `qwen2.5-coder:32b` | Code-focused tasks |
-| `llama3.3:70b` | General reasoning, complex tasks |
+Model choice is based on what is installed locally. When running a prompt,
+first call `ollama list`, prefer the first installed model whose name contains
+`code` or `coder`, and fall back to the first installed model. If no models are
+installed, offer pull suggestions such as `qwen3-coder`, `qwen2.5-coder`, or
+`deepseek-coder-v2` as examples only.
 
 **Privacy Note:** All processing happens locally. Your code never leaves your machine.
 
@@ -82,26 +79,37 @@ sleep 2
 ollama list
 ```
 
-Show the user which models are already downloaded.
+Show the user which models are already downloaded. Use the first column
+(`NAME`) as the installed model list, excluding the header row.
 
 ## 4. Select Model
 
-Ask the user which model to use:
+Build the model menu from the actual `ollama list` output, not from a static
+table.
 
-| Model | Size | Best For |
-|-------|------|----------|
-| codellama:34b | ~19GB | Code generation, large context |
-| deepseek-coder:33b | ~19GB | Code review, detailed analysis |
-| qwen2.5-coder:32b | ~18GB | Code-focused tasks |
-| llama3.3:70b | ~40GB | General reasoning, complex tasks |
-| codellama:7b | ~4GB | Quick code tasks, lower resources |
-| llama3.2:3b | ~2GB | Fast responses, limited complexity |
+Default selection:
 
-Default: `codellama:34b` (or first available code model)
+1. First installed model whose name contains `code` or `coder` (case-insensitive)
+2. Otherwise, first installed model
+3. Otherwise, no default
 
-**If selected model is not downloaded:**
+Ask the user which installed model to use. Mark the default selection as
+recommended. Include a Custom option only if the user wants to enter a model
+name that is not currently installed.
 
-Ask user: "Model `<model>` is not downloaded (~<size>). Download it now?"
+If no local models are installed, say that no downloaded models were found and
+ask whether to pull a model before running the prompt. Example pull suggestions
+only:
+
+| Model | Best For |
+|-------|----------|
+| `qwen3-coder` | Agentic coding tasks and repository-scale context |
+| `qwen2.5-coder` | Code generation, reasoning, and repair |
+| `deepseek-coder-v2` | Code review and detailed analysis |
+
+**If the selected model is not downloaded:**
+
+Ask user: "Model `<model>` is not downloaded. Download it now?"
 
 If yes:
 ```bash
