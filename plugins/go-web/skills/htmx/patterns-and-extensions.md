@@ -12,6 +12,8 @@ The server returns HTTP 200 with the form re-rendered showing inline errors. Thi
 
 **Option 2: response-targets extension**
 
+CDN versions in these examples are point-in-time; check the latest release on npm, jsDelivr, or unpkg before copying.
+
 ```html
 <script src="https://cdn.jsdelivr.net/npm/htmx-ext-response-targets@2.0.4"></script>
 <div hx-ext="response-targets">
@@ -289,7 +291,7 @@ Extended CSS selectors for `hx-target`:
 ### json-enc — Send JSON Bodies
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/htmx-ext-json-enc@2.0.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx-ext-json-enc@2.0.3"></script>
 <form hx-post="/api/users" hx-ext="json-enc">
     <input name="name" value="John">
     <button type="submit">Create</button>
@@ -324,9 +326,9 @@ Extended CSS selectors for `hx-target`:
 ### head-support, preload, loading-states
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/htmx-ext-head-support@2.0.3"></script>
-<script src="https://cdn.jsdelivr.net/npm/htmx-ext-preload@2.1.0"></script>
-<script src="https://cdn.jsdelivr.net/npm/htmx-ext-loading-states@2.0.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx-ext-head-support@2.0.5"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx-ext-preload@2.1.2"></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx-ext-loading-states@2.0.2"></script>
 ```
 
 ---
