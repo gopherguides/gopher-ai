@@ -76,7 +76,7 @@ Use a **single `AskUserQuestion` call** with two questions.
 
 **Q2 — "Which model?":** show options based on `LLM_CHOICE`:
 
-- **codex:** `gpt-5.5` (Recommended), `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark` (ChatGPT Pro only)
+- **codex:** Provider default (Recommended; latest recommended Codex model), Custom model ID
 - **gemini:** `gemini-2.5-pro` (Recommended), `gemini-2.5-flash`
 - **ollama:** `codellama` (Recommended), `llama3`, `deepseek-coder`, Custom
 - **fable:** skip Q2 entirely — the review subagent inherits the session's Claude model
@@ -85,7 +85,7 @@ Use a **single `AskUserQuestion` call** with two questions.
 
 For "Changes vs branch" / "Specific files": reuse `PR_JSON` from 4a, fall back to `origin/HEAD`/remote default/`main`. Display the detected branch.
 
-Remaining follow-ups (only ask if needed): "Specific files" → ask paths; "Custom" model → ask model name.
+Remaining follow-ups (only ask if needed): "Specific files" → ask paths; "Custom" model ID → ask model name. For Codex provider default, persist `model` as an empty string so no model flag is passed.
 
 Persist `scope`, `base_branch`, `model`, `file_paths` to the state file via `jq` (same pattern as Step 1). See `${CLAUDE_PLUGIN_ROOT}/lib/review-loop/state-persist.md` for the exact invocation.
 
@@ -157,7 +157,7 @@ Output a summary then `<done>REVIEW_CLEAN</done>`:
 ```
 ## Review Loop Complete
 
-- **LLM:** <llm> (<model>)
+- **LLM:** <llm> (<model or provider default>)
 - **Total passes:** <n>
 - **Findings addressed:** <n>
 - **Findings skipped:** <n> (with reasons listed)

@@ -45,6 +45,10 @@ npm install -g @google/gemini-cli
 brew install ollama
 ```
 
+## Codex Model Defaults
+
+llm-tools omits `-m` for Codex calls by default, so Codex CLI chooses its provider default. If `~/.codex/config.toml` contains a `model = "..."` line, that local pin overrides the provider default for these calls; leave it unset to keep using the latest recommended Codex model.
+
 ## Privacy Note
 
 - `/ollama` keeps all data local on your machine

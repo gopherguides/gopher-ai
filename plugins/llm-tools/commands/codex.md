@@ -29,14 +29,12 @@ Display usage and ask for input:
 | `/codex review the auth changes --ask` | Review with interactive configuration |
 | `/codex refactor the module --ask` | Exec with interactive model/sandbox selection |
 
-**Available Models:**
+**Codex Model Selection:**
 
-| Model | Best For |
-|-------|----------|
-| `gpt-5.5` | Latest frontier model, best overall (default) |
-| `gpt-5.4` | Previous flagship, strong coding and reasoning |
-| `gpt-5.4-mini` | Fast and cost-efficient for lighter tasks |
-| `gpt-5.3-codex-spark` | Near-instant iteration (ChatGPT Pro only) |
+| Option | Behavior |
+|--------|----------|
+| Provider default | Let Codex CLI choose the latest recommended Codex model |
+| Custom model ID | Pass an explicit model with `-m` or `-c model=...` |
 
 Ask the user: "What would you like Codex to do?"
 
@@ -114,7 +112,7 @@ Used for non-review tasks (and for fix-oriented review prompts from Step 1).
 
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/codex/exec-flow.md` for the full procedure:
 
-- Default config (model `gpt-5.5`, reasoning effort `high`, sandbox `workspace-write`, no session context)
+- Default config (provider default model, reasoning effort `high`, sandbox `workspace-write`, no session context)
 - Interactive `--ask` flow: model selection, optional session-context summary/detailed, sandbox-mode pick (`read-only` / `workspace-write` / `danger-full-access` — confirmation required for `danger-full-access`)
 - Execution: bare `$CODEX_CMD exec` or temp-file prompt with assembled context block
 - Result reporting and `codex resume --last` follow-up

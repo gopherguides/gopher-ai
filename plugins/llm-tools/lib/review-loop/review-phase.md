@@ -72,14 +72,19 @@ Write the assembled prompt to a temp file (avoids heredoc expansion issues with 
 PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 
+MODEL_ARGS=()
+if [ -n "$MODEL" ]; then
+  MODEL_ARGS=(-m "$MODEL")
+fi
+
 set +e
 if [ -n "$TIMEOUT_CMD" ]; then
-  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "$MODEL" -s read-only \
+  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec "${MODEL_ARGS[@]}" -s read-only \
     -c model_reasoning_effort="high" \
     --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
 else
-  REVIEW_JSON=$($CODEX_CMD exec -m "$MODEL" -s read-only \
+  REVIEW_JSON=$($CODEX_CMD exec "${MODEL_ARGS[@]}" -s read-only \
     -c model_reasoning_effort="high" \
     --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
@@ -155,15 +160,20 @@ output (first 500 chars), then ask:
 Standard `codex review`, faster but capped at 2-3 findings per pass.
 
 ```bash
+MODEL_CONFIG=()
+if [ -n "$MODEL" ]; then
+  MODEL_CONFIG=(-c "model=$MODEL")
+fi
+
 # For changes vs branch:
-$CODEX_CMD review --base "$BASE_BRANCH" -c model="$MODEL" -c model_reasoning_effort="high"
+$CODEX_CMD review --base "$BASE_BRANCH" "${MODEL_CONFIG[@]}" -c model_reasoning_effort="high"
 
 # For uncommitted:
-$CODEX_CMD review --uncommitted -c model="$MODEL" -c model_reasoning_effort="high"
+$CODEX_CMD review --uncommitted "${MODEL_CONFIG[@]}" -c model_reasoning_effort="high"
 
 # For specific files or when scope hint is provided, use stdin:
 DIFF=$(git diff ${BASE_BRANCH}...HEAD -- <files>)
-$CODEX_CMD review -c model="$MODEL" -c model_reasoning_effort="high" - <<EOF
+$CODEX_CMD review "${MODEL_CONFIG[@]}" -c model_reasoning_effort="high" - <<EOF
 $DIFF
 
 ## Review Instructions

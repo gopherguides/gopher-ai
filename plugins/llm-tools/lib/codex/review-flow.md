@@ -14,12 +14,12 @@ Use recommended defaults without prompting. Display a brief configuration summar
 Review config (defaults — add --ask to customize):
   Review type:  Changes vs branch
   Context:      Auto-detect
-  Model:        gpt-5.5
+  Model:        Provider default
   Effort:       high
   Depth:        Exhaustive
 ```
 
-Store: review type = "Changes vs branch", context = "Auto-detect", model = "gpt-5.5", depth = "Exhaustive". Reasoning effort is always `high` (pinned via `-c model_reasoning_effort="high"` on every codex invocation — not user-configurable). Proceed directly to R1.5.
+Store: review type = "Changes vs branch", context = "Auto-detect", model = "", depth = "Exhaustive". An empty model means Codex CLI selects its provider default, including any user-configured `~/.codex/config.toml` model override. Reasoning effort is always `high` (pinned via `-c model_reasoning_effort="high"` on every codex invocation — not user-configurable). Proceed directly to R1.5.
 
 ### If `INTERACTIVE_MODE` is `true` (`--ask` flag provided)
 
@@ -48,10 +48,8 @@ Ask all review configuration questions in a **single `AskUserQuestion` call** wi
 
 | Option | Description |
 |--------|-------------|
-| gpt-5.5 (Recommended) | Latest frontier model, best overall |
-| gpt-5.4 | Previous flagship, strong coding and reasoning |
-| gpt-5.4-mini | Fast and cost-efficient for lighter reviews |
-| gpt-5.3-codex-spark | Near-instant iteration (ChatGPT Pro only) |
+| Provider default (Recommended) | Let Codex CLI choose the latest recommended Codex model |
+| Custom model ID | Enter an exact model ID; only this choice passes `-m` or `-c model=...` |
 
 **Question 4 — "Review depth?"**
 
@@ -258,7 +256,12 @@ Write the assembled prompt to a temp file to avoid heredoc expansion issues with
 ```bash
 PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
-REVIEW_JSON=$($CODEX_CMD exec -m <model> -s read-only \
+MODEL_ARGS=()
+if [ -n "$MODEL" ]; then
+  MODEL_ARGS=(-m "$MODEL")
+fi
+
+REVIEW_JSON=$($CODEX_CMD exec "${MODEL_ARGS[@]}" -s read-only \
   -c model_reasoning_effort="high" \
   --output-schema "${CLAUDE_PLUGIN_ROOT}/schemas/codex-review.json" \
   - < "$PROMPT_FILE")
@@ -285,22 +288,31 @@ Skip to R4 (Report Results).
 
 Use standard codex review commands:
 
+Build optional model config first. Leave `MODEL_CONFIG` empty for provider default:
+
+```bash
+MODEL_CONFIG=()
+if [ -n "$MODEL" ]; then
+  MODEL_CONFIG=(-c "model=$MODEL")
+fi
+```
+
 **For uncommitted changes:**
 
 ```bash
-$CODEX_CMD review --uncommitted -c model=<model> -c model_reasoning_effort="high"
+$CODEX_CMD review --uncommitted "${MODEL_CONFIG[@]}" -c model_reasoning_effort="high"
 ```
 
 **For changes vs branch:**
 
 ```bash
-$CODEX_CMD review --base <branch> -c model=<model> -c model_reasoning_effort="high"
+$CODEX_CMD review --base <branch> "${MODEL_CONFIG[@]}" -c model_reasoning_effort="high"
 ```
 
 **For specific commit:**
 
 ```bash
-$CODEX_CMD review --commit <sha> -c model=<model> -c model_reasoning_effort="high"
+$CODEX_CMD review --commit <sha> "${MODEL_CONFIG[@]}" -c model_reasoning_effort="high"
 ```
 
 Capture output as `FINDINGS`. Skip to R4 (or multi-pass loop below).
@@ -458,7 +470,12 @@ Review these changes against the requirements above. Ensure the implementation a
 #### Single Pass (or no multi-pass selected)
 
 ```bash
-$CODEX_CMD review -c model=<model> -c model_reasoning_effort="high" - <<'EOF'
+MODEL_CONFIG=()
+if [ -n "$MODEL" ]; then
+  MODEL_CONFIG=(-c "model=$MODEL")
+fi
+
+$CODEX_CMD review "${MODEL_CONFIG[@]}" -c model_reasoning_effort="high" - <<'EOF'
 <constructed context block with diff>
 EOF
 ```
@@ -502,7 +519,7 @@ If there are no new findings to report, respond with exactly: NO_NEW_FINDINGS
 Execute:
 
 ```bash
-$CODEX_CMD review -c model=<model> -c model_reasoning_effort="high" - <<'EOF'
+$CODEX_CMD review "${MODEL_CONFIG[@]}" -c model_reasoning_effort="high" - <<'EOF'
 <augmented context block>
 EOF
 ```
