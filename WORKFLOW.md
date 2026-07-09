@@ -59,8 +59,10 @@ agent:
   max_retry_backoff_ms: 300000
   # Runaway-session guard, not a context limit; total_tokens re-counts cached
   # context every turn, so healthy sessions accrue millions of tokens quickly.
+  # No max_session_context_multiplier: at 4x it capped sessions at ~1M tokens
+  # (4 full-context turns) and killed legitimate work (#200 died 5x on it);
+  # max_session_tokens is the sole runaway brake, matching the detent project.
   max_session_tokens: 25000000
-  max_session_context_multiplier: 4
   max_session_token_override_label: allow-large-session
   max_concurrent_agents_by_state:
     Merging: 1
@@ -93,7 +95,10 @@ codex:
   # Pin the model explicitly so session telemetry records it and budget
   # pricing can be computed; a bare `codex app-server` leaves the model
   # field empty in telemetry (doctor empty_model_telemetry finding).
-  command: codex --config 'model="gpt-5.5"' app-server
+  # Trade-off: pins break if OpenAI retires the model — bump when the CLI
+  # default generation changes. Reasoning effort stays at provider default;
+  # not all models accept a model_reasoning_effort override.
+  command: codex --config 'model="gpt-5.6-sol"' app-server
   approval_policy: never
   thread_sandbox: workspace-write
   turn_sandbox_policy:
