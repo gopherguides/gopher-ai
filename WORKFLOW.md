@@ -38,6 +38,13 @@ tracker:
       - Blocked
     target_state: Todo
     readiness: terminal_or_merged
+  blocker_auto_promote:
+    enabled: false
+    blocker_states:
+      - Backlog
+      - Blocked
+      - Human Review
+    target_state: Todo
 polling:
   interval_ms: 120000
 workspace:
@@ -50,6 +57,11 @@ agent:
   max_concurrent_agents: 3
   max_turns: 20
   max_retry_backoff_ms: 300000
+  # Runaway-session guard, not a context limit; total_tokens re-counts cached
+  # context every turn, so healthy sessions accrue millions of tokens quickly.
+  max_session_tokens: 25000000
+  max_session_context_multiplier: 4
+  max_session_token_override_label: allow-large-session
   max_concurrent_agents_by_state:
     Merging: 1
   dispatch_priority_by_state:
@@ -65,10 +77,14 @@ agent:
     quiet_seconds: 0
     optout_label: requires-human-review
     allowed_issue_labels: []
+    rework_limit: 3
   skills:
     enabled: true
     path: .detent/skills
     max_skills_in_prompt: 50
+    creation:
+      enabled: true
+      max_drafts_per_run: 1
 codex:
   # Pin the model explicitly so session telemetry records it and budget
   # pricing can be computed; a bare `codex app-server` leaves the model
@@ -84,11 +100,14 @@ gate:
   run: >-
     bash -lc './scripts/test-commands.sh && ./scripts/test-hooks.sh && ./scripts/test-ship-e2e-gate.sh && ./scripts/check-shared-sync.sh && shellcheck agent-skills/scripts/*.sh && for skill_dir in agent-skills/skills/*/; do skill_name=$(basename "$skill_dir"); skill_file="$skill_dir/SKILL.md"; test -f "$skill_file"; lines=$(wc -l < "$skill_file"); test "$lines" -lt 500; name=$(sed -n "/^---$/,/^---$/p" "$skill_file" | awk "/^name:/ {print \$2; exit}"); test "$name" = "$skill_name"; rg -q "^description:" "$skill_file"; done && ruby -ryaml -e "YAML.load_file(ARGV[0])" agent-skills/config/severity.yaml && (cd agent-skills/examples/demo-repo && go build -o /tmp/gopher-ai-demo . && go test ./...)'
   require_automated_review: false
+  required_status_checks: []
   ci_failure_action: rework
+  transient_ci_retry_limit: 2
   validator:
     enabled: false
     model: ""
     min_score: 0.8
+    max_inline_diff_bytes: 65536
     block_on:
       - p1
 plan:
@@ -101,6 +120,14 @@ server:
   port: 4000
   kanban:
     mode: integration
+budget:
+  # Present for easy enablement; flip enabled: true once model telemetry and
+  # pricing coverage are confirmed on the Detent host.
+  enabled: false
+  per_day_max_usd: 50
+  per_issue_max_usd: 5
+  refusal_cooldown_seconds: 3600
+  pricing_path: priv/pricing/models.yaml
 hooks:
   timeout_ms: 60000
 ---
@@ -114,7 +141,43 @@ repo's plugin architecture under `.agents/plugins`, `.claude-plugin`, and
 `plugins/<name>/`.
 
 Keep a single persistent `## Codex Workpad` issue comment updated with the
-plan, validation evidence, blockers, and final handoff.
+plan, validation evidence, blockers, and final handoff. Every Workpad update
+must include one `detent-status` fenced block. Detent reads blocker and
+human-action declarations from that block; narrative sentences are never read
+as blockers.
+
+```detent-status
+schema: 1
+status: in_progress
+blockers: []
+human_action: null
+```
+
+For dependency blockers, use this order:
+
+1. Create GitHub's native `blocked_by` dependency relation.
+
+```sh
+BLOCKED_NUMBER=<blocked-issue-number>
+BLOCKER_NUMBER=<blocker-issue-number>
+BLOCKER_ID="$(gh api repos/{owner}/{repo}/issues/$BLOCKER_NUMBER --jq '.id')"
+gh api --method POST "repos/{owner}/{repo}/issues/$BLOCKED_NUMBER/dependencies/blocked_by" -F issue_id="$BLOCKER_ID"
+```
+
+2. Declare the blocker in the Workpad status block.
+
+```detent-status
+schema: 1
+status: blocked
+blockers:
+  - ref: "owner/repo#123"
+    reason: "waiting for the dependency to merge"
+human_action: null
+```
+
+3. Legacy fallback during the deprecation window: if native dependencies are
+   unavailable and the project has not migrated, keep a machine-readable
+   issue-body line such as `Blocked by: #123` or `Depends on: owner/repo#123`.
 
 The configured validation gate is:
 
@@ -130,10 +193,12 @@ Use the current Detent state as the source of truth for which section applies.
 
 1. Move the issue to `In Progress`.
 2. Create or update the persistent `## Codex Workpad` comment with the plan,
-   acceptance criteria, validation plan, and blockers.
+   acceptance criteria, validation plan, and the `in_progress` `detent-status`
+   block shown above.
 3. Fetch current `origin/main`, confirm this worktree is based on it, and
-   confirm every `Depends on:` or `Blocked by:` issue or pull request is merged
-   or otherwise terminal before coding.
+   confirm every native dependency relation, `detent-status` blocker, and
+   issue-body `Depends on:` reference is merged or otherwise terminal before
+   coding.
 4. Reproduce or confirm the reported behavior before changing code when the
    issue is a bug.
 5. Implement the smallest complete change that satisfies the issue.
@@ -149,10 +214,13 @@ Use the current Detent state as the source of truth for which section applies.
 
 ### For In Progress
 
-1. Re-read the issue, pull request, comments, and `## Codex Workpad`.
+1. Re-read the issue, pull request, comments, and `## Codex Workpad`, including
+   the `detent-status` block.
 2. Continue from the current repository and tracker state.
-3. If implementation is complete, run the full pre-review gate and move the
-   issue to `Human Review` only when the gate passes.
+3. If implementation is complete, run the full pre-review gate, update the
+   Workpad block to `status: complete` with `blockers: []` and
+   `human_action: null`, and move the issue to `Human Review` only when the
+   gate passes.
 
 ### For Rework
 
@@ -165,14 +233,14 @@ Use the current Detent state as the source of truth for which section applies.
 
 ### For Merging
 
-1. Confirm `$ship` is available in the Codex environment. If it is
-   unavailable, keep the issue in `Merging` and record the missing ship workflow
-   as an external blocker in the `## Codex Workpad`.
-2. Invoke and follow `$ship`.
+1. Confirm `$go-workflow:ship` is available in the Codex environment. If it is
+   unavailable, keep the issue in `Merging` and record the missing ship
+   workflow as `human_action` in the `detent-status` block.
+2. Invoke and follow `$go-workflow:ship`.
 3. Do not call `gh pr merge` directly outside the ship workflow.
 4. End with exactly one terminal outcome:
    - pull request merged and issue moved to `Done`;
    - issue moved to `Rework` with an actionable defect;
    - issue remains in `Merging` with a concrete external blocker recorded in
-     the `## Codex Workpad`.
+     the `detent-status` block and described in the `## Codex Workpad`.
 5. Move the issue to `Done` only after the pull request is merged.
