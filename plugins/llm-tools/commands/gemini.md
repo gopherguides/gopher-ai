@@ -23,13 +23,12 @@ This command delegates tasks to Google Gemini CLI for analysis and code review.
 | `/gemini suggest improvements for this function` | Refactoring advice |
 | `/gemini what are the security implications here` | Security analysis |
 
-**Available Models:**
+**Available Gemini Routing:**
 
-| Model | Best For |
-|-------|----------|
-| `gemini-2.5-flash` | Fast responses, general tasks (default) |
-| `gemini-2.5-pro` | Complex reasoning, detailed analysis |
-| `gemini-2.0-flash-lite` | Quick, simple tasks |
+| Option | Behavior |
+|--------|----------|
+| Auto (recommended) | Let the Gemini CLI route to the best current model |
+| Custom model ID | Ask for an exact model ID and pass it with `-m` |
 
 Ask the user: "What would you like Gemini to analyze?"
 
@@ -59,15 +58,16 @@ Then ask if they want to proceed after installation or use a different LLM (`/co
 
 ## 2. Select Model
 
-Ask the user which model to use:
+Ask the user how Gemini should choose a model:
 
-| Model | Best For |
-|-------|----------|
-| gemini-2.5-flash | Fast responses, general tasks |
-| gemini-2.5-pro | Complex reasoning, detailed analysis |
-| gemini-2.0-flash-lite | Quick, simple tasks |
+| Option | Description |
+|--------|-------------|
+| Auto (recommended) | Use Gemini CLI Auto routing; pass no `-m` flag |
+| Custom model ID | Ask for an exact Gemini model ID; pass it with `-m` |
 
-Default: `gemini-2.5-flash`
+Default: `Auto`
+
+If the user chooses Custom model ID, ask for the model ID and store it as `MODEL`. Otherwise leave `MODEL` unset or empty.
 
 ## 3. Include Context (Optional)
 
@@ -125,22 +125,31 @@ Proceed with the normal Gemini CLI invocation using `CLEAN_PROMPT` (without tier
 
 **IMPORTANT:** In all commands below, `<prompt>` refers to `CLEAN_PROMPT` — the user's prompt with `--tier <value>` stripped (from Step 4.5). If `--tier` was not provided, `CLEAN_PROMPT` equals the original `$ARGUMENTS`.
 
+Only include a model argument when the user explicitly selected Custom model ID:
+
+```bash
+GEMINI_MODEL_ARGS=()
+if [ -n "${MODEL:-}" ]; then
+  GEMINI_MODEL_ARGS=(-m "$MODEL")
+fi
+```
+
 **Without context:**
 
 ```bash
-gemini "$CLEAN_PROMPT" -m <model>
+gemini "$CLEAN_PROMPT" "${GEMINI_MODEL_ARGS[@]}"
 ```
 
 **With file context:**
 
 ```bash
-cat <file> | gemini "Given this code, $CLEAN_PROMPT" -m <model>
+cat <file> | gemini "Given this code, $CLEAN_PROMPT" "${GEMINI_MODEL_ARGS[@]}"
 ```
 
 **With diff context:**
 
 ```bash
-git diff <scope> | gemini "Review these changes: $CLEAN_PROMPT" -m <model>
+git diff <scope> | gemini "Review these changes: $CLEAN_PROMPT" "${GEMINI_MODEL_ARGS[@]}"
 ```
 
 **With session context:**
@@ -157,7 +166,7 @@ gemini "$(cat <<'EOF'
 
 $CLEAN_PROMPT
 EOF
-)" -m <model>
+)" "${GEMINI_MODEL_ARGS[@]}"
 ```
 
 ## 6. Report Results

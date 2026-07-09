@@ -243,7 +243,12 @@ If `GEMINI_TIER` is set and non-empty, display this warning before running:
 > **Note:** `--tier $GEMINI_TIER` was specified but the Gemini CLI does not support service tiers. The tier setting will be ignored for this review. When Gemini CLI adds `--service-tier` support, it will be applied automatically. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for updates.
 
 ```bash
-gemini -m "$MODEL" <<EOF
+GEMINI_MODEL_ARGS=()
+if [ -n "${MODEL:-}" ]; then
+  GEMINI_MODEL_ARGS=(-m "$MODEL")
+fi
+
+gemini "${GEMINI_MODEL_ARGS[@]}" <<EOF
 Review the following code changes for bugs, security issues, performance problems, and best practice violations.
 
 ${SCOPE_HINT:+Focus area: $SCOPE_HINT}

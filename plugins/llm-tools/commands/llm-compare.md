@@ -62,7 +62,10 @@ Only skip if the user explicitly chooses "Skip this LLM".
 
 ## 2. Select Models (Optional)
 
-For each LLM, ask if user wants to specify a model. Defaults: **OpenAI** provider default (no `-m`; Codex CLI chooses), **Gemini** `gemini-2.5-flash`, **Ollama** first available code model (codellama, deepseek-coder, etc.).
+For each LLM, ask if user wants to specify a model. Defaults: **OpenAI** provider default with no `-m` flag, **Gemini** CLI Auto routing with no `-m` flag, **Ollama** first available code model (codellama, deepseek-coder, etc.).
+
+If the user specifies a custom OpenAI model, store it as `OPENAI_MODEL`; otherwise leave `OPENAI_MODEL` unset or empty.
+If the user specifies a custom Gemini model, store it as `GEMINI_MODEL`; otherwise leave `GEMINI_MODEL` unset or empty.
 
 ## 3. Include Context (Optional)
 
@@ -110,8 +113,12 @@ fi
 
 $CODEX_CMD exec "${OPENAI_MODEL_ARGS[@]}" -s read-only -c model_reasoning_effort="high" --skip-git-repo-check "$CLEAN_PROMPT"
 
-# Gemini
-gemini "$CLEAN_PROMPT" -m <model>
+# Gemini (Auto routing by default; include -m only when GEMINI_MODEL is set)
+GEMINI_MODEL_ARGS=()
+if [ -n "${GEMINI_MODEL:-}" ]; then
+  GEMINI_MODEL_ARGS=(-m "$GEMINI_MODEL")
+fi
+gemini "$CLEAN_PROMPT" "${GEMINI_MODEL_ARGS[@]}"
 
 # Ollama
 ollama run <model> "$CLEAN_PROMPT"
@@ -129,7 +136,7 @@ If `codex exec` fails (non-zero exit or no output), do NOT silently skip. Displa
 
 ---
 
-### Google Gemini (gemini-2.5-flash)
+### Google Gemini (CLI default)
 [Response]
 
 ---
@@ -194,7 +201,7 @@ After the report, if review-fix detection was active: check if ANY LLM produced 
 ### OpenAI (Codex provider default)
 For a simple shared counter, a mutex is more appropriate. Channels are designed for communication between goroutines, not protecting shared state. Use `sync/atomic` for even better performance.
 
-### Gemini (gemini-2.5-flash)
+### Gemini (CLI default)
 Both work, but: Mutex — simpler for protecting shared state; Channels — better for coordination. For a counter specifically, consider `sync/atomic.Int64` which avoids locking entirely.
 
 ### Ollama (codellama:34b)
