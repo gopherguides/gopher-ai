@@ -70,7 +70,7 @@ Check if `$CODEX_PROMPT` contains "review" (case-insensitive). Then determine ro
 - **Review-oriented** — e.g., "review the auth changes", "review this PR" → route to **Review Flow**.
 - **Otherwise** → **Exec Flow**.
 
-Store `CODEX_ROUTE=review` for review-oriented prompts and `CODEX_ROUTE=exec` for fix-oriented or non-review prompts.
+Store `CODEX_ROUTE=review` for review-oriented prompts and `CODEX_ROUTE=exec` for fix-oriented or non-review prompts. Also store `REVIEW_FIX_MODE=true` for fix-oriented review prompts and `REVIEW_FIX_MODE=false` otherwise.
 
 Also detect whether the review asks for an adversarial/challenge review. Prompts that contain "adversarial", "challenge", "pressure-test", "question the approach", "trade-off", "risk", or similar wording alongside "review" route to the official `/codex:adversarial-review` command when the official plugin is installed.
 
@@ -81,6 +81,8 @@ For review-oriented prompts, detect a standalone `--base <ref>` and store its va
 For interactive Claude Code use, prefer the official OpenAI Codex plugin (`codex@openai-codex`) over this command's built-in CLI fallback. This step applies only to this `/llm-tools:codex` command. Scripted pipeline paths such as `review-loop`, `complete-issue`, and `ship` must keep using `codex exec --output-schema` and must not depend on the official plugin.
 
 If `INTERACTIVE_MODE=true`, the user explicitly requested the built-in flow's interactive configuration. Skip the rest of Step 2 and continue directly to Step 3. Do not silently discard `--ask` or route it to an official command that does not support the same review-depth and context questions.
+
+If `REVIEW_FIX_MODE=true`, skip the rest of Step 2 and continue directly to Step 3. Review-feedback fixes must stay on the built-in CLI path so Step 4 can capture the `_test.go` baseline, inject the test-generation requirement, and perform the post-run missing-test fallback before any fix is accepted.
 
 Detect the official plugin:
 
@@ -203,7 +205,7 @@ Include `--base <base-ref>` for branch reviews. Preserve only flags the official
 
 Do not add model flags by default; the official plugin and Codex share the user's `~/.codex` auth and config. Do not append focus text to `/codex:review`; that command is not steerable. If the user asks for a focused challenge, risk, trade-off, or pressure-test review, route to `/codex:adversarial-review` instead.
 
-If the user asks to review the current working tree or uncommitted changes and did not provide `--base`, do not add it; let `/codex:review` or `/codex:adversarial-review` use its working-tree review mode. If `REQUESTED_BASE` is set, preserve it. Otherwise, if the user asks for a branch review or the prompt is simply "review", use `--base "$BASE_BRANCH"`.
+Review-oriented prompts default to branch review, matching the built-in Review Flow's "Changes vs branch" default. If `REQUESTED_BASE` is set, preserve it. Otherwise use `--base "$BASE_BRANCH"` for prompts such as "review", "review the auth changes", or "review this PR". Only omit `--base` when the user explicitly asks to review the current working tree or uncommitted changes and did not provide `--base`.
 
 If this command runner cannot invoke another slash command from inside the current slash command, print the exact `/codex:*` command to run and stop. Also state that if the command is unavailable in the current session, the user should run `/reload-plugins` and retry, or rerun `/llm-tools:codex ... --ask` to choose the built-in CLI flow. Do not continue into the CLI fallback after a successful official-plugin route or after printing the official command.
 
