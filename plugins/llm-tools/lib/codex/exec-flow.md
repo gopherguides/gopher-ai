@@ -10,13 +10,13 @@ Use recommended defaults without prompting. Display a brief configuration summar
 
 ```
 Exec config (defaults — add --ask to customize):
-  Model:    gpt-5.5
+  Model:    Provider default
   Effort:   high
   Context:  None
   Sandbox:  workspace-write
 ```
 
-Store: model = "gpt-5.5", context = "No", sandbox = "workspace-write". Reasoning effort is always `high` (pinned via `-c model_reasoning_effort="high"` on every codex invocation — not user-configurable). Proceed directly to Step 4 (Run Codex).
+Store: model = "", context = "No", sandbox = "workspace-write". An empty model means Codex CLI selects its provider default, including any user-configured `~/.codex/config.toml` model override. Reasoning effort is always `high` (pinned via `-c model_reasoning_effort="high"` on every codex invocation — not user-configurable). Proceed directly to Step 4 (Run Codex).
 
 ## If `INTERACTIVE_MODE` is `true` (`--ask` flag provided)
 
@@ -24,14 +24,12 @@ Store: model = "gpt-5.5", context = "No", sandbox = "workspace-write". Reasoning
 
 Ask the user which model to use:
 
-| Model | Best For |
-|-------|----------|
-| gpt-5.5 | Latest frontier model, best overall |
-| gpt-5.4 | Previous flagship, strong coding and reasoning |
-| gpt-5.4-mini | Fast and cost-efficient for lighter tasks |
-| gpt-5.3-codex-spark | Near-instant iteration (ChatGPT Pro only) |
+| Option | Description |
+|--------|-------------|
+| Provider default (Recommended) | Let Codex CLI choose the latest recommended Codex model |
+| Custom model ID | Enter an exact model ID; only this choice passes `-m` |
 
-Default: `gpt-5.5`
+Default: Provider default. Store model = "" unless the user chooses a custom model ID.
 
 ### 2. Include Session Context (Optional)
 
@@ -84,7 +82,12 @@ Default: `read-only` (interactive). Always request confirmation before using `da
 ### If context was NOT requested
 
 ```bash
-$CODEX_CMD exec -m <model> -s <mode> -c model_reasoning_effort="high" --skip-git-repo-check "$CODEX_PROMPT"
+MODEL_ARGS=()
+if [ -n "$MODEL" ]; then
+  MODEL_ARGS=(-m "$MODEL")
+fi
+
+$CODEX_CMD exec "${MODEL_ARGS[@]}" -s <mode> -c model_reasoning_effort="high" --skip-git-repo-check "$CODEX_PROMPT"
 ```
 
 ### If context WAS requested
@@ -109,7 +112,12 @@ Use the session context above to inform your review/analysis. The context descri
 being worked on in a previous AI coding session."
 
 printf '%s\n' "$EXEC_PROMPT" > "$PROMPT_FILE"
-$CODEX_CMD exec -m <model> -s <mode> -c model_reasoning_effort="high" --skip-git-repo-check - < "$PROMPT_FILE"
+MODEL_ARGS=()
+if [ -n "$MODEL" ]; then
+  MODEL_ARGS=(-m "$MODEL")
+fi
+
+$CODEX_CMD exec "${MODEL_ARGS[@]}" -s <mode> -c model_reasoning_effort="high" --skip-git-repo-check - < "$PROMPT_FILE"
 rm -f "$PROMPT_FILE"
 trap - EXIT
 ```

@@ -299,6 +299,8 @@ Plugins are distributed via the [Codex plugin system](https://developers.openai.
 
 **Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse and manage installed plugins. Plugins with `.codex-plugin/plugin.json` are packaged for Codex. Today that set is `go-workflow`, `go-dev`, `gopher-guides`, `llm-tools`, `go-web`, and `tailwind`. The repo's `productivity` module remains Claude-only.
 
+**Codex model defaults:** The `llm-tools` Codex commands omit `-m` by default so Codex CLI chooses its provider default. If `~/.codex/config.toml` contains a `model = "..."` line, that local pin overrides the provider default for every llm-tools Codex call that omits `-m`; leave it unset to keep using the latest recommended Codex model.
+
 **Install into another repo:** `./scripts/install-codex.sh --repo /path/to/your-repo` copies the current plugin set and merges entries into that repo's `.agents/plugins/marketplace.json` without removing unrelated plugin entries.
 
 **GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms — installs Claude Code and Gemini, and installs Codex plugins globally via Codex's marketplace mechanism (so skills load in every Codex session). The Codex install runs `codex plugin marketplace add gopherguides/gopher-ai`, populates `~/.codex/plugins/cache/gopher-ai/<plugin>/<commit>/` from the marketplace clone, and writes `[plugins."<name>@gopher-ai"]\nenabled = true` entries to `~/.codex/config.toml`. The marketplace cache is the only path Codex actually loads from — direct copies to `~/.codex/plugins/<name>/` are silently ignored.
