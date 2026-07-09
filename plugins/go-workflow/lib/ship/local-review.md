@@ -91,15 +91,19 @@ SCHEMA_EOF
 PROMPT_FILE=$(mktemp /tmp/codex-review-prompt-XXXXXX)
 echo "$ASSEMBLED_PROMPT" > "$PROMPT_FILE"
 CODEX_TIMEOUT="${CODEX_TIMEOUT:-300}"
+CODEX_MODEL_ARGS=()
+if [ -n "${MODEL:-}" ]; then
+  CODEX_MODEL_ARGS=(-m "$MODEL")
+fi
 
 set +e
 if [ -n "$TIMEOUT_CMD" ]; then
-  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec -m "${MODEL:-gpt-5.5}" -s read-only \
+  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec "${CODEX_MODEL_ARGS[@]}" -s read-only \
     -c model_reasoning_effort="high" \
     --output-schema "$SCHEMA_FILE" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
 else
-  REVIEW_JSON=$($CODEX_CMD exec -m "${MODEL:-gpt-5.5}" -s read-only \
+  REVIEW_JSON=$($CODEX_CMD exec "${CODEX_MODEL_ARGS[@]}" -s read-only \
     -c model_reasoning_effort="high" \
     --output-schema "$SCHEMA_FILE" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
@@ -182,7 +186,12 @@ If `codex exec` returns non-JSON or empty output (and exit code 0), do NOT fall 
 ### Codex Quick Mode (`codex review --base`)
 
 ```bash
-$CODEX_CMD review --base "$BASE_BRANCH" -c model="${MODEL:-gpt-5.5}" -c model_reasoning_effort="high"
+CODEX_REVIEW_MODEL_ARGS=()
+if [ -n "${MODEL:-}" ]; then
+  CODEX_REVIEW_MODEL_ARGS=(-c "model=$MODEL")
+fi
+
+$CODEX_CMD review --base "$BASE_BRANCH" "${CODEX_REVIEW_MODEL_ARGS[@]}" -c model_reasoning_effort="high"
 ```
 
 Capture output as free-text `FINDINGS`. Set `CODEX_EXEC_FALLBACK=true`. Persist `quick_mode=true`:
