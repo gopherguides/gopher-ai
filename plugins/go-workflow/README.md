@@ -67,6 +67,13 @@ Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before running `$start-issue` or
 `$complete-issue` to override all subagent models for that run. Use
 `--no-agents` to switch to the single-session workflow.
 
+#### Codex Model Defaults
+
+The `$ship` and `$complete-issue` Codex review stages omit model flags by
+default. A `model = "..."` pin in `~/.codex/config.toml` overrides the provider
+default for those stages; leaving it unset lets the Codex CLI use its latest
+recommended model automatically.
+
 ### Address Review
 
 The `$address-review` skill handles PR review feedback automatically:

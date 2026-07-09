@@ -48,6 +48,10 @@ else TIMEOUT_CMD=""; fi
 
 If `$TIMEOUT_CMD` is available, invoke `$TIMEOUT_CMD $CODEX_TIMEOUT $CODEX_CMD exec -c model_reasoning_effort="high"` with structured output. If no timeout command is available, run `$CODEX_CMD exec -c model_reasoning_effort="high"` without a timeout wrapper. Reasoning effort is always pinned to `high`.
 
+No model flag is passed in either Codex path. A `model = "..."` pin in
+`~/.codex/config.toml` is respected; leaving it unset lets the Codex CLI choose
+its recommended default.
+
 If the diff exceeds 3000 lines, warn the user via `AskUserQuestion` BEFORE starting:
 
 > "Large diff ($DIFF_LINES lines) — codex exec may timeout. Proceed / Use `codex review --base` / Agent review / Skip?"
