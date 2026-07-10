@@ -148,9 +148,9 @@ CODEX_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-codex-plugins-v${EXPECTED_VERSION}
 GEMINI_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-gemini-extensions-v${EXPECTED_VERSION}.tar.gz"
 
 echo -n "Release command uses builder-produced asset names... "
-if ! rg -qF 'dist/gopher-ai-codex-plugins-v${VERSION}.tar.gz' "$ROOT_DIR/plugins/productivity/commands/release.md" ||
-   ! rg -qF 'dist/gopher-ai-gemini-extensions-v${VERSION}.tar.gz' "$ROOT_DIR/plugins/productivity/commands/release.md" ||
-   rg -qF 'gopher-ai-codex-skills-' "$ROOT_DIR/plugins/productivity/commands/release.md"; then
+if ! awk 'index($0, "dist/gopher-ai-codex-plugins-v${VERSION}.tar.gz") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md" ||
+   ! awk 'index($0, "dist/gopher-ai-gemini-extensions-v${VERSION}.tar.gz") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md" ||
+   awk 'index($0, "gopher-ai-codex-skills-") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md"; then
   echo "FAIL"
   ERRORS=$((ERRORS + 1))
 else
@@ -162,7 +162,7 @@ RELEASE_ASSET_ERRORS=""
 if [ ! -f "$CODEX_RELEASE_ASSET" ]; then
   RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  missing ${CODEX_RELEASE_ASSET#"$ROOT_DIR"/}"
 else
-  CODEX_MANIFESTS=$(tar -tzf "$CODEX_RELEASE_ASSET" | rg '/\.codex-plugin/plugin\.json$' || true)
+  CODEX_MANIFESTS=$(tar -tzf "$CODEX_RELEASE_ASSET" | awk '/\/\.codex-plugin\/plugin\.json$/' || true)
   if [ -z "$CODEX_MANIFESTS" ]; then
     RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Codex archive has no plugin manifests"
   else
@@ -178,7 +178,7 @@ fi
 if [ ! -f "$GEMINI_RELEASE_ASSET" ]; then
   RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  missing ${GEMINI_RELEASE_ASSET#"$ROOT_DIR"/}"
 else
-  GEMINI_MANIFESTS=$(tar -tzf "$GEMINI_RELEASE_ASSET" | rg '/gemini-extension\.json$' || true)
+  GEMINI_MANIFESTS=$(tar -tzf "$GEMINI_RELEASE_ASSET" | awk '/\/gemini-extension\.json$/' || true)
   if [ -z "$GEMINI_MANIFESTS" ]; then
     RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Gemini archive has no extension manifests"
   else
