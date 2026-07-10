@@ -84,13 +84,14 @@ copy_env_files() {
 
 existing_worktree_path() {
   local repo_root="$1"
-  local issue_num="$2"
+  local branch_name="$2"
+  local target_path="$3"
   git -C "$repo_root" worktree list --porcelain \
-    | awk -v marker="refs/heads/issue-${issue_num}-" -v primary_path="$repo_root" '
+    | awk -v target_branch="refs/heads/${branch_name}" -v target_path="$target_path" '
       /^worktree / { path = substr($0, 10) }
       /^branch / {
         branch = substr($0, 8)
-        if (path != primary_path && index(branch, marker) == 1) {
+        if (path == target_path && branch == target_branch) {
           print path
           exit
         }
@@ -272,25 +273,30 @@ run_create() {
   TITLE_SLUG=$(slugify "$ITEM_TITLE")
   [ -n "$TITLE_SLUG" ] || TITLE_SLUG="$ITEM_NUMBER"
   WORKTREE_NAME="${REPO_NAME}-issue-${ITEM_NUMBER}-${TITLE_SLUG}"
-  WORKTREE_PATH="${MAIN_REPO_ROOT}/../${WORKTREE_NAME}"
+  WORKTREE_PATH="$(cd "$MAIN_REPO_ROOT/.." && pwd -P)/${WORKTREE_NAME}"
   BRANCH_NAME="issue-${ITEM_NUMBER}-${TITLE_SLUG}"
   WORKTREE_CREATED="false"
 
   local existing_path
-  existing_path=$(existing_worktree_path "$MAIN_REPO_ROOT" "$ITEM_NUMBER")
+  existing_path=$(existing_worktree_path "$MAIN_REPO_ROOT" "$BRANCH_NAME" "$WORKTREE_PATH")
   if [ -n "$existing_path" ]; then
     WORKTREE_ABS_PATH=$(cd "$existing_path" && pwd)
     echo "WORKTREE_EXISTS: $WORKTREE_ABS_PATH"
   else
     local checked_out_path
     checked_out_path=$(branch_checked_out_path "$MAIN_REPO_ROOT" "$BRANCH_NAME")
-    if [ "$checked_out_path" = "$MAIN_REPO_ROOT" ]; then
-      die "Branch $BRANCH_NAME is checked out in the primary checkout. Switch the primary checkout to another branch, then rerun."
+    if [ -n "$checked_out_path" ]; then
+      die "Branch $BRANCH_NAME is checked out at $checked_out_path"
     fi
-    git -C "$MAIN_REPO_ROOT" fetch origin "$DEFAULT_BRANCH"
-    git -C "$MAIN_REPO_ROOT" branch -D "$BRANCH_NAME" 2>/dev/null || true
-    git -C "$MAIN_REPO_ROOT" worktree add "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"
-    git -C "$WORKTREE_PATH" checkout -b "$BRANCH_NAME"
+    if [ -e "$WORKTREE_PATH" ] || [ -L "$WORKTREE_PATH" ]; then
+      die "Target path already exists: $WORKTREE_PATH"
+    fi
+    if git -C "$MAIN_REPO_ROOT" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+      git -C "$MAIN_REPO_ROOT" worktree add "$WORKTREE_PATH" "$BRANCH_NAME"
+    else
+      git -C "$MAIN_REPO_ROOT" fetch origin "$DEFAULT_BRANCH"
+      git -C "$MAIN_REPO_ROOT" worktree add -b "$BRANCH_NAME" "$WORKTREE_PATH" "origin/$DEFAULT_BRANCH"
+    fi
     WORKTREE_ABS_PATH=$(cd "$WORKTREE_PATH" && pwd)
     WORKTREE_CREATED="true"
     echo "WORKTREE_CREATED: $WORKTREE_ABS_PATH"

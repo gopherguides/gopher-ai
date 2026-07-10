@@ -38,6 +38,14 @@ jobs:
       - name: Test hook files
         run: ./scripts/test-hooks.sh
 
+  test-worktree-create:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test worktree creation
+        run: ./scripts/test-worktree-create.sh
+
   test-ship-e2e-gate:
     runs-on: ubuntu-latest
     steps:
