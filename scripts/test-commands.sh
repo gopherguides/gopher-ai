@@ -45,7 +45,7 @@ for file in $COMMAND_FILES; do
 done
 
 echo -n "Codex fallback commands use the official package safely... "
-UNSCOPED_CODEX=$(rg -n --pcre2 'npx[^`\n]*(?<!@openai/)\bcodex\b' "$ROOT_DIR/plugins" || true)
+UNSCOPED_CODEX=$(grep -RInE 'npx[^`]*codex' "$ROOT_DIR/plugins" | grep -v '@openai/codex' || true)
 CODEX_COMMAND="$ROOT_DIR/plugins/llm-tools/commands/codex.md"
 NONINTERACTIVE_CODEX_FILES=(
   "$ROOT_DIR/plugins/llm-tools/commands/review-loop.md"
@@ -56,7 +56,7 @@ NONINTERACTIVE_CODEX_FILES=(
 )
 MISSING_INSTALLED_CHECK=""
 for file in "${NONINTERACTIVE_CODEX_FILES[@]}"; do
-  if ! rg -q 'command -v codex' "$file"; then
+  if ! grep -q 'command -v codex' "$file"; then
     MISSING_INSTALLED_CHECK="${file#"$ROOT_DIR"/}"
     break
   fi
@@ -68,7 +68,7 @@ AUTH_GUIDANCE_FILES=(
   "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/codex-fallback.md"
 )
 for file in "${AUTH_GUIDANCE_FILES[@]}"; do
-  if ! rg -q 'ChatGPT sign-in or API-key authentication' "$file"; then
+  if ! grep -q 'ChatGPT sign-in or API-key authentication' "$file"; then
     MISSING_AUTH_GUIDANCE="${file#"$ROOT_DIR"/}"
     break
   fi
@@ -81,13 +81,13 @@ if [ -n "$UNSCOPED_CODEX" ]; then
 elif [ -n "$MISSING_INSTALLED_CHECK" ]; then
   echo "FAIL (installed Codex preference missing from $MISSING_INSTALLED_CHECK)"
   ERRORS=$((ERRORS + 1))
-elif rg -q 'npx[^`\n]*@openai/codex' "${NONINTERACTIVE_CODEX_FILES[@]}"; then
+elif grep -qE 'npx[^`]*@openai/codex' "${NONINTERACTIVE_CODEX_FILES[@]}"; then
   echo "FAIL (non-interactive workflow downloads Codex)"
   ERRORS=$((ERRORS + 1))
-elif ! rg -q 'CODEX_CMD="npx -y @openai/codex"' "$CODEX_COMMAND"; then
+elif ! grep -q 'CODEX_CMD="npx -y @openai/codex"' "$CODEX_COMMAND"; then
   echo "FAIL (accepted run-once fallback missing)"
   ERRORS=$((ERRORS + 1))
-elif ! rg -q '\*\*Abort\*\*.*without running Codex or downloading a package' "$CODEX_COMMAND"; then
+elif ! grep -q '\*\*Abort\*\*.*without running Codex or downloading a package' "$CODEX_COMMAND"; then
   echo "FAIL (declined run-once behavior missing)"
   ERRORS=$((ERRORS + 1))
 elif [ -n "$MISSING_AUTH_GUIDANCE" ]; then
