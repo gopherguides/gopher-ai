@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 225
+# Total entries: 226
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0322d4a7ddc204a9bf5addfec4e512edaea92ab8f4ebdd0541ca099330a09408 worktree
 03dac3a27d6da4b0a0c64ff6511df17004747e20b47a1691b4f9f030478877b9 commit
@@ -155,6 +155,7 @@ a5e9bb1aaa7b1fbde738b804ad01a1edb7448e4130abff090f0e7c40ee8339a2 ship
 a64bb750af511ed9f5bc8b7f492baad47146cd5bbe3d3f9eaf98d04c64f97cdf second-opinion
 a79c84ad7980d3b8e811c9bf0ff77958e8a8fe13f949a4fcbf250ef177d15a49 remove-worktree
 a9a73f15973539a88cb33abf81d1bf08163b8ff42d22eb224bf327e4de64166f htmx
+aed3553a2b51270c865c7a3d6c62e6c791277013a2eee0ae557edce6b225eba0 complete-issue
 b0d7852d81313df1d1e9a5c4775f3290e03b021aed7929b0e1738eabd9a1e126 tmux-start
 b0ec8df817d86bc436736b5acd26b23cabf2431b4860021d0c65e397f67c6a19 e2e-verify
 b265ee9a7d936f3dee025805cbd71f81a788e8e8716f13073343b3d32daf7994 gopher-guides

@@ -111,9 +111,6 @@ CODEX_AVAILABLE=false
 if command -v codex &>/dev/null; then
   CODEX_CMD="codex"
   CODEX_AVAILABLE=true
-elif npx -y codex --version &>/dev/null 2>&1; then
-  CODEX_CMD="npx -y codex"
-  CODEX_AVAILABLE=true
 fi
 ```
 

@@ -11,8 +11,6 @@ LLM_AVAILABLE=true
 if [ "$LLM_CHOICE" = "codex" ]; then
   if command -v codex &>/dev/null; then
     CODEX_CMD="codex"
-  elif npx -y codex --version &>/dev/null 2>&1; then
-    CODEX_CMD="npx -y codex"
   else
     LLM_AVAILABLE=false
   fi
@@ -39,8 +37,7 @@ echo "=== LLM CLI Diagnostic ==="
 echo "LLM selected: $LLM_CHOICE"
 if [ "$LLM_CHOICE" = "codex" ]; then
   echo "codex in PATH: $(command -v codex 2>/dev/null || echo 'NOT FOUND')"
-  echo "npx codex: $(npx -y codex --version 2>/dev/null || echo 'FAILED')"
-  echo "OPENAI_API_KEY set: $([ -n "${OPENAI_API_KEY:-}" ] && echo 'yes' || echo 'NO')"
+  echo "Codex authentication: run 'codex login' for ChatGPT sign-in or API-key authentication"
 elif [ "$LLM_CHOICE" = "gemini" ]; then
   echo "gemini in PATH: $(command -v gemini 2>/dev/null || echo 'NOT FOUND')"
 elif [ "$LLM_CHOICE" = "ollama" ]; then
@@ -70,7 +67,7 @@ jq '.llm_check_failed = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE
 
 ### Retry
 
-Re-run `command -v` / `npx` from above. On success:
+Re-run `command -v` from above. On success:
 
 ```bash
 TMP="$STATE_FILE.tmp"
@@ -84,7 +81,7 @@ options again.
 
 Display:
 
-- **codex:** `npm install -g @openai/codex` (and ensure `OPENAI_API_KEY` is set)
+- **codex:** `npm install -g @openai/codex`, then run `codex login` for ChatGPT sign-in or API-key authentication
 - **gemini:** `npm install -g @google/gemini-cli`
 - **ollama:** `brew install ollama && ollama serve`
 

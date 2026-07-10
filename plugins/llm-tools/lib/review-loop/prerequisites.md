@@ -10,8 +10,7 @@ echo "=== LLM CLI Diagnostic ==="
 echo "LLM selected: $LLM_CHOICE"
 if [ "$LLM_CHOICE" = "codex" ]; then
   echo "codex in PATH: $(command -v codex 2>/dev/null || echo 'NOT FOUND')"
-  echo "npx codex: $(npx -y codex --version 2>/dev/null || echo 'FAILED')"
-  echo "OPENAI_API_KEY set: $([ -n "${OPENAI_API_KEY:-}" ] && echo 'yes' || echo 'NO')"
+  echo "Codex authentication: run 'codex login' for ChatGPT sign-in or API-key authentication"
 elif [ "$LLM_CHOICE" = "gemini" ]; then
   echo "gemini in PATH: $(command -v gemini 2>/dev/null || echo 'NOT FOUND')"
 elif [ "$LLM_CHOICE" = "ollama" ]; then
@@ -35,7 +34,7 @@ echo "========================="
 
 **Debug / Install instructions** → display:
 
-- **codex:** `npm install -g @openai/codex` and ensure `OPENAI_API_KEY` is set
+- **codex:** `npm install -g @openai/codex`, then run `codex login` for ChatGPT sign-in or API-key authentication
 - **gemini:** `npm install -g @google/gemini-cli`
 - **ollama:** `brew install ollama && ollama serve`
 
