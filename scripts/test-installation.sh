@@ -143,6 +143,62 @@ else
   echo "OK"
 fi
 
+EXPECTED_VERSION=$(jq -r '.metadata.version' "$ROOT_DIR/.claude-plugin/marketplace.json")
+CODEX_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-codex-plugins-v${EXPECTED_VERSION}.tar.gz"
+GEMINI_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-gemini-extensions-v${EXPECTED_VERSION}.tar.gz"
+
+echo -n "Release command uses builder-produced asset names... "
+if ! awk 'index($0, "dist/gopher-ai-codex-plugins-v${VERSION}.tar.gz") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md" ||
+   ! awk 'index($0, "dist/gopher-ai-gemini-extensions-v${VERSION}.tar.gz") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md" ||
+   awk 'index($0, "gopher-ai-codex-skills-") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md"; then
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Release archives exist with expected names and versions... "
+RELEASE_ASSET_ERRORS=""
+if [ ! -f "$CODEX_RELEASE_ASSET" ]; then
+  RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  missing ${CODEX_RELEASE_ASSET#"$ROOT_DIR"/}"
+else
+  CODEX_MANIFESTS=$(tar -tzf "$CODEX_RELEASE_ASSET" | awk '/\/\.codex-plugin\/plugin\.json$/' || true)
+  if [ -z "$CODEX_MANIFESTS" ]; then
+    RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Codex archive has no plugin manifests"
+  else
+    while IFS= read -r manifest; do
+      ACTUAL_VERSION=$(tar -xOzf "$CODEX_RELEASE_ASSET" "$manifest" | jq -r '.version // empty')
+      if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+        RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  $manifest ($ACTUAL_VERSION != $EXPECTED_VERSION)"
+      fi
+    done <<< "$CODEX_MANIFESTS"
+  fi
+fi
+
+if [ ! -f "$GEMINI_RELEASE_ASSET" ]; then
+  RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  missing ${GEMINI_RELEASE_ASSET#"$ROOT_DIR"/}"
+else
+  GEMINI_MANIFESTS=$(tar -tzf "$GEMINI_RELEASE_ASSET" | awk '/\/gemini-extension\.json$/' || true)
+  if [ -z "$GEMINI_MANIFESTS" ]; then
+    RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Gemini archive has no extension manifests"
+  else
+    while IFS= read -r manifest; do
+      ACTUAL_VERSION=$(tar -xOzf "$GEMINI_RELEASE_ASSET" "$manifest" | jq -r '.version // empty')
+      if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+        RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  $manifest ($ACTUAL_VERSION != $EXPECTED_VERSION)"
+      fi
+    done <<< "$GEMINI_MANIFESTS"
+  fi
+fi
+
+if [ -n "$RELEASE_ASSET_ERRORS" ]; then
+  echo "FAIL"
+  printf '%b\n' "$RELEASE_ASSET_ERRORS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 CODEX_MARKETPLACE="$ROOT_DIR/dist/codex/plugins/marketplace.json"
 echo -n "Codex marketplace is valid JSON... "
 if ! jq . "$CODEX_MARKETPLACE" >/dev/null 2>&1; then
