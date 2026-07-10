@@ -16,7 +16,7 @@ known model quirk. Each row maps the symptom to the action.
 | JPEG when PNG requested | Auto-convert: Pillow → magick → .jpg fallback (handled by parse block in `request-builder.md`) |
 | No image in response | Show model text, suggest rephrasing |
 | `imageSize` lowercase value | Warn about case sensitivity before sending request — see `reference.md` resolution table |
-| Invalid service tier value | Warn user, show valid options (`flex`, `standard`, `priority`), ask again |
+| Invalid service tier value | Warn user, show valid options (`flex`, `standard`, `priority`), and verify the selected model supports the requested tier |
 
 ## Model Not Found or Retired
 
@@ -57,20 +57,13 @@ When the user asked for PNG but the model returned JPEG, the parse block in
 This logic lives entirely in the parse block — there's no separate command
 to run.
 
-## Aspect Ratio Silently Ignored
-
-On `gemini-3.1-flash-image-preview`, `aspectRatio` may be silently dropped
-during edit / background-replacement operations (model bug). If aspect ratio
-is critical for an edit, switch the user to `gemini-2.5-flash-image`.
-
 ## `imageSize` Case Sensitivity
 
-`"1k"` (lowercase) silently falls back to 512px output even when you asked
-for `"1K"`. Validate before sending:
+`"1k"` (lowercase) is rejected. Validate before sending:
 
 ```bash
 case "$GEMINI_IMAGE_SIZE" in
   1K|2K|4K|512) ;;
-  *) echo "Warning: imageSize must be one of 1K|2K|4K|512 (case-sensitive)"; exit 1 ;;
+  *) echo "Warning: imageSize must be one of 512|1K|2K|4K (case-sensitive)"; exit 1 ;;
 esac
 ```

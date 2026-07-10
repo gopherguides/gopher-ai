@@ -138,6 +138,61 @@ else
 fi
 
 echo ""
+
+echo -n "Gemini image defaults and request tiers are valid... "
+GEMINI_IMAGE_DIR="$ROOT_DIR/plugins/llm-tools/skills/gemini-image"
+GEMINI_COMMAND="$ROOT_DIR/plugins/llm-tools/commands/gemini-image.md"
+
+if grep -Rqs 'gemini-3\.1-flash-image-preview' "$GEMINI_IMAGE_DIR" "$GEMINI_COMMAND"; then
+  echo "FAIL (retired preview model referenced)"
+  ERRORS=$((ERRORS + 1))
+else
+  BUILD_BLOCK=$(mktemp /tmp/gemini-image-build-XXXXXX)
+  awk '
+    /^## Build Block/ { section=1 }
+    section && /^```bash$/ { block=1; next }
+    block && /^```$/ { exit }
+    block { print }
+  ' "$GEMINI_IMAGE_DIR/request-builder.md" > "$BUILD_BLOCK"
+
+  DEFAULT_REQUEST=$(env -u GEMINI_MODEL -u GEMINI_SERVICE_TIER GEMINI_PROMPT=test bash "$BUILD_BLOCK")
+  UNSUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-3.1-flash-image GEMINI_SERVICE_TIER=priority GEMINI_PROMPT=test bash "$BUILD_BLOCK")
+  SUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=PRIORITY GEMINI_PROMPT=test bash "$BUILD_BLOCK")
+  INVALID_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=express GEMINI_IMAGE_SIZE=4K GEMINI_PROMPT=test bash "$BUILD_BLOCK")
+
+  if ! grep -q 'os.environ.get("GEMINI_MODEL", "gemini-3\.1-flash-image")' "$GEMINI_IMAGE_DIR/request-builder.md"; then
+    echo "FAIL (GA model is not the builder default)"
+    ERRORS=$((ERRORS + 1))
+  elif python3 - "$DEFAULT_REQUEST" "$UNSUPPORTED_REQUEST" "$SUPPORTED_REQUEST" "$INVALID_REQUEST" <<'PYEOF'
+import json
+import sys
+
+with open(sys.argv[1]) as f:
+    default_payload = json.load(f)
+with open(sys.argv[2]) as f:
+    unsupported_payload = json.load(f)
+with open(sys.argv[3]) as f:
+    supported_payload = json.load(f)
+with open(sys.argv[4]) as f:
+    invalid_payload = json.load(f)
+
+assert "serviceTier" not in default_payload
+assert "serviceTier" not in unsupported_payload
+assert supported_payload["serviceTier"] == "priority"
+assert "serviceTier" not in invalid_payload
+assert "imageSize" not in invalid_payload["generationConfig"]["imageConfig"]
+PYEOF
+  then
+    echo "OK"
+  else
+    echo "FAIL (generated serviceTier payload mismatch)"
+    ERRORS=$((ERRORS + 1))
+  fi
+
+  rm -f "$BUILD_BLOCK" "$DEFAULT_REQUEST" "$UNSUPPORTED_REQUEST" "$SUPPORTED_REQUEST" "$INVALID_REQUEST"
+fi
+
+echo ""
 if [ $ERRORS -gt 0 ]; then
   echo "FAILED: $ERRORS command file(s) have issues"
   exit 1

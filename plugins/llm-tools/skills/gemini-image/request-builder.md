@@ -14,11 +14,11 @@ python3 << 'PYEOF'
 import json, base64, sys, os
 
 prompt = os.environ.get("GEMINI_PROMPT", "")
-model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-image-preview")
+model = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-image")
 aspect_ratio = os.environ.get("GEMINI_ASPECT_RATIO", "1:1")
 image_size = os.environ.get("GEMINI_IMAGE_SIZE", "1K")
 ref_image_path = os.environ.get("GEMINI_REF_IMAGE", "")
-service_tier = os.environ.get("GEMINI_SERVICE_TIER", "")
+service_tier = os.environ.get("GEMINI_SERVICE_TIER", "").lower()
 pid = os.getpid()
 
 parts = []
@@ -43,10 +43,10 @@ payload = {
     }
 }
 
-if image_size != "1K":
+if image_size != "1K" and model == "gemini-3.1-flash-image":
     payload["generationConfig"]["imageConfig"]["imageSize"] = image_size
 
-if service_tier:
+if service_tier in {"flex", "priority"} and model == "gemini-2.5-flash-image":
     payload["serviceTier"] = service_tier
 
 outfile = f"/tmp/gemini-image-request-{pid}.json"

@@ -1,16 +1,17 @@
 # Gemini Image — Option Reference
 
 Loaded by `SKILL.md` Step 2 when the agent needs full option matrices to ask
-the user (or infer) model, aspect ratio, resolution, and service tier.
+the user (or infer) model, aspect ratio, and resolution, or validate an
+explicit service-tier request.
 
 ## Model Selection
 
 | Model ID | Best For | Known Issues |
 |----------|----------|--------------|
-| `gemini-3.1-flash-image-preview` | Fast, high-volume, newest **(Recommended)** | `aspectRatio` may be ignored in edit/background operations |
-| `gemini-2.5-flash-image` | Stable, proven, fewest bugs | Most reliable for `imageConfig` params |
+| `gemini-3.1-flash-image` | Best all-around balance of quality, cost, and latency **(Recommended)** | Flex and Priority tiers are not supported |
+| `gemini-2.5-flash-image` | Legacy stable option for high-volume, low-latency work | Fixed 1K output; fewer aspect ratios |
 
-Default: `gemini-3.1-flash-image-preview`
+Default: `gemini-3.1-flash-image`
 
 ## Aspect Ratio
 
@@ -27,41 +28,31 @@ Infer from context when possible, then confirm:
 
 If no context clue, default to `1:1`.
 
-**All supported ratios:** `1:1`, `1:4`, `1:8`, `2:3`, `3:2`, `3:4`, `4:1`, `4:3`, `4:5`, `5:4`, `8:1`, `9:16`, `16:9`, `21:9`
+**`gemini-3.1-flash-image`:** `1:1`, `1:4`, `1:8`, `2:3`, `3:2`, `3:4`, `4:1`, `4:3`, `4:5`, `5:4`, `8:1`, `9:16`, `16:9`, `21:9`
 
-> **Note:** On `gemini-3.1-flash-image-preview`, `aspectRatio` may be silently ignored during image editing or background replacement operations. If aspect ratio is critical for an edit operation, consider using `gemini-2.5-flash-image` instead.
+**`gemini-2.5-flash-image`:** `1:1`, `2:3`, `3:2`, `3:4`, `4:3`, `4:5`, `5:4`, `9:16`, `16:9`, `21:9`
 
 ## Image Resolution
 
-| Resolution | Notes |
-|------------|-------|
-| `1K` | Good quality, fast **(default)** |
-| `2K` | Higher detail |
-| `4K` | Maximum detail, slower |
-| `512` | Only available on `gemini-3.1-flash-image-preview` |
+| Model | Supported values | Default |
+|-------|------------------|---------|
+| `gemini-3.1-flash-image` | `512`, `1K`, `2K`, `4K` | `1K` |
+| `gemini-2.5-flash-image` | Fixed 1K output | 1K |
 
-Default: `1K`
+> **Important:** `imageSize` values are **case-sensitive**. Use `"512"`, `"1K"`, `"2K"`, or `"4K"` exactly; lowercase values are rejected.
 
-> **Important:** `imageSize` values are **case-sensitive**. Use `"1K"`, `"2K"`, `"4K"` exactly — lowercase (e.g., `"1k"`) silently falls back to 512px resolution.
-
-If the user selects `512` with a model other than `gemini-3.1-flash-image-preview`, warn them and switch to `1K`.
+If the user selects `512`, `2K`, or `4K` with `gemini-2.5-flash-image`, warn them and use its fixed 1K output.
 
 ## Service Tier
 
-Infer from context when possible:
+Do not prompt for a service tier. Standard service is the default and omits
+`serviceTier` from the request.
 
-| Context Clue | Suggested Tier |
-|--------------|----------------|
-| "background", "batch", "non-urgent", "cheap" | `flex` (~50% cheaper, may queue 1-15 min) |
-| "urgent", "production", "priority", "fast" | `priority` (~80% more, fastest) |
-| No urgency clue | `standard` (default — omits field) |
+| Model | Flex | Priority | Request behavior |
+|-------|------|----------|------------------|
+| `gemini-3.1-flash-image` | Not supported | Not supported | Always omit `serviceTier` |
+| `gemini-2.5-flash-image` | Supported | Supported | Emit lowercase `flex` or `priority` only when explicitly requested |
 
-Ask the user to confirm if inferred, or select if no context clue:
-
-| Tier | Cost | Speed | Best For |
-|------|------|-------|----------|
-| `standard` | Normal pricing | Normal | Default behavior **(default)** |
-| `flex` | **~50% cheaper** | May queue (1-15 min) | Background/batch work, non-urgent |
-| `priority` | ~80% more | Fastest | Time-sensitive, production assets |
-
-Store as `GEMINI_SERVICE_TIER`. Empty string for `standard` (field omitted from request).
+Store an explicitly supported tier as lowercase `GEMINI_SERVICE_TIER`. Use an
+empty string for standard service or when the selected model does not support
+the requested tier.
