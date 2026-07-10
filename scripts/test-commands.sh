@@ -111,7 +111,7 @@ echo -n "Gemini image defaults and request tiers are valid... "
 GEMINI_IMAGE_DIR="$ROOT_DIR/plugins/llm-tools/skills/gemini-image"
 GEMINI_COMMAND="$ROOT_DIR/plugins/llm-tools/commands/gemini-image.md"
 
-if rg -q 'gemini-3\.1-flash-image-preview' "$GEMINI_IMAGE_DIR" "$GEMINI_COMMAND"; then
+if grep -Rqs 'gemini-3\.1-flash-image-preview' "$GEMINI_IMAGE_DIR" "$GEMINI_COMMAND"; then
   echo "FAIL (retired preview model referenced)"
   ERRORS=$((ERRORS + 1))
 else
@@ -128,7 +128,7 @@ else
   SUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=PRIORITY GEMINI_PROMPT=test bash "$BUILD_BLOCK")
   INVALID_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=express GEMINI_IMAGE_SIZE=4K GEMINI_PROMPT=test bash "$BUILD_BLOCK")
 
-  if ! rg -q 'os.environ.get\("GEMINI_MODEL", "gemini-3\.1-flash-image"\)' "$GEMINI_IMAGE_DIR/request-builder.md"; then
+  if ! grep -q 'os.environ.get("GEMINI_MODEL", "gemini-3\.1-flash-image")' "$GEMINI_IMAGE_DIR/request-builder.md"; then
     echo "FAIL (GA model is not the builder default)"
     ERRORS=$((ERRORS + 1))
   elif python3 - "$DEFAULT_REQUEST" "$UNSUPPORTED_REQUEST" "$SUPPORTED_REQUEST" "$INVALID_REQUEST" <<'PYEOF'
