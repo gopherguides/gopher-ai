@@ -316,6 +316,58 @@ else
   echo "OK ($GEMINI_COMMAND_COUNT commands)"
 fi
 
+echo -n "Gemini extensions are dependency-closed... "
+if ! "$ROOT_DIR/scripts/validate-gemini-extensions.sh" "$ROOT_DIR/dist/gemini" >/tmp/gopher-ai-gemini-validation.log 2>&1; then
+  echo "FAIL"
+  sed -n '1,120p' /tmp/gopher-ai-gemini-validation.log
+  ERRORS=$((ERRORS + 1))
+elif [ ! -x "$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/scripts/worktree-create.sh" ] \
+  || [ ! -f "$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/lib/ship/local-review.md" ] \
+  || [ ! -f "$ROOT_DIR/dist/gemini/gopher-ai-llm-tools/prompts/codex-review.md" ] \
+  || [ ! -f "$ROOT_DIR/dist/gemini/gopher-ai-go-web/templates/deploy/Dockerfile" ]; then
+  echo "FAIL (expected runtime asset is missing)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Gemini validation rejects missing local assets... "
+TMP_GEMINI_DIST=$(mktemp -d)
+cp -R "$ROOT_DIR/dist/gemini/gopher-ai-go-workflow" "$TMP_GEMINI_DIST/"
+printf '%s\n' "\$HOME/.gemini/extensions/gopher-ai-go-workflow/scripts/not-present.sh" \
+  >> "$TMP_GEMINI_DIST/gopher-ai-go-workflow/commands/cancel-loop.toml"
+if "$ROOT_DIR/scripts/validate-gemini-extensions.sh" "$TMP_GEMINI_DIST" >/tmp/gopher-ai-gemini-missing.log 2>&1; then
+  echo "FAIL (missing asset was accepted)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q 'scripts/not-present.sh' /tmp/gopher-ai-gemini-missing.log; then
+  echo "FAIL (missing asset diagnostic omitted the path)"
+  sed -n '1,40p' /tmp/gopher-ai-gemini-missing.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_GEMINI_DIST"
+
+echo -n "Installed Gemini helper-backed command runs... "
+TMP_GEMINI_HOME=$(mktemp -d)
+TMP_GEMINI_WORKSPACE=$(mktemp -d)
+mkdir -p "$TMP_GEMINI_HOME/.gemini/extensions"
+cp -R "$ROOT_DIR/dist/gemini/gopher-ai-go-workflow" "$TMP_GEMINI_HOME/.gemini/extensions/"
+GEMINI_CANCEL_TOML="$TMP_GEMINI_HOME/.gemini/extensions/gopher-ai-go-workflow/commands/cancel-loop.toml"
+GEMINI_CANCEL_COMMAND=$(awk '/^!\{if .*cleanup-loop[.]sh/ { sub(/^!\{/, ""); sub(/\}$/, ""); print; exit }' "$GEMINI_CANCEL_TOML")
+GEMINI_CANCEL_COMMAND=${GEMINI_CANCEL_COMMAND//\{\{args\}\}/gemini-smoke}
+if [ -z "$GEMINI_CANCEL_COMMAND" ]; then
+  echo "FAIL (generated helper command not found)"
+  ERRORS=$((ERRORS + 1))
+elif ! (cd "$TMP_GEMINI_WORKSPACE" && HOME="$TMP_GEMINI_HOME" bash -c "$GEMINI_CANCEL_COMMAND") >/tmp/gopher-ai-gemini-smoke.log 2>&1; then
+  echo "FAIL"
+  sed -n '1,40p' /tmp/gopher-ai-gemini-smoke.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_GEMINI_HOME" "$TMP_GEMINI_WORKSPACE"
+
 echo -n "Codex repo install writes matching marketplace entries... "
 TMP_REPO=$(mktemp -d)
 if ! "$ROOT_DIR/scripts/install-codex.sh" --repo "$TMP_REPO" >/tmp/gopher-ai-install-repo.log 2>&1; then

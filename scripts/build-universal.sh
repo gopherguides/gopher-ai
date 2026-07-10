@@ -225,6 +225,8 @@ build_gemini() {
             done
         fi
 
+        copy_gemini_runtime_assets "$plugin_dir" "$ext_dir"
+
         if [[ -d "${plugin_dir}commands/" ]]; then
             for cmd_file in "${plugin_dir}commands/"*.md; do
                 if [[ -f "$cmd_file" ]]; then
@@ -233,9 +235,46 @@ build_gemini() {
                 fi
             done
         fi
+
+        rewrite_gemini_plugin_paths "$ext_dir" "gopher-ai-$plugin_name"
     done
 
+    "$ROOT_DIR/scripts/validate-gemini-extensions.sh" "$gemini_dir"
+
     echo "  Done: $gemini_dir"
+}
+
+copy_gemini_runtime_assets() {
+    local plugin_dir="$1"
+    local ext_dir="$2"
+    local runtime_dir
+
+    for runtime_dir in scripts lib templates references prompts schemas assets; do
+        if [[ -d "${plugin_dir}${runtime_dir}" ]]; then
+            cp -R "${plugin_dir}${runtime_dir}" "$ext_dir/"
+        fi
+    done
+}
+
+rewrite_gemini_plugin_paths() {
+    local ext_dir="$1"
+    local extension_name="$2"
+    local gemini_root="\$HOME/.gemini/extensions/$extension_name"
+    local file
+    local content
+
+    while IFS= read -r -d '' file; do
+        if ! grep -qE '\$\{?CLAUDE_PLUGIN_ROOT\}?' "$file" 2>/dev/null; then
+            continue
+        fi
+
+        content=$(cat "$file"; printf '\037')
+        content=${content%$'\037'}
+        content=${content//\$\{CLAUDE_PLUGIN_ROOT:-\}/$gemini_root}
+        content=${content//\$\{CLAUDE_PLUGIN_ROOT\}/$gemini_root}
+        content=${content//\$CLAUDE_PLUGIN_ROOT/$gemini_root}
+        printf '%s' "$content" > "$file"
+    done < <(find "$ext_dir" -type f -print0)
 }
 
 generate_gemini_extension_json() {
