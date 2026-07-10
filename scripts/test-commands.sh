@@ -97,6 +97,38 @@ else
   echo "OK"
 fi
 
+echo -n "tmux-start matches issue windows exactly... "
+GOPHER_AI_TMUX_START_SOURCE_ONLY=true source "$ROOT_DIR/plugins/go-workflow/scripts/tmux-start.sh"
+TMUX_MATCH_FAILURE=""
+TMUX_CANONICAL="gopher-ai-issue-12-fix-window-match"
+TMUX_LEGACY="gopher-ai-issue-12"
+
+assert_tmux_match() {
+  local description="$1"
+  local expected="$2"
+  local windows="$3"
+  local actual
+
+  actual=$(printf '%s\n' "$windows" | find_existing_window "$TMUX_CANONICAL" "$TMUX_LEGACY")
+  if [ "$actual" != "$expected" ]; then
+    TMUX_MATCH_FAILURE="$description: expected '$expected', got '$actual'"
+  fi
+}
+
+assert_tmux_match "canonical match" "$TMUX_CANONICAL" "$TMUX_CANONICAL"
+assert_tmux_match "numeric prefix collision" "" $'gopher-ai-issue-1-old\ngopher-ai-issue-120-old\ngopher-ai-issue-123-old'
+assert_tmux_match "repository collision" "" "another-repo-issue-12-fix-window-match"
+assert_tmux_match "no match" "" "unrelated-window"
+assert_tmux_match "legacy match" "$TMUX_LEGACY" "$TMUX_LEGACY"
+assert_tmux_match "canonical priority" "$TMUX_CANONICAL" $'gopher-ai-issue-12\ngopher-ai-issue-12-fix-window-match'
+
+if [ -n "$TMUX_MATCH_FAILURE" ]; then
+  echo "FAIL ($TMUX_MATCH_FAILURE)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Command files have valid YAML frontmatter... "
 if [ $ERRORS -gt 0 ]; then
   echo "FAIL ($ERRORS of $TOTAL)"
