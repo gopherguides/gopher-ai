@@ -1,6 +1,6 @@
 ---
 name: gemini-image
-description: "Generate images via the Google Gemini API. Supports model selection, aspect ratios, resolutions (1K/2K/512), batch generation, image editing. Trigger when user wants AI-generated visual output: image, picture, photo, graphic, illustration, banner, logo, icon, thumbnail, header, hero image. SKIP screenshot inspection or image analysis with no generation/edit request."
+description: "Generate images via the Google Gemini API. Supports GA model selection, aspect ratios, resolutions (512/1K/2K/4K), batch generation, image editing. Trigger when user wants AI-generated visual output: image, picture, photo, graphic, illustration, banner, logo, icon, thumbnail, header, hero image. SKIP screenshot inspection or image analysis with no generation/edit request."
 ---
 
 # Gemini Image Generation
@@ -35,12 +35,13 @@ Extract the image description from the user's request and confirm it. Then colle
 
 - **Model** — pick from the model table in `reference.md` (it lists the current default and trade-offs)
 - **Aspect ratio** — infer from "banner"/"avatar"/"vertical"/etc., default `1:1`
-- **Resolution** — `1K` default; `2K`, `4K`, or `512` available
-- **Service tier** — `standard` default; `flex` (~50% cheaper, may queue) or `priority` (~80% more, fastest)
+- **Resolution** — `1K` default; model-specific alternatives are listed in `reference.md`
 - **Reference image** — optional path to an existing file
 - **Output path** — auto-generate a descriptive filename in CWD if not given
 
-For full option matrices, model trade-offs, the aspect-ratio inference table, and tier pricing details — Read `reference.md`.
+Do not prompt for a service tier. If the user explicitly requests one, use the model support matrix in `reference.md`; omit unsupported settings.
+
+For full option matrices, model trade-offs, the aspect-ratio inference table, and service-tier support — Read `reference.md`.
 
 Export the gathered values as environment variables. **Always single-quote** user-provided values to prevent shell injection (quotes, backticks, `$`):
 
@@ -51,7 +52,7 @@ export GEMINI_ASPECT_RATIO='<selected ratio, e.g. 1:1>'
 export GEMINI_IMAGE_SIZE='<selected resolution, e.g. 1K>'
 export GEMINI_REF_IMAGE='<reference image path, or empty>'
 export GEMINI_OUTPUT_PATH='<output file path>'
-export GEMINI_SERVICE_TIER='<FLEX, PRIORITY, or empty for standard>'
+export GEMINI_SERVICE_TIER='<flex, priority, or empty for standard/unsupported>'
 ```
 
 ## 3. Build Request JSON

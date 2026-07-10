@@ -58,23 +58,25 @@ CLEAN_ARGS=$(echo "$ARGUMENTS" | sed 's/--tier  *[^ ]*//g' | sed 's/^  *//;s/  *
 
 **IMPORTANT:** Use `CLEAN_ARGS` (not `$ARGUMENTS`) as the image prompt from this point forward. The `--tier` flag text must not leak into `GEMINI_PROMPT`.
 
-If `HAS_TIER=true` AND `TIER_VALID=true` → uppercase `TIER_RAW` to `FLEX`/`STANDARD`/`PRIORITY`.
+If `HAS_TIER=true` AND `TIER_VALID=true` → lowercase `TIER_RAW` to `flex`/`standard`/`priority`.
 If `HAS_TIER=true` AND `TIER_VALID=false` → warn the user; ask them to choose `flex`/`standard`/`priority`.
-If `HAS_TIER=false` → ask the user via `AskUserQuestion`. See `${CLAUDE_PLUGIN_ROOT}/skills/gemini-image/reference.md` for the tier table.
+If `HAS_TIER=false` → continue with standard service. Do not prompt for a tier.
 
-If `standard` (or no selection), set `GEMINI_SERVICE_TIER=""` (empty — `serviceTier` field omitted from request gives Google's default behavior). Otherwise set to `FLEX` or `PRIORITY` (uppercase).
+If `standard` (or no selection), set `GEMINI_SERVICE_TIER=""` (empty — `serviceTier` is omitted). Otherwise retain the lowercase tier until the model is selected in Step 3.
 
 ## 3. Gather Image Details
 
 Ask the user (or infer from context) for:
 
-- **Model** — `gemini-3.1-flash-image-preview` (default) or `gemini-2.5-flash-image`
+- **Model** — `gemini-3.1-flash-image` (default) or `gemini-2.5-flash-image`
 - **Aspect ratio** — default `1:1`; common: `16:9` (banner), `9:16` (mobile), `4:3`, `3:4`
-- **Resolution** — `1K` (default), `2K`, `4K`, `512` (only on `gemini-3.1-flash-image-preview`)
+- **Resolution** — `1K` (default); `512`, `2K`, and `4K` are also available on `gemini-3.1-flash-image`; `gemini-2.5-flash-image` only supports its fixed 1K output
 - **Reference image** — optional path to PNG/JPEG/WebP/GIF
 - **Output path** — auto-generate descriptive filename if not given
 
 For full option matrices (all 14 aspect ratios, model trade-offs, resolution case-sensitivity warning) — Read `${CLAUDE_PLUGIN_ROOT}/skills/gemini-image/reference.md`.
+
+After selecting the model, check the service-tier matrix in `reference.md`. `gemini-3.1-flash-image` does not support Flex or Priority, so warn if either was requested and set `GEMINI_SERVICE_TIER=""`. Only retain `flex` or `priority` for `gemini-2.5-flash-image`.
 
 ## 4. Build Request JSON
 
@@ -87,7 +89,7 @@ export GEMINI_ASPECT_RATIO='<selected ratio>'
 export GEMINI_IMAGE_SIZE='<selected resolution>'
 export GEMINI_REF_IMAGE='<reference path, or empty>'
 export GEMINI_OUTPUT_PATH='<output file path>'
-export GEMINI_SERVICE_TIER='<FLEX, PRIORITY, or empty for standard>'
+export GEMINI_SERVICE_TIER='<flex, priority, or empty for standard/unsupported>'
 ```
 
 → Read `${CLAUDE_PLUGIN_ROOT}/skills/gemini-image/request-builder.md` and run the **build block**. It writes the request to `/tmp/gemini-image-request-<pid>.json` and prints the path. Capture as `REQUEST_FILE`.
