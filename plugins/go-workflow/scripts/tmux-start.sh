@@ -32,6 +32,28 @@ slugify_window() {
     | sed 's/-$//'
 }
 
+find_existing_window() {
+  local canonical_name="$1"
+  local legacy_name="$2"
+  local canonical_match=""
+  local legacy_match=""
+  local window_name
+
+  while IFS= read -r window_name; do
+    if [ "$window_name" = "$canonical_name" ] && [ -z "$canonical_match" ]; then
+      canonical_match="$window_name"
+    elif [ "$window_name" = "$legacy_name" ] && [ -z "$legacy_match" ]; then
+      legacy_match="$window_name"
+    fi
+  done
+
+  if [ -n "$canonical_match" ]; then
+    printf '%s\n' "$canonical_match"
+  elif [ -n "$legacy_match" ]; then
+    printf '%s\n' "$legacy_match"
+  fi
+}
+
 wait_for_claude_ready() {
   local window_name="$1"
   local launch_marker="$2"
@@ -57,6 +79,10 @@ wait_for_claude_ready() {
   done
   return 1
 }
+
+if [ "${GOPHER_AI_TMUX_START_SOURCE_ONLY:-false}" = "true" ]; then
+  return 0
+fi
 
 case "${1:-}" in
   -h|--help)
@@ -136,7 +162,8 @@ WINDOW_SLUG=$(slugify_window "$ITEM_TITLE")
 [ -n "$WINDOW_SLUG" ] || WINDOW_SLUG="$ISSUE_NUM"
 WINDOW_NAME="${REPO_NAME}-issue-${ISSUE_NUM}-${WINDOW_SLUG}"
 
-EXISTING_WINDOW=$(tmux list-windows -F '#{window_name}' 2>/dev/null | grep -F "${REPO_NAME}-issue-${ISSUE_NUM}" | head -1 || true)
+LEGACY_WINDOW_NAME="${REPO_NAME}-issue-${ISSUE_NUM}"
+EXISTING_WINDOW=$(tmux list-windows -F '#{window_name}' 2>/dev/null | find_existing_window "$WINDOW_NAME" "$LEGACY_WINDOW_NAME" || true)
 if [ -n "$EXISTING_WINDOW" ]; then
   tmux select-window -t "$EXISTING_WINDOW"
   echo "Switched to existing tmux window: $EXISTING_WINDOW"
