@@ -36,12 +36,10 @@ Compare responses from multiple LLMs for: `$ARGUMENTS`.
 For each selected, verify availability:
 
 ```bash
-# Codex with npx fallback
+# Codex must already be installed for this automated comparison
 CODEX_AVAILABLE=false
 if command -v codex &>/dev/null; then
   CODEX_CMD="codex"; CODEX_AVAILABLE=true
-elif npx -y codex --version &>/dev/null 2>&1; then
-  CODEX_CMD="npx -y codex"; CODEX_AVAILABLE=true
 fi
 command -v gemini >/dev/null 2>&1 && GEMINI_AVAILABLE=true || GEMINI_AVAILABLE=false
 command -v ollama >/dev/null 2>&1 && OLLAMA_AVAILABLE=true || OLLAMA_AVAILABLE=false
@@ -59,6 +57,10 @@ If a user-selected LLM is unavailable, do NOT silently skip. Use `AskUserQuestio
 | **Abort** | Stop the comparison |
 
 Only skip if the user explicitly chooses "Skip this LLM".
+
+For Codex installation guidance, show `npm install -g @openai/codex`. Explain
+that `codex login` supports ChatGPT sign-in and API-key authentication. Do not
+download or execute a package as part of the availability check.
 
 ## 2. Select Models (Optional)
 

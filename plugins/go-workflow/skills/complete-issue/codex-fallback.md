@@ -19,7 +19,7 @@ Use `AskUserQuestion`:
 Handle the user's choice:
 
 - **Retry** → Re-run the availability check from `SKILL.md` Phase 2.
-- **Install instructions** → Display: `npm install -g @openai/codex` and ensure `OPENAI_API_KEY` is set. Then re-check.
+- **Install instructions** → Display: `npm install -g @openai/codex`, then run `codex login` for ChatGPT sign-in or API-key authentication. Then re-check.
 - **Use Fable subagent review** → Dispatch a fresh-context Agent subagent with the same review prompt and JSON schema contract (see the Fable section in go-workflow `lib/ship/local-review.md`); parse findings through the same structured path. Never use `claude -p` — it bills metered API usage, not the subscription.
 - **Skip review** → Warn "Self-review skipped — proceeding to E2E verification without code review." and go directly to Phase 3.
 

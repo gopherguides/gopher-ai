@@ -18,11 +18,12 @@ The pass counter is incremented in Step 8 (after commit), not here. This prevent
 if [ "$LLM_CHOICE" = "codex" ] && [ -z "${CODEX_CMD:-}" ]; then
   if command -v codex &>/dev/null; then
     CODEX_CMD="codex"
-  elif npx -y codex --version &>/dev/null 2>&1; then
-    CODEX_CMD="npx -y codex"
   fi
 fi
 ```
+
+If `CODEX_CMD` is still empty, return to the Step 4 prerequisite flow. Do not
+download or execute a package during re-entry detection.
 
 ### 5a. Generate Diff
 

@@ -246,15 +246,33 @@ Then stop. If the user chooses fallback, continue below.
 
 ## 3. Detect Codex CLI Fallback
 
-Resolve the correct command for invoking Codex. This avoids exit code 127 on systems where `codex` is only available via `npx`:
+Prefer an installed Codex executable. Availability checks must not download or
+execute an npm package:
 
 ```bash
 if command -v codex &>/dev/null; then
   CODEX_CMD="codex"
 else
-  CODEX_CMD="npx -y codex"
+  CODEX_CMD=""
 fi
 ```
+
+If `CODEX_CMD` is empty, use `AskUserQuestion`:
+
+> **"Codex CLI is not installed. How would you like to continue?"**
+
+| Option | Description |
+|--------|-------------|
+| **Run official package once** | Explicitly consent to run `npx -y @openai/codex` for this request only |
+| **Install Codex** | Show `npm install -g @openai/codex`, then stop so the user can authenticate and retry |
+| **Abort** | Stop without running Codex or downloading a package |
+
+- **Run official package once** → first verify `npx` is available without
+  invoking Codex. If it is, set `CODEX_CMD="npx -y @openai/codex"` and continue.
+  If it is unavailable, show the install option and stop.
+- **Install Codex** → show `npm install -g @openai/codex`. Explain that
+  `codex login` supports ChatGPT sign-in and API-key authentication, then stop.
+- **Abort** → stop. Do not run Codex or invoke `npx`.
 
 **Use `$CODEX_CMD` in place of bare `codex` for all built-in fallback commands below.**
 

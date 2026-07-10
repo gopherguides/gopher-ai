@@ -32,7 +32,6 @@ Verify the selected LLM CLI is installed. **CRITICAL: Never silently fail or fal
 LLM_AVAILABLE=true
 case "$LLM_CHOICE" in
   codex)  command -v codex >/dev/null 2>&1 && CODEX_CMD="codex" \
-            || (npx -y codex --version >/dev/null 2>&1 && CODEX_CMD="npx -y codex") \
             || LLM_AVAILABLE=false ;;
   gemini) command -v gemini >/dev/null 2>&1 || LLM_AVAILABLE=false ;;
   ollama) command -v ollama >/dev/null 2>&1 || LLM_AVAILABLE=false ;;
