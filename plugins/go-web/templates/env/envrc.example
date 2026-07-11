@@ -6,6 +6,7 @@
 # SQLite: ./data/{{PROJECT_NAME}}.db
 # MySQL: user:pass@tcp(localhost:3306)/dbname
 export DATABASE_URL="YOUR_DATABASE_URL_HERE"
+export TEST_DATABASE_URL="YOUR_TEST_DATABASE_URL_HERE"
 
 # Server
 export PORT="3000"

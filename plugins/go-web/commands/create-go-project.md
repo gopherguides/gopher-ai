@@ -280,7 +280,7 @@ this order (dependencies matter). `<db>` is the selected database: `postgres`, `
 | app/middleware.go | internal/middleware/middleware.go | |
 | app/handler.go | internal/handler/handler.go | |
 | app/home.go | internal/handler/home.go | |
-| app/testutil.go | internal/testutil/testutil.go | PostgreSQL projects: adapt `NewTestDB` to use `TEST_DATABASE_URL` |
+| app/testutil.<db>.go | internal/testutil/testutil.go | Select the helper matching the database backend |
 | templ/meta.templ | templates/layouts/meta.templ | |
 | templ/base.templ | templates/layouts/base.templ | |
 | templ/home.templ | templates/pages/home.templ | |
@@ -454,13 +454,19 @@ After creating all files:
 
    **IMPORTANT:** This step is required before `make generate` or `make dev` will work, because the server requires DATABASE_URL to be set.
 
-4. **Generate code:**
+4. **Format generated Go files:**
+
+   ```bash
+   go fmt ./...
+   ```
+
+5. **Generate code:**
 
    ```bash
    make generate
    ```
 
-5. **Verify the project builds and runs:**
+6. **Verify the project builds and runs:**
 
    Before committing, verify everything works:
 
@@ -540,22 +546,27 @@ domain entities.
 
 After generating domain-specific code:
 
-1. **Regenerate code:**
+1. **Format generated Go files:**
+   ```bash
+   go fmt ./...
+   ```
+
+2. **Regenerate code:**
    ```bash
    go generate ./...
    ```
 
-2. **Run tests:**
+3. **Run tests:**
    ```bash
    go test -v ./...
    ```
 
-3. **Build to verify compilation:**
+4. **Build to verify compilation:**
    ```bash
    go build ./cmd/server
    ```
 
-4. **Check for errors:**
+5. **Check for errors:**
    ```bash
    cat tmp/air-combined.log 2>/dev/null || echo "No log file yet"
    ```
