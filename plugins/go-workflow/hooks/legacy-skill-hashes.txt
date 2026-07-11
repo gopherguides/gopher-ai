@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 228
+# Total entries: 229
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0322d4a7ddc204a9bf5addfec4e512edaea92ab8f4ebdd0541ca099330a09408 worktree
 03dac3a27d6da4b0a0c64ff6511df17004747e20b47a1691b4f9f030478877b9 commit
@@ -67,6 +67,7 @@
 4a3ca6fdf4b5472fa9f7fe01d22417b902c2fe1e9c332634efcb0d309fe0f6d3 go-error-handling
 4aa381d6fffa28499a0f4ec7b14e5c7b803a795581040e339a395471c1e618f5 go-profiling-optimization
 4ab5ff0022304d99cc9cc07408d83d6d359e3356de39466604b25f5608691f94 go-best-practices
+4c024d7d465cc5d0f0056721f11fd91b3264b39f70766ea4c5e47bf7a236cfa4 ship
 4c73d68a11a5344d79828be510c0477b1b117e5599e605dacb2bc9d6ee466032 go-testing
 4e2871f20d3df8c0f5e1e2009a429af162473b069c3ba2f9b7eca0ce73577c6c ship
 50e96364d86fc6aeb8cb6faac5cd072eaca29b3f4a6f8e0311cb49bd0f29fc66 go-profiling-optimization
