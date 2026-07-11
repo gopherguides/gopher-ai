@@ -136,8 +136,13 @@ budget:
   # (internal/budget/pricing.go DefaultPricingTable) covering gpt-5.5 and
   # falling back to gpt-5.5 rates for unlisted models (gpt-5.6-sol included)
   # — approximate but real enough to pace spend and hard-stop runaway loops.
+  # per_day_max_usd raised 50 -> 150 2026-07-11 PM: the same loop's spend
+  # straddled the UTC day boundary, so today's cap was already blocking
+  # legitimate dispatch before any of today's real work happened. Not a
+  # counter to reset — spend is live off real session telemetry — so the
+  # ceiling is the correct lever. Revisit down once #1224/#1229/#1211 ship.
   enabled: true
-  per_day_max_usd: 50
+  per_day_max_usd: 150
   per_issue_max_usd: 5
   refusal_cooldown_seconds: 3600
   pricing_path: priv/pricing/models.yaml
