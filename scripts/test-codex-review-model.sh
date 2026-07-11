@@ -13,7 +13,7 @@ assert_count() {
   local file="$3"
   local actual
 
-  actual=$(rg -c --fixed-strings "$pattern" "$file" || true)
+  actual=$(grep -cF -- "$pattern" "$file" || true)
   if [ "$actual" != "$expected" ]; then
     echo "FAILED: expected $expected occurrence(s) of '$pattern' in ${file#"$ROOT_DIR/"}, found $actual"
     exit 1
@@ -28,17 +28,17 @@ assert_count 2 'MODEL_CONFIG=()' "$REVIEW_FLOW"
 assert_count 1 'MODEL_CONFIG=()' "$REVIEW_LOOP"
 assert_count 1 'CODEX_REVIEW_MODEL_ARGS=()' "$SHIP_REVIEW"
 
-if rg -n --fixed-strings -- '-c "model=$MODEL"' "$REVIEW_FLOW" "$REVIEW_LOOP" "$SHIP_REVIEW"; then
+if grep -nF -- '-c "model=$MODEL"' "$REVIEW_FLOW" "$REVIEW_LOOP" "$SHIP_REVIEW"; then
   echo "FAILED: native codex review path uses the normal model configuration key"
   exit 1
 fi
 
-if ! rg -q --fixed-strings 'CODEX_MODEL_ARGS=(-m "$MODEL")' "$SHIP_REVIEW"; then
+if ! grep -qF -- 'CODEX_MODEL_ARGS=(-m "$MODEL")' "$SHIP_REVIEW"; then
   echo "FAILED: exhaustive codex exec custom-model override changed"
   exit 1
 fi
 
-if rg -n -- 'review --base.*(model|review_model)=' "$COMPLETE_FALLBACK"; then
+if grep -nE -- 'review --base.*(model|review_model)=' "$COMPLETE_FALLBACK"; then
   echo "FAILED: complete-issue default review fallback overrides a model"
   exit 1
 fi
