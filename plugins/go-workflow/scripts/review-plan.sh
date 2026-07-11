@@ -58,10 +58,20 @@ DIFF_BYTES=$(git diff --no-ext-diff --binary "$RANGE" | wc -c | tr -d ' ')
 FILES=0 ADDITIONS=0 DELETIONS=0 SEMANTIC=0 GENERATED=0 VENDORED=0
 LOCKFILES=0 BINARY=0 DELETION_ONLY=0 MECHANICAL=0 RELEVANT=0 EFFECTIVE_CHANGES=0
 
-while IFS="$(printf '\t')" read -r added deleted path; do
+while IFS= read -r -d '' record; do
+  IFS="$(printf '\t')" read -r added deleted path <<< "$record"
+  old_path=""
+  status=""
+  if [ -z "${path:-}" ]; then
+    IFS= read -r -d '' old_path
+    IFS= read -r -d '' path
+    status=R
+  fi
   [ -n "${path:-}" ] || continue
   FILES=$((FILES + 1))
-  status=$(git diff --name-status "$RANGE" -- "$path" | awk 'NR == 1 { print $1 }')
+  if [ -z "$status" ]; then
+    status=$(git diff --name-status "$RANGE" -- "$path" | awk 'NR == 1 { print $1 }')
+  fi
   category=semantic
   relevant=yes
 
@@ -80,7 +90,9 @@ while IFS="$(printf '\t')" read -r added deleted path; do
       *)
         if [ "${status#D}" != "$status" ] || { [ "$added" -eq 0 ] && [ "$deleted" -gt 0 ]; }; then
           category=deletion-only; DELETION_ONLY=$((DELETION_ONLY + 1))
-        elif git diff -w --quiet "$RANGE" -- "$path"; then
+        elif [ -n "$old_path" ] && git diff -w --quiet "$RANGE" -- "$old_path" "$path"; then
+          category=mechanical; MECHANICAL=$((MECHANICAL + 1))
+        elif [ -z "$old_path" ] && git diff -w --quiet "$RANGE" -- "$path"; then
           category=mechanical; MECHANICAL=$((MECHANICAL + 1))
         else
           SEMANTIC=$((SEMANTIC + 1))
@@ -107,7 +119,7 @@ while IFS="$(printf '\t')" read -r added deleted path; do
     concern="$category-verification"
   fi
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$category" "$concern" "$added" "$deleted" "$status" "$path" >> "$RECORDS"
-done < <(git diff --numstat "$RANGE")
+done < <(git diff --numstat -z "$RANGE")
 
 TOPOLOGY=$(sort -u "$CONCERNS" | awk 'NF { count++ } END { print count + 0 }')
 EFFECTIVE_SCOPE=$((EFFECTIVE_CHANGES + (RELEVANT * 100) + (TOPOLOGY * 300)))

@@ -8,6 +8,7 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 assert_contains() { case "$1" in *"$2"*) ;; *) fail "$3 (missing: $2)" ;; esac; }
+assert_not_contains() { case "$1" in *"$2"*) fail "$3 (unexpected: $2)" ;; *) ;; esac; }
 
 new_repo() {
   local repo="$1"
@@ -86,6 +87,24 @@ output=$(run_plan "$repo" --backend codex)
 assert_contains "$output" "deletion-only=1" "deletion-heavy classification"
 assert_contains "$output" "old.go [deletion-only]" "deletion-heavy assignment"
 echo "  deletion-heavy diff: OK"
+
+repo="$TEST_ROOT/rename"
+new_repo "$repo"
+mkdir -p "$repo/internal/old"
+awk 'BEGIN { print "package old"; for (i = 1; i <= 20; i++) print "var Value" i " = " i }' > "$repo/internal/old/service.go"
+git -C "$repo" add .
+git -C "$repo" commit -qm add-service
+mkdir -p "$repo/internal/new"
+git -C "$repo" mv internal/old/service.go internal/new/service.go
+printf '\nfunc Ready() bool { return true }\n' >> "$repo/internal/new/service.go"
+git -C "$repo" add .
+git -C "$repo" commit -qm rename-service
+output=$(run_plan "$repo" --backend codex)
+assert_contains "$output" "across 1 files" "edited rename stats"
+assert_contains "$output" "semantic=1" "edited rename classification"
+assert_contains "$output" "internal/new/service.go [semantic]" "edited rename assignment"
+assert_not_contains "$output" "=>" "edited rename synthetic path"
+echo "  edited rename diff: OK"
 
 output=$(run_plan "$TEST_ROOT/large" --backend ollama --concurrency no)
 assert_contains "$output" "concurrent=no" "non-concurrent backend capability"
