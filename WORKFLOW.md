@@ -130,9 +130,13 @@ server:
   kanban:
     mode: integration
 budget:
-  # Present for easy enablement; flip enabled: true once model telemetry and
-  # pricing coverage are confirmed on the Detent host.
-  enabled: false
+  # Enabled 2026-07-11 after the gopher-ai#213/#214 no-PR loop burned ~2.4M
+  # tokens across ~170 sessions in one evening. Model telemetry is resolved
+  # (detent#1103) and Detent ships a built-in notional pricing table
+  # (internal/budget/pricing.go DefaultPricingTable) covering gpt-5.5 and
+  # falling back to gpt-5.5 rates for unlisted models (gpt-5.6-sol included)
+  # — approximate but real enough to pace spend and hard-stop runaway loops.
+  enabled: true
   per_day_max_usd: 50
   per_issue_max_usd: 5
   refusal_cooldown_seconds: 3600
