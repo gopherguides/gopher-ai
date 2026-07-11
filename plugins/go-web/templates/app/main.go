@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,11 +28,19 @@ func (s echoServer) Start(address string) error {
 }
 
 func (s echoServer) Shutdown(ctx context.Context) error {
-	return s.e.Server.Shutdown(ctx)
+	err := s.e.Shutdown(ctx)
+	if errors.Is(err, http.ErrServerClosed) {
+		return s.e.Server.Shutdown(ctx)
+	}
+	return err
 }
 
 func (s echoServer) Close() error {
-	return s.e.Server.Close()
+	err := s.e.Close()
+	if errors.Is(err, http.ErrServerClosed) {
+		return s.e.Server.Close()
+	}
+	return err
 }
 
 var _ server = echoServer{}
