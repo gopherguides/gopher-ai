@@ -184,7 +184,7 @@ If `codex exec` returns non-JSON or empty output (and exit code 0), do NOT fall 
 ```bash
 CODEX_REVIEW_MODEL_ARGS=()
 if [ -n "${MODEL:-}" ]; then
-  CODEX_REVIEW_MODEL_ARGS=(-c "model=$MODEL")
+  CODEX_REVIEW_MODEL_ARGS=(-c "review_model=$MODEL")
 fi
 
 $CODEX_CMD review --base "$BASE_BRANCH" "${CODEX_REVIEW_MODEL_ARGS[@]}" -c model_reasoning_effort="high"
