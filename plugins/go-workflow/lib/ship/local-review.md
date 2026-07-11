@@ -263,8 +263,36 @@ EOF
 
 ### Ollama
 
+Resolve the model once per ship run. On re-entry, restore `OLLAMA_MODEL` from
+the state file before resolving so every review pass uses the same model.
+
 ```bash
-ollama run codellama <<EOF
+OLLAMA_MODEL=${OLLAMA_MODEL:-$(jq -r '.ollama_model // empty' "$STATE_FILE")}
+if [ -z "$OLLAMA_MODEL" ]; then
+  set +e
+  OLLAMA_MODEL=$("${CLAUDE_PLUGIN_ROOT}/scripts/select-ollama-model.sh" 2>"/tmp/ollama-select-stderr-$$")
+  OLLAMA_SELECT_EXIT_CODE=$?
+  OLLAMA_SELECT_STDERR=$(cat "/tmp/ollama-select-stderr-$$" 2>/dev/null)
+  rm -f "/tmp/ollama-select-stderr-$$"
+  set -e
+fi
+```
+
+If model selection exits non-zero or returns an empty model, display
+`OLLAMA_SELECT_STDERR` and `AskUserQuestion` with **Retry** / **Debug / Fix** /
+**Use agent-based review** / **Abort**, using the same outcomes as the
+Gemini/Ollama run recovery below. Retry selection; for agent-based review,
+persist `use_agent_review=true` before continuing to that section. Do not
+persist a model or continue to `ollama run` until selection succeeds.
+
+After successful selection, persist the model:
+
+```bash
+TMP="$STATE_FILE.tmp"
+jq --arg model "$OLLAMA_MODEL" '.ollama_model = $model' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+
+echo "Using installed Ollama model: $OLLAMA_MODEL"
+ollama run "$OLLAMA_MODEL" <<EOF
 Review the following code changes for bugs, security issues, performance problems, and best practice violations.
 
 Report each finding with: file path, line number, severity (error/warning/suggestion), and description.
@@ -283,7 +311,7 @@ set +e
 if [ "$LLM_CHOICE" = "gemini" ]; then
   FINDINGS=$(gemini <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
 elif [ "$LLM_CHOICE" = "ollama" ]; then
-  FINDINGS=$(ollama run codellama <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
+  FINDINGS=$(ollama run "$OLLAMA_MODEL" <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
 fi
 LLM_EXIT_CODE=$?
 LLM_STDERR=$(cat "/tmp/llm-review-stderr-$$" 2>/dev/null)
@@ -291,7 +319,10 @@ rm -f "/tmp/llm-review-stderr-$$"
 set -e
 ```
 
-If exit code non-zero or output empty, display diagnostics. `AskUserQuestion` with **Retry** / **Debug / Fix** / **Use agent-based review** / **Abort**.
+If exit code non-zero or output empty, display diagnostics, including the
+selected Ollama model for an Ollama run failure. `AskUserQuestion` with
+**Retry** / **Debug / Fix** / **Use agent-based review** / **Abort**. Retry the
+same persisted model; do not silently select a different one.
 
 ### Agent-based review (only when `USE_AGENT_REVIEW=true`)
 
