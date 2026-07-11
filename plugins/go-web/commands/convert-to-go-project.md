@@ -350,6 +350,8 @@ exist, such as `.gitignore` and `package.json`.
 | db/migration-initial.`<db>`.sql | internal/database/migrations/001_initial.sql | Replace the `examples` table with migrations generated from the existing schema |
 | db/database.`<db>`.go | internal/database/database.go | |
 | app/main.go | cmd/server/main.go | |
+| app/server.go | cmd/server/server.go | |
+| app/main_test.go | cmd/server/main_test.go | |
 | app/slog.go | cmd/server/slog.go | |
 | app/generate.go | cmd/server/generate.go | |
 | app/config.go | internal/config/config.go | |
