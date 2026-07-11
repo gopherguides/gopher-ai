@@ -10,6 +10,7 @@ ERRORS=0
 echo "=== Command File Tests ==="
 
 "$ROOT_DIR/scripts/test-review-plan.sh"
+"$ROOT_DIR/scripts/test-ship-ollama-model.sh"
 
 # Find all command .md files
 COMMAND_FILES=$(find "$ROOT_DIR/plugins" "$ROOT_DIR/shared" -path "*/commands/*.md" -type f 2>/dev/null | sort)

@@ -85,6 +85,8 @@ stop-hook can recover all fields on re-entry. The full jq invocation lives in
 `coverage_threshold`, `coverage_result`, `coverage_tests_generated`,
 `e2e_required`, `e2e_attempted`, `e2e_result`, `e2e_skip_reason`,
 `e2e_pages_tested`, `review_clean`, `head_sha`, `gemini_tier`.
+For Ollama reviews, Step 5 also persists `ollama_model` after resolving it from
+the installed model list.
 
 ## 2. Re-entry Check
 
