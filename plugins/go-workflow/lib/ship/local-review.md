@@ -25,7 +25,7 @@ fi
 If `CODEX_CMD` is still empty, return to the Step 4 prerequisite flow. Do not
 download or execute a package during re-entry detection.
 
-### 5a. Generate Diff
+### 5a. Generate Diff and Coverage Plan
 
 ```bash
 git fetch origin "$BASE_BRANCH" 2>/dev/null || true
@@ -33,6 +33,12 @@ DIFF=$(git diff "origin/${BASE_BRANCH}...HEAD")
 ```
 
 If the diff is empty, skip the review loop entirely — proceed to Phase 2 (Step 9).
+
+Otherwise set `REVIEW_BASE="origin/${BASE_BRANCH}"`,
+`REVIEW_BACKEND="$LLM_CHOICE"`, and `REVIEW_CONCURRENCY=auto`. Read
+`../review-planning.md`, run the shared planner, display the coverage plan, and
+follow its units and final coordinator pass. The planner, not raw diff length,
+determines whether user input is necessary.
 
 ### 5b. Run LLM Review
 
@@ -43,7 +49,7 @@ perspective. When the diff was written by Claude (the usual case), keep the
 
 <!-- SYNC: codex-exec-review — keep aligned with review-loop.md Step 5b -->
 
-#### Codex — Diff Size Estimation and Adaptive Timeout
+#### Codex — Adaptive Timeout
 
 ```bash
 if command -v gtimeout >/dev/null 2>&1; then TIMEOUT_CMD="gtimeout"
@@ -52,26 +58,15 @@ else TIMEOUT_CMD=""
 fi
 
 DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
-DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git' || echo 0)
-echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
 
 # Adaptive timeout sized for high reasoning effort: 300s base + 4s per 100 lines, capped at 900s
 CODEX_TIMEOUT=$(( 300 + (DIFF_LINES / 25) ))
 if [ "$CODEX_TIMEOUT" -gt 900 ]; then CODEX_TIMEOUT=900; fi
 ```
 
-If `DIFF_LINES > 3000`, ask via `AskUserQuestion`:
-
-> **"Large diff detected ($DIFF_LINES lines, $DIFF_FILES files). Codex exec may timeout on diffs this large. How would you like to proceed?"**
-
-| Option | Description |
-|--------|-------------|
-| **Proceed with codex exec** | Run with extended timeout (${CODEX_TIMEOUT}s) — may still timeout |
-| **Use `codex review --base`** | Faster but limited to 2-3 findings per pass (no structured output) |
-| **Use agent-based review** | Claude agent review (no external LLM) |
-| **Skip review** | Proceed to push without LLM review |
-
-For `codex review --base`: set `QUICK_MODE=true`. For agent-based: set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`.
+Use the shared coverage plan for full-context or partitioned execution. If it
+reports `REVIEW_PLAN_REQUIRES_INPUT=yes`, ask whether to narrow coverage,
+change backend, or abort. Never offer to skip review solely due to size.
 
 #### Codex Exhaustive (`codex exec --output-schema`)
 
