@@ -34,7 +34,7 @@ while [ -n "$ARGS" ]; do
     --issue\ *)
       ARGS="${ARGS#--issue }"
       ISSUE_ARG="${ARGS%% *}"
-      ARGS="${ARGS#$ISSUE_ARG}"
+      ARGS="${ARGS#"$ISSUE_ARG"}"
       ARGS="${ARGS# }"
       ;;
     --post*)
@@ -49,7 +49,7 @@ while [ -n "$ARGS" ]; do
       ;;
     [0-9]*)
       PR_ARG="${ARGS%% *}"
-      ARGS="${ARGS#$PR_ARG}"
+      ARGS="${ARGS#"$PR_ARG"}"
       ARGS="${ARGS# }"
       ;;
     *)
@@ -104,7 +104,7 @@ if [ -n "$PR_JSON" ]; then
   BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.baseRefName')
   echo "Found PR #$PR_NUM (base: $BASE_BRANCH)"
 else
-  BASE_BRANCH=$((git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' | grep .) || (git remote show -n origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep .) || echo "main")
+  BASE_BRANCH=$( (git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' | grep .) || (git remote show -n origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep .) || echo "main" )
   echo "No PR found. Using base branch: $BASE_BRANCH"
 fi
 ```
@@ -126,7 +126,7 @@ If `--issue N` was provided instead of a PR, fetch just the issue context. If no
 
 `context-gathering.md` includes the size guard — if combined context exceeds ~6000 characters, use summary format.
 
-## Step 3: Generate Diff
+## Step 3: Generate Diff and Coverage Plan
 
 Based on detected scope:
 
@@ -136,12 +136,14 @@ Based on detected scope:
 
 ```bash
 DIFF=$(git diff "${BASE_BRANCH}...HEAD")
-DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
-DIFF_FILES=$(printf '%s\n' "$DIFF" | grep -c '^diff --git' || echo 0)
-echo "Diff size: $DIFF_LINES lines across $DIFF_FILES files"
+REVIEW_BASE="$BASE_BRANCH"
+REVIEW_BACKEND=agent
+REVIEW_CONCURRENCY=auto
 ```
 
-If diff exceeds 3000 lines, warn via `AskUserQuestion` and offer: continue full / Go-only / specify files.
+Read `../../lib/review-planning.md`, run the shared planner, display its coverage
+plan, and follow it through the final coordinated pass. Do not interrupt solely
+because of raw diff size. Preserve `SCOPE_HINT` as review emphasis.
 
 ## Step 4: Static Analysis
 
@@ -164,11 +166,12 @@ Read `review-criteria.md` for the full criteria, the Quality Score Rubric, the c
 
 Process:
 
-1. Review the diff line-by-line against every criterion in `review-criteria.md`.
+1. Review every unit from the Step 3 coverage plan against every criterion in `review-criteria.md`.
 2. Cross-reference with requirements (when PR/issue context is available): each acceptance criterion → implementation → tests; check for missing requirements and scope creep.
 3. For each existing review thread, mark whether it appears addressed in the current diff.
 4. Include the Step 4 static-analysis results.
 5. Detect breaking changes in exported symbols (grep recipe in `review-criteria.md`).
+6. Run the plan's cross-cutting pass, then verify, deduplicate, and rank findings against the checkout before Step 6.
 
 For the exact findings-table layout, spec-compliance table, review-comments-status table, and the recommendation values — Read `output-format.md`.
 
@@ -218,3 +221,4 @@ Default: `Done`.
 - `review-criteria.md` — full review criteria, Go idiom checks, Quality Score Rubric, confidence scoring, breaking-change detection
 - `fix-and-verify.md` — fix iteration, parallel dispatch, test generation, verification, commit
 - `output-format.md` — findings table, spec-compliance table, review-comments-status table, PR-comment template
+- `../../lib/review-planning.md` — shared adaptive coverage planning and finding coordination

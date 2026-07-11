@@ -30,13 +30,16 @@ the `model` frontmatter in `agents/*.md` unless the user sets
 
 ## Phase 2: Codex Run
 
-After detection succeeds in `SKILL.md`, run codex review on the PR diff with
-an adaptive timeout sized to the diff:
+After detection succeeds in `SKILL.md`, plan and run codex review on the PR
+diff with an adaptive timeout:
 
 ```bash
 DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
 DIFF=$(git diff "origin/${DEFAULT_BRANCH}...HEAD")
 DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
+REVIEW_BASE="origin/${DEFAULT_BRANCH}"
+REVIEW_BACKEND=codex
+REVIEW_CONCURRENCY=auto
 # Adaptive timeout sized for high reasoning effort: 300s base + 4s per 100 lines, capped at 900s
 CODEX_TIMEOUT=$(( 300 + (DIFF_LINES / 25) ))
 if [ "$CODEX_TIMEOUT" -gt 900 ]; then CODEX_TIMEOUT=900; fi
@@ -52,22 +55,18 @@ No model flag is passed in either Codex path. A `model = "..."` pin in
 `~/.codex/config.toml` is respected; leaving it unset lets the Codex CLI choose
 its recommended default.
 
-If the diff exceeds 3000 lines, warn the user via `AskUserQuestion` BEFORE starting:
-
-> "Large diff ($DIFF_LINES lines) — codex exec may timeout. Proceed / Use `codex review --base` / Agent review / Skip?"
-
-Forward the user's choice to the appropriate code path:
-
-- **Proceed** → run codex with the adaptive timeout above.
-- **Use `codex review --base`** → swap the command for `codex review --base origin/${DEFAULT_BRANCH} -c model_reasoning_effort="high"`.
-- **Agent review** → dispatch an Agent subagent (sonnet) with the diff and the same review checklist.
-- **Skip** → warn and proceed directly to Phase 3.
+Read `../../lib/review-planning.md`, run the shared planner, display the coverage
+plan, and execute every unit plus the coordinator pass. Partition sequentially
+when the selected fallback lacks concurrent agents. Ask only when the planner
+reports that reliable coverage is unavailable or a material scope choice is
+required; do not stop solely because the raw diff is large.
 
 Any runtime failure (non-zero exit, timeout, no output) → see `codex-fallback.md`.
 
 ## Address Findings
 
-For each valid codex finding, make the fix. Skip findings that are:
+After verifying and deduplicating all unit findings against the checkout, make
+each valid fix in ranked order. Skip findings that are:
 
 - False positives (the code is correct)
 - Cosmetic-only and don't change observable behavior
