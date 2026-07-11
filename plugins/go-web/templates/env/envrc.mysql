@@ -3,6 +3,7 @@
 
 # Database (MySQL) - UPDATE WITH YOUR CREDENTIALS
 export DATABASE_URL="root@tcp(localhost:3306)/{{PROJECT_NAME}}"
+export TEST_DATABASE_URL="root@tcp(localhost:3306)/{{PROJECT_NAME}}_test"
 
 # Server
 export PORT="3000"

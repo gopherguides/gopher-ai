@@ -133,6 +133,10 @@ else
   echo "OK"
 fi
 
+if ! "$ROOT_DIR/scripts/test-go-web-templates.sh"; then
+  ERRORS=$((ERRORS + 1))
+fi
+
 echo -n "Command files have valid YAML frontmatter... "
 if [ $ERRORS -gt 0 ]; then
   echo "FAIL ($ERRORS of $TOTAL)"

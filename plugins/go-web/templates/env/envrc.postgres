@@ -3,6 +3,7 @@
 
 # Database (PostgreSQL) - UPDATE WITH YOUR CREDENTIALS
 export DATABASE_URL="postgres://localhost:5432/{{PROJECT_NAME}}?sslmode=disable"
+export TEST_DATABASE_URL="postgres://localhost:5432/{{PROJECT_NAME}}_test?sslmode=disable"
 
 # Server
 export PORT="3000"

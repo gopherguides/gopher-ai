@@ -361,7 +361,7 @@ exist, such as `.gitignore` and `package.json`.
 | app/middleware.go | internal/middleware/middleware.go | |
 | app/handler.go | internal/handler/handler.go | |
 | app/home.go | internal/handler/home.go | |
-| app/testutil.go | internal/testutil/testutil.go | PostgreSQL projects: adapt `NewTestDB` to use `TEST_DATABASE_URL` |
+| app/testutil.<db>.go | internal/testutil/testutil.go | Select the helper matching the database backend |
 | templ/meta.templ | templates/layouts/meta.templ | |
 | templ/base.templ | templates/layouts/base.templ | Recreate the original site's header/footer/layout structure here |
 | templ/home.templ | templates/pages/home.templ | Replace the placeholder content with the converted home page |
@@ -574,7 +574,8 @@ After planning, execute the conversion:
    **IMPORTANT:** This step is required before `make generate` or `make dev` will work, because the server requires DATABASE_URL to be set.
 
 6. **Generate tests** for converted handlers
-7. **Verify build and tests** before moving to next
+7. **Run `go fmt ./...`** before verification
+8. **Verify build and tests** before moving to next
 
 ### Generate Tests for Converted Handlers
 
@@ -595,6 +596,7 @@ entities.
 
 After conversion, verify:
 
+- [ ] `go fmt ./...` succeeds before generation, build, and test checks
 - [ ] `make dev` starts the server
 - [ ] All routes respond correctly
 - [ ] Database queries work
@@ -716,10 +718,11 @@ Which approach fits your needs?
 1. Go project structure is created alongside existing files
 2. All migrations are created from existing schema
 3. Core handlers and templates are converted
-4. `go mod tidy` succeeds
-5. `go build ./cmd/server` succeeds without errors
-6. `go test ./...` passes
-7. Server starts and responds to requests
+4. `go fmt ./...` succeeds
+5. `go mod tidy` succeeds
+6. `go build ./cmd/server` succeeds without errors
+7. `go test ./...` passes
+8. Server starts and responds to requests
 
 **When ALL criteria are met, output exactly:**
 

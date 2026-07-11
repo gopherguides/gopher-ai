@@ -56,7 +56,7 @@ writing the file — spaces break Make.
 | db/migration-initial.postgres.sql / .sqlite.sql / .mysql.sql | `internal/database/migrations/001_initial.sql` |
 | db/database.postgres.go / db/database.sqlite.go / db/database.mysql.go | `internal/database/database.go` |
 
-### app/ — always copied
+### app/ — common templates plus one database variant
 
 | Template | Target |
 |----------|--------|
@@ -72,7 +72,7 @@ writing the file — spaces break Make.
 | app/middleware.go | `internal/middleware/middleware.go` |
 | app/handler.go | `internal/handler/handler.go` |
 | app/home.go | `internal/handler/home.go` |
-| app/testutil.go | `internal/testutil/testutil.go` (PostgreSQL projects: adapt `NewTestDB` to use `TEST_DATABASE_URL`) |
+| app/testutil.<db>.go | `internal/testutil/testutil.go` (pick the variant matching the selected database) |
 
 ### templ/ — always copied (except the templUI snippet)
 
