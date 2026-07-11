@@ -16,6 +16,9 @@ Everything else in a template is literal content — in particular, `${DATABASE_
 substitution), `$(BINARY_NAME)` / `$$DATABASE_URL` (Makefile), and `${PORT:-3000}` (.air.toml)
 are NOT placeholders and must be written verbatim.
 
+Generated HTTP servers use a 5-second read-header timeout, 15-second read timeout,
+30-second write timeout, 60-second idle timeout, and 10-second graceful-shutdown deadline.
+
 Some template filenames drop the leading dot (`gitignore`, `envrc.*`, `air.toml`,
 `golangci.yml`) so they stay inert inside this repo; the target paths below are authoritative.
 
@@ -58,6 +61,8 @@ writing the file — spaces break Make.
 | Template | Target |
 |----------|--------|
 | app/main.go | `cmd/server/main.go` |
+| app/server.go | `cmd/server/server.go` |
+| app/main_test.go | `cmd/server/main_test.go` |
 | app/slog.go | `cmd/server/slog.go` |
 | app/generate.go | `cmd/server/generate.go` |
 | app/config.go | `internal/config/config.go` |
