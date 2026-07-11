@@ -162,7 +162,7 @@ Standard `codex review`, faster but capped at 2-3 findings per pass.
 ```bash
 MODEL_CONFIG=()
 if [ -n "$MODEL" ]; then
-  MODEL_CONFIG=(-c "model=$MODEL")
+  MODEL_CONFIG=(-c "review_model=$MODEL")
 fi
 
 # For changes vs branch:

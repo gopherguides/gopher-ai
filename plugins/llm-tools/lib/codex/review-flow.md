@@ -49,7 +49,7 @@ Ask all review configuration questions in a **single `AskUserQuestion` call** wi
 | Option | Description |
 |--------|-------------|
 | Provider default (Recommended) | Let Codex CLI choose the latest recommended Codex model |
-| Custom model ID | Enter an exact model ID; only this choice passes `-m` or `-c model=...` |
+| Custom model ID | Enter an exact model ID; only this choice passes `-m` for exhaustive `codex exec` or `-c review_model=...` for native `codex review` |
 
 **Question 4 — "Review depth?"**
 
@@ -293,7 +293,7 @@ Build optional model config first. Leave `MODEL_CONFIG` empty for provider defau
 ```bash
 MODEL_CONFIG=()
 if [ -n "$MODEL" ]; then
-  MODEL_CONFIG=(-c "model=$MODEL")
+  MODEL_CONFIG=(-c "review_model=$MODEL")
 fi
 ```
 
@@ -472,7 +472,7 @@ Review these changes against the requirements above. Ensure the implementation a
 ```bash
 MODEL_CONFIG=()
 if [ -n "$MODEL" ]; then
-  MODEL_CONFIG=(-c "model=$MODEL")
+  MODEL_CONFIG=(-c "review_model=$MODEL")
 fi
 
 $CODEX_CMD review "${MODEL_CONFIG[@]}" -c model_reasoning_effort="high" - <<'EOF'

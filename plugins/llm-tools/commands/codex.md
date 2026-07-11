@@ -34,7 +34,7 @@ Display usage and ask for input:
 | Option | Behavior |
 |--------|----------|
 | Provider default | Let Codex CLI choose the latest recommended Codex model |
-| Custom model ID | Pass an explicit model with `-m` or `-c model=...` |
+| Custom model ID | Pass an explicit model with `-m` for `codex exec` or `-c review_model=...` for `codex review` |
 
 Ask the user: "What would you like Codex to do?"
 
