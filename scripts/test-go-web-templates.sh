@@ -18,9 +18,10 @@ require_literal() {
   local text="$2"
   local label="$3"
 
-  if ! rg -Fq -- "$text" "$file"; then
-    fail "$label"
-  fi
+  case "$(<"$file")" in
+    *"$text"*) ;;
+    *) fail "$label" ;;
+  esac
 }
 
 reject_literal() {
@@ -28,9 +29,10 @@ reject_literal() {
   local text="$2"
   local label="$3"
 
-  if rg -Fq -- "$text" "$file"; then
-    fail "$label"
-  fi
+  case "$(<"$file")" in
+    *"$text"*) fail "$label" ;;
+    *) ;;
+  esac
 }
 
 write_fixture_support() {
@@ -190,8 +192,11 @@ render_and_verify_fixture() {
     return
   fi
 
-  if [ "$backend" != "sqlite" ] && ! printf '%s\n' "$output" | rg -Fq -- 'TEST_DATABASE_URL is required'; then
-    fail "$backend helper did not report its missing test prerequisite"
+  if [ "$backend" != "sqlite" ]; then
+    case "$output" in
+      *"TEST_DATABASE_URL is required"*) ;;
+      *) fail "$backend helper did not report its missing test prerequisite" ;;
+    esac
   fi
 }
 
