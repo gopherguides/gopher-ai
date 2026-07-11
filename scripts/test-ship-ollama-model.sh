@@ -66,5 +66,6 @@ if grep -q "ollama run codellama" "$LOCAL_REVIEW"; then
 fi
 grep -q "ollama run \"\\\$OLLAMA_MODEL\"" "$LOCAL_REVIEW" || fail "resolved model is not used for Ollama runs"
 grep -q "same persisted model" "$LOCAL_REVIEW" || fail "Ollama run retry does not preserve the selected model"
+grep -q "Retry.*Debug / Fix.*Use agent-based review.*Abort" "$LOCAL_REVIEW" || fail "model-selection failure has no recovery path"
 
 echo "All ship Ollama model tests passed."

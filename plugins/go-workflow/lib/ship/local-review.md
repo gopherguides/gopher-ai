@@ -269,14 +269,27 @@ the state file before resolving so every review pass uses the same model.
 ```bash
 OLLAMA_MODEL=${OLLAMA_MODEL:-$(jq -r '.ollama_model // empty' "$STATE_FILE")}
 if [ -z "$OLLAMA_MODEL" ]; then
-  if ! OLLAMA_MODEL=$("${CLAUDE_PLUGIN_ROOT}/scripts/select-ollama-model.sh"); then
-    echo "Ollama model selection failed. Fix the reported prerequisite, choose another review backend, or abort."
-    exit 1
-  fi
-
-  TMP="$STATE_FILE.tmp"
-  jq --arg model "$OLLAMA_MODEL" '.ollama_model = $model' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  set +e
+  OLLAMA_MODEL=$("${CLAUDE_PLUGIN_ROOT}/scripts/select-ollama-model.sh" 2>"/tmp/ollama-select-stderr-$$")
+  OLLAMA_SELECT_EXIT_CODE=$?
+  OLLAMA_SELECT_STDERR=$(cat "/tmp/ollama-select-stderr-$$" 2>/dev/null)
+  rm -f "/tmp/ollama-select-stderr-$$"
+  set -e
 fi
+```
+
+If model selection exits non-zero or returns an empty model, display
+`OLLAMA_SELECT_STDERR` and `AskUserQuestion` with **Retry** / **Debug / Fix** /
+**Use agent-based review** / **Abort**, using the same outcomes as the
+Gemini/Ollama run recovery below. Retry selection; for agent-based review,
+persist `use_agent_review=true` before continuing to that section. Do not
+persist a model or continue to `ollama run` until selection succeeds.
+
+After successful selection, persist the model:
+
+```bash
+TMP="$STATE_FILE.tmp"
+jq --arg model "$OLLAMA_MODEL" '.ollama_model = $model' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 
 echo "Using installed Ollama model: $OLLAMA_MODEL"
 ollama run "$OLLAMA_MODEL" <<EOF
