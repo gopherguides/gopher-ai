@@ -141,8 +141,12 @@ budget:
   # legitimate dispatch before any of today's real work happened. Not a
   # counter to reset — spend is live off real session telemetry — so the
   # ceiling is the correct lever. Revisit down once #1224/#1229/#1211 ship.
+  # per_day_max_usd raised 150 -> 250 2026-07-11 PM: #214 is the last item
+  # blocking this project's plugin-marketplace release and keeps hitting the
+  # daily cap; operator explicitly authorized a heavy, unattended work day.
+  # Revisit down tomorrow.
   enabled: true
-  per_day_max_usd: 150
+  per_day_max_usd: 250
   per_issue_max_usd: 5
   refusal_cooldown_seconds: 3600
   pricing_path: priv/pricing/models.yaml
