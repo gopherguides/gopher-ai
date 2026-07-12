@@ -157,8 +157,14 @@ budget:
   # unblock lever. Runaway risk is bounded by the no-progress diff
   # fingerprint brake (detent#1232): identical no-commit sessions park after
   # 3 attempts. Still the sole release blocker. Revisit down once #214 ships.
+  # per_day_max_usd raised 250 -> 600 2026-07-12 PM: WORKAROUND for
+  # digitaldrywood/detent#1279 — the daily cap is charged FLEET-WIDE spend on
+  # a shared runtime, so detent's ~$366 day exhausted this project's cap while
+  # gopher-ai itself spent ~$8. 600 keeps a real (if coarse) catastrophe
+  # ceiling above plausible full-fleet days. Restore to a project-scoped
+  # value (e.g. 100) once #1279 ships.
   enabled: true
-  per_day_max_usd: 250
+  per_day_max_usd: 600
   per_issue_max_usd: 100
   refusal_cooldown_seconds: 3600
   pricing_path: priv/pricing/models.yaml
