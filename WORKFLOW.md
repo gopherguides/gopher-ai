@@ -57,11 +57,11 @@ agent:
   max_concurrent_agents: 3
   max_turns: 20
   max_retry_backoff_ms: 300000
-  # Spend-progress breaker limit raised from the $3 binary default
-  # 2026-07-12: a single xhigh session costs $5-20, so the default parks
-  # healthy serialized work as false positives (breaker is blind to
-  # advancing PRs — detent#1276). Revisit once #1276 ships.
-  no_progress_spend_limit_usd: 25
+  # Spend-progress breaker DISABLED 2026-07-12 (0 = off): flat Codex
+  # subscription — notional-dollar brakes were parking healthy work
+  # (detent#1276). Real brakes remain: no-progress parking, session token
+  # caps, provider capacity pauses.
+  no_progress_spend_limit_usd: 0
   # Runaway-session guard, not a context limit; total_tokens re-counts cached
   # context every turn, so healthy sessions accrue millions of tokens quickly.
   # No max_session_context_multiplier: at 4x it capped sessions at ~1M tokens
@@ -162,13 +162,13 @@ budget:
   # unblock lever. Runaway risk is bounded by the no-progress diff
   # fingerprint brake (detent#1232): identical no-commit sessions park after
   # 3 attempts. Still the sole release blocker. Revisit down once #214 ships.
-  # per_day_max_usd raised 250 -> 600 2026-07-12 PM: WORKAROUND for
-  # digitaldrywood/detent#1279 — the daily cap is charged FLEET-WIDE spend on
-  # a shared runtime, so detent's ~$366 day exhausted this project's cap while
-  # gopher-ai itself spent ~$8. 600 keeps a real (if coarse) catastrophe
-  # ceiling above plausible full-fleet days. Restore to a project-scoped
-  # value (e.g. 100) once #1279 ships.
-  enabled: true
+  # DISABLED 2026-07-12 PM (operator decision): flat Codex subscription —
+  # these USD caps are notional and spent the whole day blocking the sole
+  # release blocker (#214) over fake dollars, including charging this
+  # project the entire fleet's spend (detent#1279). Real constraints on
+  # subscription auth: provider rate windows (capacity pauses) and
+  # outcome-based brakes. Re-enable only behind an auth-aware design.
+  enabled: false
   per_day_max_usd: 600
   per_issue_max_usd: 100
   refusal_cooldown_seconds: 3600
