@@ -91,12 +91,14 @@ if [ -n "$MERGE_METHOD" ]; then
     merge|squash|rebase) ;;
     *)
       echo "Invalid SHIP_MERGE_STRATEGY '$MERGE_METHOD'. Expected merge, squash, or rebase."
+      "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
       exit 1
       ;;
   esac
 
   if ! echo "$MERGE_SETTINGS" | jq -e --arg method "$MERGE_METHOD" '.[$method] == true' >/dev/null 2>&1; then
     echo "Configured merge strategy '$MERGE_METHOD' is not allowed by $OWNER/$REPO."
+    "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
     exit 1
   fi
 elif echo "$MERGE_SETTINGS" | jq -e '.squash == true' >/dev/null 2>&1; then
@@ -107,6 +109,7 @@ elif echo "$MERGE_SETTINGS" | jq -e '.merge == true' >/dev/null 2>&1; then
   MERGE_METHOD="merge"
 else
   echo "No allowed merge strategy is configured for $OWNER/$REPO."
+  "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
   exit 1
 fi
 

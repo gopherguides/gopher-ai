@@ -83,6 +83,10 @@ require_text "$MERGE_DOC" "gh pr merge \"\\\$PR_NUM\" --delete-branch" \
   "ship merge queues must omit the merge-strategy flag"
 
 MERGE_STRATEGY_BLOCK=$(mktemp /tmp/gopher-ai-merge-strategy-XXXXXX)
+MERGE_FIXTURE_PLUGIN_ROOT=$(mktemp -d /tmp/gopher-ai-merge-fixture-XXXXXX)
+MERGE_FIXTURE_WORKTREE=$(mktemp -d /tmp/gopher-ai-merge-worktree-XXXXXX)
+mkdir -p "$MERGE_FIXTURE_PLUGIN_ROOT/scripts"
+cp "$ROOT_DIR/plugins/go-workflow/scripts/cleanup-loop.sh" "$MERGE_FIXTURE_PLUGIN_ROOT/scripts/cleanup-loop.sh"
 awk '
   /^## 13c\./ { section=1 }
   section && /^```bash$/ { block=1; next }
@@ -100,7 +104,10 @@ run_merge_strategy_fixture() {
   local status
 
   set +e
-  output=$(MERGE_TEST_SETTINGS="$settings" SHIP_MERGE_STRATEGY="$configured_strategy" bash -c '
+  output=$(CLAUDE_PLUGIN_ROOT="$MERGE_FIXTURE_PLUGIN_ROOT" MERGE_FIXTURE_WORKTREE="$MERGE_FIXTURE_WORKTREE" MERGE_TEST_SETTINGS="$settings" SHIP_MERGE_STRATEGY="$configured_strategy" bash -c '
+    mkdir -p "$MERGE_FIXTURE_WORKTREE/.local/state"
+    touch "$MERGE_FIXTURE_WORKTREE/.local/state/ship.loop.local.json"
+    cd "$MERGE_FIXTURE_WORKTREE"
     gh() {
       if [ "$1" = "repo" ]; then
         if [[ "$*" == *".owner.login"* ]]; then
@@ -147,8 +154,28 @@ run_merge_strategy_fixture \
   '{"merge":false,"squash":true,"rebase":true}' \
   1 \
   "Configured merge strategy 'merge' is not allowed"
+run_merge_strategy_fixture \
+  "invalid explicit strategy must fail and clean up" \
+  "invalid" \
+  '{"merge":true,"squash":true,"rebase":true}' \
+  1 \
+  "Loop 'ship' cancelled"
+run_merge_strategy_fixture \
+  "forbidden explicit strategy must clean up" \
+  "merge" \
+  '{"merge":false,"squash":true,"rebase":true}' \
+  1 \
+  "Loop 'ship' cancelled"
+run_merge_strategy_fixture \
+  "repositories without an allowed strategy must fail and clean up" \
+  "" \
+  '{"merge":false,"squash":false,"rebase":false}' \
+  1 \
+  "Loop 'ship' cancelled"
 
 rm -f "$MERGE_STRATEGY_BLOCK"
+rm -rf "$MERGE_FIXTURE_PLUGIN_ROOT"
+rm -rf "$MERGE_FIXTURE_WORKTREE"
 
 require_text "$STATE_FIELDS" "blocked" \
   "ship state fields must document blocked E2E result"
