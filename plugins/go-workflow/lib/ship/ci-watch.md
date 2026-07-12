@@ -67,16 +67,19 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   git checkout "$PR_HEAD_BRANCH"
   git reset --hard "$BRANCH_REMOTE/$PR_HEAD_BRANCH"
   TMP=".local/state/ship.loop.local.json.tmp"
-  jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "reviewing" \
+  jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "review-required" \
     '.head_sha = $sha | .pass = $pass | .review_clean = $rc | .phase = $phase' \
     ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
-  # Go back to Step 5 (reviewing)
+  # Go back to Step 5, which marks the review in-flight before dispatch.
 fi
 ```
 
 The reset on SHA shift is critical: if a concurrent push lands content that
 wasn't reviewed locally, we MUST re-review it. The pass counter is reset to
-0 so the user gets full max-passes coverage of the new code.
+0 so the user gets full max-passes coverage of the new code. The distinct
+`review-required` phase survives a session boundary because no reviewer has
+started yet; once Step 5 changes it to `reviewing`, the normal expired-review
+recovery applies.
 
 ## 10e. CI failure handling
 

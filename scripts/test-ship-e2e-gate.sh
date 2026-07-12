@@ -10,6 +10,7 @@ LOCAL_REVIEW="$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
 SHIP_SKILL="$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
 MERGE_DOC="$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"
 STATE_FIELDS="$ROOT_DIR/plugins/go-workflow/lib/ship/state-fields.md"
+CI_WATCH="$ROOT_DIR/plugins/go-workflow/lib/ship/ci-watch.md"
 RESUME_MESSAGES="$ROOT_DIR/plugins/go-workflow/lib/ship/resume-messages.json"
 STOP_HOOK="$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh"
 LOOP_LIB="$ROOT_DIR/plugins/go-workflow/lib/loop-state.sh"
@@ -77,6 +78,10 @@ require_text "$STATE_FIELDS" "blocked" \
 
 require_text "$SHIP_SKILL" '\| `reviewing` \| Expired review recovery, then Step 9' \
   "ship re-entry must not resume an expired in-session review"
+require_text "$SHIP_SKILL" '\| `review-required` \| Step 5' \
+  "ship must preserve a not-yet-started review after a PR head shift"
+require_text "$CI_WATCH" 'phase "review-required"' \
+  "CI head shifts must request one new review without marking it in flight"
 require_text "$SHIP_SKILL" "Never end a session with staged or committed-but-unpushed work" \
   "ship must make validated work durable before yielding"
 require_text "$LOCAL_REVIEW" "run_in_background=false" \

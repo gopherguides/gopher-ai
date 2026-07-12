@@ -112,6 +112,7 @@ Then jump to the matching phase:
 | Phase | Step |
 |-------|------|
 | `reviewing` | Expired review recovery, then Step 9 (Phase 2) |
+| `review-required` | Step 5 (Phase 1) |
 | `fixing` | Step 6 (Phase 1) |
 | `verifying` | Step 7 (Phase 1) |
 | `coverage-check` | Step 7.5 (Phase 1) |
@@ -123,6 +124,11 @@ Then jump to the matching phase:
 | `merging` | Step 13 (Phase 6) |
 
 If `PHASE` is empty/unset → fresh start. Continue to Step 3.
+
+`review-required` is a durable request to start one review, used when CI
+detects that the PR head changed. Step 5 immediately changes it to
+`reviewing` before dispatch. This keeps a review that has not started distinct
+from an in-flight review that expired at a session boundary.
 
 ### Expired review recovery
 

@@ -1,5 +1,6 @@
 {
   "reviewing": "The prior in-session review is void. Do not start another review. Commit the validated staged diff, push every local commit, and ensure a non-draft PR exists before yielding.",
+  "review-required": "The PR head shifted before review started. Run one synchronous local review against the new head, then continue verification and shipping.",
   "fixing": "Continue fixing LLM review findings.",
   "verifying": "Re-run verification: build, test, lint.",
   "coverage-check": "Resume coverage analysis for changed files.",
