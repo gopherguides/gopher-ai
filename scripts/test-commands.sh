@@ -158,44 +158,44 @@ DB_TEMPLATES=(
 for entry in "${DB_TEMPLATES[@]}"; do
   file="${entry%%:*}"
   dialect="${entry#*:}"
-  open_line=$(rg -n 'pool, err := pgxpool.New|conn, err := sql.Open' "$file" | head -1 | cut -d: -f1)
-  cleanup_line=$(rg -n 'defer func\(\)' "$file" | head -1 | cut -d: -f1)
-  ping_line=$(rg -n 'Ping(Context)?\(ctx\)' "$file" | head -1 | cut -d: -f1)
-  migration_line=$(rg -n 'db\.migrate\(ctx\)' "$file" | head -1 | cut -d: -f1)
+  open_line=$(grep -nE 'pool, err := pgxpool.New|conn, err := sql.Open' "$file" | head -1 | cut -d: -f1)
+  cleanup_line=$(grep -nE 'defer func\(\)' "$file" | head -1 | cut -d: -f1)
+  ping_line=$(grep -nE 'Ping(Context)?\(ctx\)' "$file" | head -1 | cut -d: -f1)
+  migration_line=$(grep -nE 'db\.migrate\(ctx\)' "$file" | head -1 | cut -d: -f1)
 
   if [ -z "$open_line" ] || [ -z "$cleanup_line" ] || [ -z "$ping_line" ] || [ -z "$migration_line" ] ||
      [ "$cleanup_line" -le "$open_line" ] || [ "$cleanup_line" -ge "$ping_line" ] || [ "$cleanup_line" -ge "$migration_line" ]; then
     DB_TEMPLATE_FAILURE="${file#"$ROOT_DIR"/} does not guard every post-open failure with cleanup"
     break
   fi
-  if ! rg -Fq "goose.NewProvider(" "$file" ||
-     ! rg -Fq "$dialect" "$file" ||
-     ! rg -Fq 'goose.WithDisableGlobalRegistry(true)' "$file" ||
-     ! rg -Fq 'provider.Up(ctx)' "$file" ||
-     ! rg -Fq 'fs.Sub(migrationsFS, "migrations")' "$file"; then
+  if ! grep -Fq "goose.NewProvider(" "$file" ||
+     ! grep -Fq "$dialect" "$file" ||
+     ! grep -Fq 'goose.WithDisableGlobalRegistry(true)' "$file" ||
+     ! grep -Fq 'provider.Up(ctx)' "$file" ||
+     ! grep -Fq 'fs.Sub(migrationsFS, "migrations")' "$file"; then
     DB_TEMPLATE_FAILURE="${file#"$ROOT_DIR"/} does not use a context-aware instance provider"
     break
   fi
-  if ! rg -Fq 'func (db *DB) Close() error' "$file"; then
+  if ! grep -Fq 'func (db *DB) Close() error' "$file"; then
     DB_TEMPLATE_FAILURE="${file#"$ROOT_DIR"/} does not expose shutdown errors consistently"
     break
   fi
 done
 
-if [ -z "$DB_TEMPLATE_FAILURE" ] && rg -n 'goose\.(SetBaseFS|SetDialect|Up)\(' "${DB_TEMPLATES[@]%%:*}" >/dev/null; then
+if [ -z "$DB_TEMPLATE_FAILURE" ] && grep -nE 'goose\.(SetBaseFS|SetDialect|Up)\(' "${DB_TEMPLATES[@]%%:*}" >/dev/null; then
   DB_TEMPLATE_FAILURE="database templates still mutate goose package globals"
 fi
 if [ -z "$DB_TEMPLATE_FAILURE" ] &&
-   { ! rg -Fq 'errors.Join(err, fmt.Errorf("failed to close database: %w", closeErr))' "$ROOT_DIR/plugins/go-web/templates/db/database.sqlite.go" ||
-     ! rg -Fq 'errors.Join(err, fmt.Errorf("failed to close database: %w", closeErr))' "$ROOT_DIR/plugins/go-web/templates/db/database.mysql.go" ||
-     ! rg -Fq 'errors.Join(err, fmt.Errorf("failed to close migration connection: %w", closeErr))' "$ROOT_DIR/plugins/go-web/templates/db/database.postgres.go"; }; then
+   { ! grep -Fq 'errors.Join(err, fmt.Errorf("failed to close database: %w", closeErr))' "$ROOT_DIR/plugins/go-web/templates/db/database.sqlite.go" ||
+     ! grep -Fq 'errors.Join(err, fmt.Errorf("failed to close database: %w", closeErr))' "$ROOT_DIR/plugins/go-web/templates/db/database.mysql.go" ||
+     ! grep -Fq 'errors.Join(err, fmt.Errorf("failed to close migration connection: %w", closeErr))' "$ROOT_DIR/plugins/go-web/templates/db/database.postgres.go"; }; then
   DB_TEMPLATE_FAILURE="database close errors are not preserved"
 fi
 if [ -z "$DB_TEMPLATE_FAILURE" ] &&
-   { ! rg -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/main.go" ||
-     ! rg -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/testutil.postgres.go" ||
-     ! rg -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/testutil.sqlite.go" ||
-     ! rg -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/testutil.mysql.go"; }; then
+   { ! grep -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/main.go" ||
+     ! grep -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/testutil.postgres.go" ||
+     ! grep -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/testutil.sqlite.go" ||
+     ! grep -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/testutil.mysql.go"; }; then
   DB_TEMPLATE_FAILURE="generated shutdown call sites discard database close errors"
 fi
 
