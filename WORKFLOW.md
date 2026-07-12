@@ -150,9 +150,16 @@ budget:
   # the fix) permanently pinned it past the $5 cap even though it has had
   # zero sessions since being unblocked this morning. It's the sole item
   # blocking this project's release. Revisit down once #214 ships.
+  # per_issue_max_usd raised 75 -> 100 2026-07-12 PM: #214's lifetime spend
+  # reached ~$66 after its overnight sessions, so spend + projected cost of
+  # one more dispatch trips the $75 ceiling and the v0.32 hard hold (detent
+  # #1251) correctly refuses it — a deliberate raise is now the designed
+  # unblock lever. Runaway risk is bounded by the no-progress diff
+  # fingerprint brake (detent#1232): identical no-commit sessions park after
+  # 3 attempts. Still the sole release blocker. Revisit down once #214 ships.
   enabled: true
   per_day_max_usd: 250
-  per_issue_max_usd: 75
+  per_issue_max_usd: 100
   refusal_cooldown_seconds: 3600
   pricing_path: priv/pricing/models.yaml
 hooks:
