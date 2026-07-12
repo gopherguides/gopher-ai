@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 232
+# Total entries: 233
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0322d4a7ddc204a9bf5addfec4e512edaea92ab8f4ebdd0541ca099330a09408 worktree
 03dac3a27d6da4b0a0c64ff6511df17004747e20b47a1691b4f9f030478877b9 commit
@@ -238,5 +238,6 @@ fba7e012a27a37cc5adc0c7c1b165a39367ff9718069d848a7530ea9893ceffa start-issue
 fbdec027766fa0a9ff4db653bf798163e4152def6ecfdcab90ec2c7313716562 ship
 fd406fb3c75d1c7a52213d6a76671bfdafdf2e189d0c1aeeaa3baeaf14903418 templui
 fe04f2c0e2f9443c094569956f56cbb4a429c480a063017aa14efccfd8d05e34 gopher-guides
+fe65ab6e9a73dda7e1c5a106ae0b61ba70e4023ce0a0358fc9a833c15637d3d2 ship
 fe9d92a44b8384540e6e98a8657acf7403338d716b3502300eea4d411ec27bb4 go-profiling-optimization
 ff3e7bea631be4948e237cb9a9654e31f5194274831494df45c939004c3660c2 remove-worktree
