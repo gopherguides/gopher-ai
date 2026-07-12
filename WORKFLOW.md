@@ -145,9 +145,14 @@ budget:
   # blocking this project's plugin-marketplace release and keeps hitting the
   # daily cap; operator explicitly authorized a heavy, unattended work day.
   # Revisit down tomorrow.
+  # per_issue_max_usd raised 5 -> 75 2026-07-12: #214's per-issue spend is
+  # cumulative-lifetime with no reset, so the original loop's ~$58 (before
+  # the fix) permanently pinned it past the $5 cap even though it has had
+  # zero sessions since being unblocked this morning. It's the sole item
+  # blocking this project's release. Revisit down once #214 ships.
   enabled: true
   per_day_max_usd: 250
-  per_issue_max_usd: 5
+  per_issue_max_usd: 75
   refusal_cooldown_seconds: 3600
   pricing_path: priv/pricing/models.yaml
 hooks:
