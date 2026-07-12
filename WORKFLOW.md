@@ -57,6 +57,11 @@ agent:
   max_concurrent_agents: 3
   max_turns: 20
   max_retry_backoff_ms: 300000
+  # Spend-progress breaker limit raised from the $3 binary default
+  # 2026-07-12: a single xhigh session costs $5-20, so the default parks
+  # healthy serialized work as false positives (breaker is blind to
+  # advancing PRs — detent#1276). Revisit once #1276 ships.
+  no_progress_spend_limit_usd: 25
   # Runaway-session guard, not a context limit; total_tokens re-counts cached
   # context every turn, so healthy sessions accrue millions of tokens quickly.
   # No max_session_context_multiplier: at 4x it capped sessions at ~1M tokens
