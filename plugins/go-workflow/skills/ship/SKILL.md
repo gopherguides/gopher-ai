@@ -84,7 +84,8 @@ stop-hook can recover all fields on re-entry. The full jq invocation lives in
 `bot_review_baseline`, `discovered_bots`, `has_ci`, `skip_coverage`,
 `coverage_threshold`, `coverage_result`, `coverage_tests_generated`,
 `e2e_required`, `e2e_attempted`, `e2e_result`, `e2e_skip_reason`,
-`e2e_pages_tested`, `review_clean`, `head_sha`, `gemini_tier`.
+`e2e_pages_tested`, `review_clean`, `review_result`,
+`review_skip_reason`, `head_sha`, `gemini_tier`.
 For Ollama reviews, Step 5 also persists `ollama_model` after resolving it from
 the installed model list.
 
@@ -101,11 +102,16 @@ listed in Step 1 from state file via `jq -r '.<field> // empty'`. If
 `review_clean == "true"`, set `REVIEW_CLEAN=true` to preserve the clean-review
 fast path.
 
+An in-session review is never resumable. If `PHASE == "reviewing"` on
+re-entry, the reviewer from the earlier session no longer exists. Do not wait
+for it and do not dispatch a replacement. Follow **Expired review recovery**
+below.
+
 Then jump to the matching phase:
 
 | Phase | Step |
 |-------|------|
-| `reviewing` | Step 5 (Phase 1) |
+| `reviewing` | Expired review recovery, then Step 9 (Phase 2) |
 | `fixing` | Step 6 (Phase 1) |
 | `verifying` | Step 7 (Phase 1) |
 | `coverage-check` | Step 7.5 (Phase 1) |
@@ -117,6 +123,24 @@ Then jump to the matching phase:
 | `merging` | Step 13 (Phase 6) |
 
 If `PHASE` is empty/unset → fresh start. Continue to Step 3.
+
+### Expired review recovery
+
+This path is for a successor session only. Treat the earlier review as void and
+make the validated work durable before doing anything else:
+
+1. Persist `review_result="void"` and
+   `review_skip_reason="session-boundary"`. Never reuse a prior agent handle or
+   review output.
+2. If the index contains validated staged changes, inspect the staged diff and
+   commit exactly those files with a conventional message that describes the
+   change. Do not label this commit as review findings.
+3. Set the phase to `pushing`, push every local commit, and ensure a non-draft
+   PR exists via Step 9. Do all three in the same session before yielding.
+
+If there is no staged diff, continue with the existing local commits. Unstaged
+or untracked files were not part of the validated index; leave them untouched
+and report them after the PR is open.
 
 ## 3. Detect Context
 
@@ -161,6 +185,13 @@ AND `use_agent_review!="true"`, re-present the `AskUserQuestion`.
 
 LLM review → fix → verify → coverage gate (final pass) → E2E smoke (when
 applicable) → commit → loop decision.
+
+Agent-backed reviews are session-local: run them synchronously in the
+foreground and wait for their final response. In a headless worker context,
+skip an agent-backed review when it cannot finish within the current session;
+persist the skip reason and proceed through commit, push, and non-draft PR
+creation. Never end a session with staged or committed-but-unpushed work while
+waiting on a background process.
 
 **Coverage gate (Step 7.5, final pass only):** Read
 `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow

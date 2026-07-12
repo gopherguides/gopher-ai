@@ -1,5 +1,5 @@
 {
-  "reviewing": "Resume LLM review pass.",
+  "reviewing": "The prior in-session review is void. Do not start another review. Commit the validated staged diff, push every local commit, and ensure a non-draft PR exists before yielding.",
   "fixing": "Continue fixing LLM review findings.",
   "verifying": "Re-run verification: build, test, lint.",
   "coverage-check": "Resume coverage analysis for changed files.",

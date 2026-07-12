@@ -20,7 +20,7 @@ Handle the user's choice:
 
 - **Retry** → Re-run the availability check from `SKILL.md` Phase 2.
 - **Install instructions** → Display: `npm install -g @openai/codex`, then run `codex login` for ChatGPT sign-in or API-key authentication. Then re-check.
-- **Use Fable subagent review** → Dispatch a fresh-context Agent subagent with the same review prompt and JSON schema contract (see the Fable section in go-workflow `lib/ship/local-review.md`); parse findings through the same structured path. Never use `claude -p` — it bills metered API usage, not the subscription.
+- **Use Fable subagent review** → Dispatch a fresh-context Agent subagent synchronously with `run_in_background=false`, wait for its final response in the current session, and parse it through the same structured path (see the Fable section in go-workflow `lib/ship/local-review.md`). Never use `claude -p` — it bills metered API usage, not the subscription. If it cannot complete before a headless session ends, treat the review as skipped and proceed to Phase 3; never resume or replace it in a successor session.
 - **Skip review** → Warn "Self-review skipped — proceeding to E2E verification without code review." and go directly to Phase 3.
 
 ## Codex Exec Fails at Runtime

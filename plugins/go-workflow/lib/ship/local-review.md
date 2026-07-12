@@ -12,7 +12,22 @@ PASS=$(jq -r '.pass // 0' ".local/state/ship.loop.local.json")
 
 The pass counter is incremented in Step 8 (after commit), not here. This prevents burning a pass number if the session exits mid-review.
 
-**Re-detect `$CODEX_CMD` on re-entry** (re-entry jumps directly to Step 5, skipping Step 4):
+### Session-boundary rule for agent-backed reviews
+
+Fable and agent-based reviews must run synchronously in the foreground. Never
+use `run_in_background: true`, return while an agent is still running, or
+persist an agent handle for a successor session. Wait for the final response
+and parse it before leaving Step 5.
+
+In a headless worker context, if an agent-backed review cannot complete in the
+current session, do not start it. Persist `review_result="skipped"` and
+`review_skip_reason="headless-worker"`, then continue through verification,
+commit, push, and non-draft PR creation. PR CI is the authoritative remote
+gate. A successor that finds `phase="reviewing"` follows the expired-review
+recovery in `skills/ship/SKILL.md`; it never restarts the review.
+
+**Re-detect `$CODEX_CMD` when Step 5 is resumed within the same session**
+(the stop hook can jump directly here, skipping Step 4):
 
 ```bash
 if [ "$LLM_CHOICE" = "codex" ] && [ -z "${CODEX_CMD:-}" ]; then
@@ -221,9 +236,10 @@ implementer's assumptions loaded, which is what makes it a genuine second read.
    <contents of $SCHEMA_FILE>
    ```
 
-3. **Dispatch** a subagent via the `Agent` tool with the assembled prompt. Do
-   not override the model — it inherits the session's model. Capture the
-   subagent's final text as `REVIEW_JSON`, strip any accidental markdown
+3. **Dispatch synchronously** via
+   `Agent(prompt=<assembled>, run_in_background=false)`. Do not override the
+   model — it inherits the session's model. Wait for the final response in the
+   current session, capture it as `REVIEW_JSON`, strip any accidental markdown
    fences, and validate with `jq empty`.
 4. **Parse** via the structured-JSON path in 5c — identical handling to codex
    exhaustive (confidence filter, priority sort, de-duplication, state file).
@@ -331,7 +347,8 @@ This section runs **ONLY** when the user explicitly chose agent-based review. It
 1. Set `CODEX_EXEC_FALLBACK=true`
 2. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md`. Adapt for the detected project language (replace Go-specific criteria when not a Go project).
 3. Fill template variables: `{WORKTREE_PATH}`, `{CHANGED_FILES}`, `{DIFF}`, `{PATTERNS}` ("Follow existing project conventions"), `{REPO_CONVENTIONS}` (from CLAUDE.md/AGENTS.md if present)
-4. `Agent(prompt=<filled>, model=sonnet)`
+4. Run `Agent(prompt=<filled>, model=sonnet, run_in_background=false)` and wait
+   for its final response in the current session.
 5. Parse the agent's structured response (skip JSON parsing in 5c):
    - `CLEAN` → `REVIEW_CLEAN=true`, persist, skip Step 6
    - `HAS_FINDINGS` → use FINDINGS section as free-text findings for Step 6
