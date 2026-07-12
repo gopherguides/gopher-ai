@@ -147,6 +147,67 @@ fi
 
 echo ""
 
+echo -n "Database templates keep initialization instance-scoped and leak-free... "
+DB_TEMPLATE_FAILURE=""
+DB_TEMPLATES=(
+  "$ROOT_DIR/plugins/go-web/templates/db/database.postgres.go:goose.DialectPostgres"
+  "$ROOT_DIR/plugins/go-web/templates/db/database.sqlite.go:goose.DialectSQLite3"
+  "$ROOT_DIR/plugins/go-web/templates/db/database.mysql.go:goose.DialectMySQL"
+)
+
+for entry in "${DB_TEMPLATES[@]}"; do
+  file="${entry%%:*}"
+  dialect="${entry#*:}"
+  open_line=$(grep -nE 'pool, err := pgxpool.New|conn, err := sql.Open' "$file" | head -1 | cut -d: -f1)
+  cleanup_line=$(grep -nE 'defer func\(\)' "$file" | head -1 | cut -d: -f1)
+  ping_line=$(grep -nE 'Ping(Context)?\(ctx\)' "$file" | head -1 | cut -d: -f1)
+  migration_line=$(grep -nE 'db\.migrate\(ctx\)' "$file" | head -1 | cut -d: -f1)
+
+  if [ -z "$open_line" ] || [ -z "$cleanup_line" ] || [ -z "$ping_line" ] || [ -z "$migration_line" ] ||
+     [ "$cleanup_line" -le "$open_line" ] || [ "$cleanup_line" -ge "$ping_line" ] || [ "$cleanup_line" -ge "$migration_line" ]; then
+    DB_TEMPLATE_FAILURE="${file#"$ROOT_DIR"/} does not guard every post-open failure with cleanup"
+    break
+  fi
+  if ! grep -Fq "goose.NewProvider(" "$file" ||
+     ! grep -Fq "$dialect" "$file" ||
+     ! grep -Fq 'goose.WithDisableGlobalRegistry(true)' "$file" ||
+     ! grep -Fq 'provider.Up(ctx)' "$file" ||
+     ! grep -Fq 'fs.Sub(migrationsFS, "migrations")' "$file"; then
+    DB_TEMPLATE_FAILURE="${file#"$ROOT_DIR"/} does not use a context-aware instance provider"
+    break
+  fi
+  if ! grep -Fq 'func (db *DB) Close() error' "$file"; then
+    DB_TEMPLATE_FAILURE="${file#"$ROOT_DIR"/} does not expose shutdown errors consistently"
+    break
+  fi
+done
+
+if [ -z "$DB_TEMPLATE_FAILURE" ] && grep -nE 'goose\.(SetBaseFS|SetDialect|Up)\(' "${DB_TEMPLATES[@]%%:*}" >/dev/null; then
+  DB_TEMPLATE_FAILURE="database templates still mutate goose package globals"
+fi
+if [ -z "$DB_TEMPLATE_FAILURE" ] &&
+   { ! grep -Fq 'errors.Join(err, fmt.Errorf("failed to close database: %w", closeErr))' "$ROOT_DIR/plugins/go-web/templates/db/database.sqlite.go" ||
+     ! grep -Fq 'errors.Join(err, fmt.Errorf("failed to close database: %w", closeErr))' "$ROOT_DIR/plugins/go-web/templates/db/database.mysql.go" ||
+     ! grep -Fq 'errors.Join(err, fmt.Errorf("failed to close migration connection: %w", closeErr))' "$ROOT_DIR/plugins/go-web/templates/db/database.postgres.go"; }; then
+  DB_TEMPLATE_FAILURE="database close errors are not preserved"
+fi
+if [ -z "$DB_TEMPLATE_FAILURE" ] &&
+   { ! grep -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/main.go" ||
+     ! grep -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/testutil.postgres.go" ||
+     ! grep -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/testutil.sqlite.go" ||
+     ! grep -Fq 'if err := db.Close(); err != nil {' "$ROOT_DIR/plugins/go-web/templates/app/testutil.mysql.go"; }; then
+  DB_TEMPLATE_FAILURE="generated shutdown call sites discard database close errors"
+fi
+
+if [ -n "$DB_TEMPLATE_FAILURE" ]; then
+  echo "FAIL ($DB_TEMPLATE_FAILURE)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo ""
+
 echo -n "Gemini image defaults and request tiers are valid... "
 GEMINI_IMAGE_DIR="$ROOT_DIR/plugins/llm-tools/skills/gemini-image"
 GEMINI_COMMAND="$ROOT_DIR/plugins/llm-tools/commands/gemini-image.md"
