@@ -72,7 +72,7 @@ func New(_ context.Context, databaseURL string) (*DB, error) {
 	return &DB{URL: databaseURL}, nil
 }
 
-func (db *DB) Close() {}
+func (db *DB) Close() error { return nil }
 EOF
 }
 
