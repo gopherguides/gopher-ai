@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verify $ship treats missing UI E2E prerequisites as a blocking condition.
+# Verify $ship enforces its E2E and merge-strategy gates.
 
 set -euo pipefail
 
@@ -66,12 +66,89 @@ reject_text "$SHIP_SKILL" "skip coverage \\+ e2e phases entirely" \
 reject_text "$SHIP_SKILL" "E2E smoke tests passed \\(or skipped .*[Mm]CP unavailable" \
   "ship completion criteria still allows MCP-unavailable E2E skip"
 
+require_text "$SHIP_SKILL" "SHIP_MERGE_STRATEGY.*--squash.*--rebase.*--merge" \
+  "ship skill must document explicit strategy before squash-first fallback"
+
 require_text "$MERGE_DOC" "e2e_result.*blocked" \
   "ship merge phase must read blocked E2E state"
 require_text "$MERGE_DOC" "E2E PREREQUISITE MISSING" \
   "ship merge phase must stop on blocked E2E state"
 require_text "$MERGE_DOC" "Verification partial" \
   "ship summary must avoid unqualified verification-complete wording for partial E2E"
+require_text "$MERGE_DOC" 'MERGE_METHOD="\${SHIP_MERGE_STRATEGY:-}"' \
+  "ship merge phase must honor explicit merge strategy configuration"
+require_text "$MERGE_DOC" "Configured merge strategy.*is not allowed" \
+  "ship merge phase must fail when an explicit strategy is forbidden"
+require_text "$MERGE_DOC" 'gh pr merge "\$PR_NUM" --delete-branch' \
+  "ship merge queues must omit the merge-strategy flag"
+
+MERGE_STRATEGY_BLOCK=$(mktemp /tmp/gopher-ai-merge-strategy-XXXXXX)
+awk '
+  /^## 13c\./ { section=1 }
+  section && /^```bash$/ { block=1; next }
+  block && /^```$/ { exit }
+  block { print }
+' "$MERGE_DOC" > "$MERGE_STRATEGY_BLOCK"
+
+run_merge_strategy_fixture() {
+  local label="$1"
+  local configured_strategy="$2"
+  local settings="$3"
+  local expected_status="$4"
+  local expected_output="$5"
+  local output
+  local status
+
+  set +e
+  output=$(MERGE_TEST_SETTINGS="$settings" SHIP_MERGE_STRATEGY="$configured_strategy" bash -c '
+    gh() {
+      if [ "$1" = "repo" ]; then
+        if [[ "$*" == *".owner.login"* ]]; then
+          echo "example"
+        else
+          echo "project"
+        fi
+      else
+        echo "$MERGE_TEST_SETTINGS"
+      fi
+    }
+    source "$1"
+    printf "%s" "$MERGE_METHOD"
+  ' _ "$MERGE_STRATEGY_BLOCK" 2>&1)
+  status=$?
+  set -e
+
+  if [ "$status" -ne "$expected_status" ] || [[ "$output" != *"$expected_output"* ]]; then
+    fail "$label (status $status, output: $output)"
+  fi
+}
+
+run_merge_strategy_fixture \
+  "explicit squash must be selected" \
+  "squash" \
+  '{"merge":true,"squash":true,"rebase":true}' \
+  0 \
+  "squash"
+run_merge_strategy_fixture \
+  "explicit merge must be selected" \
+  "merge" \
+  '{"merge":true,"squash":true,"rebase":true}' \
+  0 \
+  "merge"
+run_merge_strategy_fixture \
+  "unconfigured repositories must default to squash" \
+  "" \
+  '{"merge":true,"squash":true,"rebase":true}' \
+  0 \
+  "squash"
+run_merge_strategy_fixture \
+  "forbidden explicit strategy must fail" \
+  "merge" \
+  '{"merge":false,"squash":true,"rebase":true}' \
+  1 \
+  "Configured merge strategy 'merge' is not allowed"
+
+rm -f "$MERGE_STRATEGY_BLOCK"
 
 require_text "$STATE_FIELDS" "blocked" \
   "ship state fields must document blocked E2E result"

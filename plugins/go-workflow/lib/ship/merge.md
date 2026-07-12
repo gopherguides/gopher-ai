@@ -85,17 +85,38 @@ OWNER=$(gh repo view --json owner --jq '.owner.login')
 REPO=$(gh repo view --json name --jq '.name')
 MERGE_SETTINGS=$(gh api "repos/$OWNER/$REPO" --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}' 2>/dev/null || echo '{}')
 
-MERGE_FLAG="--merge"
-if echo "$MERGE_SETTINGS" | jq -e '.merge == true' >/dev/null 2>&1; then
-  MERGE_FLAG="--merge"
+MERGE_METHOD="${SHIP_MERGE_STRATEGY:-}"
+if [ -n "$MERGE_METHOD" ]; then
+  case "$MERGE_METHOD" in
+    merge|squash|rebase) ;;
+    *)
+      echo "Invalid SHIP_MERGE_STRATEGY '$MERGE_METHOD'. Expected merge, squash, or rebase."
+      exit 1
+      ;;
+  esac
+
+  if ! echo "$MERGE_SETTINGS" | jq -e --arg method "$MERGE_METHOD" '.[$method] == true' >/dev/null 2>&1; then
+    echo "Configured merge strategy '$MERGE_METHOD' is not allowed by $OWNER/$REPO."
+    exit 1
+  fi
 elif echo "$MERGE_SETTINGS" | jq -e '.squash == true' >/dev/null 2>&1; then
-  MERGE_FLAG="--squash"
+  MERGE_METHOD="squash"
 elif echo "$MERGE_SETTINGS" | jq -e '.rebase == true' >/dev/null 2>&1; then
-  MERGE_FLAG="--rebase"
+  MERGE_METHOD="rebase"
+elif echo "$MERGE_SETTINGS" | jq -e '.merge == true' >/dev/null 2>&1; then
+  MERGE_METHOD="merge"
+else
+  echo "No allowed merge strategy is configured for $OWNER/$REPO."
+  exit 1
 fi
+
+MERGE_FLAG="--$MERGE_METHOD"
 ```
 
-Prefer merge > squash > rebase (matches GitHub's default fallback chain).
+`SHIP_MERGE_STRATEGY` is the explicit per-project policy and must be `merge`,
+`squash`, or `rebase`. Ship uses it exactly when the repository allows it and
+stops with an error otherwise. Without an explicit policy, prefer squash >
+rebase > merge.
 
 ## 13d. Branch protection mergeability check
 

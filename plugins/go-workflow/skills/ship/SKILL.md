@@ -321,7 +321,7 @@ privileges.
 
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/merge.md` for: final-checks (CI green, no
 unresolved threads, no human `CHANGES_REQUESTED`), `--no-merge` early exit,
-merge-strategy auto-detection (`--merge` > `--squash` > `--rebase`), the full
+merge-strategy selection (`SHIP_MERGE_STRATEGY`, then `--squash` > `--rebase` > `--merge`), the full
 `mergeStateStatus` decision tree (`UNKNOWN`/`CONFLICTING`/`BLOCKED`/`CLEAN`/
 `HAS_HOOKS`/`BEHIND`/`UNSTABLE`/other), merge-queue handling, and the
 summary-line rendering (uses `coverage_skip_reason` to avoid `N/A%`). Output
