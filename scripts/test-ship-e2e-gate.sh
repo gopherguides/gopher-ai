@@ -75,11 +75,11 @@ require_text "$MERGE_DOC" "E2E PREREQUISITE MISSING" \
   "ship merge phase must stop on blocked E2E state"
 require_text "$MERGE_DOC" "Verification partial" \
   "ship summary must avoid unqualified verification-complete wording for partial E2E"
-require_text "$MERGE_DOC" 'MERGE_METHOD="\${SHIP_MERGE_STRATEGY:-}"' \
+require_text "$MERGE_DOC" "MERGE_METHOD=\"\\\${SHIP_MERGE_STRATEGY:-}\"" \
   "ship merge phase must honor explicit merge strategy configuration"
 require_text "$MERGE_DOC" "Configured merge strategy.*is not allowed" \
   "ship merge phase must fail when an explicit strategy is forbidden"
-require_text "$MERGE_DOC" 'gh pr merge "\$PR_NUM" --delete-branch' \
+require_text "$MERGE_DOC" "gh pr merge \"\\\$PR_NUM\" --delete-branch" \
   "ship merge queues must omit the merge-strategy flag"
 
 MERGE_STRATEGY_BLOCK=$(mktemp /tmp/gopher-ai-merge-strategy-XXXXXX)
