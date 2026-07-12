@@ -57,7 +57,7 @@ Read `loop-state.md` and run the **bootstrap block** + **re-entry check**. If `P
 Phase → step routing:
 
 - `implementing` → Phase 1
-- `reviewing` → Phase 2
+- `reviewing` → Phase 3; the earlier in-session review is void and must not be restarted
 - `verifying` → Phase 3
 
 ---
@@ -103,6 +103,12 @@ set_loop_phase "$STATE_FILE" "reviewing"
 ```
 
 Run an LLM review to catch issues before E2E verification. **CRITICAL: Never silently fall back** — always present the user with options if codex fails.
+
+Agent-backed fallback reviews are session-local and must complete
+synchronously. Never dispatch them in the background or persist them for a
+successor session. If a successor re-enters with `phase="reviewing"`, skip the
+expired review and continue to Phase 3; the PR already created in Phase 1 and
+its CI are the durable gate.
 
 Detect codex availability:
 

@@ -125,7 +125,13 @@ SYSTEM_MSG="Iteration $NEW_ITERATION of loop '$LOOP_NAME'."
 
 # Phase-aware re-feed: look up phase message from state file, fall back to generic
 PHASE_MSG=""
-if [ -n "$PHASE" ]; then
+if [ "$LOOP_NAME" = "ship" ] && [ "$PHASE" = "reviewing" ]; then
+  RECOVERY_TMP="${STATE_FILE}.tmp"
+  jq '.review_result = "void" | .review_skip_reason = "session-boundary" | .phase = "pushing"' \
+    "$STATE_FILE" > "$RECOVERY_TMP" && mv "$RECOVERY_TMP" "$STATE_FILE"
+  PHASE="pushing"
+  PHASE_MSG="The prior in-session review is void. Do not start another review. Commit the validated staged diff, push every local commit, and ensure a non-draft PR exists before yielding."
+elif [ -n "$PHASE" ]; then
   PHASE_MSG=$(jq -r --arg p "$PHASE" '.phase_messages[$p] // empty' "$STATE_FILE" 2>/dev/null || true)
 fi
 

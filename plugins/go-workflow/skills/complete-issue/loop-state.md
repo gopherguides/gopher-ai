@@ -13,7 +13,7 @@ if [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/
   echo "Re-entry detected — skipping setup-loop."
 else
   "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "complete-issue-${ISSUE_NUM}" "COMPLETE" 100 "" \
-    '{"implementing":"Resume start-issue implementation.","reviewing":"Resume codex review.","verifying":"Resume E2E verification and shipping."}'
+    '{"implementing":"Resume start-issue implementation.","reviewing":"The prior in-session review is void; continue to E2E verification and shipping without restarting it.","verifying":"Resume E2E verification and shipping."}'
 fi
 ```
 
@@ -36,5 +36,6 @@ fi
 ```
 
 If `PHASE` is set, recover state and skip to the corresponding phase listed
-in the SKILL.md phase routing table. If `PHASE` is empty, continue to
-Phase 1.
+in the SKILL.md phase routing table. A persisted `reviewing` phase never
+resumes the prior review; continue to Phase 3. If `PHASE` is empty, continue
+to Phase 1.

@@ -15,9 +15,10 @@ jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
    --arg coverage_result "" --argjson coverage_tests_generated 0 \
    --arg e2e_required "" --arg e2e_attempted "" --arg e2e_result "" \
    --arg e2e_skip_reason "" --argjson e2e_pages_tested 0 \
-   --arg review_clean "" --arg head_sha "" --arg gemini_tier "$GEMINI_TIER" \
+   --arg review_clean "" --arg review_result "" --arg review_skip_reason "" \
+   --arg head_sha "" --arg gemini_tier "$GEMINI_TIER" \
    --arg ollama_model "" \
-   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_required: $e2e_required, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_skip_reason: $e2e_skip_reason, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, head_sha: $head_sha, gemini_tier: $gemini_tier, ollama_model: $ollama_model}' \
+   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_required: $e2e_required, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_skip_reason: $e2e_skip_reason, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, review_result: $review_result, review_skip_reason: $review_skip_reason, head_sha: $head_sha, gemini_tier: $gemini_tier, ollama_model: $ollama_model}' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
@@ -48,6 +49,8 @@ routing and subsequent steps depend on these exact names.
 | `e2e_skip_reason` | string | Step 7.6e | Empty on pass; otherwise machine-readable reason such as `"no-ui-visible-changes"`, `"missing-browser-tooling"`, or `"dev-server-unavailable"` |
 | `e2e_pages_tested` | int | Step 7.6e | Number of routes tested |
 | `review_clean` | string | Step 5c | `"true"` when LLM returned no findings — fast-path past Step 6 on re-entry |
+| `review_result` | string | Step 2 recovery, Step 5 | `"void"` when a prior session's review expired or `"skipped"` when a headless worker cannot run it synchronously |
+| `review_skip_reason` | string | Step 2 recovery, Step 5 | `"session-boundary"` or `"headless-worker"` when no local agent review result is used |
 | `head_sha` | string | Step 9c, 10e, 12c | Latest pushed commit; CI watch is anchored to this |
 | `gemini_tier` | string | Step 1 | `flex`/`standard`/`priority` (gemini only; warning rendered at review time) |
 | `ollama_model` | string | Step 5b | Installed Ollama model selected once and reused for every review pass |
