@@ -67,7 +67,7 @@ agent:
   # No max_session_context_multiplier: at 4x it capped sessions at ~1M tokens
   # (4 full-context turns) and killed legitimate work (#200 died 5x on it);
   # max_session_tokens is the sole runaway brake, matching the detent project.
-  max_session_tokens: 25000000
+  max_session_tokens: 200000000
   max_session_token_override_label: allow-large-session
   max_concurrent_agents_by_state:
     Merging: 1
