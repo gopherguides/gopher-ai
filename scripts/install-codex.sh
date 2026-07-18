@@ -610,20 +610,8 @@ prune_user_plugin_cache() {
         return 1
     fi
 
-    local plugin_dir plugin_name current_root
-    for plugin_dir in "$marketplace_clone"/plugins/*; do
-        [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
-        plugin_name="$(basename "$plugin_dir")"
-        current_root="$cache_root/$plugin_name/$commit_hash"
-        if [[ ! -e "$current_root" && ! -L "$current_root" ]]; then
-            echo "error: latest cache root is missing for $plugin_name at $current_root" >&2
-            echo "       run --user before pruning the cache." >&2
-            return 1
-        fi
-    done
-
     local candidates=()
-    local plugin_cache cache_entry
+    local plugin_cache plugin_name cache_entry
     for plugin_cache in "$cache_root"/*; do
         [[ -d "$plugin_cache" ]] || continue
         plugin_name="$(basename "$plugin_cache")"

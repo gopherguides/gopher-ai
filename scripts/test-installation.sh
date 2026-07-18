@@ -1009,6 +1009,9 @@ fi
 
 echo -n "Codex --prune-cache recovers an incomplete current root... "
 rm -f "$PUBLISHED_ROOT/skills/go/SKILL.md"
+for p in go-web go-workflow gopher-guides llm-tools tailwind; do
+  rm -rf "$TMP_HOME/.codex/plugins/cache/gopher-ai/$p/$HASH"
+done
 set +e
 HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
 INCOMPLETE_EXIT=$?
@@ -1022,8 +1025,9 @@ elif ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.
 elif ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1; then
   echo "FAIL (--user did not republish the pruned root)"
   ERRORS=$((ERRORS + 1))
-elif [ ! -f "$PUBLISHED_ROOT/.codex-plugin/plugin.json" ]; then
-  echo "FAIL (current root was not restored)"
+elif [ ! -f "$PUBLISHED_ROOT/.codex-plugin/plugin.json" ] \
+  || [ ! -f "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-web/$HASH/.codex-plugin/plugin.json" ]; then
+  echo "FAIL (missing or incomplete current roots were not restored)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
@@ -1051,7 +1055,8 @@ elif [ ! -x "$OLD_ROOT/hooks/pre-tool-use.sh" ] \
   echo "FAIL (an active hook path was removed or lost execute permission)"
   ERRORS=$((ERRORS + 1))
 elif ! bash -n "$OLD_ROOT/hooks/pre-tool-use.sh" \
-  "$OLD_ROOT/hooks/post-tool-use.sh" "$OLD_ROOT/hooks/stop-hook.sh"; then
+  || ! bash -n "$OLD_ROOT/hooks/post-tool-use.sh" \
+  || ! bash -n "$OLD_ROOT/hooks/stop-hook.sh"; then
   echo "FAIL (an active hook path is no longer readable by bash)"
   ERRORS=$((ERRORS + 1))
 elif [ ! -r "$OLD_ROOT/skills/ship/SKILL.md" ]; then
