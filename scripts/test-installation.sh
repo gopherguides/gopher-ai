@@ -1068,9 +1068,10 @@ else
 fi
 
 echo -n "Codex --prune-cache requires explicit non-interactive confirmation... "
+PRUNE_NOCONFIRM_LOG=$(mktemp)
 set +e
 HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache \
-  </dev/null >"$TMPDIR/gopher-ai-prune-noconfirm.log" 2>&1
+  </dev/null >"$PRUNE_NOCONFIRM_LOG" 2>&1
 PRUNE_EXIT=$?
 set -e
 if [ "$PRUNE_EXIT" -eq 0 ]; then
@@ -1082,6 +1083,7 @@ elif [ ! -d "$OLD_ROOT" ]; then
 else
   echo "OK"
 fi
+rm -f "$PRUNE_NOCONFIRM_LOG"
 
 echo -n "Codex --prune-cache removes only superseded roots... "
 if ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache --yes >/dev/null 2>&1; then
