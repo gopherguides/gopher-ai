@@ -1,12 +1,12 @@
 # Complete Issue — Phase Sub-Steps
 
 Loaded by `SKILL.md` Phases 1 and 2 when the agent needs the full sub-step
-list (Phase 1) or the codex invocation bash (Phase 2). Phase 3 is a thin
-delegation to `$e2e-verify` so it has no extra detail here.
+list (Phase 1) or the codex invocation bash (Phase 2). Phase 3 loads the
+user-only `e2e-verify` workflow directly, so it has no extra detail here.
 
 ## Phase 1: `$start-issue` Sub-Steps
 
-`$start-issue $ISSUE_NUM $FLAGS` runs the full workflow:
+The `start-issue` workflow runs with `$ISSUE_NUM $FLAGS` as its arguments:
 
 1. Fetch issue details
 2. Create worktree (if user chooses)

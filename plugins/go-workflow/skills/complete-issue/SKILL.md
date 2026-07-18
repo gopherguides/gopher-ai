@@ -10,7 +10,12 @@ disable-model-invocation: true
 
 Autonomous end-to-end pipeline: **issue number in → merged PR out.**
 
-Chains: `$start-issue` → codex review → `$e2e-verify fix-and-ship`
+Chains the `start-issue` workflow, Codex review, and the `e2e-verify`
+`fix-and-ship` workflow.
+
+The component workflow skills are user-only. Do not call them with the Skill
+tool. Load their `SKILL.md` files with Read and execute their instructions
+directly with the arguments specified below.
 
 The `$start-issue` phase owns subagent model tiering through agent prompt
 frontmatter: Explore uses Haiku, Spec Review and Quality Review use Sonnet,
@@ -43,7 +48,8 @@ done
 
 if [ -z "$ISSUE_NUM" ]; then
   echo "Error: Issue number is required."
-  echo "Usage: \$complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
+  echo "Claude Code: /go-workflow:complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
+  echo "Codex: \$complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
   exit 1
 fi
 
@@ -68,7 +74,11 @@ Phase → step routing:
 set_loop_phase "$STATE_FILE" "implementing"
 ```
 
-Invoke `$start-issue $ISSUE_NUM $FLAGS`. Read `phases.md` for the full sub-step list (fetch issue, create worktree, detect type, explore, design, TDD, verify, coverage, security review, commit/push/PR, watch CI).
+Read `${CLAUDE_PLUGIN_ROOT}/skills/start-issue/SKILL.md` and execute its workflow
+directly, treating `$ISSUE_NUM $FLAGS` as its `$ARGUMENTS`. Do not call the
+Skill tool. Read `phases.md` for the full sub-step list (fetch issue, create
+worktree, detect type, explore, design, TDD, verify, coverage, security review,
+commit/push/PR, watch CI).
 
 After `$start-issue` completes, detect the PR number and worktree context, reassign `STATE_FILE` to an absolute path (because CWD may have changed if a worktree was created), and persist:
 
@@ -139,7 +149,11 @@ git push
 set_loop_phase "$STATE_FILE" "verifying"
 ```
 
-Invoke `$e2e-verify $PR_NUM fix-and-ship`. This runs the full e2e-verify workflow in `fix-and-ship` mode (rebase, build, address review, E2E browser tests, post results, add `run-full-ci` label, watch CI, invoke `$ship`).
+Read `${CLAUDE_PLUGIN_ROOT}/skills/e2e-verify/SKILL.md` and execute its workflow
+directly, treating `$PR_NUM fix-and-ship` as its `$ARGUMENTS`. Do not call the
+Skill tool. This runs the full workflow in `fix-and-ship` mode (rebase, build,
+address review, E2E browser tests, post results, add the `run-full-ci` label,
+watch CI, and execute the ship workflow).
 
 ---
 
@@ -153,7 +167,7 @@ Output `<done>COMPLETE</done>` when ALL of these are true:
 4. E2E verification completed
 5. Results posted to PR
 6. CI passes
-7. PR merged (via `$ship`)
+7. PR merged (via the ship workflow)
 
 **When ALL criteria are met, output exactly:** `<done>COMPLETE</done>`
 
