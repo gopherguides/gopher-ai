@@ -184,7 +184,7 @@ else
   echo "Warning: Claude Code did not expose a clear ready signal before timeout. Sending start command after settle wait."
 fi
 
-tmux send-keys -t "$WINDOW_NAME" "\$start-issue $ISSUE_NUM" Enter
+tmux send-keys -t "$WINDOW_NAME" "/go-workflow:start-issue $ISSUE_NUM" Enter
 
 cat <<EOF
 --- tmux-start complete ---
@@ -198,6 +198,6 @@ Switch to it:
   Ctrl+B w          (window picker)
   Ctrl+B <number>   (direct switch by window index)
 
-Claude Code is running \$start-issue $ISSUE_NUM autonomously.
+Claude Code is running /go-workflow:start-issue $ISSUE_NUM autonomously.
 Monitor the window and accept plans when prompted.
 EOF

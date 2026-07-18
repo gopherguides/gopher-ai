@@ -133,6 +133,35 @@ else
   echo "OK"
 fi
 
+echo -n "User-only workflows avoid blocked Skill-tool composition... "
+TMUX_START_SCRIPT="$ROOT_DIR/plugins/go-workflow/scripts/tmux-start.sh"
+COMPLETE_ISSUE_SKILL="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"
+E2E_FINISH="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/mode-finish.md"
+BLOCKED_COMPOSITION=$(rg -n 'Invoke `\$(start-issue|e2e-verify|ship)([ `])' "$COMPLETE_ISSUE_SKILL" "$E2E_FINISH" || true)
+
+if [ -n "$BLOCKED_COMPOSITION" ]; then
+  echo "FAIL"
+  echo "$BLOCKED_COMPOSITION"
+  ERRORS=$((ERRORS + 1))
+elif ! rg -q 'Read `\$\{CLAUDE_PLUGIN_ROOT\}/skills/start-issue/SKILL[.]md`' "$COMPLETE_ISSUE_SKILL"; then
+  echo "FAIL (complete-issue does not load start-issue directly)"
+  ERRORS=$((ERRORS + 1))
+elif ! rg -q 'Read `\$\{CLAUDE_PLUGIN_ROOT\}/skills/e2e-verify/SKILL[.]md`' "$COMPLETE_ISSUE_SKILL"; then
+  echo "FAIL (complete-issue does not load e2e-verify directly)"
+  ERRORS=$((ERRORS + 1))
+elif ! rg -q 'skills/ship/SKILL[.]md' "$E2E_FINISH"; then
+  echo "FAIL (e2e-verify does not load ship directly)"
+  ERRORS=$((ERRORS + 1))
+elif ! rg -q '"/go-workflow:start-issue \$ISSUE_NUM"' "$TMUX_START_SCRIPT"; then
+  echo "FAIL (tmux-start does not send the Claude Code slash command)"
+  ERRORS=$((ERRORS + 1))
+elif rg -q '"\\\$start-issue \$ISSUE_NUM"' "$TMUX_START_SCRIPT"; then
+  echo "FAIL (tmux-start still sends Codex syntax to Claude Code)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 if ! "$ROOT_DIR/scripts/test-go-web-templates.sh"; then
   ERRORS=$((ERRORS + 1))
 fi

@@ -2,7 +2,7 @@
 
 Loaded by `SKILL.md` Step 7. Contains the **E2E gate** (must run before any
 finish action), maps `MODE` to the closing action, and contains the
-`fix-and-ship` CI-watch loop and `$ship` invocation rules.
+`fix-and-ship` CI-watch loop and user-only ship workflow handoff rules.
 
 ## Step 7.0: E2E Gate (applies to every mode before any finish action)
 
@@ -31,8 +31,8 @@ finish action), maps `MODE` to the closing action, and contains the
 | `fix-and-verify` | Add `run-full-ci` label. Report results. Output `<done>VERIFIED</done>` |
 | `investigate` | Report findings (no label). Output `<done>VERIFIED</done>` |
 | `ship-prep` | Add `run-full-ci` label. Report results. Output `<done>VERIFIED</done>` |
-| `ship` | Set phase to `shipping`. Invoke `$ship` |
-| `fix-and-ship` | Add `run-full-ci` label. Set phase to `shipping`. Watch CI → invoke `$ship --skip-coverage` |
+| `ship` | Set phase to `shipping`. Execute the ship workflow |
+| `fix-and-ship` | Add `run-full-ci` label. Set phase to `shipping`. Watch CI → execute the ship workflow with `--skip-coverage` |
 
 ## Add the `run-full-ci` Label
 
@@ -56,10 +56,15 @@ gh pr edit "$PR_NUM" --add-label "run-full-ci"
 for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
 ```
 
-## Ship Invocation Rules
+## Ship Workflow Handoff
 
-- **`ship` mode** → `$ship` (full coverage + e2e gates).
-- **`fix-and-ship` mode** → `$ship --skip-coverage`. Coverage and
-  E2E tests already ran in Steps 1-2 and Step 5 of this skill, so re-running
-  them in `$ship` would be wasted work and could surface flakes that were
-  already accepted.
+The ship skill is user-only. Do not call it with the Skill tool. Read
+`${CLAUDE_PLUGIN_ROOT}/skills/ship/SKILL.md` and execute its instructions
+directly.
+
+- **`ship` mode** → Treat an empty string as the ship workflow's `$ARGUMENTS`
+  so it runs the full coverage and E2E gates.
+- **`fix-and-ship` mode** → Treat `--skip-coverage` as the ship workflow's
+  `$ARGUMENTS`. Coverage and E2E tests already ran in Steps 1-2 and Step 5 of
+  this skill, so re-running them would be wasted work and could surface flakes
+  that were already accepted.

@@ -15,9 +15,11 @@ If `$ARGUMENTS` is empty or not provided, explain:
 > This skill starts work on a GitHub issue, automatically detecting whether it's
 > a bug fix or new feature and following the appropriate workflow.
 >
-> **Usage:** `$start-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>]`
+> **Claude Code:** `/go-workflow:start-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>]`
 >
-> **Example:** `$start-issue 123` or `$start-issue 123 --coverage-threshold 80`
+> **Codex:** `$start-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>]`
+>
+> **Example:** `/go-workflow:start-issue 123` or `$start-issue 123 --coverage-threshold 80`
 >
 > **Options:**
 > - `--skip-coverage`: Skip coverage verification after implementation
@@ -79,7 +81,9 @@ HAS_SKIP=$(echo "$ARGUMENTS" | grep -q '\-\-skip-coverage' && echo "true" || ech
 COV_THRESH=$(echo "$ARGUMENTS" | grep -oE '\-\-coverage-threshold [0-9]+' | awk '{print $2}')
 NO_AGENTS=$(echo "$ARGUMENTS" | grep -q '\-\-no-agents' && echo "true" || echo "false")
 if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then
-  echo "Error: Issue number must be numeric. Usage: \$start-issue <number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
+  echo "Error: Issue number must be numeric."
+  echo "Claude Code: /go-workflow:start-issue <number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
+  echo "Codex: \$start-issue <number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
   exit 1
 fi
 echo "Issue: $ISSUE_NUM | skip-coverage: $HAS_SKIP | coverage-threshold: ${COV_THRESH:-60} | no-agents: $NO_AGENTS"

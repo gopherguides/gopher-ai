@@ -15,18 +15,18 @@ Or install via marketplace:
 
 ## Workflow Skills and Commands
 
-| Invocation | Description |
-|------------|-------------|
-| `$start-issue <number>` | Start working on a GitHub issue (auto-detects bug vs feature) |
-| `$address-review [PR]` | Address PR review comments, fix, and loop until bots approve |
-| `$review-deep [PR]` | Deep code review with full PR context, then fix findings |
-| `$commit` | Create a git commit with auto-generated message |
-| `$create-pr` | Create a PR following the repo template |
-| `$e2e-verify [PR]` | Run browser E2E verification on a PR |
-| `$ship` | Verify, push, watch CI/reviews, and merge |
-| `/create-worktree <number>` | Create a new git worktree for isolated issue work |
-| `/remove-worktree` | Interactively select and remove a git worktree |
-| `/prune-worktree` | Batch cleanup of all completed issue worktrees |
+| Claude Code invocation | Description |
+|------------------------|-------------|
+| `/go-workflow:start-issue <number>` | Start working on a GitHub issue (auto-detects bug vs feature) |
+| `/go-workflow:address-review [PR]` | Address PR review comments, fix, and loop until bots approve |
+| `/go-workflow:review-deep [PR]` | Deep code review with full PR context, then fix findings |
+| `/go-workflow:commit` | Create a git commit with auto-generated message |
+| `/go-workflow:create-pr` | Create a PR following the repo template |
+| `/go-workflow:e2e-verify [PR]` | Run browser E2E verification on a PR |
+| `/go-workflow:ship` | Verify, push, watch CI/reviews, and merge |
+| `/go-workflow:create-worktree <number>` | Create a new git worktree for isolated issue work |
+| `/go-workflow:remove-worktree` | Interactively select and remove a git worktree |
+| `/go-workflow:prune-worktree` | Batch cleanup of all completed issue worktrees |
 
 ## Skill Invocation Modes
 
@@ -35,13 +35,13 @@ Or install via marketplace:
 | Slash-only | `start-issue`, `address-review`, `worktree` (`/create-worktree`, `/remove-worktree`, `/prune-worktree`), `e2e-verify`, `ship`, `complete-issue`, `tmux-start` |
 | Auto-triggerable | `commit`, `create-pr`, `review-deep` |
 
-Slash-only skills still run through their slash commands, but their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$<skill>` in Codex. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
+Slash-only skills still run through their slash commands, but their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$<skill>` in Codex. In Claude Code, type the slash command directly; `$start-issue` is Codex syntax and causes a blocked Skill-tool invocation. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
 
 ## Workflows
 
 ### Start Issue
 
-The `$start-issue` skill provides an intelligent issue-to-PR workflow:
+The `start-issue` skill provides an intelligent issue-to-PR workflow:
 
 1. **Fetches issue details** including all comments for full context
 2. **Offers worktree creation** for isolated work (creates `../repo-issue-123-title/`)
@@ -53,8 +53,8 @@ The `$start-issue` skill provides an intelligent issue-to-PR workflow:
 
 #### Subagent Model Tiering
 
-The default orchestrated flow pins read-heavy and review subagents to cheaper
-models through agent prompt frontmatter:
+The default orchestrated flow routes read-heavy and review subagents through
+rolling model aliases in agent prompt frontmatter:
 
 | Agent | Model policy |
 |-------|--------------|

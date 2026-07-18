@@ -13,9 +13,11 @@ disable-model-invocation: true
 If `$ARGUMENTS` is empty or not provided, explain:
 
 This skill creates or reuses a worktree, opens a new tmux window, launches
-Claude Code, and sends `$start-issue` automatically.
+Claude Code, and sends `/go-workflow:start-issue` automatically.
 
-**Usage:** `$tmux-start <issue-number>`. Example: `$tmux-start 294`.
+**Claude Code:** `/go-workflow:tmux-start <issue-number>`.
+
+**Codex:** `$tmux-start <issue-number>`.
 
 **Prerequisites:** running inside a tmux session (`$TMUX` set); `gh`
 authenticated; inside a git repo.
@@ -66,7 +68,7 @@ Otherwise:
 The script validates prerequisites, creates or reuses the standard issue
 worktree, registers worktree state, opens or switches to the issue tmux window,
 launches Claude Code, waits for a prompt or stable launch marker, and sends
-`$start-issue <issue-number>`.
+`/go-workflow:start-issue <issue-number>`.
 
 Set `GOPHER_AI_TMUX_CLAUDE_CMD` before invocation to override the default
 Claude launch command (`claude --dangerously-skip-permissions`).

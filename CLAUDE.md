@@ -34,7 +34,7 @@ plugins/
 **Commands** (`commands/*.md`): Define slash commands with YAML frontmatter specifying:
 - `argument-hint`: Placeholder shown in command help
 - `description`: Short description for command list
-- `model`: Optional model override (e.g., `claude-opus-4-6`)
+- `model`: Optional rolling model alias (e.g., `fable`, `sonnet`, `haiku`)
 - `allowed-tools`: Tool restrictions for the command
 
 **Skills** (`skills/*/SKILL.md`): Auto-invoked behaviors with YAML frontmatter specifying:
@@ -48,7 +48,7 @@ plugins/
 
 The `start-issue` workflow and worktree commands work together:
 
-1. `$start-issue <num>` offers to create a worktree at `../${reponame}-issue-<num>-<title>/` from the default branch
+1. `/go-workflow:start-issue <num>` offers to create a worktree at `../${reponame}-issue-<num>-<title>/` from the default branch
 2. The issue workflow implements changes with a TDD approach
 3. `/prune-worktree` cleans up worktrees for closed/merged issues
 

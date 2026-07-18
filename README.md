@@ -131,16 +131,16 @@ Issue-to-PR workflow automation with git worktree management.
 
 | Workflow | Description |
 |----------|-------------|
-| `$start-issue <number>` | Start working on an issue (auto-detects bug vs feature) |
-| `$address-review [PR]` | Address PR review comments, make fixes, reply, and resolve |
-| `$review-deep [PR]` | Deep code review with full PR context, then fix findings |
-| `$commit` | Create a git commit with auto-generated message |
-| `$create-pr` | Create a PR following the repo template |
-| `$e2e-verify [PR]` | Run browser E2E verification on a PR |
-| `$ship` | Verify, push, watch CI/reviews, and merge |
-| `/create-worktree <number>` | Create a new git worktree for a GitHub issue |
-| `/remove-worktree` | Interactively select and remove a git worktree |
-| `/prune-worktree` | Batch cleanup of all completed issue worktrees |
+| `start-issue <number>` | Start working on an issue (auto-detects bug vs feature) |
+| `address-review [PR]` | Address PR review comments, make fixes, reply, and resolve |
+| `review-deep [PR]` | Deep code review with full PR context, then fix findings |
+| `commit` | Create a git commit with auto-generated message |
+| `create-pr` | Create a PR following the repo template |
+| `e2e-verify [PR]` | Run browser E2E verification on a PR |
+| `ship` | Verify, push, watch CI/reviews, and merge |
+| `create-worktree <number>` | Create a new git worktree for a GitHub issue |
+| `remove-worktree` | Interactively select and remove a git worktree |
+| `prune-worktree` | Batch cleanup of all completed issue worktrees |
 
 Workflow skill invocation modes:
 
@@ -149,9 +149,9 @@ Workflow skill invocation modes:
 | Slash-only | `start-issue`, `address-review`, `worktree` (`/create-worktree`, `/remove-worktree`, `/prune-worktree`), `e2e-verify`, `ship`, `complete-issue`, `tmux-start` |
 | Auto-triggerable | `commit`, `create-pr`, `review-deep` |
 
-Slash-only skills require explicit invocation, and their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$<skill>` in Codex. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
+Slash-only skills require explicit invocation, and their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$<skill>` in Codex. In Claude Code, type the slash command directly; `$start-issue` is Codex syntax and causes a blocked Skill-tool invocation. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
 
-The `$start-issue` skill handles the full issue-to-PR workflow:
+The `start-issue` skill handles the full issue-to-PR workflow:
 1. Fetches issue details including all comments
 2. Offers worktree creation for isolated work
 3. Auto-detects issue type (bug → `fix/` branch, feature → `feat/` branch)
@@ -162,7 +162,7 @@ The `/review-deep` skill performs a thorough code review with full context:
 2. Reviews against Go idioms, correctness, security, performance, and spec compliance
 3. Fixes all actionable findings, generates tests, and commits
 
-The `$address-review` skill automates PR review handling:
+The `address-review` skill automates PR review handling:
 1. Addresses feedback from human and bot reviewers
 2. Auto-resolves review threads after fixes
 3. Requests re-review only from reviewers who actually left feedback on the PR (including bots such as Codex, CodeRabbit, and Greptile when applicable)
