@@ -421,6 +421,27 @@ plugin_json_author_email() {
     ' "$f"
 }
 
+cache_root_matches_plugin() {
+    local source_root="$1"
+    local cache_root="$2"
+    [[ -d "$cache_root" ]] || return 1
+
+    local source_file relative cache_file
+    while IFS= read -r -d '' source_file; do
+        relative="${source_file#"$source_root"/}"
+        case "$relative" in
+            .claude-plugin/*) continue ;;
+        esac
+        cache_file="$cache_root/$relative"
+        [[ -f "$cache_file" ]] || return 1
+        cmp -s "$source_file" "$cache_file" || return 1
+        if [[ -x "$source_file" && ! -x "$cache_file" ]]; then
+            return 1
+        fi
+    done < <(find "$source_root" -type f -print0)
+    return 0
+}
+
 # Install plugins globally for Codex via the marketplace + cache mechanism
 # Codex actually uses (verified empirically — direct copies to
 # ~/.codex/plugins/<name>/ are silently ignored by Codex).
@@ -486,7 +507,7 @@ install_user_plugins() {
         dest="$plugin_cache/$commit_hash"
 
         if [[ -d "$dest" ]]; then
-            if [[ ! -f "$dest/.codex-plugin/plugin.json" ]]; then
+            if ! cache_root_matches_plugin "$plugin_dir" "$dest"; then
                 echo "error: incomplete published cache root at $dest" >&2
                 echo "       close Codex, run --prune-cache, then retry --user." >&2
                 return 1
@@ -609,9 +630,10 @@ prune_user_plugin_cache() {
         for cache_entry in "$plugin_cache"/* "$plugin_cache"/.[!.]* "$plugin_cache"/..?*; do
             [[ -e "$cache_entry" || -L "$cache_entry" ]] || continue
             if [[ -f "$marketplace_clone/plugins/$plugin_name/.codex-plugin/plugin.json" \
-                && "$cache_entry" == "$plugin_cache/$commit_hash" \
-                && -f "$cache_entry/.codex-plugin/plugin.json" ]]; then
-                continue
+                && "$cache_entry" == "$plugin_cache/$commit_hash" ]]; then
+                if cache_root_matches_plugin "$marketplace_clone/plugins/$plugin_name" "$cache_entry"; then
+                    continue
+                fi
             fi
             candidates+=("$cache_entry")
         done

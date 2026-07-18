@@ -932,7 +932,7 @@ build_stub_path() {
 exit 0
 STUB
   chmod +x "$stub_dir/codex"
-  for cmd in bash sh awk sed grep find mkdir rm cp mv mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test; do
+  for cmd in bash sh awk sed grep find mkdir rm cp mv cmp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test; do
     cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
     [ -n "$cmd_path" ] && ln -s "$cmd_path" "$stub_dir/$cmd"
   done
@@ -1008,7 +1008,7 @@ else
 fi
 
 echo -n "Codex --prune-cache recovers an incomplete current root... "
-rm -f "$PUBLISHED_ROOT/.codex-plugin/plugin.json"
+rm -f "$PUBLISHED_ROOT/skills/go/SKILL.md"
 set +e
 HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
 INCOMPLETE_EXIT=$?
