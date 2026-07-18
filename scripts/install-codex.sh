@@ -611,15 +611,28 @@ prune_user_plugin_cache() {
     fi
 
     local candidates=()
-    local plugin_cache plugin_name cache_entry
+    local deferred=()
+    local plugin_cache plugin_name plugin_source current_root current_ready cache_entry
     for plugin_cache in "$cache_root"/*; do
         [[ -d "$plugin_cache" ]] || continue
         plugin_name="$(basename "$plugin_cache")"
+        plugin_source="$marketplace_clone/plugins/$plugin_name"
+        current_root="$plugin_cache/$commit_hash"
+        current_ready=false
+        if [[ -f "$plugin_source/.codex-plugin/plugin.json" ]] \
+            && cache_root_matches_plugin "$plugin_source" "$current_root"; then
+            current_ready=true
+        elif [[ -f "$plugin_source/.codex-plugin/plugin.json" ]]; then
+            deferred+=("$plugin_cache")
+        fi
         for cache_entry in "$plugin_cache"/* "$plugin_cache"/.[!.]* "$plugin_cache"/..?*; do
             [[ -e "$cache_entry" || -L "$cache_entry" ]] || continue
-            if [[ -f "$marketplace_clone/plugins/$plugin_name/.codex-plugin/plugin.json" \
-                && "$cache_entry" == "$plugin_cache/$commit_hash" ]]; then
-                if cache_root_matches_plugin "$marketplace_clone/plugins/$plugin_name" "$cache_entry"; then
+            if [[ -f "$plugin_source/.codex-plugin/plugin.json" ]]; then
+                if [[ "$current_ready" == "true" && "$cache_entry" == "$current_root" ]]; then
+                    continue
+                fi
+                if [[ "$current_ready" != "true" && "$cache_entry" != "$current_root" \
+                    && "$(basename "$cache_entry")" != ".${commit_hash}.tmp."* ]]; then
                     continue
                 fi
             fi
@@ -629,6 +642,9 @@ prune_user_plugin_cache() {
 
     if [[ ${#candidates[@]} -eq 0 ]]; then
         echo "no superseded Gopher AI Codex cache roots found"
+        if [[ ${#deferred[@]} -gt 0 ]]; then
+            echo "latest roots are missing or incomplete; retained older roots. Run --user, then prune again."
+        fi
         return 0
     fi
 
@@ -660,6 +676,9 @@ prune_user_plugin_cache() {
         removed=$((removed + 1))
     done
     echo "pruned $removed superseded cache root$([ "$removed" -eq 1 ] || echo "s")"
+    if [[ ${#deferred[@]} -gt 0 ]]; then
+        echo "retained older roots for plugins without a complete latest root. Run --user, then prune again."
+    fi
 }
 
 copy_repo_plugins() {

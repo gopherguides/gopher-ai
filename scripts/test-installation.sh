@@ -1072,6 +1072,24 @@ else
   echo "OK ($OLD_HASH retained, $NEW_HASH activated)"
 fi
 
+echo -n "Codex --prune-cache retains old roots until the latest root exists... "
+rm -rf "$NEW_ROOT"
+if ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache --yes >/dev/null 2>&1; then
+  echo "FAIL (--prune-cache exited non-zero)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$OLD_ROOT" ]; then
+  echo "FAIL (old root was removed before the latest root existed)"
+  ERRORS=$((ERRORS + 1))
+elif ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1; then
+  echo "FAIL (--user did not restore the latest root)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$NEW_ROOT/.codex-plugin/plugin.json" ]; then
+  echo "FAIL (latest root was not restored)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Codex --prune-cache requires explicit non-interactive confirmation... "
 PRUNE_NOCONFIRM_LOG=$(mktemp)
 set +e
