@@ -64,13 +64,13 @@ To add these plugins to **your own repo**:
 
 ### Global (Personal) Use
 
-For Codex, "global" means installing plugins to `~/.codex/plugins/<name>/` so they load in every Codex session, regardless of the working directory. This is what `install-all.sh` uses for the curl one-liner.
+For Codex, "global" means installing plugins through the Codex marketplace cache so they load in every Codex session, regardless of the working directory. This is what `install-all.sh` uses for the curl one-liner.
 
 ```bash
 ./scripts/install-codex.sh --user
 ```
 
-Each plugin gets a `.gopher-ai-installed` marker recording version + install timestamp, so the SessionStart cleanup hook can distinguish our installs from user-authored plugins of the same name. `--user` is idempotent: re-running cleanly replaces a prior install.
+`--user` stages each new commit-hash root before activating it and retains previously published roots so active Codex sessions keep working through an update.
 
 The universal installer handles every detected platform in one step:
 
@@ -80,6 +80,14 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/m
 
 It builds, installs Claude Code and Gemini, runs `install-codex.sh --user` for Codex, and cleans up after itself. Restart Codex after running it; use `/plugins` to verify.
 
+After all Codex sessions have exited, stale marketplace cache roots can be removed explicitly:
+
+```bash
+./scripts/install-codex.sh --prune-cache
+```
+
+Do not prune while a Codex session is active. Running sessions retain absolute hook and skill paths into their original cache roots. The prune command keeps the latest installed commit.
+
 ### Migration
 
 Two earlier states are auto-handled by the SessionStart hook + `--user`:
@@ -87,7 +95,7 @@ Two earlier states are auto-handled by the SessionStart hook + `--user`:
 - Flat skills at `~/.codex/skills/<name>/` from the original (broken) `--user` mode that double-loaded against the marketplace.
 - Unmarked plugin directories at `~/.codex/plugins/<name>/` from when the README said "manually copy `dist/codex/plugins/` to `~/.codex/plugins/`".
 
-To migrate manually: `./scripts/install-codex.sh --user` (clean reinstall) or `./scripts/install-codex.sh --cleanup` (remove leftover skills only).
+To migrate manually: `./scripts/install-codex.sh --user` (refresh the marketplace install) or `./scripts/install-codex.sh --cleanup` (remove leftover skills only).
 
 ## Architecture
 

@@ -932,7 +932,7 @@ build_stub_path() {
 exit 0
 STUB
   chmod +x "$stub_dir/codex"
-  for cmd in bash sh awk sed grep find mkdir rm cp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test; do
+  for cmd in bash sh awk sed grep find mkdir rm cp mv mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test; do
     cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
     [ -n "$cmd_path" ] && ln -s "$cmd_path" "$stub_dir/$cmd"
   done
@@ -988,25 +988,110 @@ else
 fi
 rm -rf "$TMP_HOME" "$STUB_PATH"
 
-echo -n "Codex --user is idempotent (re-running rebuilds cache cleanly)... "
+echo -n "Codex --user preserves a published root on the same commit... "
 TMP_HOME=$(mktemp -d)
 seed_fake_marketplace_clone "$TMP_HOME" >/dev/null
 STUB_PATH=$(build_stub_path "$TMP_HOME")
 HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
 HASH=$(git -C "$TMP_HOME/.codex/.tmp/marketplaces/gopher-ai" rev-parse --short=8 HEAD)
-echo "stale" > "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/$HASH/STALE_FILE"
-# Also create an old commit-hash dir to verify it gets cleaned up.
-mkdir -p "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/deadbeef"
-echo "old version" > "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/deadbeef/SKILL.md"
+PUBLISHED_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/$HASH"
+echo "active session" > "$PUBLISHED_ROOT/ACTIVE_SESSION"
 HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
-if [ -f "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/$HASH/STALE_FILE" ]; then
-  echo "FAIL (stale file survived re-install)"
+if [ ! -f "$PUBLISHED_ROOT/ACTIVE_SESSION" ]; then
+  echo "FAIL (published root was rewritten on re-install)"
   ERRORS=$((ERRORS + 1))
-elif [ -d "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/deadbeef" ]; then
-  echo "FAIL (old commit-hash dir not cleaned up)"
-  ERRORS=$((ERRORS + 1))
-elif [ ! -f "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/$HASH/.codex-plugin/plugin.json" ]; then
+elif [ ! -f "$PUBLISHED_ROOT/.codex-plugin/plugin.json" ]; then
   echo "FAIL (re-install did not repopulate cache)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Codex --prune-cache recovers an incomplete current root... "
+rm -f "$PUBLISHED_ROOT/.codex-plugin/plugin.json"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+INCOMPLETE_EXIT=$?
+set -e
+if [ "$INCOMPLETE_EXIT" -eq 0 ]; then
+  echo "FAIL (--user should reject an incomplete published root)"
+  ERRORS=$((ERRORS + 1))
+elif ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache --yes >/dev/null 2>&1; then
+  echo "FAIL (--prune-cache rejected the incomplete root)"
+  ERRORS=$((ERRORS + 1))
+elif ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1; then
+  echo "FAIL (--user did not republish the pruned root)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$PUBLISHED_ROOT/.codex-plugin/plugin.json" ]; then
+  echo "FAIL (current root was not restored)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$STUB_PATH"
+
+echo -n "Codex --user retains active hooks and skills across an update... "
+TMP_HOME=$(mktemp -d)
+seed_fake_marketplace_clone "$TMP_HOME" >/dev/null
+STUB_PATH=$(build_stub_path "$TMP_HOME")
+HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+MARKETPLACE_CLONE="$TMP_HOME/.codex/.tmp/marketplaces/gopher-ai"
+OLD_HASH=$(git -C "$MARKETPLACE_CLONE" rev-parse --short=8 HEAD)
+OLD_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-workflow/$OLD_HASH"
+git -C "$MARKETPLACE_CLONE" commit --quiet --allow-empty -m "test update"
+NEW_HASH=$(git -C "$MARKETPLACE_CLONE" rev-parse --short=8 HEAD)
+HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+NEW_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-workflow/$NEW_HASH"
+if [ "$OLD_HASH" = "$NEW_HASH" ]; then
+  echo "FAIL (fixture did not create a new marketplace commit)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -x "$OLD_ROOT/hooks/pre-tool-use.sh" ] \
+  || [ ! -x "$OLD_ROOT/hooks/post-tool-use.sh" ] \
+  || [ ! -x "$OLD_ROOT/hooks/stop-hook.sh" ]; then
+  echo "FAIL (an active hook path was removed or lost execute permission)"
+  ERRORS=$((ERRORS + 1))
+elif ! bash -n "$OLD_ROOT/hooks/pre-tool-use.sh" \
+  "$OLD_ROOT/hooks/post-tool-use.sh" "$OLD_ROOT/hooks/stop-hook.sh"; then
+  echo "FAIL (an active hook path is no longer readable by bash)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -r "$OLD_ROOT/skills/ship/SKILL.md" ]; then
+  echo "FAIL (an active skill path was removed or became unreadable)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$NEW_ROOT/.codex-plugin/plugin.json" ]; then
+  echo "FAIL (new marketplace commit was not activated)"
+  ERRORS=$((ERRORS + 1))
+elif [ -n "$(compgen -G "$TMP_HOME/.codex/plugins/cache/gopher-ai/*/.*.tmp.*" || true)" ]; then
+  echo "FAIL (staging directory remained after activation)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK ($OLD_HASH retained, $NEW_HASH activated)"
+fi
+
+echo -n "Codex --prune-cache requires explicit non-interactive confirmation... "
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache \
+  </dev/null >"$TMPDIR/gopher-ai-prune-noconfirm.log" 2>&1
+PRUNE_EXIT=$?
+set -e
+if [ "$PRUNE_EXIT" -eq 0 ]; then
+  echo "FAIL (--prune-cache should require --yes without a terminal)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$OLD_ROOT" ]; then
+  echo "FAIL (superseded root was removed without confirmation)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Codex --prune-cache removes only superseded roots... "
+if ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache --yes >/dev/null 2>&1; then
+  echo "FAIL (--prune-cache exited non-zero)"
+  ERRORS=$((ERRORS + 1))
+elif [ -d "$OLD_ROOT" ]; then
+  echo "FAIL (superseded cache root was not removed)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$NEW_ROOT/.codex-plugin/plugin.json" ]; then
+  echo "FAIL (latest cache root was removed)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
