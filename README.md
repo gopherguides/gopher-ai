@@ -307,13 +307,15 @@ Plugins are distributed via the [Codex plugin system](https://developers.openai.
 
 **GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms — installs Claude Code and Gemini, and installs Codex plugins globally via Codex's marketplace mechanism (so skills load in every Codex session). The Codex install runs `codex plugin marketplace add gopherguides/gopher-ai`, populates `~/.codex/plugins/cache/gopher-ai/<plugin>/<commit>/` from the marketplace clone, and writes `[plugins."<name>@gopher-ai"]\nenabled = true` entries to `~/.codex/config.toml`. The marketplace cache is the only path Codex actually loads from — direct copies to `~/.codex/plugins/<name>/` are silently ignored.
 
+**Cache lifecycle:** `install-codex.sh --user` stages each new commit-hash root before activating it and leaves older roots available to Codex sessions that started before the update. After all Codex sessions have exited, remove superseded roots with `./scripts/install-codex.sh --prune-cache`. Do not prune while Codex is running; active sessions retain absolute hook and skill paths into their original roots. The prune command keeps the latest installed commit and requires confirmation unless `--yes` is supplied.
+
 **Migration from older versions:** Three earlier states needed cleanup, all handled automatically by the SessionStart hook (no command required) plus by `install-codex.sh --user` whenever you run install-all:
 - Flat skills at `~/.codex/skills/<name>/` from the original (broken) `--user` mode — overflowed Codex's [skill metadata budget](https://developers.openai.com/codex/skills).
 - Unmarked plugin directories at `~/.codex/plugins/<name>/` from when the README said "manually copy `dist/codex/plugins/` to `~/.codex/plugins/`" — also caused double-loading.
 
 - Direct plugin copies at `~/.codex/plugins/<name>/` from a previous (also broken) `--user` mode that wrote files Codex never loaded. The current `--user` mode installs via the marketplace cache instead, where Codex actually reads from.
 
-To migrate manually: `./scripts/install-codex.sh --user` (clean reinstall via marketplace) or `./scripts/install-codex.sh --cleanup` (remove leftover skills only).
+To migrate manually: `./scripts/install-codex.sh --user` (refresh the marketplace install) or `./scripts/install-codex.sh --cleanup` (remove leftover skills only).
 
 **Workflow skills** (from `go-workflow` plugin):
 

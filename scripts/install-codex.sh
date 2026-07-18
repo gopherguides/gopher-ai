@@ -15,19 +15,17 @@ Usage:
   scripts/install-codex.sh --user
   scripts/install-codex.sh --repo /path/to/repo
   scripts/install-codex.sh --cleanup [--yes]
+  scripts/install-codex.sh --prune-cache [--yes]
 
 gopher-ai for Codex can be installed in two ways:
 
-  --user        Install plugins globally to ~/.codex/plugins/<name>/ so they
-                load in EVERY Codex session, regardless of the working
-                directory. This is what install-all.sh uses for the curl
-                one-liner. Idempotent: re-running cleanly replaces any
-                existing install. Each plugin gets a marker file
-                .gopher-ai-installed/ recording version + install timestamp,
-                so the cleanup hook can distinguish our installs from
-                user-authored plugins of the same name. Also removes legacy
-                ~/.codex/skills/ entries left over from older installs
-                (with --yes semantics — assumes the user wants the migration).
+  --user        Install plugins globally through the Codex marketplace cache
+                so they load in EVERY Codex session, regardless of the working
+                directory. New commit-hash roots are staged before activation.
+                Previously published roots are retained for active sessions.
+                Also removes legacy ~/.codex/skills/ entries left over from
+                older installs (with --yes semantics — assumes the user wants
+                the migration).
 
   --repo PATH   Install plugins into PATH/plugins and merge entries into
                 PATH/.agents/plugins/marketplace.json. Use this for project-
@@ -44,8 +42,12 @@ gopher-ai for Codex can be installed in two ways:
                 authored skill at a generic name like `commit` or `ship` will
                 fail the content check and be kept.
 
-  --yes         Skip interactive confirmation in --cleanup (used by
-                install-all.sh and CI flows).
+  --prune-cache Remove superseded Gopher AI marketplace cache roots. Close all
+                Codex sessions before running this command; active sessions
+                retain absolute paths into these roots. The latest installed
+                commit is always kept.
+
+  --yes         Skip interactive confirmation in --cleanup or --prune-cache.
   --help        Show this help text
 EOF
 }
@@ -419,6 +421,27 @@ plugin_json_author_email() {
     ' "$f"
 }
 
+cache_root_matches_plugin() {
+    local source_root="$1"
+    local cache_root="$2"
+    [[ -d "$cache_root" ]] || return 1
+
+    local source_file relative cache_file
+    while IFS= read -r -d '' source_file; do
+        relative="${source_file#"$source_root"/}"
+        case "$relative" in
+            .claude-plugin/*) continue ;;
+        esac
+        cache_file="$cache_root/$relative"
+        [[ -f "$cache_file" ]] || return 1
+        cmp -s "$source_file" "$cache_file" || return 1
+        if [[ -x "$source_file" && ! -x "$cache_file" ]]; then
+            return 1
+        fi
+    done < <(find "$source_root" -type f -print0)
+    return 0
+}
+
 # Install plugins globally for Codex via the marketplace + cache mechanism
 # Codex actually uses (verified empirically — direct copies to
 # ~/.codex/plugins/<name>/ are silently ignored by Codex).
@@ -433,7 +456,8 @@ plugin_json_author_email() {
 #   3. ~/.codex/config.toml must contain [plugins."<name>@gopher-ai"]
 #      enabled = true entries.
 #
-# Idempotent: re-running cleanly replaces stale cache + marker entries.
+# Published commit-hash roots are immutable because active Codex sessions keep
+# absolute paths into them. Superseded roots are removed only by --prune-cache.
 install_user_plugins() {
     require_cmd codex
     require_cmd git
@@ -472,23 +496,38 @@ install_user_plugins() {
     fi
     echo "populating cache (commit $commit_hash)..."
 
-    # Wipe any stale cache for this marketplace before repopulating — old
-    # commit-hash subdirs would otherwise linger forever and we'd accumulate.
-    rm -rf "$cache_root"
-
     local installed=0
     local plugin_dir
     for plugin_dir in "$marketplace_clone"/plugins/*; do
         [[ -d "$plugin_dir" ]] || continue
         [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
-        local plugin_name dest
+        local plugin_name plugin_cache dest staging
         plugin_name="$(basename "$plugin_dir")"
-        dest="$cache_root/$plugin_name/$commit_hash"
+        plugin_cache="$cache_root/$plugin_name"
+        dest="$plugin_cache/$commit_hash"
 
-        mkdir -p "$dest"
-        cp -R "$plugin_dir"/. "$dest/"
-        # Codex doesn't need the .claude-plugin/ subdir — drop it from the cache.
-        rm -rf "$dest/.claude-plugin"
+        if [[ -d "$dest" ]]; then
+            if ! cache_root_matches_plugin "$plugin_dir" "$dest"; then
+                echo "error: incomplete published cache root at $dest" >&2
+                echo "       close Codex, run --prune-cache, then retry --user." >&2
+                return 1
+            fi
+            echo "  retained: $plugin_name (already cached at $dest)"
+            installed=$((installed + 1))
+            continue
+        fi
+
+        mkdir -p "$plugin_cache"
+        staging="$(mktemp -d "$plugin_cache/.${commit_hash}.tmp.XXXXXX")"
+        if ! cp -R "$plugin_dir"/. "$staging/"; then
+            rm -rf "${staging:?}"
+            return 1
+        fi
+        rm -rf "$staging/.claude-plugin"
+        if ! mv "$staging" "$dest"; then
+            rm -rf "${staging:?}"
+            return 1
+        fi
         echo "  installed: $plugin_name (cached at $dest)"
         installed=$((installed + 1))
     done
@@ -547,6 +586,101 @@ install_user_plugins() {
     echo "Restart Codex; gopher-ai skills will load globally."
 }
 
+prune_user_plugin_cache() {
+    local assume_yes="${1:-false}"
+    local marketplace_clone="$HOME/.codex/.tmp/marketplaces/gopher-ai"
+    local cache_root="$HOME/.codex/plugins/cache/gopher-ai"
+
+    if [[ ! -d "$cache_root" ]]; then
+        echo "no Gopher AI Codex cache found — nothing to prune"
+        return 0
+    fi
+
+    require_cmd git
+    if [[ ! -d "$marketplace_clone" ]]; then
+        echo "error: marketplace clone missing at $marketplace_clone" >&2
+        echo "       run --user before pruning the cache." >&2
+        return 1
+    fi
+
+    local commit_hash
+    commit_hash="$(git -C "$marketplace_clone" rev-parse --short=8 HEAD 2>/dev/null)"
+    if [[ -z "$commit_hash" ]]; then
+        echo "error: could not read commit hash from $marketplace_clone" >&2
+        return 1
+    fi
+
+    local candidates=()
+    local deferred=()
+    local plugin_cache plugin_name plugin_source current_root current_ready cache_entry
+    for plugin_cache in "$cache_root"/*; do
+        [[ -d "$plugin_cache" ]] || continue
+        plugin_name="$(basename "$plugin_cache")"
+        plugin_source="$marketplace_clone/plugins/$plugin_name"
+        current_root="$plugin_cache/$commit_hash"
+        current_ready=false
+        if [[ -f "$plugin_source/.codex-plugin/plugin.json" ]] \
+            && cache_root_matches_plugin "$plugin_source" "$current_root"; then
+            current_ready=true
+        elif [[ -f "$plugin_source/.codex-plugin/plugin.json" ]]; then
+            deferred+=("$plugin_cache")
+        fi
+        for cache_entry in "$plugin_cache"/* "$plugin_cache"/.[!.]* "$plugin_cache"/..?*; do
+            [[ -e "$cache_entry" || -L "$cache_entry" ]] || continue
+            if [[ -f "$plugin_source/.codex-plugin/plugin.json" ]]; then
+                if [[ "$current_ready" == "true" && "$cache_entry" == "$current_root" ]]; then
+                    continue
+                fi
+                if [[ "$current_ready" != "true" && "$cache_entry" != "$current_root" \
+                    && "$(basename "$cache_entry")" != ".${commit_hash}.tmp."* ]]; then
+                    continue
+                fi
+            fi
+            candidates+=("$cache_entry")
+        done
+    done
+
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+        echo "no superseded Gopher AI Codex cache roots found"
+        if [[ ${#deferred[@]} -gt 0 ]]; then
+            echo "latest roots are missing or incomplete; retained older roots. Run --user, then prune again."
+        fi
+        return 0
+    fi
+
+    echo "close all Codex sessions before removing superseded cache roots:"
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        echo "  $candidate"
+    done
+
+    if [[ "$assume_yes" != "true" ]]; then
+        if [[ ! -t 0 ]]; then
+            echo ""
+            echo "stdin is not a terminal — close all Codex sessions, then re-run with --yes."
+            return 1
+        fi
+        local answer=""
+        printf "all Codex sessions are closed; remove these roots? [y/N] "
+        read -r answer
+        case "$answer" in
+            [Yy]|[Yy][Ee][Ss]) ;;
+            *) echo "aborted — nothing removed."; return 0 ;;
+        esac
+    fi
+
+    local removed=0
+    for candidate in "${candidates[@]}"; do
+        rm -rf "${candidate:?}"
+        echo "removed: $candidate"
+        removed=$((removed + 1))
+    done
+    echo "pruned $removed superseded cache root$([ "$removed" -eq 1 ] || echo "s")"
+    if [[ ${#deferred[@]} -gt 0 ]]; then
+        echo "retained older roots for plugins without a complete latest root. Run --user, then prune again."
+    fi
+}
+
 copy_repo_plugins() {
     local target_repo="$1"
     mkdir -p "$target_repo/plugins"
@@ -602,6 +736,13 @@ main() {
                 assume_yes=true
             fi
             cleanup_legacy_user_skills "$assume_yes"
+            ;;
+        --prune-cache)
+            local assume_yes=false
+            if [[ "${2:-}" == "--yes" || "${2:-}" == "-y" ]]; then
+                assume_yes=true
+            fi
+            prune_user_plugin_cache "$assume_yes"
             ;;
         --repo)
             if [[ $# -lt 2 ]]; then
