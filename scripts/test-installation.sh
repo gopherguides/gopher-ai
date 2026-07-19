@@ -924,7 +924,7 @@ fi
 exit 0
 STUB
   chmod +x "$stub_dir/codex"
-  for cmd in bash sh awk sed grep rg find mkdir rm cp mv cmp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test; do
+  for cmd in bash sh awk sed grep find mkdir rm cp mv cmp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test; do
     cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
     [ -n "$cmd_path" ] && ln -s "$cmd_path" "$stub_dir/$cmd"
   done
@@ -946,7 +946,7 @@ else
   EXPECTED_PLUGINS="go-dev go-web go-workflow gopher-guides llm-tools tailwind"
   MISSING=""
   for p in $EXPECTED_PLUGINS; do
-    if ! rg -qx "plugin add ${p}@gopher-ai" "$STUB_LOG"; then
+    if ! grep -qx "plugin add ${p}@gopher-ai" "$STUB_LOG"; then
       MISSING="$MISSING $p(command)"
     elif [ ! -f "$TMP_HOME/.codex/plugins/cache/gopher-ai/$p/$CURRENT_VERSION/.codex-plugin/plugin.json" ]; then
       MISSING="$MISSING $p(cache)"
@@ -957,7 +957,7 @@ else
     echo "FAIL (plugin add calls were incorrect:$MISSING; count=$ADD_COUNT)"
     sed -n '1,40p' "$STUB_LOG"
     ERRORS=$((ERRORS + 1))
-  elif ! rg -qx 'plugin marketplace add gopherguides/gopher-ai --ref main' "$STUB_LOG"; then
+  elif ! grep -qx 'plugin marketplace add gopherguides/gopher-ai --ref main' "$STUB_LOG"; then
     echo "FAIL (marketplace was not registered through the Codex CLI)"
     ERRORS=$((ERRORS + 1))
   else
@@ -966,10 +966,10 @@ else
 fi
 
 echo -n "Codex --user leaves config and cache publication to the CLI... "
-if [ -f "$TMP_HOME/.codex/config.toml" ] && rg -q '^\[plugins\.' "$TMP_HOME/.codex/config.toml"; then
+if [ -f "$TMP_HOME/.codex/config.toml" ] && grep -q '^\[plugins\.' "$TMP_HOME/.codex/config.toml"; then
   echo "FAIL (installer wrote plugin entries to config.toml)"
   ERRORS=$((ERRORS + 1))
-elif rg -q 'populating cache|enabled [0-9]+ new plugin' /tmp/gopher-ai-user-install.log; then
+elif grep -Eq 'populating cache|enabled [0-9]+ new plugin' /tmp/gopher-ai-user-install.log; then
   echo "FAIL (installer reported private cache or config writes)"
   ERRORS=$((ERRORS + 1))
 else
@@ -981,10 +981,10 @@ echo -n "Codex --user upgrades a registered marketplace through the CLI... "
 HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
   CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
   bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
-if ! rg -qx 'plugin marketplace upgrade gopher-ai' "$STUB_LOG"; then
+if ! grep -qx 'plugin marketplace upgrade gopher-ai' "$STUB_LOG"; then
   echo "FAIL (registered marketplace was not upgraded)"
   ERRORS=$((ERRORS + 1))
-elif rg -q '^plugin marketplace add ' "$STUB_LOG"; then
+elif grep -q '^plugin marketplace add ' "$STUB_LOG"; then
   echo "FAIL (registered marketplace was added again)"
   ERRORS=$((ERRORS + 1))
 else
@@ -1131,10 +1131,10 @@ set -e
 if [ "$EXIT" -eq 0 ]; then
   echo "FAIL (--user should reject an unsupported Codex CLI)"
   ERRORS=$((ERRORS + 1))
-elif ! rg -q "does not support 'codex plugin add'" /tmp/gopher-ai-user-old-codex.log; then
+elif ! grep -q "does not support 'codex plugin add'" /tmp/gopher-ai-user-old-codex.log; then
   echo "FAIL (error did not explain the required CLI support)"
   ERRORS=$((ERRORS + 1))
-elif rg -q '^plugin marketplace ' "$STUB_LOG"; then
+elif grep -q '^plugin marketplace ' "$STUB_LOG"; then
   echo "FAIL (installer mutated marketplace state before the capability check)"
   ERRORS=$((ERRORS + 1))
 else
