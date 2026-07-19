@@ -70,7 +70,7 @@ For Codex, "global" means installing plugins through the Codex marketplace cache
 ./scripts/install-codex.sh --user
 ```
 
-`--user` stages each new commit-hash root before activating it and retains previously published roots so active Codex sessions keep working through an update.
+`--user` registers or upgrades the marketplace and runs `codex plugin add` for each Codex-capable plugin. Codex owns config updates and publishes immutable versioned roots, retaining prior versions for active sessions.
 
 The universal installer handles every detected platform in one step:
 
@@ -86,7 +86,7 @@ After all Codex sessions have exited, stale marketplace cache roots can be remov
 ./scripts/install-codex.sh --prune-cache
 ```
 
-Do not prune while a Codex session is active. Running sessions retain absolute hook and skill paths into their original cache roots. The prune command keeps the latest installed commit.
+Do not prune while a Codex session is active. Running sessions retain absolute hook and skill paths into their original cache roots. The prune command keeps the current plugin version.
 
 ### Migration
 

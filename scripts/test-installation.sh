@@ -890,61 +890,55 @@ else
   echo "OK"
 fi
 
-# --- Tests for the new marketplace-based --user install -------------------
-#
-# install-codex.sh --user uses Codex's marketplace + cache mechanism (the only
-# install path Codex actually loads from). End-to-end testing requires the
-# codex CLI; for unit-testing the cache layout + config edits, we stub codex
-# with a no-op and pre-populate a fake marketplace clone that mirrors what
-# `codex plugin marketplace add` would create.
-
-# Helper: build a fake marketplace clone in $1/.codex/.tmp/marketplaces/gopher-ai/
-# that mimics what `codex plugin marketplace add gopherguides/gopher-ai` produces.
-seed_fake_marketplace_clone() {
-  local home="$1"
-  local clone="$home/.codex/.tmp/marketplaces/gopher-ai"
-  mkdir -p "$clone"
-  # Copy the current source plugins into plugins/<name>/, mirroring marketplace layout.
-  mkdir -p "$clone/plugins"
-  for plugin_dir in "$ROOT_DIR"/plugins/*; do
-    [ -d "$plugin_dir/.codex-plugin" ] || continue
-    cp -R "$plugin_dir" "$clone/plugins/"
-  done
-  cp -R "$ROOT_DIR/.agents" "$clone/" 2>/dev/null || true
-  # Initialize a git repo so `git rev-parse --short=8 HEAD` works.
-  git -C "$clone" init --quiet 2>/dev/null
-  git -C "$clone" config user.email test@example.com
-  git -C "$clone" config user.name test
-  git -C "$clone" add -A
-  git -C "$clone" commit --quiet -m "test seed" 2>/dev/null
-  echo "$clone"
-}
-
-# Helper: build a stubbed PATH that has a no-op `codex` and core utilities.
 build_stub_path() {
   local stub_dir
   stub_dir="$(mktemp -d)"
   cat > "$stub_dir/codex" <<'STUB'
 #!/bin/sh
-# No-op stub. install-codex.sh --user expects `codex plugin marketplace add` to
-# produce ~/.codex/.tmp/marketplaces/gopher-ai/ — we pre-seed that directly in
-# the test, so the stub just succeeds.
+set -eu
+printf '%s\n' "$*" >> "${CODEX_STUB_LOG:?}"
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ] && [ "${3:-}" = "--help" ]; then
+  [ "${CODEX_STUB_SUPPORTS_ADD:-true}" = "true" ]
+  exit
+fi
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "marketplace" ] && [ "${3:-}" = "list" ]; then
+  if [ "${CODEX_STUB_MARKETPLACE_REGISTERED:-false}" = "true" ]; then
+    printf '%s\n' '{"marketplaces":[{"name":"gopher-ai","marketplaceSource":{"sourceType":"git","source":"https://github.com/gopherguides/gopher-ai.git"}}]}'
+  else
+    printf '%s\n' '{"marketplaces":[]}'
+  fi
+  exit
+fi
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
+  plugin="${3%@*}"
+  source_root="${CODEX_STUB_SOURCE_ROOT:?}/plugins/$plugin"
+  version="$(jq -r '.version' "$source_root/.codex-plugin/plugin.json")"
+  destination="$HOME/.codex/plugins/cache/gopher-ai/$plugin/$version"
+  if [ ! -d "$destination" ]; then
+    mkdir -p "$destination"
+    cp -R "$source_root"/. "$destination/"
+    rm -rf "$destination/.claude-plugin"
+  fi
+  exit
+fi
 exit 0
 STUB
   chmod +x "$stub_dir/codex"
-  for cmd in bash sh awk sed grep find mkdir rm cp mv cmp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test; do
+  for cmd in bash sh awk sed grep rg find mkdir rm cp mv cmp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test; do
     cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
     [ -n "$cmd_path" ] && ln -s "$cmd_path" "$stub_dir/$cmd"
   done
   echo "$stub_dir"
 }
 
-echo -n "Codex --user populates marketplace cache with commit-hash subdir... "
+echo -n "Codex --user installs all six plugins through codex plugin add... "
 TMP_HOME=$(mktemp -d)
-seed_fake_marketplace_clone "$TMP_HOME" >/dev/null
-STUB_PATH=$(build_stub_path "$TMP_HOME")
-EXPECTED_HASH=$(git -C "$TMP_HOME/.codex/.tmp/marketplaces/gopher-ai" rev-parse --short=8 HEAD)
-if ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-install.log 2>&1; then
+STUB_PATH=$(build_stub_path)
+STUB_LOG=$(mktemp)
+CURRENT_VERSION=$(jq -r '.metadata.version' "$ROOT_DIR/.claude-plugin/marketplace.json")
+if ! HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" bash "$ROOT_DIR/scripts/install-codex.sh" --user \
+  >/tmp/gopher-ai-user-install.log 2>&1; then
   echo "FAIL (--user exited non-zero)"
   sed -n '1,40p' /tmp/gopher-ai-user-install.log
   ERRORS=$((ERRORS + 1))
@@ -952,51 +946,57 @@ else
   EXPECTED_PLUGINS="go-dev go-web go-workflow gopher-guides llm-tools tailwind"
   MISSING=""
   for p in $EXPECTED_PLUGINS; do
-    cached="$TMP_HOME/.codex/plugins/cache/gopher-ai/$p/$EXPECTED_HASH"
-    if [ ! -f "$cached/.codex-plugin/plugin.json" ]; then
-      MISSING="$MISSING $p"
-    elif [ -d "$cached/.claude-plugin" ]; then
-      MISSING="$MISSING $p(has-claude-plugin)"
+    if ! rg -qx "plugin add ${p}@gopher-ai" "$STUB_LOG"; then
+      MISSING="$MISSING $p(command)"
+    elif [ ! -f "$TMP_HOME/.codex/plugins/cache/gopher-ai/$p/$CURRENT_VERSION/.codex-plugin/plugin.json" ]; then
+      MISSING="$MISSING $p(cache)"
     fi
   done
-  if [ -n "$MISSING" ]; then
-    echo "FAIL (cache populated incorrectly:$MISSING)"
-    sed -n '1,30p' /tmp/gopher-ai-user-install.log
+  ADD_COUNT=$(awk '$1 == "plugin" && $2 == "add" && $3 != "--help" { count++ } END { print count + 0 }' "$STUB_LOG")
+  if [ -n "$MISSING" ] || [ "$ADD_COUNT" -ne 6 ]; then
+    echo "FAIL (plugin add calls were incorrect:$MISSING; count=$ADD_COUNT)"
+    sed -n '1,40p' "$STUB_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif ! rg -qx 'plugin marketplace add gopherguides/gopher-ai --ref main' "$STUB_LOG"; then
+    echo "FAIL (marketplace was not registered through the Codex CLI)"
     ERRORS=$((ERRORS + 1))
   else
-    echo "OK ($EXPECTED_HASH cached for 6 plugins)"
+    echo "OK"
   fi
 fi
-rm -rf "$TMP_HOME" "$STUB_PATH"
 
-echo -n "Codex --user adds [plugins.<name>@gopher-ai] entries to config.toml... "
-TMP_HOME=$(mktemp -d)
-seed_fake_marketplace_clone "$TMP_HOME" >/dev/null
-STUB_PATH=$(build_stub_path "$TMP_HOME")
-HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
-MISSING=""
-for p in go-dev go-web go-workflow gopher-guides llm-tools tailwind; do
-  if ! grep -qF "[plugins.\"${p}@gopher-ai\"]" "$TMP_HOME/.codex/config.toml" 2>/dev/null; then
-    MISSING="$MISSING $p"
-  fi
-done
-if [ -n "$MISSING" ]; then
-  echo "FAIL (missing config entries:$MISSING)"
+echo -n "Codex --user leaves config and cache publication to the CLI... "
+if [ -f "$TMP_HOME/.codex/config.toml" ] && rg -q '^\[plugins\.' "$TMP_HOME/.codex/config.toml"; then
+  echo "FAIL (installer wrote plugin entries to config.toml)"
+  ERRORS=$((ERRORS + 1))
+elif rg -q 'populating cache|enabled [0-9]+ new plugin' /tmp/gopher-ai-user-install.log; then
+  echo "FAIL (installer reported private cache or config writes)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
 fi
-rm -rf "$TMP_HOME" "$STUB_PATH"
 
-echo -n "Codex --user preserves a published root on the same commit... "
-TMP_HOME=$(mktemp -d)
-seed_fake_marketplace_clone "$TMP_HOME" >/dev/null
-STUB_PATH=$(build_stub_path "$TMP_HOME")
-HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
-HASH=$(git -C "$TMP_HOME/.codex/.tmp/marketplaces/gopher-ai" rev-parse --short=8 HEAD)
-PUBLISHED_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/$HASH"
+echo -n "Codex --user upgrades a registered marketplace through the CLI... "
+: > "$STUB_LOG"
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+if ! rg -qx 'plugin marketplace upgrade gopher-ai' "$STUB_LOG"; then
+  echo "FAIL (registered marketplace was not upgraded)"
+  ERRORS=$((ERRORS + 1))
+elif rg -q '^plugin marketplace add ' "$STUB_LOG"; then
+  echo "FAIL (registered marketplace was added again)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Codex --user preserves a published root on the same version... "
+PUBLISHED_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/$CURRENT_VERSION"
 echo "active session" > "$PUBLISHED_ROOT/ACTIVE_SESSION"
-HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
 if [ ! -f "$PUBLISHED_ROOT/ACTIVE_SESSION" ]; then
   echo "FAIL (published root was rewritten on re-install)"
   ERRORS=$((ERRORS + 1))
@@ -1007,47 +1007,16 @@ else
   echo "OK"
 fi
 
-echo -n "Codex --prune-cache recovers an incomplete current root... "
-rm -f "$PUBLISHED_ROOT/skills/go/SKILL.md"
-for p in go-web go-workflow gopher-guides llm-tools tailwind; do
-  rm -rf "$TMP_HOME/.codex/plugins/cache/gopher-ai/$p/$HASH"
-done
-set +e
-HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
-INCOMPLETE_EXIT=$?
-set -e
-if [ "$INCOMPLETE_EXIT" -eq 0 ]; then
-  echo "FAIL (--user should reject an incomplete published root)"
-  ERRORS=$((ERRORS + 1))
-elif ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache --yes >/dev/null 2>&1; then
-  echo "FAIL (--prune-cache rejected the incomplete root)"
-  ERRORS=$((ERRORS + 1))
-elif ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1; then
-  echo "FAIL (--user did not republish the pruned root)"
-  ERRORS=$((ERRORS + 1))
-elif [ ! -f "$PUBLISHED_ROOT/.codex-plugin/plugin.json" ] \
-  || [ ! -f "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-web/$HASH/.codex-plugin/plugin.json" ]; then
-  echo "FAIL (missing or incomplete current roots were not restored)"
-  ERRORS=$((ERRORS + 1))
-else
-  echo "OK"
-fi
-rm -rf "$TMP_HOME" "$STUB_PATH"
-
-echo -n "Codex --user retains active hooks and skills across an update... "
-TMP_HOME=$(mktemp -d)
-seed_fake_marketplace_clone "$TMP_HOME" >/dev/null
-STUB_PATH=$(build_stub_path "$TMP_HOME")
-HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
-MARKETPLACE_CLONE="$TMP_HOME/.codex/.tmp/marketplaces/gopher-ai"
-OLD_HASH=$(git -C "$MARKETPLACE_CLONE" rev-parse --short=8 HEAD)
-OLD_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-workflow/$OLD_HASH"
-git -C "$MARKETPLACE_CLONE" commit --quiet --allow-empty -m "test update"
-NEW_HASH=$(git -C "$MARKETPLACE_CLONE" rev-parse --short=8 HEAD)
-HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
-NEW_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-workflow/$NEW_HASH"
-if [ "$OLD_HASH" = "$NEW_HASH" ]; then
-  echo "FAIL (fixture did not create a new marketplace commit)"
+echo -n "Codex --user retains prior version roots across an update... "
+OLD_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-workflow/1.7.1"
+mkdir -p "$OLD_ROOT"
+cp -R "$ROOT_DIR/plugins/go-workflow"/. "$OLD_ROOT/"
+rm -rf "$OLD_ROOT/.claude-plugin"
+echo "active session" > "$OLD_ROOT/ACTIVE_SESSION"
+if ! HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1; then
+  echo "FAIL (--user exited non-zero)"
   ERRORS=$((ERRORS + 1))
 elif [ ! -x "$OLD_ROOT/hooks/pre-tool-use.sh" ] \
   || [ ! -x "$OLD_ROOT/hooks/post-tool-use.sh" ] \
@@ -1062,29 +1031,8 @@ elif ! bash -n "$OLD_ROOT/hooks/pre-tool-use.sh" \
 elif [ ! -r "$OLD_ROOT/skills/ship/SKILL.md" ]; then
   echo "FAIL (an active skill path was removed or became unreadable)"
   ERRORS=$((ERRORS + 1))
-elif [ ! -f "$NEW_ROOT/.codex-plugin/plugin.json" ]; then
-  echo "FAIL (new marketplace commit was not activated)"
-  ERRORS=$((ERRORS + 1))
-elif [ -n "$(compgen -G "$TMP_HOME/.codex/plugins/cache/gopher-ai/*/.*.tmp.*" || true)" ]; then
-  echo "FAIL (staging directory remained after activation)"
-  ERRORS=$((ERRORS + 1))
-else
-  echo "OK ($OLD_HASH retained, $NEW_HASH activated)"
-fi
-
-echo -n "Codex --prune-cache retains old roots until the latest root exists... "
-rm -rf "$NEW_ROOT"
-if ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache --yes >/dev/null 2>&1; then
-  echo "FAIL (--prune-cache exited non-zero)"
-  ERRORS=$((ERRORS + 1))
-elif [ ! -d "$OLD_ROOT" ]; then
-  echo "FAIL (old root was removed before the latest root existed)"
-  ERRORS=$((ERRORS + 1))
-elif ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1; then
-  echo "FAIL (--user did not restore the latest root)"
-  ERRORS=$((ERRORS + 1))
-elif [ ! -f "$NEW_ROOT/.codex-plugin/plugin.json" ]; then
-  echo "FAIL (latest root was not restored)"
+elif [ ! -f "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-workflow/$CURRENT_VERSION/.codex-plugin/plugin.json" ]; then
+  echo "FAIL (current version was not activated)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
@@ -1108,25 +1056,47 @@ else
 fi
 rm -f "$PRUNE_NOCONFIRM_LOG"
 
-echo -n "Codex --prune-cache removes only superseded roots... "
+echo -n "Codex --prune-cache retains prior roots until the current root is complete... "
+CURRENT_WORKFLOW_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-workflow/$CURRENT_VERSION"
+rm -f "$CURRENT_WORKFLOW_ROOT/skills/ship/SKILL.md"
 if ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache --yes >/dev/null 2>&1; then
   echo "FAIL (--prune-cache exited non-zero)"
   ERRORS=$((ERRORS + 1))
-elif [ -d "$OLD_ROOT" ]; then
-  echo "FAIL (superseded cache root was not removed)"
+elif [ ! -d "$OLD_ROOT" ]; then
+  echo "FAIL (prior root was removed while the current root was incomplete)"
   ERRORS=$((ERRORS + 1))
-elif [ ! -f "$NEW_ROOT/.codex-plugin/plugin.json" ]; then
-  echo "FAIL (latest cache root was removed)"
+elif [ -d "$CURRENT_WORKFLOW_ROOT" ]; then
+  echo "FAIL (incomplete current root was not removed)"
+  ERRORS=$((ERRORS + 1))
+elif ! HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1; then
+  echo "FAIL (--user did not restore the current root)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
 fi
-rm -rf "$TMP_HOME" "$STUB_PATH"
+
+echo -n "Codex --prune-cache keeps the current versioned root... "
+if ! HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache --yes >/dev/null 2>&1; then
+  echo "FAIL (--prune-cache exited non-zero)"
+  ERRORS=$((ERRORS + 1))
+elif [ -d "$OLD_ROOT" ]; then
+  echo "FAIL (superseded version root was not removed)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$PUBLISHED_ROOT/.codex-plugin/plugin.json" ]; then
+  echo "FAIL (current versioned root was removed)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+rm -rf "$TMP_HOME" "$STUB_PATH" "$STUB_LOG"
 
 echo -n "Codex --user removes legacy direct ~/.codex/plugins/<name>/ installs... "
 TMP_HOME=$(mktemp -d)
-seed_fake_marketplace_clone "$TMP_HOME" >/dev/null
-STUB_PATH=$(build_stub_path "$TMP_HOME")
+STUB_PATH=$(build_stub_path)
+STUB_LOG=$(mktemp)
 # Plant a legacy unmarked direct install with our author email.
 mkdir -p "$TMP_HOME/.codex/plugins/go-dev/.codex-plugin"
 cp "$ROOT_DIR/plugins/go-dev/.codex-plugin/plugin.json" "$TMP_HOME/.codex/plugins/go-dev/.codex-plugin/"
@@ -1135,7 +1105,8 @@ mkdir -p "$TMP_HOME/.codex/plugins/go-workflow/.codex-plugin"
 printf '{\n  "name": "go-workflow",\n  "version": "9.9.9",\n  "author": { "email": "other@example.com" }\n}\n' \
   > "$TMP_HOME/.codex/plugins/go-workflow/.codex-plugin/plugin.json"
 echo "user content" > "$TMP_HOME/.codex/plugins/go-workflow/USER_FILE"
-HOME="$TMP_HOME" PATH="$STUB_PATH" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
 if [ -d "$TMP_HOME/.codex/plugins/go-dev" ]; then
   echo "FAIL (gopher-ai legacy direct install not removed: go-dev)"
   ERRORS=$((ERRORS + 1))
@@ -1145,7 +1116,31 @@ elif [ ! -f "$TMP_HOME/.codex/plugins/go-workflow/USER_FILE" ]; then
 else
   echo "OK"
 fi
-rm -rf "$TMP_HOME" "$STUB_PATH"
+rm -rf "$TMP_HOME" "$STUB_PATH" "$STUB_LOG"
+
+echo -n "Codex --user rejects a CLI without plugin add support... "
+TMP_HOME=$(mktemp -d)
+STUB_PATH=$(build_stub_path)
+STUB_LOG=$(mktemp)
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_SUPPORTS_ADD=false \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-user-old-codex.log 2>&1
+EXIT=$?
+set -e
+if [ "$EXIT" -eq 0 ]; then
+  echo "FAIL (--user should reject an unsupported Codex CLI)"
+  ERRORS=$((ERRORS + 1))
+elif ! rg -q "does not support 'codex plugin add'" /tmp/gopher-ai-user-old-codex.log; then
+  echo "FAIL (error did not explain the required CLI support)"
+  ERRORS=$((ERRORS + 1))
+elif rg -q '^plugin marketplace ' "$STUB_LOG"; then
+  echo "FAIL (installer mutated marketplace state before the capability check)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$STUB_PATH" "$STUB_LOG"
 
 echo -n "Codex --user fails cleanly when codex CLI is missing... "
 TMP_HOME=$(mktemp -d)

@@ -98,7 +98,7 @@ check_prerequisites() {
     local missing=()
 
     # jq is needed by build-universal.sh (Claude/Gemini) and by install-codex.sh
-    # for marketplace.json manipulation when installing globally.
+    # for public marketplace discovery and plugin manifest parsing.
     if $HAVE_CLAUDE || $HAVE_GEMINI || $HAVE_CODEX; then
         if ! command -v jq >/dev/null 2>&1; then
             missing+=("jq (brew install jq / apt install jq)")
