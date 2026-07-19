@@ -256,9 +256,9 @@ json_author_email() {
 #
 # A directory at ~/.codex/plugins/<plugin-name>/ is ALWAYS stale (regardless
 # of marker) — we just learned that Codex never actually loaded plugins from
-# there. The legitimate install path is the marketplace cache at
-# ~/.codex/plugins/cache/gopher-ai/<plugin>/<commit-hash>/, populated by
-# install-codex.sh --user. Earlier `--user` versions wrote a marker file
+# there. The legitimate install path is the versioned marketplace cache at
+# ~/.codex/plugins/cache/gopher-ai/<plugin>/<version>/, populated by the public
+# Codex plugin CLI. Earlier `--user` versions wrote a marker file
 # alongside a direct install; that direct install was inert, so removing it
 # only eliminates clutter and frees the directory name for the user.
 if [[ -d "$PLUGINS_HOME" ]]; then

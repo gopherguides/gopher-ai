@@ -139,15 +139,21 @@ To add these plugins to another repo:
 
 ### Global (Personal) Use
 
-For Codex, "global" means cloning this repo and running Codex inside it — Codex auto-discovers `.agents/plugins/marketplace.json` and offers the plugins through `/plugins`. There is no flat-skills install path; the previous `--user` mode was removed because it double-loaded skills alongside the marketplace and overflowed Codex's skill metadata budget.
-
-If you previously ran `--user`, clean up the legacy entries once:
+For Codex, "global" means installing plugins through the public Codex plugin CLI so they load in every session, regardless of the working directory.
 
 ```bash
-./scripts/install-codex.sh --cleanup
+./scripts/install-codex.sh --user
 ```
 
-Restart Codex after cleanup. Use `/plugins` to verify.
+`--user` registers or upgrades the gopher-ai marketplace and runs `codex plugin add` for each Codex-capable plugin. Codex owns config updates and versioned cache publication.
+
+After all Codex sessions have exited, stale version roots can be removed explicitly:
+
+```bash
+./scripts/install-codex.sh --prune-cache
+```
+
+Do not prune while a Codex session is active. Restart Codex after installation and use `/plugins` to verify.
 
 ## Architecture
 
