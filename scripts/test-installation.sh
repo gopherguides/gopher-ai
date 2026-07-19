@@ -913,12 +913,12 @@ if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
   plugin="${3%@*}"
   source_root="${CODEX_STUB_SOURCE_ROOT:?}/plugins/$plugin"
   version="$(jq -r '.version' "$source_root/.codex-plugin/plugin.json")"
-  destination="$HOME/.codex/plugins/cache/gopher-ai/$plugin/$version"
-  if [ ! -d "$destination" ]; then
-    mkdir -p "$destination"
-    cp -R "$source_root"/. "$destination/"
-    rm -rf "$destination/.claude-plugin"
-  fi
+  plugin_cache="$HOME/.codex/plugins/cache/gopher-ai/$plugin"
+  destination="$plugin_cache/$version"
+  rm -rf "$plugin_cache"
+  mkdir -p "$destination"
+  cp -R "$source_root"/. "$destination/"
+  rm -rf "$destination/.claude-plugin"
   exit
 fi
 exit 0

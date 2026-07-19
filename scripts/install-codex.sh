@@ -8,6 +8,7 @@ REPO_SLUG="${GOPHER_AI_REPO:-gopherguides/gopher-ai}"
 REPO_REF="${GOPHER_AI_REF:-main}"
 ARCHIVE_URL="${GOPHER_AI_ARCHIVE_URL:-https://codeload.github.com/${REPO_SLUG}/tar.gz/refs/heads/${REPO_REF}}"
 BOOTSTRAP_DIR=""
+CACHE_BACKUP_DIRS=()
 
 usage() {
     cat <<'EOF'
@@ -56,6 +57,13 @@ cleanup() {
     if [[ -n "$BOOTSTRAP_DIR" && -d "$BOOTSTRAP_DIR" ]]; then
         rm -rf "$BOOTSTRAP_DIR"
     fi
+    local cache_backup_dir
+    for cache_backup_dir in "${CACHE_BACKUP_DIRS[@]-}"; do
+        [[ -n "$cache_backup_dir" ]] || continue
+        if [[ -d "$cache_backup_dir" ]]; then
+            rm -rf "$cache_backup_dir"
+        fi
+    done
 }
 
 trap cleanup EXIT
@@ -442,6 +450,48 @@ cache_root_matches_plugin() {
     return 0
 }
 
+backup_published_plugin_roots() {
+    local marketplace_cache="$HOME/.codex/plugins/cache/gopher-ai"
+    CACHE_BACKUP_DIR=""
+    [[ -d "$marketplace_cache" ]] || return 0
+
+    local temp_base="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+    CACHE_BACKUP_DIR="$(mktemp -d "${temp_base%/}/gopher-ai-codex-cache.XXXXXX")"
+    CACHE_BACKUP_DIRS+=("$CACHE_BACKUP_DIR")
+
+    local plugin_cache plugin_name cache_root
+    for plugin_cache in "$marketplace_cache"/*; do
+        [[ -d "$plugin_cache" ]] || continue
+        plugin_name="$(basename "$plugin_cache")"
+        mkdir -p "$CACHE_BACKUP_DIR/$plugin_name"
+        for cache_root in "$plugin_cache"/*; do
+            [[ -d "$cache_root" ]] || continue
+            cp -R -p "$cache_root" "$CACHE_BACKUP_DIR/$plugin_name/"
+        done
+    done
+}
+
+restore_removed_plugin_roots() {
+    local backup_dir="$1"
+    [[ -n "$backup_dir" && -d "$backup_dir" ]] || return 0
+
+    local plugin_backup plugin_name plugin_cache backup_root version target_root
+    for plugin_backup in "$backup_dir"/*; do
+        [[ -d "$plugin_backup" ]] || continue
+        plugin_name="$(basename "$plugin_backup")"
+        plugin_cache="$HOME/.codex/plugins/cache/gopher-ai/$plugin_name"
+        for backup_root in "$plugin_backup"/*; do
+            [[ -d "$backup_root" ]] || continue
+            version="$(basename "$backup_root")"
+            mkdir -p "$plugin_cache"
+            target_root="$plugin_cache/$version"
+            rm -rf "${target_root:?}"
+            cp -R -p "$backup_root" "$target_root"
+        done
+    done
+    rm -rf "$backup_dir"
+}
+
 install_user_plugins() {
     require_cmd codex
     if ! codex plugin add --help >/dev/null 2>&1; then
@@ -456,13 +506,24 @@ install_user_plugins() {
         return 1
     fi
 
+    backup_published_plugin_roots
+    local cache_backup_dir="$CACHE_BACKUP_DIR"
+    local marketplace_status=0
+    set +e
     if jq -e '.marketplaces[]? | select(.name == "gopher-ai" and .marketplaceSource != null)' \
             >/dev/null <<<"$marketplaces"; then
         echo "marketplace already registered — upgrading..."
         codex plugin marketplace upgrade gopher-ai 2>&1 | sed 's/^/  /'
+        marketplace_status=${PIPESTATUS[0]}
     else
         echo "registering gopher-ai marketplace..."
         codex plugin marketplace add "$REPO_SLUG" --ref "$REPO_REF" 2>&1 | sed 's/^/  /'
+        marketplace_status=${PIPESTATUS[0]}
+    fi
+    set -e
+    if [[ "$marketplace_status" -ne 0 ]]; then
+        restore_removed_plugin_roots "$cache_backup_dir"
+        return "$marketplace_status"
     fi
 
     local installed=0
@@ -473,9 +534,18 @@ install_user_plugins() {
         local plugin_name
         plugin_name="$(basename "$plugin_dir")"
         echo "installing $plugin_name@gopher-ai..."
+        local add_status=0
+        set +e
         codex plugin add "${plugin_name}@gopher-ai" 2>&1 | sed 's/^/  /'
+        add_status=${PIPESTATUS[0]}
+        set -e
+        if [[ "$add_status" -ne 0 ]]; then
+            restore_removed_plugin_roots "$cache_backup_dir"
+            return "$add_status"
+        fi
         installed=$((installed + 1))
     done
+    restore_removed_plugin_roots "$cache_backup_dir"
 
     if [[ "$installed" -eq 0 ]]; then
         echo "error: no Codex-capable plugins found in $ROOT_DIR/plugins." >&2

@@ -7,6 +7,24 @@ on:
     branches: [main]
 
 jobs:
+  test-codex-plugin-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install supported Codex CLI
+        run: npm install --global @openai/codex@0.144.6
+
+      - name: Test real Codex plugin lifecycle
+        env:
+          CODEX_LIFECYCLE_EXPECTED_VERSION: 0.144.6
+        run: ./scripts/test-codex-plugin-lifecycle.sh
+
   test-installation:
     runs-on: ubuntu-latest
     steps:
