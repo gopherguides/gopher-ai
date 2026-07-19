@@ -1,0 +1,177 @@
+schema: 1
+tracker:
+    kind: github
+    github_status_source: label
+    repository: gopherguides/gopher-ai
+    status_label_prefix: "detent:"
+    http_max_idle_conns: 100
+    http_max_idle_conns_per_host: 32
+    http_idle_conn_timeout_ms: 90000
+    github_graphql_warn_remaining: 500
+    github_graphql_min_remaining_reserve: 1000
+    github_rest_min_remaining_reserve: 20
+    github_rest_fanout_max_requests: 80
+    auto_provision: true
+    active_states:
+        - Todo
+        - In Progress
+        - Rework
+        - Merging
+    observed_states:
+        - Backlog
+        - Human Review
+        - Blocked
+    terminal_states:
+        - Done
+        - Cancelled
+    state_map:
+        Cancelled: Done
+    priority_map:
+        Urgent: 1
+        High: 2
+        Medium: 3
+        Low: 4
+        No priority: null
+    dependency_auto_unblock:
+        enabled: true
+        source_states:
+            - Blocked
+        target_state: Todo
+        readiness: terminal_or_merged
+    blocker_auto_promote:
+        enabled: false
+        blocker_states:
+            - Backlog
+            - Blocked
+            - Human Review
+        target_state: Todo
+polling:
+    interval_ms: 120000
+workspace:
+    root: /Users/corylanou/code/detent-workspaces/gopher-ai
+    source_root: /Users/corylanou/projects/gopherguides/gopher-ai
+    auto_branch: true
+    cleanup_idle_ttl_ms: 86400000
+    cleanup_sweep_interval_ms: 600000
+agent:
+    max_concurrent_agents: 3
+    max_turns: 20
+    max_retry_backoff_ms: 300000
+    # Spend-progress breaker DISABLED 2026-07-12 (0 = off): flat Codex
+    # subscription — notional-dollar brakes were parking healthy work
+    # (detent#1276). Real brakes remain: no-progress parking, session token
+    # caps, provider capacity pauses.
+    no_progress_spend_limit_usd: 0
+    # Runaway-session guard, not a context limit; total_tokens re-counts cached
+    # context every turn, so healthy sessions accrue millions of tokens quickly.
+    # No max_session_context_multiplier: at 4x it capped sessions at ~1M tokens
+    # (4 full-context turns) and killed legitimate work (#200 died 5x on it);
+    # max_session_tokens is the sole runaway brake, matching the detent project.
+    max_session_tokens: 200000000
+    max_session_token_override_label: allow-large-session
+    max_concurrent_agents_by_state:
+        Merging: 1
+    dispatch_priority_by_state:
+        - Merging
+        - Rework
+        - In Progress
+        - Todo
+    dispatch_priority_by_label:
+        - bug
+        - enhancement
+    auto_promote:
+        enabled: true
+        quiet_seconds: 0
+        # gate_wait_state source: completed issues wait in In Progress for the PR
+        # gate (CI green), then promote directly to Merging. Human Review is never
+        # entered unless the optout label is applied or the gate wait times out.
+        gate_wait_state: source
+        optout_label: requires-human-review
+        allowed_issue_labels: []
+        rework_limit: 3
+    skills:
+        enabled: true
+        path: .detent/skills
+        max_skills_in_prompt: 50
+        creation:
+            enabled: true
+            max_drafts_per_run: 1
+codex:
+    # Deliberately unpinned: the Codex CLI default manages the model, so this
+    # survives provider model retirements and picks up generation upgrades
+    # automatically. Telemetry resolves the effective model from the session
+    # since digitaldrywood/detent#1103, so pricing attribution works without
+    # a pin. Reasoning effort stays at provider default; not all models
+    # accept a model_reasoning_effort override.
+    command: codex app-server
+    approval_policy: never
+    thread_sandbox: workspace-write
+    turn_sandbox_policy:
+        type: workspaceWrite
+        networkAccess: true
+gate:
+    kind: command
+    run: >-
+        bash -lc './scripts/test-commands.sh && ./scripts/test-hooks.sh && ./scripts/test-ship-e2e-gate.sh && ./scripts/check-shared-sync.sh && shellcheck agent-skills/scripts/*.sh && for skill_dir in agent-skills/skills/*/; do skill_name=$(basename "$skill_dir"); skill_file="$skill_dir/SKILL.md"; test -f "$skill_file"; lines=$(wc -l < "$skill_file"); test "$lines" -lt 500; name=$(sed -n "/^---$/,/^---$/p" "$skill_file" | awk "/^name:/ {print \$2; exit}"); test "$name" = "$skill_name"; rg -q "^description:" "$skill_file"; done && ruby -ryaml -e "YAML.load_file(ARGV[0])" agent-skills/config/severity.yaml && (cd agent-skills/examples/demo-repo && go build -o /tmp/gopher-ai-demo . && go test ./...)'
+    require_automated_review: false
+    required_status_checks: []
+    ci_failure_action: rework
+    transient_ci_retry_limit: 2
+    validator:
+        enabled: false
+        model: ""
+        min_score: 0.8
+        max_inline_diff_bytes: 65536
+        block_on:
+            - p1
+plan:
+    enabled: false
+    review: human
+    approval_label: plan-approved
+    stop: "Plan Review"
+server:
+    host: 0.0.0.0
+    port: 4000
+    kanban:
+        mode: integration
+budget:
+    # Enabled 2026-07-11 after the gopher-ai#213/#214 no-PR loop burned ~2.4M
+    # tokens across ~170 sessions in one evening. Model telemetry is resolved
+    # (detent#1103) and Detent ships a built-in notional pricing table
+    # (internal/budget/pricing.go DefaultPricingTable) covering gpt-5.5 and
+    # falling back to gpt-5.5 rates for unlisted models (gpt-5.6-sol included)
+    # — approximate but real enough to pace spend and hard-stop runaway loops.
+    # per_day_max_usd raised 50 -> 150 2026-07-11 PM: the same loop's spend
+    # straddled the UTC day boundary, so today's cap was already blocking
+    # legitimate dispatch before any of today's real work happened. Not a
+    # counter to reset — spend is live off real session telemetry — so the
+    # ceiling is the correct lever. Revisit down once #1224/#1229/#1211 ship.
+    # per_day_max_usd raised 150 -> 250 2026-07-11 PM: #214 is the last item
+    # blocking this project's plugin-marketplace release and keeps hitting the
+    # daily cap; operator explicitly authorized a heavy, unattended work day.
+    # Revisit down tomorrow.
+    # per_issue_max_usd raised 5 -> 75 2026-07-12: #214's per-issue spend is
+    # cumulative-lifetime with no reset, so the original loop's ~$58 (before
+    # the fix) permanently pinned it past the $5 cap even though it has had
+    # zero sessions since being unblocked this morning. It's the sole item
+    # blocking this project's release. Revisit down once #214 ships.
+    # per_issue_max_usd raised 75 -> 100 2026-07-12 PM: #214's lifetime spend
+    # reached ~$66 after its overnight sessions, so spend + projected cost of
+    # one more dispatch trips the $75 ceiling and the v0.32 hard hold (detent
+    # #1251) correctly refuses it — a deliberate raise is now the designed
+    # unblock lever. Runaway risk is bounded by the no-progress diff
+    # fingerprint brake (detent#1232): identical no-commit sessions park after
+    # 3 attempts. Still the sole release blocker. Revisit down once #214 ships.
+    # DISABLED 2026-07-12 PM (operator decision): flat Codex subscription —
+    # these USD caps are notional and spent the whole day blocking the sole
+    # release blocker (#214) over fake dollars, including charging this
+    # project the entire fleet's spend (detent#1279). Real constraints on
+    # subscription auth: provider rate windows (capacity pauses) and
+    # outcome-based brakes. Re-enable only behind an auth-aware design.
+    enabled: false
+    per_day_max_usd: 600
+    per_issue_max_usd: 100
+    refusal_cooldown_seconds: 3600
+    pricing_path: priv/pricing/models.yaml
+hooks:
+    timeout_ms: 60000
