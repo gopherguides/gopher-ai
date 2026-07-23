@@ -562,6 +562,41 @@ else
 fi
 rm -rf "$TMP_HOME" "$TMP_BIN"
 
+echo -n "install-all.sh reports stale Codex state before no-platform exit... "
+TMP_HOME=$(mktemp -d)
+TMP_BIN=$(mktemp -d)
+mkdir -p "$TMP_HOME/.codex"
+printf '%s\n' 'preserve me' > "$TMP_HOME/.codex/SENTINEL"
+cp "$TMP_HOME/.codex/SENTINEL" "$TMP_HOME/SENTINEL.expected"
+for cmd in bash sh awk sed grep find mkdir rm cp mv cmp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum shasum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test tar tree; do
+  cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
+  [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
+done
+set +e
+HOME="$TMP_HOME" PATH="$TMP_BIN" bash "$ROOT_DIR/scripts/install-all.sh" --force \
+  </dev/null >/tmp/gopher-ai-installall-stale-codex-only.log 2>&1
+STALE_CODEX_ONLY_EXIT=$?
+set -e
+if [ "$STALE_CODEX_ONLY_EXIT" -eq 0 ]; then
+  echo "FAIL (stale Codex-only install should exit non-zero)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq 'Codex CLI ...... skipped (found ~/.codex/ but no codex executable on PATH)' /tmp/gopher-ai-installall-stale-codex-only.log; then
+  echo "FAIL (stale Codex state warning was missing before exit)"
+  ERRORS=$((ERRORS + 1))
+elif grep -Fq '=== Codex CLI ===' /tmp/gopher-ai-installall-stale-codex-only.log; then
+  echo "FAIL (Codex installer ran without a Codex executable)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq 'No supported platforms detected.' /tmp/gopher-ai-installall-stale-codex-only.log; then
+  echo "FAIL (no-supported-platform message was missing)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$TMP_HOME/.codex/SENTINEL" "$TMP_HOME/SENTINEL.expected"; then
+  echo "FAIL (stale Codex state was modified)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$TMP_BIN"
+
 echo -n "Codex --cleanup works without jq installed... "
 TMP_HOME=$(mktemp -d)
 SKILLS_DIR="$TMP_HOME/.codex/skills"

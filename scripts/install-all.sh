@@ -287,6 +287,7 @@ main() {
     bootstrap_if_needed
     detect_platforms
     check_prerequisites
+    print_detection
 
     if ! $HAVE_CLAUDE && ! $HAVE_CODEX && ! $HAVE_GEMINI; then
         echo "No supported platforms detected."
@@ -297,8 +298,6 @@ main() {
         echo "  Gemini CLI:  npm install -g @google/gemini-cli"
         exit 1
     fi
-
-    print_detection
 
     # Count platforms to install
     local platforms=()
