@@ -80,7 +80,8 @@ The full repository release gate and universal archive verification must pass be
 
 ## Release and Host Verification
 
-- Synchronize all marketplace, Claude plugin, and Codex plugin versions to 1.7.4.
+- Synchronize `.claude-plugin/marketplace.json`, all Claude plugin manifests, all Codex plugin manifests, and all generated Gemini extension manifests to 1.7.4.
+- Keep the existing generated Codex marketplace schema unversioned; do not add a top-level version. Only `.claude-plugin/marketplace.json`, Claude plugin manifests, Codex plugin manifests, and Gemini extension manifests are version-bearing.
 - Push a focused PR, require CI and review gates, and squash merge.
 - Require a non-empty successful check set for the exact merged main commit.
 - Publish v1.7.4 with verified Codex and Gemini archives and PR-generated notes.

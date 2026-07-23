@@ -15,7 +15,9 @@
 - Print `Codex CLI ...... skipped (found ~/.codex/ but no codex executable on PATH)` for stale state without a CLI.
 - Continue installing other detected platforms and print a successful summary for those platforms.
 - Keep `scripts/install-codex.sh --user` behavior unchanged.
-- Synchronize every marketplace, Claude plugin, and Codex plugin manifest to 1.7.4.
+- Synchronize `.claude-plugin/marketplace.json`, every Claude plugin manifest, every Codex plugin manifest, and every generated Gemini extension manifest to 1.7.4.
+- Keep the existing unversioned Codex marketplace schema; do not add a top-level version to the generated Codex `marketplace.json`.
+- Treat only `.claude-plugin/marketplace.json`, Claude plugin manifests, Codex plugin manifests, and Gemini extension manifests as version-bearing.
 - Publish only after PR CI/review gates and exact merged-main CI pass.
 - Run the user's exact public installer command locally and on Prometheus after publication.
 
@@ -146,10 +148,12 @@ git commit -m "fix(install): require Codex executable"
 - Modify: `.claude-plugin/marketplace.json`
 - Modify: `plugins/*/.claude-plugin/plugin.json`
 - Modify: `plugins/*/.codex-plugin/plugin.json`
+- Generate: `dist/gemini/gopher-ai-*/gemini-extension.json`
 
 **Interfaces:**
 - Consumes: Task 1's approved detection fix.
-- Produces: all version sources and both release archives at 1.7.4.
+- Produces: all version-bearing manifests and both release archives at 1.7.4.
+- Preserves: the existing unversioned generated Codex marketplace schema with no top-level version.
 
 - [ ] **Step 1: Synchronize all manifest versions**
 
