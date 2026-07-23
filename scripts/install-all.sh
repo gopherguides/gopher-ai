@@ -125,7 +125,6 @@ check_prerequisites() {
 detect_platforms() {
     HAVE_CLAUDE=false
     HAVE_CODEX=false
-    HAVE_CODEX_UNRUNNABLE=false
     HAVE_CODEX_STATE=false
     HAVE_GEMINI=false
 
@@ -134,11 +133,7 @@ detect_platforms() {
     fi
 
     if command -v codex >/dev/null 2>&1; then
-        if codex --version >/dev/null 2>&1; then
-            HAVE_CODEX=true
-        else
-            HAVE_CODEX_UNRUNNABLE=true
-        fi
+        HAVE_CODEX=true
     fi
     if [[ -d "$HOME/.codex" ]]; then
         HAVE_CODEX_STATE=true
@@ -159,8 +154,6 @@ print_detection() {
 
     if $HAVE_CODEX; then
         echo "  Codex CLI ...... found — will install global plugins to ~/.codex/plugins/"
-    elif $HAVE_CODEX_UNRUNNABLE; then
-        echo "  Codex CLI ...... skipped (codex executable on PATH is not runnable)"
     elif $HAVE_CODEX_STATE; then
         echo "  Codex CLI ...... skipped (found ~/.codex/ but no codex executable on PATH)"
     else
