@@ -1,6 +1,6 @@
 {
   "name": "go-dev",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "description": "Go-specific development tools with idiomatic best practices",
   "author": {
     "name": "Gopher Guides",

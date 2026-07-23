@@ -1,6 +1,6 @@
 {
   "name": "llm-tools",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "description": "Multi-LLM integration for second opinions and task delegation",
   "author": {
     "name": "Gopher Guides",
