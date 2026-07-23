@@ -228,8 +228,14 @@ fi
 
 echo -n "Release archives exclude AppleDouble and Finder metadata... "
 APPLEDOUBLE_FIXTURE="$ROOT_DIR/plugins/go-dev/scripts/._archive-metadata-test"
+COMMAND_APPLEDOUBLE_FIXTURE="$ROOT_DIR/plugins/go-dev/commands/._archive-metadata-test.md"
 DSSTORE_FIXTURE="$ROOT_DIR/plugins/go-dev/scripts/.DS_Store"
+cleanup_metadata_fixtures() {
+  rm -f "$APPLEDOUBLE_FIXTURE" "$COMMAND_APPLEDOUBLE_FIXTURE" "$DSSTORE_FIXTURE"
+}
+trap cleanup_metadata_fixtures EXIT
 printf '%s\n' 'metadata fixture' > "$APPLEDOUBLE_FIXTURE"
+printf '%s\n' 'metadata fixture' > "$COMMAND_APPLEDOUBLE_FIXTURE"
 printf '%s\n' 'metadata fixture' > "$DSSTORE_FIXTURE"
 ARCHIVE_METADATA_ERRORS=""
 if ! "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-metadata-build.log 2>&1; then
@@ -277,11 +283,29 @@ fi
 
 echo -n "Release archives contain canonical manifests and commands... "
 RELEASE_ASSET_ERRORS=""
-EXPECTED_CODEX_MANIFESTS=$(jq -r '.plugins[].name | select(. != "productivity") | "codex/plugins/\(.)/.codex-plugin/plugin.json"' "$MARKETPLACE" | LC_ALL=C sort)
+EXPECTED_CODEX_MANIFESTS=$(
+  for manifest in "$ROOT_DIR"/plugins/*/.codex-plugin/plugin.json; do
+    [ -f "$manifest" ] || continue
+    plugin_dir=${manifest%/.codex-plugin/plugin.json}
+    printf 'codex/plugins/%s/.codex-plugin/plugin.json\n' "${plugin_dir##*/}"
+  done | LC_ALL=C sort
+)
 EXPECTED_GEMINI_MANIFESTS=$(jq -r '.plugins[].name | "gemini/gopher-ai-\(.)/gemini-extension.json"' "$MARKETPLACE" | LC_ALL=C sort)
+EXPECTED_GEMINI_COMMAND_MEMBERS=$(
+  for command in "$ROOT_DIR"/plugins/*/commands/*.md "$ROOT_DIR"/plugins/*/commands/._*.md; do
+    [ -f "$command" ] || continue
+    command_dir=${command%/*}
+    plugin_dir=${command_dir%/commands}
+    command_name=${command##*/}
+    if [[ "$command_name" == ._* ]]; then
+      continue
+    fi
+    printf 'gemini/gopher-ai-%s/commands/%s.toml\n' "${plugin_dir##*/}" "${command_name%.md}"
+  done | LC_ALL=C sort
+)
+rm -f "$COMMAND_APPLEDOUBLE_FIXTURE"
 EXPECTED_CODEX_MANIFEST_COUNT=$(printf '%s\n' "$EXPECTED_CODEX_MANIFESTS" | awk 'NF {count++} END {print count+0}')
 EXPECTED_GEMINI_MANIFEST_COUNT=$(printf '%s\n' "$EXPECTED_GEMINI_MANIFESTS" | awk 'NF {count++} END {print count+0}')
-EXPECTED_GEMINI_COMMAND_COUNT=36
 if [ ! -f "$CODEX_RELEASE_ASSET" ]; then
   RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  missing ${CODEX_RELEASE_ASSET#"$ROOT_DIR"/}"
 else
@@ -327,9 +351,9 @@ else
     fi
   done <<< "$GEMINI_MANIFESTS"
   GEMINI_COMMAND_MEMBERS=$(archive_members "$GEMINI_RELEASE_ASSET" | awk -F/ '$NF ~ /[.]toml$/ && $0 ~ /\/commands\// {print}' || true)
-  GEMINI_COMMAND_MEMBER_COUNT=$(printf '%s\n' "$GEMINI_COMMAND_MEMBERS" | awk 'NF {count++} END {print count+0}')
-  if [ "$GEMINI_COMMAND_MEMBER_COUNT" -ne "$EXPECTED_GEMINI_COMMAND_COUNT" ]; then
-    RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Gemini archive has $GEMINI_COMMAND_MEMBER_COUNT command-shaped member(s), expected $EXPECTED_GEMINI_COMMAND_COUNT"
+  SORTED_GEMINI_COMMAND_MEMBERS=$(printf '%s\n' "$GEMINI_COMMAND_MEMBERS" | LC_ALL=C sort)
+  if [ "$SORTED_GEMINI_COMMAND_MEMBERS" != "$EXPECTED_GEMINI_COMMAND_MEMBERS" ]; then
+    RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Gemini archive command set does not match plugins/*/commands/*.md"
   fi
   while IFS= read -r command; do
     [ -n "$command" ] || continue
@@ -718,7 +742,7 @@ else
 fi
 rm -rf "$TMP_HOME" "$TMP_BIN"
 
-echo -n "install-all.sh skips an unlaunchable Codex executable and continues... "
+echo -n "install-all.sh enters Codex install for a PATH executable and propagates failure... "
 TMP_HOME=$(mktemp -d)
 TMP_BIN=$(mktemp -d)
 mkdir -p "$TMP_HOME/.codex"
@@ -730,18 +754,21 @@ HOME="$TMP_HOME" PATH="$TMP_BIN:$PATH" bash "$ROOT_DIR/scripts/install-all.sh" -
   </dev/null >/tmp/gopher-ai-installall-unlaunchable-codex.log 2>&1
 UNLAUNCHABLE_CODEX_EXIT=$?
 set -e
-if [ "$UNLAUNCHABLE_CODEX_EXIT" -ne 0 ]; then
-  echo "FAIL (Gemini install exited non-zero)"
+if [ "$UNLAUNCHABLE_CODEX_EXIT" -eq 0 ]; then
+  echo "FAIL (Codex installer failure was hidden)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq 'Codex CLI ...... found — will install global plugins to ~/.codex/plugins/' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
+  echo "FAIL (PATH Codex executable was not detected)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq '=== Codex CLI ===' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
+  echo "FAIL (Codex installer path was not entered)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq "error: installed Codex CLI does not support 'codex plugin add'." /tmp/gopher-ai-installall-unlaunchable-codex.log; then
+  echo "FAIL (Codex installer failure was not actionable)"
   sed -n '1,80p' /tmp/gopher-ai-installall-unlaunchable-codex.log
   ERRORS=$((ERRORS + 1))
-elif ! grep -Fq 'Codex CLI ...... skipped (codex executable on PATH is not runnable)' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
-  echo "FAIL (unlaunchable Codex warning was missing)"
-  ERRORS=$((ERRORS + 1))
-elif grep -Fq '=== Codex CLI ===' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
-  echo "FAIL (Codex installer ran with an unlaunchable executable)"
-  ERRORS=$((ERRORS + 1))
-elif ! grep -Fq 'Done! Installed for: Gemini CLI' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
-  echo "FAIL (Gemini completion summary was missing)"
+elif grep -Fq 'Done! Installed for: Gemini CLI' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
+  echo "FAIL (false Gemini-only success summary was printed)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
