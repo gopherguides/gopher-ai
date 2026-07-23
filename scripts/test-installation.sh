@@ -100,7 +100,9 @@ for i in $(seq 0 $((PLUGIN_COUNT - 1))); do
   PLUGIN_JSON="plugins/$NAME/.claude-plugin/plugin.json"
   if [ -f "$PLUGIN_JSON" ]; then
     ACTUAL_VER=$(jq -r '.version // empty' "$PLUGIN_JSON" 2>/dev/null)
-    if [ -n "$ACTUAL_VER" ] && [ "$ACTUAL_VER" != "$EXPECTED_VER" ]; then
+    if [ -z "$ACTUAL_VER" ]; then
+      PLUGIN_JSON_MISMATCHES="$PLUGIN_JSON_MISMATCHES $NAME(plugin.json:missing-version)"
+    elif [ "$ACTUAL_VER" != "$EXPECTED_VER" ]; then
       PLUGIN_JSON_MISMATCHES="$PLUGIN_JSON_MISMATCHES $NAME(plugin.json:$ACTUAL_VER!=marketplace:$EXPECTED_VER)"
     fi
   fi
@@ -165,8 +167,9 @@ archive_headers_are_normalized() {
       Gem::Package::TarReader.new(gzip) do |tar|
         tar.each do |entry|
           header = entry.header
-          next if header.uid == 0 && header.gid == 0 && header.uname.to_s.empty? && header.gname.to_s.empty? && header.mtime == expected_mtime
-          warn "#{entry.full_name}: uid=#{header.uid} gid=#{header.gid} uname=#{header.uname.inspect} gname=#{header.gname.inspect} mtime=#{header.mtime}"
+          mode_ok = (entry.directory? && header.mode == 0o755) || (entry.file? && [0o644, 0o755].include?(header.mode))
+          next if header.uid == 0 && header.gid == 0 && header.uname.to_s.empty? && header.gname.to_s.empty? && header.mtime == expected_mtime && mode_ok
+          warn "#{entry.full_name}: uid=#{header.uid} gid=#{header.gid} uname=#{header.uname.inspect} gname=#{header.gname.inspect} mtime=#{header.mtime} mode=#{format("%04o", header.mode)}"
           exit 1
         end
       end
@@ -203,12 +206,40 @@ else
   fi
 fi
 
-echo -n "Release archives exclude AppleDouble metadata... "
+echo -n "Release archives are byte-for-byte reproducible across umasks... "
+DEFAULT_UMASK_CODEX_SHA=$(archive_sha256 "$CODEX_RELEASE_ASSET")
+DEFAULT_UMASK_GEMINI_SHA=$(archive_sha256 "$GEMINI_RELEASE_ASSET")
+if ! (umask 077; "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-restrictive-umask-build.log 2>&1); then
+  echo "FAIL (restrictive-umask build failed)"
+  sed -n '1,120p' /tmp/gopher-ai-restrictive-umask-build.log
+  ERRORS=$((ERRORS + 1))
+else
+  RESTRICTIVE_UMASK_CODEX_SHA=$(archive_sha256 "$CODEX_RELEASE_ASSET")
+  RESTRICTIVE_UMASK_GEMINI_SHA=$(archive_sha256 "$GEMINI_RELEASE_ASSET")
+  if [ "$DEFAULT_UMASK_CODEX_SHA" != "$RESTRICTIVE_UMASK_CODEX_SHA" ] || [ "$DEFAULT_UMASK_GEMINI_SHA" != "$RESTRICTIVE_UMASK_GEMINI_SHA" ]; then
+    echo "FAIL"
+    echo "  Codex: $DEFAULT_UMASK_CODEX_SHA != $RESTRICTIVE_UMASK_CODEX_SHA"
+    echo "  Gemini: $DEFAULT_UMASK_GEMINI_SHA != $RESTRICTIVE_UMASK_GEMINI_SHA"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+
+echo -n "Release archives exclude AppleDouble and Finder metadata... "
+APPLEDOUBLE_FIXTURE="$ROOT_DIR/plugins/go-dev/scripts/._archive-metadata-test"
+DSSTORE_FIXTURE="$ROOT_DIR/plugins/go-dev/scripts/.DS_Store"
+printf '%s\n' 'metadata fixture' > "$APPLEDOUBLE_FIXTURE"
+printf '%s\n' 'metadata fixture' > "$DSSTORE_FIXTURE"
 ARCHIVE_METADATA_ERRORS=""
+if ! "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-metadata-build.log 2>&1; then
+  ARCHIVE_METADATA_ERRORS="$ARCHIVE_METADATA_ERRORS\n  metadata-fixture build failed: $(sed -n '1p' /tmp/gopher-ai-metadata-build.log)"
+fi
+rm -f "$APPLEDOUBLE_FIXTURE" "$DSSTORE_FIXTURE"
 for archive in "$CODEX_RELEASE_ASSET" "$GEMINI_RELEASE_ASSET"; do
-  APPLEDOUBLE_MEMBERS=$(archive_members "$archive" | awk -F/ '$NF ~ /^\._/' || true)
-  if [ -n "$APPLEDOUBLE_MEMBERS" ]; then
-    ARCHIVE_METADATA_ERRORS="$ARCHIVE_METADATA_ERRORS\n  ${archive#"$ROOT_DIR"/} contains $(printf '%s\n' "$APPLEDOUBLE_MEMBERS" | wc -l | tr -d ' ') AppleDouble member(s)"
+  METADATA_MEMBERS=$(archive_members "$archive" | awk -F/ '$NF ~ /^\._/ || $NF == ".DS_Store"' || true)
+  if [ -n "$METADATA_MEMBERS" ]; then
+    ARCHIVE_METADATA_ERRORS="$ARCHIVE_METADATA_ERRORS\n  ${archive#"$ROOT_DIR"/} contains $(printf '%s\n' "$METADATA_MEMBERS" | wc -l | tr -d ' ') metadata member(s)"
   fi
 done
 if [ -n "$ARCHIVE_METADATA_ERRORS" ]; then
@@ -246,9 +277,11 @@ fi
 
 echo -n "Release archives contain canonical manifests and commands... "
 RELEASE_ASSET_ERRORS=""
-EXPECTED_CODEX_MANIFEST_COUNT=$(find "$ROOT_DIR/plugins" -path '*/.codex-plugin/plugin.json' -type f | wc -l | tr -d ' ')
-EXPECTED_GEMINI_MANIFEST_COUNT=$(find "$ROOT_DIR/plugins" -path '*/.claude-plugin/plugin.json' -type f | wc -l | tr -d ' ')
-EXPECTED_GEMINI_COMMAND_COUNT=$(find "$ROOT_DIR/plugins" -path '*/commands/*.md' -type f | wc -l | tr -d ' ')
+EXPECTED_CODEX_MANIFESTS=$(jq -r '.plugins[].name | select(. != "productivity") | "codex/plugins/\(.)/.codex-plugin/plugin.json"' "$MARKETPLACE" | LC_ALL=C sort)
+EXPECTED_GEMINI_MANIFESTS=$(jq -r '.plugins[].name | "gemini/gopher-ai-\(.)/gemini-extension.json"' "$MARKETPLACE" | LC_ALL=C sort)
+EXPECTED_CODEX_MANIFEST_COUNT=$(printf '%s\n' "$EXPECTED_CODEX_MANIFESTS" | awk 'NF {count++} END {print count+0}')
+EXPECTED_GEMINI_MANIFEST_COUNT=$(printf '%s\n' "$EXPECTED_GEMINI_MANIFESTS" | awk 'NF {count++} END {print count+0}')
+EXPECTED_GEMINI_COMMAND_COUNT=36
 if [ ! -f "$CODEX_RELEASE_ASSET" ]; then
   RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  missing ${CODEX_RELEASE_ASSET#"$ROOT_DIR"/}"
 else
@@ -256,6 +289,8 @@ else
   CODEX_MANIFEST_COUNT=$(printf '%s\n' "$CODEX_MANIFESTS" | awk 'NF {count++} END {print count+0}')
   if [ "$CODEX_MANIFEST_COUNT" -ne "$EXPECTED_CODEX_MANIFEST_COUNT" ]; then
     RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Codex archive has $CODEX_MANIFEST_COUNT manifest-shaped member(s), expected $EXPECTED_CODEX_MANIFEST_COUNT"
+  elif [ "$(printf '%s\n' "$CODEX_MANIFESTS" | LC_ALL=C sort)" != "$EXPECTED_CODEX_MANIFESTS" ]; then
+    RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Codex archive manifest set does not match the marketplace"
   fi
   while IFS= read -r manifest; do
     [ -n "$manifest" ] || continue
@@ -277,6 +312,8 @@ else
   GEMINI_MANIFEST_COUNT=$(printf '%s\n' "$GEMINI_MANIFESTS" | awk 'NF {count++} END {print count+0}')
   if [ "$GEMINI_MANIFEST_COUNT" -ne "$EXPECTED_GEMINI_MANIFEST_COUNT" ]; then
     RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Gemini archive has $GEMINI_MANIFEST_COUNT manifest-shaped member(s), expected $EXPECTED_GEMINI_MANIFEST_COUNT"
+  elif [ "$(printf '%s\n' "$GEMINI_MANIFESTS" | LC_ALL=C sort)" != "$EXPECTED_GEMINI_MANIFESTS" ]; then
+    RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  Gemini archive manifest set does not match the marketplace"
   fi
   while IFS= read -r manifest; do
     [ -n "$manifest" ] || continue
@@ -298,6 +335,14 @@ else
     [ -n "$command" ] || continue
     if ! printf '%s\n' "$command" | awk -F/ 'NF == 4 && $1 == "gemini" && $2 ~ /^gopher-ai-/ && $3 == "commands" && $4 !~ /^\._/ && $4 ~ /[.]toml$/ {found=1} END {exit found ? 0 : 1}'; then
       RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  unexpected Gemini command-shaped member: $command"
+      continue
+    fi
+    COMMAND_PLUGIN=${command#gemini/gopher-ai-}
+    COMMAND_PLUGIN=${COMMAND_PLUGIN%%/*}
+    if ! jq -e --arg name "$COMMAND_PLUGIN" '.plugins[] | select(.name == $name)' "$MARKETPLACE" >/dev/null; then
+      RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  $command references a plugin absent from the marketplace"
+    elif ! tar -xOzf "$GEMINI_RELEASE_ASSET" "$command" | rg -Fxq "# gopher-ai v$EXPECTED_VERSION"; then
+      RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  $command is missing the v$EXPECTED_VERSION generation header"
     fi
   done <<< "$GEMINI_COMMAND_MEMBERS"
 fi
@@ -667,6 +712,36 @@ elif ! grep -Fq 'Done! Installed for: Claude Code' /tmp/gopher-ai-installall-sta
   ERRORS=$((ERRORS + 1))
 elif [ "$(cat "$TMP_HOME/.codex/SENTINEL")" != 'preserve me' ]; then
   echo "FAIL (stale Codex state was modified)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$TMP_BIN"
+
+echo -n "install-all.sh skips an unlaunchable Codex executable and continues... "
+TMP_HOME=$(mktemp -d)
+TMP_BIN=$(mktemp -d)
+mkdir -p "$TMP_HOME/.codex"
+printf '%s\n' '#!/missing/codex-interpreter' > "$TMP_BIN/codex"
+printf '%s\n' '#!/bin/sh' 'exit 0' > "$TMP_BIN/gemini"
+chmod +x "$TMP_BIN/codex" "$TMP_BIN/gemini"
+set +e
+HOME="$TMP_HOME" PATH="$TMP_BIN:$PATH" bash "$ROOT_DIR/scripts/install-all.sh" --force \
+  </dev/null >/tmp/gopher-ai-installall-unlaunchable-codex.log 2>&1
+UNLAUNCHABLE_CODEX_EXIT=$?
+set -e
+if [ "$UNLAUNCHABLE_CODEX_EXIT" -ne 0 ]; then
+  echo "FAIL (Gemini install exited non-zero)"
+  sed -n '1,80p' /tmp/gopher-ai-installall-unlaunchable-codex.log
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq 'Codex CLI ...... skipped (codex executable on PATH is not runnable)' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
+  echo "FAIL (unlaunchable Codex warning was missing)"
+  ERRORS=$((ERRORS + 1))
+elif grep -Fq '=== Codex CLI ===' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
+  echo "FAIL (Codex installer ran with an unlaunchable executable)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq 'Done! Installed for: Gemini CLI' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
+  echo "FAIL (Gemini completion summary was missing)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"

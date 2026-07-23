@@ -508,6 +508,9 @@ create_archive() {
 
     member_list=$(mktemp)
     find "$source_dir" -depth \( -name '._*' -o -name '.DS_Store' \) -delete
+    find "$source_dir" -type d -exec chmod 0755 {} +
+    find "$source_dir" -type f -perm -0100 -exec chmod 0755 {} +
+    find "$source_dir" -type f ! -perm -0100 -exec chmod 0644 {} +
     TZ=UTC find "$source_dir" -exec touch -t 200001010000 {} +
 
     if tar --version 2>&1 | grep -q 'GNU tar'; then
