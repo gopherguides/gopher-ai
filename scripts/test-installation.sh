@@ -228,8 +228,14 @@ fi
 
 echo -n "Release archives exclude AppleDouble and Finder metadata... "
 APPLEDOUBLE_FIXTURE="$ROOT_DIR/plugins/go-dev/scripts/._archive-metadata-test"
+COMMAND_APPLEDOUBLE_FIXTURE="$ROOT_DIR/plugins/go-dev/commands/._archive-metadata-test.md"
 DSSTORE_FIXTURE="$ROOT_DIR/plugins/go-dev/scripts/.DS_Store"
+cleanup_metadata_fixtures() {
+  rm -f "$APPLEDOUBLE_FIXTURE" "$COMMAND_APPLEDOUBLE_FIXTURE" "$DSSTORE_FIXTURE"
+}
+trap cleanup_metadata_fixtures EXIT
 printf '%s\n' 'metadata fixture' > "$APPLEDOUBLE_FIXTURE"
+printf '%s\n' 'metadata fixture' > "$COMMAND_APPLEDOUBLE_FIXTURE"
 printf '%s\n' 'metadata fixture' > "$DSSTORE_FIXTURE"
 ARCHIVE_METADATA_ERRORS=""
 if ! "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-metadata-build.log 2>&1; then
@@ -291,9 +297,13 @@ EXPECTED_GEMINI_COMMAND_MEMBERS=$(
     command_dir=${command%/*}
     plugin_dir=${command_dir%/commands}
     command_name=${command##*/}
+    if [[ "$command_name" == ._* ]]; then
+      continue
+    fi
     printf 'gemini/gopher-ai-%s/commands/%s.toml\n' "${plugin_dir##*/}" "${command_name%.md}"
   done | LC_ALL=C sort
 )
+rm -f "$COMMAND_APPLEDOUBLE_FIXTURE"
 EXPECTED_CODEX_MANIFEST_COUNT=$(printf '%s\n' "$EXPECTED_CODEX_MANIFESTS" | awk 'NF {count++} END {print count+0}')
 EXPECTED_GEMINI_MANIFEST_COUNT=$(printf '%s\n' "$EXPECTED_GEMINI_MANIFESTS" | awk 'NF {count++} END {print count+0}')
 if [ ! -f "$CODEX_RELEASE_ASSET" ]; then
