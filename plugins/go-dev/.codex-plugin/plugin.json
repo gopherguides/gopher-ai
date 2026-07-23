@@ -1,6 +1,6 @@
 {
   "name": "go-dev",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Go-specific development tools with idiomatic best practices",
   "author": {
     "name": "Gopher Guides",
@@ -9,7 +9,13 @@
   "homepage": "https://gopherguides.com",
   "repository": "https://github.com/gopherguides/gopher-ai",
   "license": "MIT",
-  "keywords": ["go", "testing", "lint", "explain", "best-practices"],
+  "keywords": [
+    "go",
+    "testing",
+    "lint",
+    "explain",
+    "best-practices"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Go Dev",

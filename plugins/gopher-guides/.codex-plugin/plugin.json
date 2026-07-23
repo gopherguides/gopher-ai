@@ -1,6 +1,6 @@
 {
   "name": "gopher-guides",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Gopher Guides training materials integration",
   "author": {
     "name": "Gopher Guides",
@@ -9,7 +9,12 @@
   "homepage": "https://gopherguides.com",
   "repository": "https://github.com/gopherguides/gopher-ai",
   "license": "MIT",
-  "keywords": ["go", "training", "best-practices", "gopher-guides"],
+  "keywords": [
+    "go",
+    "training",
+    "best-practices",
+    "gopher-guides"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Gopher Guides",
