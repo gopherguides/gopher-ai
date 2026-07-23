@@ -9,6 +9,8 @@ REPO_REF="${GOPHER_AI_REF:-main}"
 ARCHIVE_URL="${GOPHER_AI_ARCHIVE_URL:-https://codeload.github.com/${REPO_SLUG}/tar.gz/refs/heads/${REPO_REF}}"
 BOOTSTRAP_DIR=""
 CACHE_BACKUP_DIRS=()
+LEGACY_MARKETPLACE_PATH=""
+LEGACY_MARKETPLACE_BACKUP_DIR=""
 
 usage() {
     cat <<'EOF'
@@ -53,7 +55,20 @@ gopher-ai for Codex can be installed in two ways:
 EOF
 }
 
+restore_legacy_user_marketplace() {
+    [[ -n "$LEGACY_MARKETPLACE_PATH" ]] || return 0
+    local backup_file="$LEGACY_MARKETPLACE_BACKUP_DIR/marketplace.json"
+    if [[ -e "$backup_file" || -L "$backup_file" ]]; then
+        mkdir -p "$(dirname "$LEGACY_MARKETPLACE_PATH")"
+        mv "$backup_file" "$LEGACY_MARKETPLACE_PATH"
+    fi
+    [[ -z "$LEGACY_MARKETPLACE_BACKUP_DIR" ]] || rm -rf "$LEGACY_MARKETPLACE_BACKUP_DIR"
+    LEGACY_MARKETPLACE_PATH=""
+    LEGACY_MARKETPLACE_BACKUP_DIR=""
+}
+
 cleanup() {
+    restore_legacy_user_marketplace
     if [[ -n "$BOOTSTRAP_DIR" && -d "$BOOTSTRAP_DIR" ]]; then
         rm -rf "$BOOTSTRAP_DIR"
     fi
@@ -492,6 +507,59 @@ restore_removed_plugin_roots() {
     rm -rf "$backup_dir"
 }
 
+codex_plugin_names_json() {
+    local plugin_dir
+    for plugin_dir in "$ROOT_DIR"/plugins/*; do
+        [[ -d "$plugin_dir" ]] || continue
+        [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
+        basename "$plugin_dir"
+    done | jq -R . | jq -s .
+}
+
+prepare_legacy_user_marketplace_migration() {
+    local candidate="$HOME/.agents/plugins/marketplace.json"
+    [[ -e "$candidate" || -L "$candidate" ]] || return 0
+
+    if ! jq -e -s 'length == 1' "$candidate" >/dev/null 2>&1; then
+        echo "error: preserved invalid marketplace file: $candidate" >&2
+        echo "       move or repair it before installing gopher-ai." >&2
+        return 1
+    fi
+
+    local marketplace_name
+    marketplace_name="$(jq -r '.name // empty' "$candidate")"
+    [[ "$marketplace_name" == "gopher-ai" ]] || return 0
+
+    local allowed_plugins
+    allowed_plugins="$(codex_plugin_names_json)"
+    if ! jq -e --argjson allowed "$allowed_plugins" '
+        (.plugins | type == "array" and length > 0) and
+        all(.plugins[];
+            .name as $plugin_name |
+            ($plugin_name | type == "string") and
+            ($allowed | index($plugin_name) != null) and
+            .source.source == "local" and
+            .source.path == ("./.codex/plugins/" + $plugin_name)
+        )
+    ' "$candidate" >/dev/null; then
+        echo "error: preserved marketplace because ownership could not be proven: $candidate" >&2
+        echo "       remove or rename the conflicting gopher-ai marketplace, then retry." >&2
+        return 1
+    fi
+
+    local temp_base="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+    LEGACY_MARKETPLACE_BACKUP_DIR="$(mktemp -d "${temp_base%/}/gopher-ai-codex-marketplace.XXXXXX")"
+    LEGACY_MARKETPLACE_PATH="$candidate"
+    mv "$candidate" "$LEGACY_MARKETPLACE_BACKUP_DIR/marketplace.json"
+    echo "migrating legacy Codex marketplace: $candidate"
+}
+
+commit_legacy_user_marketplace_migration() {
+    [[ -z "$LEGACY_MARKETPLACE_BACKUP_DIR" ]] || rm -rf "$LEGACY_MARKETPLACE_BACKUP_DIR"
+    LEGACY_MARKETPLACE_PATH=""
+    LEGACY_MARKETPLACE_BACKUP_DIR=""
+}
+
 install_user_plugins() {
     require_cmd codex
     if ! codex plugin add --help >/dev/null 2>&1; then
@@ -499,6 +567,8 @@ install_user_plugins() {
         echo "       upgrade Codex, then retry --user." >&2
         return 1
     fi
+
+    prepare_legacy_user_marketplace_migration
 
     local marketplaces
     if ! marketplaces="$(codex plugin marketplace list --json 2>/dev/null)"; then
@@ -546,6 +616,7 @@ install_user_plugins() {
         installed=$((installed + 1))
     done
     restore_removed_plugin_roots "$cache_backup_dir"
+    commit_legacy_user_marketplace_migration
 
     if [[ "$installed" -eq 0 ]]; then
         echo "error: no Codex-capable plugins found in $ROOT_DIR/plugins." >&2

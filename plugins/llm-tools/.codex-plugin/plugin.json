@@ -1,6 +1,6 @@
 {
   "name": "llm-tools",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Multi-LLM integration for second opinions and task delegation",
   "author": {
     "name": "Gopher Guides",
@@ -9,7 +9,15 @@
   "homepage": "https://gopherguides.com",
   "repository": "https://github.com/gopherguides/gopher-ai",
   "license": "MIT",
-  "keywords": ["llm", "openai", "codex", "gemini", "ollama", "multi-model", "second-opinion"],
+  "keywords": [
+    "llm",
+    "openai",
+    "codex",
+    "gemini",
+    "ollama",
+    "multi-model",
+    "second-opinion"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "LLM Tools",

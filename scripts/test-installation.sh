@@ -909,8 +909,37 @@ if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "marketplace" ] && [ "${3:-}" = "list
   fi
   exit
 fi
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "marketplace" ] && [ "${3:-}" = "upgrade" ]; then
+  if [ "${CODEX_STUB_FAIL_MARKETPLACE_UPGRADE:-false}" = "true" ]; then
+    printf 'forced marketplace upgrade failure\n' >&2
+    exit 1
+  fi
+  exit
+fi
+if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "marketplace" ] && [ "${3:-}" = "add" ]; then
+  if [ "${CODEX_STUB_FAIL_MARKETPLACE_ADD:-false}" = "true" ]; then
+    printf 'forced marketplace add failure\n' >&2
+    exit 1
+  fi
+  exit
+fi
 if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
   plugin="${3%@*}"
+  legacy_marketplace="$HOME/.agents/plugins/marketplace.json"
+  if [ -f "$legacy_marketplace" ] && [ "$(jq -r '.name // empty' "$legacy_marketplace")" = "gopher-ai" ]; then
+    legacy_path="$(jq -r --arg plugin "$plugin" '.plugins[]? | select(.name == $plugin) | .source.path // empty' "$legacy_marketplace")"
+    if [ -n "$legacy_path" ]; then
+      resolved_path="$HOME/${legacy_path#./}"
+      if [ ! -d "$resolved_path" ]; then
+        printf 'plugin source path is not a directory: %s\n' "$resolved_path" >&2
+        exit 1
+      fi
+    fi
+  fi
+  if [ "${CODEX_STUB_FAIL_ADD_PLUGIN:-}" = "$plugin" ]; then
+    printf 'forced plugin add failure: %s\n' "$plugin" >&2
+    exit 1
+  fi
   source_root="${CODEX_STUB_SOURCE_ROOT:?}/plugins/$plugin"
   version="$(jq -r '.version' "$source_root/.codex-plugin/plugin.json")"
   plugin_cache="$HOME/.codex/plugins/cache/gopher-ai/$plugin"
@@ -990,6 +1019,216 @@ elif grep -q '^plugin marketplace add ' "$STUB_LOG"; then
 else
   echo "OK"
 fi
+
+echo -n "Codex --user migrates the owned legacy user marketplace... "
+LEGACY_MARKETPLACE="$TMP_HOME/.agents/plugins/marketplace.json"
+mkdir -p "$(dirname "$LEGACY_MARKETPLACE")"
+cp "$ROOT_DIR/dist/codex/plugins/marketplace.json" "$LEGACY_MARKETPLACE"
+: > "$STUB_LOG"
+if ! HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-legacy-marketplace.log 2>&1; then
+  echo "FAIL (--user did not migrate the owned legacy marketplace)"
+  sed -n '1,40p' /tmp/gopher-ai-legacy-marketplace.log
+  ERRORS=$((ERRORS + 1))
+elif [ -e "$LEGACY_MARKETPLACE" ]; then
+  echo "FAIL (owned legacy marketplace remained after successful install)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -qx 'plugin marketplace upgrade gopher-ai' "$STUB_LOG"; then
+  echo "FAIL (Git marketplace was not upgraded after migration)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Codex --user restores the legacy marketplace after plugin failure... "
+mkdir -p "$(dirname "$LEGACY_MARKETPLACE")"
+cp "$ROOT_DIR/dist/codex/plugins/marketplace.json" "$LEGACY_MARKETPLACE"
+LEGACY_COPY=$(mktemp)
+cp "$LEGACY_MARKETPLACE" "$LEGACY_COPY"
+ROLLBACK_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/1.7.1"
+mkdir -p "$ROLLBACK_ROOT"
+echo "active session" > "$ROLLBACK_ROOT/ACTIVE_SESSION"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  CODEX_STUB_FAIL_ADD_PLUGIN=go-web bash "$ROOT_DIR/scripts/install-codex.sh" --user \
+  >/tmp/gopher-ai-legacy-rollback.log 2>&1
+LEGACY_EXIT=$?
+set -e
+if [ "$LEGACY_EXIT" -eq 0 ]; then
+  echo "FAIL (forced plugin failure unexpectedly succeeded)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$LEGACY_COPY" "$LEGACY_MARKETPLACE"; then
+  echo "FAIL (legacy marketplace was not restored byte-for-byte)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$ROLLBACK_ROOT/ACTIVE_SESSION" ]; then
+  echo "FAIL (prior cache root was not restored after plugin failure)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$LEGACY_COPY"
+
+echo -n "Codex --user restores the legacy marketplace after marketplace upgrade failure... "
+LEGACY_UPGRADE_COPY=$(mktemp)
+cp "$LEGACY_MARKETPLACE" "$LEGACY_UPGRADE_COPY"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  CODEX_STUB_FAIL_MARKETPLACE_UPGRADE=true bash "$ROOT_DIR/scripts/install-codex.sh" --user \
+  >/tmp/gopher-ai-legacy-upgrade-rollback.log 2>&1
+UPGRADE_EXIT=$?
+set -e
+if [ "$UPGRADE_EXIT" -eq 0 ]; then
+  echo "FAIL (forced marketplace upgrade failure unexpectedly succeeded)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$LEGACY_UPGRADE_COPY" "$LEGACY_MARKETPLACE"; then
+  echo "FAIL (legacy marketplace was not restored after upgrade failure)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$LEGACY_UPGRADE_COPY"
+
+echo -n "Codex --user restores the legacy marketplace after marketplace registration failure... "
+LEGACY_ADD_COPY=$(mktemp)
+cp "$LEGACY_MARKETPLACE" "$LEGACY_ADD_COPY"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_FAIL_MARKETPLACE_ADD=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user \
+  >/tmp/gopher-ai-legacy-add-rollback.log 2>&1
+ADD_EXIT=$?
+set -e
+if [ "$ADD_EXIT" -eq 0 ]; then
+  echo "FAIL (forced marketplace registration failure unexpectedly succeeded)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$LEGACY_ADD_COPY" "$LEGACY_MARKETPLACE"; then
+  echo "FAIL (legacy marketplace was not restored after registration failure)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$LEGACY_ADD_COPY"
+
+echo -n "Codex --user preserves and rejects an uncertain gopher-ai marketplace... "
+UNKNOWN_COPY=$(mktemp)
+jq '.plugins[0].source.path = "./custom/go-dev"' \
+  "$ROOT_DIR/dist/codex/plugins/marketplace.json" > "$LEGACY_MARKETPLACE"
+cp "$LEGACY_MARKETPLACE" "$UNKNOWN_COPY"
+: > "$STUB_LOG"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-legacy-uncertain.log 2>&1
+UNCERTAIN_EXIT=$?
+set -e
+if [ "$UNCERTAIN_EXIT" -eq 0 ]; then
+  echo "FAIL (uncertain marketplace unexpectedly migrated)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$UNKNOWN_COPY" "$LEGACY_MARKETPLACE"; then
+  echo "FAIL (uncertain marketplace was modified)"
+  ERRORS=$((ERRORS + 1))
+elif grep -q '^plugin marketplace ' "$STUB_LOG"; then
+  echo "FAIL (Codex marketplace state changed before ownership was proven)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q 'preserved' /tmp/gopher-ai-legacy-uncertain.log; then
+  echo "FAIL (error did not explain that uncertain state was preserved)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$UNKNOWN_COPY"
+
+echo -n "Codex --user preserves and rejects an unknown gopher-ai plugin... "
+jq '.plugins += [{"name":"unknown-plugin","source":{"source":"local","path":"./.codex/plugins/unknown-plugin"}}]' \
+  "$ROOT_DIR/dist/codex/plugins/marketplace.json" > "$LEGACY_MARKETPLACE"
+UNKNOWN_PLUGIN_COPY=$(mktemp)
+cp "$LEGACY_MARKETPLACE" "$UNKNOWN_PLUGIN_COPY"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-legacy-unknown.log 2>&1
+UNKNOWN_PLUGIN_EXIT=$?
+set -e
+if [ "$UNKNOWN_PLUGIN_EXIT" -eq 0 ]; then
+  echo "FAIL (unknown plugin marketplace unexpectedly migrated)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$UNKNOWN_PLUGIN_COPY" "$LEGACY_MARKETPLACE"; then
+  echo "FAIL (unknown plugin marketplace was modified)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$UNKNOWN_PLUGIN_COPY"
+
+echo -n "Codex --user preserves and rejects a malformed marketplace... "
+printf '{invalid json\n' > "$LEGACY_MARKETPLACE"
+MALFORMED_COPY=$(mktemp)
+cp "$LEGACY_MARKETPLACE" "$MALFORMED_COPY"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-legacy-malformed.log 2>&1
+MALFORMED_EXIT=$?
+set -e
+if [ "$MALFORMED_EXIT" -eq 0 ]; then
+  echo "FAIL (malformed marketplace unexpectedly migrated)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$MALFORMED_COPY" "$LEGACY_MARKETPLACE"; then
+  echo "FAIL (malformed marketplace was modified)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$MALFORMED_COPY"
+
+echo -n "Codex --user preserves and rejects a mixed JSON marketplace stream... "
+printf '{}\n' > "$LEGACY_MARKETPLACE"
+cat "$ROOT_DIR/dist/codex/plugins/marketplace.json" >> "$LEGACY_MARKETPLACE"
+MIXED_JSON_COPY=$(mktemp)
+cp "$LEGACY_MARKETPLACE" "$MIXED_JSON_COPY"
+: > "$STUB_LOG"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-legacy-mixed-json.log 2>&1
+MIXED_JSON_EXIT=$?
+set -e
+if [ "$MIXED_JSON_EXIT" -eq 0 ]; then
+  echo "FAIL (mixed JSON marketplace unexpectedly migrated)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$MIXED_JSON_COPY" "$LEGACY_MARKETPLACE"; then
+  echo "FAIL (mixed JSON marketplace was modified)"
+  ERRORS=$((ERRORS + 1))
+elif grep -q '^plugin marketplace ' "$STUB_LOG"; then
+  echo "FAIL (Codex marketplace state changed before mixed JSON was rejected)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q 'move or repair it before installing gopher-ai' /tmp/gopher-ai-legacy-mixed-json.log; then
+  echo "FAIL (mixed JSON error was not actionable)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$MIXED_JSON_COPY"
+
+echo -n "Codex --user leaves an unrelated user marketplace untouched... "
+jq '.name = "other-marketplace"' "$ROOT_DIR/dist/codex/plugins/marketplace.json" > "$LEGACY_MARKETPLACE"
+UNRELATED_COPY=$(mktemp)
+cp "$LEGACY_MARKETPLACE" "$UNRELATED_COPY"
+if ! HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1; then
+  echo "FAIL (unrelated marketplace blocked installation)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$UNRELATED_COPY" "$LEGACY_MARKETPLACE"; then
+  echo "FAIL (unrelated marketplace was modified)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$UNRELATED_COPY" "$LEGACY_MARKETPLACE"
 
 echo -n "Codex --user preserves a published root on the same version... "
 PUBLISHED_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/$CURRENT_VERSION"
