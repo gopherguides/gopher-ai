@@ -520,7 +520,7 @@ prepare_legacy_user_marketplace_migration() {
     local candidate="$HOME/.agents/plugins/marketplace.json"
     [[ -e "$candidate" || -L "$candidate" ]] || return 0
 
-    if ! jq -e . "$candidate" >/dev/null 2>&1; then
+    if ! jq -e -s 'length == 1' "$candidate" >/dev/null 2>&1; then
         echo "error: preserved invalid marketplace file: $candidate" >&2
         echo "       move or repair it before installing gopher-ai." >&2
         return 1

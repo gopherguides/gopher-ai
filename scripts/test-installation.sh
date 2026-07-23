@@ -1184,6 +1184,35 @@ else
 fi
 rm -f "$MALFORMED_COPY"
 
+echo -n "Codex --user preserves and rejects a mixed JSON marketplace stream... "
+printf '{}\n' > "$LEGACY_MARKETPLACE"
+cat "$ROOT_DIR/dist/codex/plugins/marketplace.json" >> "$LEGACY_MARKETPLACE"
+MIXED_JSON_COPY=$(mktemp)
+cp "$LEGACY_MARKETPLACE" "$MIXED_JSON_COPY"
+: > "$STUB_LOG"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/tmp/gopher-ai-legacy-mixed-json.log 2>&1
+MIXED_JSON_EXIT=$?
+set -e
+if [ "$MIXED_JSON_EXIT" -eq 0 ]; then
+  echo "FAIL (mixed JSON marketplace unexpectedly migrated)"
+  ERRORS=$((ERRORS + 1))
+elif ! cmp -s "$MIXED_JSON_COPY" "$LEGACY_MARKETPLACE"; then
+  echo "FAIL (mixed JSON marketplace was modified)"
+  ERRORS=$((ERRORS + 1))
+elif grep -q '^plugin marketplace ' "$STUB_LOG"; then
+  echo "FAIL (Codex marketplace state changed before mixed JSON was rejected)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q 'move or repair it before installing gopher-ai' /tmp/gopher-ai-legacy-mixed-json.log; then
+  echo "FAIL (mixed JSON error was not actionable)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$MIXED_JSON_COPY"
+
 echo -n "Codex --user leaves an unrelated user marketplace untouched... "
 jq '.name = "other-marketplace"' "$ROOT_DIR/dist/codex/plugins/marketplace.json" > "$LEGACY_MARKETPLACE"
 UNRELATED_COPY=$(mktemp)
