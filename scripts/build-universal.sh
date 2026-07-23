@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+export COPYFILE_DISABLE=1
+export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -496,24 +499,49 @@ convert_gemini_prompt_body() {
     ' <<< "$value"
 }
 
+create_archive() {
+    local source_dir="$1"
+    local archive="$2"
+    local archive_tar="${archive%.gz}"
+    local member_list
+    local tar_owner_args
+
+    member_list=$(mktemp)
+    find "$source_dir" -depth \( -name '._*' -o -name '.DS_Store' \) -delete
+    find "$source_dir" -type d -exec chmod 0755 {} +
+    find "$source_dir" -type f -perm -0100 -exec chmod 0755 {} +
+    find "$source_dir" -type f ! -perm -0100 -exec chmod 0644 {} +
+    TZ=UTC find "$source_dir" -exec touch -t 200001010000 {} +
+
+    if tar --version 2>&1 | grep -q 'GNU tar'; then
+        tar_owner_args=(--owner=0 --group=0 --numeric-owner)
+    else
+        tar_owner_args=(--uid 0 --gid 0 --uname '' --gname '')
+    fi
+
+    (
+        cd "$DIST_DIR"
+        LC_ALL=C find "$(basename "$source_dir")" -print | LC_ALL=C sort > "$member_list"
+        tar --format=ustar --no-recursion "${tar_owner_args[@]}" -cf "$archive_tar" -T "$member_list"
+    )
+    gzip -n -f "$archive_tar"
+    rm -f "$member_list"
+}
+
 create_archives() {
     echo ""
     echo "Creating distribution archives..."
     echo "----------------------------------"
 
-    cd "$DIST_DIR"
-
-    if [[ -d "codex" ]]; then
-        tar -czf "gopher-ai-codex-plugins-v${VERSION}.tar.gz" codex/
+    if [[ -d "$DIST_DIR/codex" ]]; then
+        create_archive "$DIST_DIR/codex" "$DIST_DIR/gopher-ai-codex-plugins-v${VERSION}.tar.gz"
         echo "  - Created: gopher-ai-codex-plugins-v${VERSION}.tar.gz"
     fi
 
-    if [[ -d "gemini" ]]; then
-        tar -czf "gopher-ai-gemini-extensions-v${VERSION}.tar.gz" gemini/
+    if [[ -d "$DIST_DIR/gemini" ]]; then
+        create_archive "$DIST_DIR/gemini" "$DIST_DIR/gopher-ai-gemini-extensions-v${VERSION}.tar.gz"
         echo "  - Created: gopher-ai-gemini-extensions-v${VERSION}.tar.gz"
     fi
-
-    cd "$ROOT_DIR"
 }
 
 print_summary() {

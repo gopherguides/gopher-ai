@@ -125,18 +125,23 @@ check_prerequisites() {
 detect_platforms() {
     HAVE_CLAUDE=false
     HAVE_CODEX=false
+    HAVE_CODEX_UNRUNNABLE=false
+    HAVE_CODEX_STATE=false
     HAVE_GEMINI=false
 
     if [[ -d "$HOME/.claude" ]]; then
         HAVE_CLAUDE=true
     fi
 
-    # Detect Codex via either the CLI on PATH or an existing ~/.codex/. The
-    # CLI signal catches fresh installs that haven't run codex yet (no config
-    # dir created); the directory signal catches setups where the CLI is
-    # installed elsewhere (e.g. node global npm dir not on PATH for this shell).
-    if command -v codex >/dev/null 2>&1 || [[ -d "$HOME/.codex" ]]; then
-        HAVE_CODEX=true
+    if command -v codex >/dev/null 2>&1; then
+        if codex --version >/dev/null 2>&1; then
+            HAVE_CODEX=true
+        else
+            HAVE_CODEX_UNRUNNABLE=true
+        fi
+    fi
+    if [[ -d "$HOME/.codex" ]]; then
+        HAVE_CODEX_STATE=true
     fi
 
     if command -v gemini >/dev/null 2>&1; then
@@ -154,8 +159,12 @@ print_detection() {
 
     if $HAVE_CODEX; then
         echo "  Codex CLI ...... found — will install global plugins to ~/.codex/plugins/"
+    elif $HAVE_CODEX_UNRUNNABLE; then
+        echo "  Codex CLI ...... skipped (codex executable on PATH is not runnable)"
+    elif $HAVE_CODEX_STATE; then
+        echo "  Codex CLI ...... skipped (found ~/.codex/ but no codex executable on PATH)"
     else
-        echo "  Codex CLI ...... skipped (no codex binary, no ~/.codex/ directory)"
+        echo "  Codex CLI ...... skipped (no codex executable on PATH)"
     fi
 
     if $HAVE_GEMINI; then
@@ -285,6 +294,7 @@ main() {
     bootstrap_if_needed
     detect_platforms
     check_prerequisites
+    print_detection
 
     if ! $HAVE_CLAUDE && ! $HAVE_CODEX && ! $HAVE_GEMINI; then
         echo "No supported platforms detected."
@@ -295,8 +305,6 @@ main() {
         echo "  Gemini CLI:  npm install -g @google/gemini-cli"
         exit 1
     fi
-
-    print_detection
 
     # Count platforms to install
     local platforms=()
