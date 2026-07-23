@@ -292,7 +292,7 @@ EXPECTED_CODEX_MANIFESTS=$(
 )
 EXPECTED_GEMINI_MANIFESTS=$(jq -r '.plugins[].name | "gemini/gopher-ai-\(.)/gemini-extension.json"' "$MARKETPLACE" | LC_ALL=C sort)
 EXPECTED_GEMINI_COMMAND_MEMBERS=$(
-  for command in "$ROOT_DIR"/plugins/*/commands/*.md; do
+  for command in "$ROOT_DIR"/plugins/*/commands/*.md "$ROOT_DIR"/plugins/*/commands/._*.md; do
     [ -f "$command" ] || continue
     command_dir=${command%/*}
     plugin_dir=${command_dir%/commands}
