@@ -341,7 +341,7 @@ else
     COMMAND_PLUGIN=${COMMAND_PLUGIN%%/*}
     if ! jq -e --arg name "$COMMAND_PLUGIN" '.plugins[] | select(.name == $name)' "$MARKETPLACE" >/dev/null; then
       RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  $command references a plugin absent from the marketplace"
-    elif ! tar -xOzf "$GEMINI_RELEASE_ASSET" "$command" | rg -Fxq "# gopher-ai v$EXPECTED_VERSION"; then
+    elif ! tar -xOzf "$GEMINI_RELEASE_ASSET" "$command" | awk -v expected="# gopher-ai v$EXPECTED_VERSION" '$0 == expected {found=1} END {exit found ? 0 : 1}'; then
       RELEASE_ASSET_ERRORS="$RELEASE_ASSET_ERRORS\n  $command is missing the v$EXPECTED_VERSION generation header"
     fi
   done <<< "$GEMINI_COMMAND_MEMBERS"
