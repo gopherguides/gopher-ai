@@ -205,6 +205,140 @@ else
   echo "OK"
 fi
 
+echo -n "Hard workflow invariants stop with machine-readable outcomes... "
+INVARIANT_FAILURE=""
+
+section_text() {
+  local file="$1"
+  local start="$2"
+  local end="$3"
+
+  awk -v start="$start" -v end="$end" '
+    index($0, start) { active = 1 }
+    active && index($0, end) && !index($0, start) { exit }
+    active { print }
+  ' "$file"
+}
+
+assert_invariant_section() {
+  local label="$1"
+  local file="$2"
+  local start="$3"
+  local end="$4"
+  local reason="$5"
+  local section
+
+  section=$(section_text "$file" "$start" "$end")
+  if [[ "$section" != *'WORKFLOW_RESULT=INCOMPLETE'* ]] ||
+     [[ "$section" != *"WORKFLOW_REASON=$reason"* ]]; then
+    INVARIANT_FAILURE="$label does not stop with reason $reason"
+  fi
+}
+
+COVERAGE_ROUTER="$ROOT_DIR/plugins/go-workflow/lib/coverage/coverage-verification.md"
+COVERAGE_GATE="$ROOT_DIR/plugins/go-workflow/lib/coverage/step-e-gate.md"
+COVERAGE_GENERATION="$ROOT_DIR/plugins/go-workflow/lib/coverage/step-f-test-generation.md"
+SHIP_SKILL="$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
+SHIP_CI="$ROOT_DIR/plugins/go-workflow/lib/ship/ci-watch.md"
+SHIP_MERGE="$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"
+SHIP_ADDRESS="$ROOT_DIR/plugins/go-workflow/lib/ship/address-bots.md"
+SHIP_REVIEW="$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
+COMMIT_SKILL="$ROOT_DIR/plugins/go-workflow/skills/commit/SKILL.md"
+CREATE_PR_SKILL="$ROOT_DIR/plugins/go-workflow/skills/create-pr/SKILL.md"
+WORKTREE_REMOVE="$ROOT_DIR/plugins/go-workflow/skills/worktree/remove.md"
+E2E_REBASE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-build.md"
+E2E_SKILL="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
+ADDRESS_REBASE="$ROOT_DIR/plugins/go-workflow/skills/address-review/checkout-rebase.md"
+ADDRESS_SKILL="$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md"
+REVIEW_DEEP_FIX="$ROOT_DIR/plugins/go-workflow/skills/review-deep/fix-and-verify.md"
+START_ISSUE_SKILL="$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md"
+
+assert_invariant_section "low coverage" "$COVERAGE_GATE" \
+  "### Branch 3" "### Branch 4" "coverage-below-threshold"
+assert_invariant_section "missing tests" "$COVERAGE_GATE" \
+  "### Branch 4" "### Branch 5" "coverage-no-tests"
+assert_invariant_section "coverage test generation" "$COVERAGE_GENERATION" \
+  "## Persist count and return" "__END__" \
+  "coverage-test-generation-failed"
+assert_invariant_section "CI registration timeout" "$SHIP_CI" \
+  "## 10b." "## 10c." "ci-checks-not-registered"
+assert_invariant_section "commit default branch" "$COMMIT_SKILL" \
+  "### Step 2:" "### Step 3:" "default-branch"
+assert_invariant_section "create-pr default branch" "$CREATE_PR_SKILL" \
+  "### Step 2:" "### Step 3:" "default-branch"
+assert_invariant_section "unsafe worktree removal" "$WORKTREE_REMOVE" \
+  "**Unsafe removal**" "### Step 5:" "unsafe-worktree"
+assert_invariant_section "E2E rebase conflict" "$E2E_REBASE" \
+  "### 1c." "### 1d." "rebase-conflict"
+assert_invariant_section "address-review rebase conflict" "$ADDRESS_REBASE" \
+  '**If `$BEHIND` > 0:**' "## 1c." "rebase-conflict"
+assert_invariant_section "ship rebase conflict" "$SHIP_ADDRESS" \
+  "## 12a." "## 12b." "rebase-conflict"
+assert_invariant_section "E2E generation failure" "$E2E_REBASE" \
+  "### 2a." "### 2b." "generation-failed"
+assert_invariant_section "E2E verification failure" "$E2E_REBASE" \
+  "### 2b." "### 2c." "verification-failed"
+assert_invariant_section "E2E post-fix verification failure" "$E2E_SKILL" \
+  "### Re-verify after fixes" "## Step 4:" "verification-failed"
+assert_invariant_section "review-deep verification failure" "$REVIEW_DEEP_FIX" \
+  "## Verification" "## Commit" "verification-failed"
+assert_invariant_section "ship generation failure" "$SHIP_REVIEW" \
+  "### Codegen drift check" "### Per-language verification" "generation-failed"
+assert_invariant_section "ship verification failure" "$SHIP_REVIEW" \
+  "### Per-language verification" "## Step 7.5" "verification-failed"
+
+LOW_COVERAGE_SECTION=$(section_text "$COVERAGE_GATE" "### Branch 3" "### Branch 5")
+CI_REGISTRATION_SECTION=$(section_text "$SHIP_CI" "## 10b." "## 10c.")
+WORKTREE_UNSAFE_SECTION=$(section_text "$WORKTREE_REMOVE" "**Unsafe removal**" "### Step 5:")
+SHIP_FINAL_CHECKS=$(section_text "$SHIP_MERGE" "## 13a." "## 13b.")
+SHIP_MERGEABILITY=$(section_text "$SHIP_MERGE" "## 13d." "## 13e.")
+REVIEW_DEEP_VERIFICATION=$(section_text "$REVIEW_DEEP_FIX" "## Verification" "## Commit")
+E2E_BUILD_VERIFICATION=$(section_text "$E2E_REBASE" "### 2b." "### 2c.")
+
+if [[ "$LOW_COVERAGE_SECTION" == *"AskUserQuestion"* ]] ||
+   [[ "$LOW_COVERAGE_SECTION" == *"Proceed without"* ]]; then
+  INVARIANT_FAILURE="coverage failure still offers a bypass"
+elif [[ "$CI_REGISTRATION_SECTION" == *"AskUserQuestion"* ]] ||
+     [[ "$CI_REGISTRATION_SECTION" == *"proceed without CI"* ]]; then
+  INVARIANT_FAILURE="CI registration timeout still offers a bypass"
+elif [[ "$WORKTREE_UNSAFE_SECTION" == *"--force"* ]]; then
+  INVARIANT_FAILURE="unsafe worktree removal still force-deletes"
+elif [[ "$SHIP_FINAL_CHECKS" != *"WORKFLOW_REASON=unresolved-review-threads"* ]] ||
+     [[ "$SHIP_FINAL_CHECKS" != *"WORKFLOW_REASON=human-changes-requested"* ]] ||
+     [[ "$SHIP_FINAL_CHECKS" == *"ask how to proceed"* ]]; then
+  INVARIANT_FAILURE="ship final review checks do not stop unconditionally"
+elif [[ "$SHIP_MERGEABILITY" == *"AskUserQuestion"* ]] ||
+     [[ "$SHIP_MERGEABILITY" != *"WORKFLOW_REASON=mergeability-unknown"* ]] ||
+     [[ "$SHIP_MERGEABILITY" != *'| `MERGEABLE` | `UNSTABLE` | **STOP.'* ]]; then
+  INVARIANT_FAILURE="ship mergeability states still permit an invalid merge"
+elif file_contains "commit to main anyway" "$COMMIT_SKILL" ||
+     file_contains "default branch. Inform the user and ask how to proceed" "$SHIP_SKILL"; then
+  INVARIANT_FAILURE="default-branch workflow still offers a bypass"
+elif file_contains "Proceed with fixes WITHOUT rebasing" "$SHIP_ADDRESS" ||
+     file_contains "proceed without rebasing" "$SHIP_SKILL"; then
+  INVARIANT_FAILURE="ship can continue after an unresolved rebase"
+elif ! file_contains 'completion_promise" "INCOMPLETE"' "$ADDRESS_SKILL"; then
+  INVARIANT_FAILURE="address-review rebase stops are not durable"
+elif [[ "$REVIEW_DEEP_VERIFICATION" == *"|| true"* ]] ||
+     [[ "$E2E_BUILD_VERIFICATION" == *"|| true"* ]]; then
+  INVARIANT_FAILURE="verification failure is still ignored"
+elif file_contains "Skipping codegen check" "$E2E_REBASE" ||
+     file_contains "Skipping codegen check" "$SHIP_REVIEW"; then
+  INVARIANT_FAILURE="generation failure is still ignored"
+elif ! file_contains "Only source-free changes" "$COVERAGE_ROUTER"; then
+  INVARIANT_FAILURE="coverage router does not constrain skip behavior"
+elif file_contains 'Coverage verified or skipped (per `--skip-coverage` flag)' "$START_ISSUE_SKILL" ||
+     file_contains 'execute the ship workflow with `--skip-coverage`' "$E2E_FINISH"; then
+  INVARIANT_FAILURE="a completion path still waives changed-source coverage"
+fi
+
+if [ -n "$INVARIANT_FAILURE" ]; then
+  echo "FAIL ($INVARIANT_FAILURE)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 if ! "$ROOT_DIR/scripts/test-go-web-templates.sh"; then
   ERRORS=$((ERRORS + 1))
 fi

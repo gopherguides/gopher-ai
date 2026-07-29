@@ -38,10 +38,14 @@ CURRENT=$(git branch --show-current)
 ```
 
 If `$CURRENT` is `main`, `master`, or matches the default branch:
-1. Stop — do not commit to the main branch
-2. Ask the user how to proceed:
-   - Create a feature branch first, then commit
-   - Commit to main anyway (only if explicitly requested)
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=default-branch
+```
+
+Stop without committing. Create or switch to a feature branch before invoking
+this skill again; no driver may authorize a direct default-branch commit.
 
 ### Step 3: Analyze Changes
 

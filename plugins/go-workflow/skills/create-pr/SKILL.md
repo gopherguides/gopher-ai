@@ -27,7 +27,14 @@ git diff "${DEFAULT_BRANCH}..HEAD" --stat
 
 ### Step 2: Branch Protection
 
-If the current branch is `main`, `master`, or matches the default branch, stop and inform the user — do not create a PR from the default branch.
+If the current branch is `main`, `master`, or matches the default branch:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=default-branch
+```
+
+Stop without pushing or creating a PR.
 
 ### Step 3: Push Branch
 

@@ -32,7 +32,7 @@ finish action), maps `MODE` to the closing action, and contains the
 | `investigate` | Report findings (no label). Output `<done>VERIFIED</done>` |
 | `ship-prep` | Add `run-full-ci` label. Report results. Output `<done>VERIFIED</done>` |
 | `ship` | Set phase to `shipping`. Execute the ship workflow |
-| `fix-and-ship` | Add `run-full-ci` label. Set phase to `shipping`. Watch CI → execute the ship workflow with `--skip-coverage` |
+| `fix-and-ship` | Add `run-full-ci` label. Set phase to `shipping`. Watch CI → execute the full ship workflow |
 
 ## Add the `run-full-ci` Label
 
@@ -64,7 +64,7 @@ directly.
 
 - **`ship` mode** → Treat an empty string as the ship workflow's `$ARGUMENTS`
   so it runs the full coverage and E2E gates.
-- **`fix-and-ship` mode** → Treat `--skip-coverage` as the ship workflow's
-  `$ARGUMENTS`. Coverage and E2E tests already ran in Steps 1-2 and Step 5 of
-  this skill, so re-running them would be wasted work and could surface flakes
-  that were already accepted.
+- **`fix-and-ship` mode** → Treat an empty string as the ship workflow's
+  `$ARGUMENTS`. Ship must run its changed-source coverage gate; the earlier
+  browser result may be reused only through ship's explicit verified-result
+  path.

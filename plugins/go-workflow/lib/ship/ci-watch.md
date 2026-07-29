@@ -40,9 +40,15 @@ for i in $(seq 1 12); do
 done
 ```
 
-If still not ready after 120s, ask via `AskUserQuestion`:
+If still not ready after 120s, do not treat the absence as a pass:
 
-> "CI checks for commit {HEAD_SHA} have not appeared after 120 seconds. The repo has workflow files. Wait longer, or proceed without CI verification?"
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=ci-checks-not-registered
+```
+
+Follow the top-level **Hard Invariant Failure** procedure and stop. A later
+invocation may repeat the bounded registration wait for the same `HEAD_SHA`.
 
 ## 10c. Watch checks for the correct SHA
 

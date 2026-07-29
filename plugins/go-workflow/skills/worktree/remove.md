@@ -54,17 +54,20 @@ git worktree remove "$WORKTREE_PATH"
 
 **Unsafe removal** (issue open, branch unmerged, or uncommitted changes):
 
-Warn the user about the risks and ask for explicit confirmation:
-
-```bash
-git worktree remove --force "$WORKTREE_PATH"
 ```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=unsafe-worktree
+```
+
+Stop without removing the worktree or deleting either branch. A driver cannot
+override unmerged commits, an open issue, or uncommitted changes. Make the
+worktree safe first, then rerun the workflow.
 
 ### Step 5: Optional Branch Cleanup
 
 Ask: "Also delete the branch $BRANCH_NAME?"
 
 ```bash
-git branch -D "$BRANCH_NAME" 2>/dev/null || true
+git branch -d "$BRANCH_NAME"
 git push origin --delete "$BRANCH_NAME" 2>/dev/null || true
 ```

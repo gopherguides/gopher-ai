@@ -22,7 +22,8 @@ If `$ARGUMENTS` is empty or not provided, explain:
 > **Example:** `/go-workflow:start-issue 123` or `$start-issue 123 --coverage-threshold 80`
 >
 > **Options:**
-> - `--skip-coverage`: Skip coverage verification after implementation
+> - `--skip-coverage`: Compatibility hint for source-free changes; changed
+>   source files still run coverage verification
 > - `--coverage-threshold <n>`: Override default 60% coverage threshold
 > - `--no-agents`: Use single-session workflow instead of subagent dispatch (for small/simple issues)
 >
@@ -98,7 +99,8 @@ names, or state file paths.
 
 Store the parsed flags:
 
-- `SKIP_COVERAGE`: `true` if `--skip-coverage` was passed, `false` otherwise
+- `SKIP_COVERAGE`: compatibility hint from `--skip-coverage`; it never waives
+  changed-source coverage
 - `COVERAGE_THRESHOLD`: the value after `--coverage-threshold`, or `60` if not specified
 - `NO_AGENTS`: `true` if `--no-agents` was passed, `false` otherwise
 
@@ -333,7 +335,8 @@ STOP and run verification instead.
 
 1. Code changes implemented and address the issue
 2. Tests written and ALL PASS (`go test ./...` or equivalent) — with output shown above
-3. Coverage verified or skipped (per `--skip-coverage` flag)
+3. Coverage verified for changed source files, or not applicable because the
+   diff is source-free / all changed Go files are `package main`
 4. Linting passes (`golangci-lint run` or equivalent, if installed) — with output shown above
 5. Changes committed with a proper commit message
 6. Changes pushed to the remote branch

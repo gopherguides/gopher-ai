@@ -51,8 +51,14 @@ echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
 **If `$BEHIND` is 0:** Skip rebase, proceed to Step 2.
 
 **If `$BEHIND` > 0:**
-1. Check `git status --porcelain`. **If dirty, STOP** — ask user how to proceed.
-2. `git rebase "${BASE_REMOTE}/${BASE_BRANCH}"` — if conflicts arise, abort and ask user.
+1. Check `git status --porcelain`. If dirty, report
+   `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=dirty-worktree`, follow the
+   top-level **Hard Invariant Failure** procedure, and stop.
+2. Run `git rebase "${BASE_REMOTE}/${BASE_BRANCH}"`. Resolve conflicts only
+   when the correct resolution is evident and every conflict is cleared. If
+   any conflict remains, run `git rebase --abort`, report
+   `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=rebase-conflict`, then
+   follow the top-level **Hard Invariant Failure** procedure and stop.
 3. Force-push:
    ```bash
    PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
@@ -82,17 +88,27 @@ if [ -f Makefile ]; then
     GEN_SNAPSHOT=$(printf '%s\n%s' "$(git diff --name-only)" "$(git ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
     echo "Running make $GEN_TARGET..."
     if ! make "$GEN_TARGET" 2>&1; then
-      echo "WARNING: make $GEN_TARGET failed (tooling may not be installed). Skipping codegen check."
-      GEN_TARGET=""
+      BUILD_RESULT="fail"
+      WORKFLOW_REASON="generation-failed"
     fi
   fi
 fi
 ```
 
+If `WORKFLOW_REASON=generation-failed`, report:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=generation-failed
+```
+
+Follow the top-level **Hard Invariant Failure** procedure and stop before build
+or E2E testing.
+
 Check for generated file drift:
 
 ```bash
-if [ -n "$GEN_TARGET" ]; then
+if [ -n "$GEN_TARGET" ] && [ -z "${WORKFLOW_REASON:-}" ]; then
   GEN_MODIFIED=$(git diff --name-only)
   GEN_UNTRACKED=$(git ls-files --others --exclude-standard)
   GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
@@ -113,10 +129,26 @@ fi
 ### 2b. Build and Test
 
 ```bash
-go build ./...
-go test ./...
-golangci-lint run 2>/dev/null || true
+BUILD_RESULT=pass
+if ! go build ./...; then
+  BUILD_RESULT=fail
+elif ! go test ./...; then
+  BUILD_RESULT=fail
+elif command -v golangci-lint >/dev/null 2>&1 && ! golangci-lint run; then
+  BUILD_RESULT=fail
+fi
 ```
+
+If `BUILD_RESULT=fail`, report:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=verification-failed
+```
+
+Follow the top-level **Hard Invariant Failure** procedure and stop. Never
+continue to browser E2E with failed generation, build, tests, or configured
+lint.
 
 ### 2c. Dev Server Logs (if running)
 
@@ -136,4 +168,5 @@ git diff --stat
 
 If unexpected changes appear after generation, investigate before proceeding.
 
-**Set `BUILD_RESULT`** to `pass` or `fail` based on the above checks. If any blocking check fails (build or test), report and stop — do not proceed to E2E testing with a broken build.
+`BUILD_RESULT` is authoritative for the persisted result. Only `pass` may
+advance to E2E testing.

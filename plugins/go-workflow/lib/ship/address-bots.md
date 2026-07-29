@@ -8,10 +8,19 @@ Before applying fixes, ensure the branch is up to date with the base to avoid co
 
 ```bash
 git fetch origin "$BASE_BRANCH"
-git rebase "origin/$BASE_BRANCH" || git rebase --abort
+git rebase "origin/$BASE_BRANCH"
 ```
 
-If the rebase fails (conflicts), abort and inform the user. Proceed with fixes WITHOUT rebasing — the user can resolve conflicts manually.
+Resolve conflicts only when the correct resolution is evident and every
+conflict is cleared. If any conflict remains, abort the rebase, then:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=rebase-conflict
+```
+
+Follow the top-level **Hard Invariant Failure** procedure and stop before
+applying review fixes.
 
 ## 12b. Apply address-review fixes
 

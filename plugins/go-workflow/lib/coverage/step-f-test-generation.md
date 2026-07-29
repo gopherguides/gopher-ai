@@ -4,28 +4,30 @@ Loaded by `coverage-verification.md` Step F. Owns mode selection,
 `CHANGED_FUNC_NAMES` extraction, per-language test-writing conventions, and
 the final `coverage_tests_generated` state-file write.
 
-Only runs when the user picked an option in Step E.2 that routed here
-(options 1 or 2; or "Generate initial tests" in the no-test-files branch).
+Only runs when Step E routes here for below-threshold coverage or the
+no-test-files branch.
 
 ## Mode selection
 
-Set by Step E.2's user choice:
+Set by the Step E branch:
 
-- **All uncovered functions mode** (option 1): Generate tests for every
+- **All uncovered functions mode**: Generate tests for every
   uncovered function in `CHANGED_SRC` (Go: `CHANGED_SRC_GATED`), as listed
   in `UNCOVERED_FUNCS` from Step D.
-- **No-test-files path** (from Step E.2 "Generate initial tests"):
+- **No-test-files path**:
   `UNCOVERED_FUNCS` may be empty because Step D short-circuits when coverage
   data is missing. In this case, read each file in `CHANGED_SRC` (Go:
   `CHANGED_SRC_GATED` — `package main` files are excluded so Step F never
   generates tests for `func main()`-style code) directly and extract all
   exported function/method signatures as test targets.
-- **Changed functions only mode** (option 2, Go only): Restrict test
-  generation to Go functions whose bodies were added or modified.
+- **Changed functions only mode** (Go only): Available to callers that already
+  selected this scope before entering the mandatory gate; it is never offered
+  as a low-coverage bypass.
 
-## Changed-functions extraction (Go, option 2 only)
+## Changed-functions extraction (Go only)
 
-Identify changed functions by mapping diff hunks to their enclosing function
+When a caller selected this scope before the gate, identify changed functions
+by mapping diff hunks to their enclosing function
 using committed, staged, unstaged, and untracked changes (matching Step B's
 file detection):
 
@@ -129,4 +131,14 @@ jq --argjson n "$TESTS_GENERATED" '.coverage_tests_generated = $n' "$STATE_FILE"
 ```
 
 Generated test files will be staged and committed alongside other changes by
-the calling command.
+the calling command. Return to Step C and rerun coverage once; Step E stops
+incomplete if the threshold is still not met.
+
+If tests cannot be generated or made to pass, follow Step E.4 with:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=coverage-test-generation-failed
+```
+
+Stop without returning to the calling workflow or emitting its success marker.

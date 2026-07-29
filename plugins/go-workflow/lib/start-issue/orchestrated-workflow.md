@@ -190,7 +190,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow St
 | `SKIP_COVERAGE` | from parsed flags (default: `false`) |
 | `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
 
-After coverage verification completes (or is skipped), continue to Step 10.
+Continue to Step 10 only after coverage passes or the shared gate determines
+the diff has no gated source files.
 
 ## Step 10: Security Review
 
