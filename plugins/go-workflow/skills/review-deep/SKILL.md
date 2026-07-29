@@ -258,7 +258,7 @@ Display the final summary:
 - **Recommendation:** APPROVE / REQUEST_CHANGES / COMMENT
 ```
 
-Use the exact structured result from `post-fix-actions.sh`. If that helper
+Use the exact structured result from `review-deep-post-fix.sh`. If that helper
 failed, do not display `Review Complete`, post an approval, or imply that PR
 fixes reached the remote.
 
@@ -280,6 +280,6 @@ Default: `Done`.
 - `context-gathering.md` — PR/issue/review-thread fetching, repo-guideline detection, size guard
 - `review-criteria.md` — full review criteria, Go idiom checks, Quality Score Rubric, confidence scoring, breaking-change detection
 - `fix-and-verify.md` — fix iteration, parallel dispatch, test generation, verification, commit, and push
-- `post-fix-actions.sh` — deterministic owned-file commit, optional push, and remote-head verification
+- `../../scripts/review-deep-post-fix.sh` — deterministic owned-file commit, optional push, and remote-head verification
 - `output-format.md` — findings table, spec-compliance table, review-comments-status table, PR-comment template
 - `../../lib/review-planning.md` — shared adaptive coverage planning and finding coordination

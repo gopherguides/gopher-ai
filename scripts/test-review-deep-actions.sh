@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-ACTIONS_SCRIPT="$ROOT_DIR/plugins/go-workflow/skills/review-deep/post-fix-actions.sh"
+ACTIONS_SCRIPT="$ROOT_DIR/plugins/go-workflow/scripts/review-deep-post-fix.sh"
 SKILL_FILE="$ROOT_DIR/plugins/go-workflow/skills/review-deep/SKILL.md"
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/review-deep-actions-XXXXXX")"
 REMOTE_REPO="$FIXTURE_ROOT/remote.git"
@@ -17,11 +17,18 @@ fail() {
   ERRORS=$((ERRORS + 1))
 }
 
+file_contains() {
+  local needle="$1"
+  local file="$2"
+
+  awk -v needle="$needle" 'index($0, needle) { found = 1 } END { exit found ? 0 : 1 }' "$file"
+}
+
 require_skill_text() {
-  local pattern="$1"
+  local needle="$1"
   local label="$2"
 
-  if ! rg -q -- "$pattern" "$SKILL_FILE"; then
+  if ! file_contains "$needle" "$SKILL_FILE"; then
     fail "$label"
   fi
 }
@@ -141,7 +148,7 @@ require_skill_text '--push' "review pushes cannot be explicitly enabled"
 require_skill_text '--no-push' "review pushes cannot be explicitly disabled"
 require_skill_text 'PR-backed runs push newly created review commits by default' \
   "default PR push ownership is not documented"
-if ! rg -q -- '--auto-push --pr-number' \
+if ! file_contains '--auto-push --pr-number' \
   "$ROOT_DIR/plugins/go-workflow/skills/review-deep/fix-and-verify.md"; then
   fail "default PR push behavior does not route through the tested helper mode"
 fi

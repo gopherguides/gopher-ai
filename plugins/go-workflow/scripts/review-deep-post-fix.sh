@@ -10,7 +10,7 @@ COMMIT_MESSAGE=""
 OWNED_FILES=()
 
 usage() {
-  echo "usage: post-fix-actions.sh [--commit|--no-commit] [--auto-push|--push|--no-push] [--pr-number <number>] [--remote <name>] [--branch <name>] [--message <text>] [-- <owned-files...>]" >&2
+  echo "usage: review-deep-post-fix.sh [--commit|--no-commit] [--auto-push|--push|--no-push] [--pr-number <number>] [--remote <name>] [--branch <name>] [--message <text>] [-- <owned-files...>]" >&2
   exit 2
 }
 
