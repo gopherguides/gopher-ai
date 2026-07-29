@@ -236,11 +236,15 @@ Tailwind CSS v4 tools for initialization, auditing, migration, and optimization.
 | `/tailwind-audit` | Audit Tailwind usage for best practices |
 | `/tailwind-optimize` | Optimize Tailwind configuration and usage |
 
-**MCP Tools** (Claude Code only):
+**MCP Tools** (Claude Code, Codex, and generated Gemini extensions):
 - `search_tailwind_docs` - Search Tailwind CSS documentation
 - `get_tailwind_utilities` - Get utility classes for CSS properties
 - `get_tailwind_colors` - Get color palette information
+- `get_tailwind_config_guide` - Get framework-specific configuration guidance
+- `install_tailwind` - Generate framework installation instructions
 - `convert_css_to_tailwind` - Convert CSS to Tailwind utilities
+- `generate_color_palette` - Generate a custom color palette
+- `generate_component_template` - Generate styled component templates
 
 ## Skills Reference
 
@@ -351,7 +355,7 @@ The **tailwind** module includes an MCP (Model Context Protocol) server for Tail
   "mcpServers": {
     "tailwindcss": {
       "command": "npx",
-      "args": ["-y", "tailwindcss-mcp-server"]
+      "args": ["-y", "tailwindcss-mcp-server@0.1.1"]
     }
   }
 }
@@ -361,19 +365,33 @@ The **tailwind** module includes an MCP (Model Context Protocol) server for Tail
 - Node.js 16+ (`node` and `npx` must be on your PATH)
 - Internet access on first run (to download the package)
 
+Version `0.1.1` implements legacy MCP `2024-11-05`, not MCP `2026-07-28`.
+Current Claude Code and Codex clients use the standard STDIO compatibility
+probe and fall back to the legacy initialization handshake. Run
+`node scripts/test-tailwind-mcp-server.mjs` to verify the pinned version,
+protocol path, and advertised tools.
+
 **Available MCP tools:**
 - `search_tailwind_docs` — Search Tailwind CSS documentation
 - `get_tailwind_utilities` — Get utility classes for CSS properties
 - `get_tailwind_colors` — Get color palette information
+- `get_tailwind_config_guide` — Get framework-specific configuration guidance
+- `install_tailwind` — Generate framework installation instructions
 - `convert_css_to_tailwind` — Convert CSS to Tailwind utilities
+- `generate_color_palette` — Generate a custom color palette
+- `generate_component_template` — Generate styled component templates
 
 **Fallback behavior:**
-If the MCP server is unavailable (Node.js not installed, network issues, or using a non-Claude platform), the Tailwind slash commands (`/tailwind-init`, `/tailwind-migrate`, `/tailwind-audit`, `/tailwind-optimize`) still work fully — they do not depend on the MCP server. The MCP tools provide supplementary documentation lookups only.
+If the MCP server is unavailable (Node.js not installed, network issues, or a
+client without legacy MCP support), the Tailwind commands still work fully.
+They use the official documentation URLs in
+`plugins/tailwind/skills/tailwind-best-practices/docs-urls.md`; the MCP tools
+provide supplementary lookups only.
 
 **Troubleshooting:**
 - **"npx: command not found"** — Install Node.js 16+ (`brew install node` or [nodejs.org](https://nodejs.org))
 - **MCP tools not appearing** — Ensure you installed the `tailwind` plugin module; run `/plugin install tailwind@gopher-ai`
-- **Timeout on first run** — The first `npx -y tailwindcss-mcp-server` invocation downloads the package; subsequent runs are cached
+- **Timeout on first run** — The first `npx -y tailwindcss-mcp-server@0.1.1` invocation downloads the package; subsequent runs are cached
 
 ## Best Practices Guide
 

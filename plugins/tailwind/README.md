@@ -47,8 +47,20 @@ This plugin includes the `tailwindcss-mcp-server` which provides:
 | `search_tailwind_docs` | Search documentation for any topic |
 | `get_tailwind_utilities` | Get utilities by category |
 | `get_tailwind_colors` | Access color palette |
+| `get_tailwind_config_guide` | Get framework-specific configuration guidance |
+| `install_tailwind` | Generate framework installation instructions |
 | `convert_css_to_tailwind` | Convert CSS to utilities |
 | `generate_component_template` | Generate component templates |
+| `generate_color_palette` | Generate a custom color palette |
+
+The plugin pins `tailwindcss-mcp-server@0.1.1`. This release implements legacy
+MCP `2024-11-05`; current Claude Code and Codex clients connect through the
+standard STDIO fallback because it does not implement MCP `2026-07-28`
+`server/discover`. Run `node scripts/test-tailwind-mcp-server.mjs` from the
+repository root to verify the protocol path and advertised tools.
+
+When the server is unavailable, use the official documentation links in
+`skills/tailwind-best-practices/docs-urls.md`.
 
 ## Tailwind v4 Quick Reference
 

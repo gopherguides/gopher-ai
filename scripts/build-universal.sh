@@ -289,10 +289,15 @@ rewrite_gemini_plugin_paths() {
 generate_gemini_extension_json() {
     local plugin_name="$1"
     local plugin_json="$ROOT_DIR/plugins/$plugin_name/.claude-plugin/plugin.json"
+    local mcp_json="$ROOT_DIR/plugins/$plugin_name/.mcp.json"
 
     local description=""
+    local mcp_servers="{}"
     if [[ -f "$plugin_json" ]]; then
         description=$(jq -r '.description // ""' "$plugin_json")
+    fi
+    if [[ -f "$mcp_json" ]]; then
+        mcp_servers=$(jq -c '.' "$mcp_json")
     fi
 
     cat << EOF
@@ -301,7 +306,7 @@ generate_gemini_extension_json() {
   "version": "$VERSION",
   "description": "$description",
   "contextFileName": "GEMINI.md",
-  "mcpServers": {},
+  "mcpServers": $mcp_servers,
   "excludeTools": [],
   "settings": []
 }
