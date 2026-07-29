@@ -68,9 +68,9 @@ Parse `$ARGUMENTS` to extract:
 - `--llm <value>`: `codex` (default), `gemini`, `ollama`, `fable` (Claude subagent — no external CLI; prefer when the diff was written by Codex so a different model family reviews it)
 - `--passes <n>`: max LLM review passes (default: 3)
 - `--no-merge`: stop after bot approval, don't auto-merge
-- `--skip-coverage`: skip coverage analysis. E2E may be reused only when a
-  prior `$e2e-verify` pass is recorded; it is not skipped
-  automatically for UI-visible diffs.
+- `--skip-coverage`: compatibility hint for source-free changes. Changed source
+  files always run the coverage gate. E2E may be reused only when a prior
+  `$e2e-verify` pass is recorded.
 - `--coverage-threshold <n>`: override the default 60% threshold
 - `--tier <value>`: gemini service tier (`flex`/`standard`/`priority`; gemini only; default: unset)
 
@@ -81,13 +81,29 @@ Persist arguments to `.local/state/ship.loop.local.json` via `jq` so the
 stop-hook can recover all fields on re-entry. The full jq invocation lives in
 `${CLAUDE_PLUGIN_ROOT}/lib/ship/state-fields.md` — fields written: `args`,
 `llm`, `pass`, `no_merge`, `pr_number`, `base_branch`,
-`bot_review_baseline`, `discovered_bots`, `has_ci`, `skip_coverage`,
+`bot_review_baseline`, `discovered_bots`, `has_ci`, `ci_skip_reason`, `skip_coverage`,
 `coverage_threshold`, `coverage_result`, `coverage_tests_generated`,
 `e2e_required`, `e2e_attempted`, `e2e_result`, `e2e_skip_reason`,
 `e2e_pages_tested`, `review_clean`, `review_result`,
 `review_skip_reason`, `head_sha`, `gemini_tier`.
 For Ollama reviews, Step 5 also persists `ollama_model` after resolving it from
 the installed model list.
+
+## Hard Invariant Failure
+
+When this skill or a supporting file says to stop incomplete, set the supplied
+reason code as `WORKFLOW_REASON`, then persist the machine-readable outcome:
+
+```bash
+TMP=".local/state/ship.loop.local.json.tmp"
+jq --arg reason "$WORKFLOW_REASON" \
+  '.workflow_result = "incomplete" | .workflow_reason = $reason | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' \
+  ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+```
+
+Report `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=$WORKFLOW_REASON`,
+output `<done>INCOMPLETE</done>`, and stop. Never ask for permission to bypass
+the invariant and never output `<done>SHIPPED</done>` on this path.
 
 ## 2. Re-entry Check
 
@@ -165,8 +181,9 @@ else
 fi
 ```
 
-**CRITICAL:** If `CURRENT_BRANCH == BASE_BRANCH` → **STOP**, do not ship from
-the default branch. Inform the user and ask how to proceed.
+**CRITICAL:** If `CURRENT_BRANCH == BASE_BRANCH`, set
+`WORKFLOW_REASON=default-branch`, follow **Hard Invariant Failure**, and stop.
+Do not ship from the default branch.
 
 If `git status --porcelain` shows uncommitted changes, ask the user: "Commit
 them before shipping, or abort?"
@@ -250,8 +267,10 @@ latest pushed `HEAD_SHA` before considering CI as passed. You MUST NOT:
 The ENTIRE purpose of CI is to validate the EXACT code being merged. Stale check
 results are meaningless.
 
-If no `.github/workflows/*.yml` files exist → persist `has_ci: false` and skip
-to Step 11.
+If no `.github/workflows/*.yml` files exist → persist `has_ci: false` with
+`ci_skip_reason: no-workflow-files` and skip to Step 11. When workflow files
+exist but no checks register, only skip CI after Step 10b establishes that no
+active workflow applies to the current PR.
 
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/ci-watch.md` for: HEAD-SHA
 capture-and-verify, the 120s wait for checks to register against the SHA,
@@ -293,8 +312,9 @@ set_loop_phase ".local/state/ship.loop.local.json" "addressing"
 ```
 
 Fetch and rebase against base (`git fetch origin "$BASE_BRANCH" && git rebase
-"origin/$BASE_BRANCH" || git rebase --abort`); if rebase aborts on conflicts,
-proceed without rebasing — user resolves manually.
+"origin/$BASE_BRANCH"`). If conflicts cannot be resolved, abort the rebase,
+set `WORKFLOW_REASON=rebase-conflict`, follow **Hard Invariant Failure**, and
+stop before applying or pushing fixes.
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow
 **Steps 2–11 only** (skip Step 1 / loop init — we're already managed; skip Step
@@ -337,7 +357,8 @@ summary-line rendering (uses `coverage_skip_reason` to avoid `N/A%`). Output
                                             13 merging → <done>SHIPPED</done>
 ```
 
-`[coverage-check]` runs only on the final pass when `--skip-coverage` isn't set.
+`[coverage-check]` runs on every final pass that changes source files.
+`--skip-coverage` can avoid work only for source-free changes.
 `[e2e-testing]` is mandatory for UI-visible diffs. Missing MCP/browser tooling
 or an unavailable dev server records `e2e_result=blocked` and stops before push
 or merge. Non-UI diffs may record `e2e_result=skipped`.
@@ -349,6 +370,8 @@ from THIS session — actual command output, not narrative:
 
 - **"Tests pass"** → `go test` output with "ok" lines, zero failures
 - **"Build succeeds"** → `go build ./...` exit 0
+- **"Generation is current"** → configured generation target exits 0 with generated changes included
+- **"Lint passes"** → configured lint command exits 0
 - **"CI passes"** → `gh pr checks` with all checks green
 - **"Bot approvals"** → `gh pr view --json reviews --jq '.reviews[] | {author: .author.login, state: .state}'` with APPROVED
 - **"PR merged"** → merge output or `gh pr view` showing MERGED
@@ -363,7 +386,8 @@ verification instead.
 Output `<done>SHIPPED</done>` ONLY when ALL of these are true:
 
 1. LLM review passes completed (clean or max passes reached)
-2. Coverage verified for changed files (or skipped via `--skip-coverage`)
+2. Coverage verified for changed source files (or not applicable because the
+   diff is source-free / all changed Go files are `package main`)
 3. E2E smoke tests passed for UI-visible diffs (or skipped only because the
    diff is non-UI / no web components)
 4. Changes pushed to remote

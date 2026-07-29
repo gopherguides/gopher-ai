@@ -166,7 +166,9 @@ echo "=== Tests ==="
 go test ./...
 
 echo "=== Lint ==="
-golangci-lint run 2>/dev/null || true
+if command -v golangci-lint >/dev/null 2>&1; then
+  golangci-lint run
+fi
 ```
 
 ### Other Project Types
@@ -174,19 +176,29 @@ golangci-lint run 2>/dev/null || true
 **Node/TypeScript** (package.json exists):
 ```bash
 npm run build && npm test
-npm run lint 2>/dev/null || true
+npm run lint --if-present
 ```
 
 **Rust** (Cargo.toml exists):
 ```bash
 cargo build && cargo test
-cargo clippy 2>/dev/null || true
+if cargo clippy --version >/dev/null 2>&1; then
+  cargo clippy
+fi
 ```
+
+If the repository explicitly configures Clippy in CI or its verification
+scripts, an unavailable Clippy component is a verification failure instead of
+an optional-tool skip.
 
 **Python** (pyproject.toml or setup.py exists):
 ```bash
 pytest 2>/dev/null || python -m pytest
-ruff check . 2>/dev/null || flake8 . 2>/dev/null || true
+if command -v ruff >/dev/null 2>&1; then
+  ruff check .
+elif command -v flake8 >/dev/null 2>&1; then
+  flake8 .
+fi
 ```
 
 ### Handling Failures
@@ -200,6 +212,15 @@ If any verification step fails:
 5. Repeat until all pass
 
 Do NOT proceed to commit until all verifications pass.
+
+If a failure cannot be fixed in this run, report:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=verification-failed
+```
+
+Stop without committing or reporting the review workflow complete.
 
 ---
 

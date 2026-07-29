@@ -1,8 +1,8 @@
 # Step C — Run Coverage
 
 Loaded by `coverage-verification.md` Step C. Per-language coverage tool
-invocations and the rule for distinguishing tool-failure (warn-and-skip) from
-zero-coverage (continue to Step D).
+invocations and the rule for distinguishing tool failure (stop incomplete)
+from zero coverage (continue to Step D).
 
 ## Go (built-in — always available)
 
@@ -74,8 +74,8 @@ fi
 ## Tool-unavailable vs zero-coverage
 
 If the coverage tool binary is genuinely missing (e.g., `cargo-llvm-cov` not
-installed) → display a warning ("Coverage tool unavailable, skipping coverage
-gate") and return to the calling command's next step.
+installed), follow Step E.4 with
+`WORKFLOW_REASON=coverage-tool-unavailable` and stop incomplete.
 
 However, if the coverage command ran and produced output (e.g., `coverage.out`
 exists with content, or JSON file exists with data), the tool did NOT fail —

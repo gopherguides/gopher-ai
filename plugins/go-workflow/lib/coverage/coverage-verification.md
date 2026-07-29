@@ -13,7 +13,7 @@ The calling command MUST set these variables before invoking this workflow:
 |----------|-------------|---------|
 | `BASE_BRANCH` | Branch to diff against | `origin/main` |
 | `STATE_FILE` | **Absolute path** to the loop state JSON file | `/path/to/.local/state/ship.loop.local.json` |
-| `SKIP_COVERAGE` | Whether to skip coverage entirely | `true` or `false` |
+| `SKIP_COVERAGE` | Compatibility flag; may skip only source-free changes | `true` or `false` |
 | `COVERAGE_THRESHOLD` | Minimum coverage percentage for changed files | `60` |
 
 **Worktree note:** When running in a worktree, `STATE_FILE` MUST be an absolute path to the state file (which lives in the original repo's `.local/state/` directory, not the worktree). Coverage artifacts (`.local/state/coverage.out`) are written relative to the current working directory — ensure `.local/state/` exists via `mkdir -p .local/state` before running coverage commands.
@@ -36,10 +36,9 @@ package main`) instead of `<COV_RESULT>%`.
 
 ## Step A: Skip Conditions
 
-Skip this entire workflow (return to the calling command's next step) if ANY of these are true:
-
-- `SKIP_COVERAGE` is `true`
-- No source files changed (only tests, docs, configs — see Step B)
+Only source-free changes may skip this workflow. `SKIP_COVERAGE=true` does not
+waive the gate when Step B finds changed source files. No driver may bypass
+measurable changed-source coverage.
 
 ## Step B: Detect Changed Source Files
 
@@ -65,13 +64,12 @@ output for analysis.
 → Read `step-c-run-coverage.md` for the per-language commands (Go's built-in
 `go test -coverprofile`; Node detection of vitest/jest/c8; Rust llvm-cov or
 tarpaulin; Python pytest-cov or coverage.py). It also contains the rule for
-when "tool unavailable" should warn-and-skip vs proceed-with-zero-coverage.
+when tool failure stops the workflow vs zero coverage proceeding to analysis.
 
 If the coverage tool binary is genuinely missing (e.g., `cargo-llvm-cov` not
-installed) → display a warning ("Coverage tool unavailable, skipping coverage
-gate") and return to the calling command's next step. Otherwise — even if
-coverage is 0% — proceed to Step D. **Do NOT treat low coverage as a tool
-failure.**
+installed), stop incomplete with `WORKFLOW_REASON=coverage-tool-unavailable`.
+Otherwise — even if coverage is 0% — proceed to Step D. **Do NOT treat low
+coverage as a tool failure.**
 
 ## Step D: Analyze Changed-File Coverage
 
@@ -97,36 +95,34 @@ llvm-cov/tarpaulin JSON, Python coverage.json).
 
 ## Step E: Coverage Gate Decision
 
-**MANDATORY RULE — NO EXCEPTIONS:** When coverage is below `COVERAGE_THRESHOLD`,
-your ONLY permitted action is to display the report (Step E.1) and then
-IMMEDIATELY call `AskUserQuestion` (Step E.2). You MUST NOT skip, waive,
-rationalize, or proceed without asking. **Only the user can decide to proceed
-with low coverage.**
+**MANDATORY RULE — NO EXCEPTIONS:** When coverage is below
+`COVERAGE_THRESHOLD`, display the report, generate tests for the uncovered
+changed-source behavior, and rerun the gate. If coverage still misses the
+threshold, stop incomplete. No driver may skip, waive, rationalize, or proceed
+with low coverage.
 
 **Design philosophy: "if you touch it, you own it."** The entire file's
 coverage counts, regardless of which lines you changed. The carve-out for
 `package main` (Go only) is detected by the package clause and is the only
 exception — see Step B and issue #143.
 
-→ Read `step-e-gate.md` for the full MUST-NOT enumeration, the exact report
-formats (Go 4-column with the `ALL_MAIN`-conditional footer; non-Go 3-column),
-the gate-decision tree (pass / `ALL_MAIN` warning / coverage < threshold / no
-test files / tool failure), every `AskUserQuestion` question + option set
-verbatim, the user-choice routing, and the jq blocks that persist
-`coverage_result` + `coverage_skip_reason`.
+→ Read `step-e-gate.md` for the exact report formats (Go 4-column with the
+`ALL_MAIN`-conditional footer; non-Go 3-column), the gate-decision tree (pass /
+`ALL_MAIN` warning / coverage < threshold / no test files / tool failure), test
+generation routing, and the jq blocks that persist success or incomplete
+outcomes.
 
 ## Step F: Test Generation for Uncovered Code
 
-When the user picks "Generate tests" in Step E.2, generate tests for the
-uncovered functions identified in Step D. Three modes (set by the user's
-choice):
+When Step E routes here, generate tests for the uncovered functions identified
+in Step D:
 
-- **All uncovered functions** (E.2 option 1)
-- **Changed functions only** (E.2 option 2, Go only) — diff-driven function
-  list intersected with `UNCOVERED_FUNCS`
-- **No-test-files path** (Step E.2 "Generate initial tests") — when no test
-  files exist anywhere; fall back to extracting exported signatures from
-  `CHANGED_SRC` directly
+- **All uncovered functions** for below-threshold coverage
+- **No-test-files path** when no test files exist anywhere; fall back to
+  extracting exported signatures from `CHANGED_SRC` directly
+
+After generation, rerun Steps C through E once. If the gate still fails, Step E
+persists the incomplete reason and stops.
 
 → Read `step-f-test-generation.md` for: the `CHANGED_FUNC_NAMES` extraction
 bash, per-language test-writing conventions (Go table-driven, vitest/jest,
@@ -138,5 +134,5 @@ state-file write at the end.
 - `step-b-detect-changed-files.md` — `CHANGED_FILES` collector, per-language source filters, `get_pkg` extractor, gated/info partitioning
 - `step-c-run-coverage.md` — per-language coverage invocations and JSON shapes
 - `step-d-analyze.md` — statement-weighted Go parser, `ALL_MAIN` logic, per-language JSON parsing
-- `step-e-gate.md` — report formats, gate decision tree, all `AskUserQuestion` options, state-file persistence
+- `step-e-gate.md` — report formats, gate decision tree, hard-stop outcomes, state-file persistence
 - `step-f-test-generation.md` — mode selection, `CHANGED_FUNC_NAMES` extraction, per-language test generation, final state-file write

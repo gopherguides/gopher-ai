@@ -67,6 +67,21 @@ Phase → step routing:
 - `posting` → Step 6
 - `shipping` → Step 7
 
+## Hard Invariant Failure
+
+When this skill or a supporting file reports
+`WORKFLOW_RESULT=INCOMPLETE`, persist the supplied reason:
+
+```bash
+TMP="$STATE_FILE.tmp"
+jq --arg reason "$WORKFLOW_REASON" \
+  '.workflow_result = "incomplete" | .workflow_reason = $reason | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' \
+  "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+```
+
+Output `<done>INCOMPLETE</done>` and stop. Never continue to E2E, add labels,
+invoke ship, or output `<done>VERIFIED</done>` from an invariant-failure path.
+
 ---
 
 ## Mode Summary
@@ -117,12 +132,19 @@ After addressing review feedback, create a descriptive fix commit and push.
 **CRITICAL:** Step 3 modified code, so re-run build verification before E2E:
 
 ```bash
-go build ./...
-go test ./...
-golangci-lint run 2>/dev/null || true
+BUILD_RESULT=pass
+if ! go build ./...; then
+  BUILD_RESULT=fail
+elif ! go test ./...; then
+  BUILD_RESULT=fail
+elif command -v golangci-lint >/dev/null 2>&1 && ! golangci-lint run; then
+  BUILD_RESULT=fail
+fi
 ```
 
-Update `BUILD_RESULT` based on these fresh results. If the build fails after fixes, stop and fix before continuing.
+If `BUILD_RESULT=fail`, report `WORKFLOW_RESULT=INCOMPLETE` and
+`WORKFLOW_REASON=verification-failed`, follow **Hard Invariant Failure**, and
+stop. Fix the failure before rerunning.
 
 ---
 
@@ -197,7 +219,7 @@ depends on `E2E_RESULT` and whether the diff is UI-visible:
 Output `<done>VERIFIED</done>` only when ALL of these are true:
 
 1. Branch rebased onto base (or already up to date)
-2. Build passes (go build, go test)
+2. Generation, build, tests, and configured lint checks pass
 3. Review addressed (if `fix-and-verify` or `fix-and-ship` mode)
 4. E2E gate passed per the table above (UI: `pass`; non-UI: `skipped`)
 5. Results posted to PR as a comment

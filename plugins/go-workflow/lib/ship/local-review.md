@@ -404,13 +404,12 @@ if [ -f Makefile ]; then
     GEN_SNAPSHOT=$(printf '%s\n%s' "$(git diff --name-only)" "$(git ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
     echo "Running make $GEN_TARGET..."
     if ! make "$GEN_TARGET" 2>&1; then
-      echo "WARNING: make $GEN_TARGET failed (tooling may not be installed). Skipping codegen check."
-      GEN_TARGET=""
+      WORKFLOW_REASON="generation-failed"
     fi
   fi
 fi
 
-if [ -n "$GEN_TARGET" ]; then
+if [ -n "$GEN_TARGET" ] && [ -z "${WORKFLOW_REASON:-}" ]; then
   GEN_MODIFIED=$(git diff --name-only)
   GEN_UNTRACKED=$(git ls-files --others --exclude-standard)
   GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
@@ -428,16 +427,36 @@ if [ -n "$GEN_TARGET" ]; then
 fi
 ```
 
+If `WORKFLOW_REASON=generation-failed`, report:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=generation-failed
+```
+
+Follow the top-level **Hard Invariant Failure** procedure and stop before
+verification or commit.
+
 ### Per-language verification
 
 | Language | Build / Test / Lint |
 |---|---|
-| **Go** (`go.mod`) | `go build ./... && go test ./...` (+ optional `golangci-lint run`) |
-| **Node/TS** (`package.json`) | `npm run build && npm test` (+ optional `npm run lint`) |
-| **Rust** (`Cargo.toml`) | `cargo build && cargo test` (+ optional `cargo clippy`) |
-| **Python** (`pyproject.toml`/`setup.py`) | `pytest` or `python -m pytest` (+ optional `ruff check .` / `flake8 .`) |
+| **Go** (`go.mod`) | `go build ./... && go test ./...`; run `golangci-lint run` when installed |
+| **Node/TS** (`package.json`) | `npm run build && npm test && npm run lint --if-present` |
+| **Rust** (`Cargo.toml`) | `cargo build && cargo test`; run `cargo clippy` when `cargo clippy --version` succeeds or the repository explicitly configures Clippy |
+| **Python** (`pyproject.toml`/`setup.py`) | `pytest` or `python -m pytest`; run installed `ruff check .` or `flake8 .` |
 
-If any verification fails: analyze, fix, re-run until all pass.
+If any verification fails: analyze, fix, and rerun until all pass. If a
+generation, build, test, or configured lint failure cannot be fixed in this
+run, report:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=verification-failed
+```
+
+Follow the top-level **Hard Invariant Failure** procedure and stop before
+coverage, commit, push, or completion.
 
 ## Step 7.5: Coverage Verification (Final pass only)
 
@@ -472,10 +491,10 @@ Skip to Step 8 only when ONE of:
   patterns `http.Handler|echo.Context|gin.Context|chi.Router|http.HandleFunc`,
   `*.html` / `*.tsx` / `*.vue` files).
 - No UI-visible files were changed in the diff.
-- `SKIP_COVERAGE=true` AND the PR is already marked `e2e-verified` or the
-  current loop state shows a prior passing E2E result. This is the deliberate
-  reuse path used after `$e2e-verify`; `--skip-coverage` alone is
-  not permission to skip E2E.
+- The PR is already marked `e2e-verified` or the current loop state shows a
+  prior passing E2E result. This is the deliberate reuse path used after
+  `$e2e-verify`; the coverage compatibility flag is not permission to skip
+  E2E.
 
 Block the workflow when the diff is UI-visible and E2E cannot run or fails:
 

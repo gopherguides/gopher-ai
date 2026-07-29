@@ -7,7 +7,10 @@ strategy detection, mergeStateStatus decision tree, and summary rendering.
 
 ## 13a. Final checks
 
-1. Verify CI is green (skip if `has_ci=false` in state file): `gh pr checks "$PR_NUM"`
+1. Verify CI is green (skip if `has_ci=false` in state file):
+   `gh pr checks "$PR_NUM"`. If this command is non-zero, set
+   `WORKFLOW_REASON=ci-not-green`, follow the top-level **Hard Invariant
+   Failure** procedure, and stop.
 
 2. Check for unresolved review threads:
 
@@ -46,7 +49,22 @@ BLOCKING_HUMANS=$(gh api graphql -f query='
 ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.latestReviews.nodes[] | select(.state == "CHANGES_REQUESTED") | select(.author.login | test("\\[bot\\]$") | not)] | length')
 ```
 
-If unresolved threads OR active human `CHANGES_REQUESTED` exist, inform the user and ask how to proceed.
+If unresolved threads exist, do not merge:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=unresolved-review-threads
+```
+
+If active human `CHANGES_REQUESTED` exists, do not merge:
+
+```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=human-changes-requested
+```
+
+For either condition, follow the top-level **Hard Invariant Failure** procedure
+and stop. Review requirements cannot be waived by a driver.
 
 4. Check the local E2E gate recorded during Phase 1. A UI-visible diff that did
    not complete browser E2E must stop here even if CI is green:
@@ -61,14 +79,13 @@ if [ "$E2E_REQUIRED" = "true" ] && [ "$E2E_RESULT" != "passed" ]; then
   echo "E2E PREREQUISITE MISSING - UI-visible diff has no passing browser E2E result."
   echo "E2E status: ${E2E_RESULT}; reason: ${E2E_SKIP_REASON:-unknown}; pages tested: ${E2E_PAGES}"
   echo "No merge. Start the dev server or fix E2E, then re-run \$ship."
-  "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
-  exit 1
+  WORKFLOW_REASON="required-e2e-not-passed"
 fi
 ```
 
 This is a backstop for re-entry and manual phase jumps. Do not prompt to merge
-when `e2e_result` is `blocked`; the operator must explicitly fix or rerun the
-workflow.
+when `e2e_result` is `blocked`; follow the top-level **Hard Invariant Failure**
+procedure and stop with `WORKFLOW_REASON=required-e2e-not-passed`.
 
 ## 13b. `--no-merge` early exit
 
@@ -151,21 +168,25 @@ GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state a
 
 | `MERGEABLE` | `STATE_STATUS` | Action |
 |-------------|----------------|--------|
-| any | `UNKNOWN` | Retry up to 6 times (5s apart). If still `UNKNOWN`, `AskUserQuestion`. |
-| `UNKNOWN` | any | Same retry-then-ask. |
-| `CONFLICTING` | any | **STOP.** "PR has merge conflicts. Resolve before merging." Cleanup, do NOT output `<done>`. |
+| any | `UNKNOWN` | Retry up to 6 times (5s apart). If still `UNKNOWN`, **STOP.** Set `WORKFLOW_REASON=mergeability-unknown`. |
+| `UNKNOWN` | any | Same bounded retry, then stop with `WORKFLOW_REASON=mergeability-unknown`. |
+| `CONFLICTING` | any | **STOP.** Set `WORKFLOW_REASON=merge-conflict`. |
 | any | `BLOCKED` (with `HAS_MERGE_QUEUE=true`) | Proceed — `gh pr merge` will enqueue. |
-| any | `BLOCKED` (no merge queue) | **STOP immediately.** "Branch protection requirements not met (status: BLOCKED). Cannot merge." Cleanup, no `<done>`. |
+| any | `BLOCKED` (no merge queue) | **STOP.** Set `WORKFLOW_REASON=branch-protection-blocked`. |
 | any | `CLEAN` or `HAS_HOOKS` | Proceed — all checks passed and requirements satisfied. |
 | `MERGEABLE` | `BEHIND` | Proceed. `BEHIND` only means base moved forward; GitHub still allows merging unless the repo requires up-to-date branches (caught by 13e on failure). |
-| `MERGEABLE` | `UNSTABLE` | Proceed. Non-required checks failed but branch protection is satisfied. Caught by 13e on failure. |
-| any | other (`DIRTY`, `DRAFT`, etc.) | **STOP immediately.** "PR is not ready to merge (mergeStateStatus: {STATE_STATUS}). Resolve before merging." Cleanup, no `<done>`. |
+| `MERGEABLE` | `UNSTABLE` | **STOP.** Set `WORKFLOW_REASON=mergeability-unstable`; every reported check must be green. |
+| any | other (`DIRTY`, `DRAFT`, etc.) | **STOP.** Set `WORKFLOW_REASON=pr-not-ready`. |
 
-**STOP cleanup snippet** (for the STOP cases):
+For every STOP row:
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
 ```
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON=<reason from the table>
+```
+
+Follow the top-level **Hard Invariant Failure** procedure. Do not prompt for a
+bypass and do not output `<done>SHIPPED</done>`.
 
 ## 13e. Merge the PR
 
@@ -183,9 +204,8 @@ If the merge command fails (non-zero exit code):
 
 - Do NOT retry with `--admin` or any other bypass flag
 - Display the error output
-- Run cleanup: `"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"`
-- Do NOT output `<done>SHIPPED</done>`
-- Stop and let the user resolve the blocker
+- Set `WORKFLOW_REASON=merge-command-failed`
+- Follow the top-level **Hard Invariant Failure** procedure
 
 ## 13f. Display summary
 

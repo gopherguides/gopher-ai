@@ -66,6 +66,22 @@ Read `loop-management.md` for loop setup and phase re-entry logic. Key behavior:
 - If resuming `watching` phase in no-watch mode → clear phase, run full fix cycle
 - Otherwise → continue normally
 
+## Hard Invariant Failure
+
+When this skill or a supporting file reports
+`WORKFLOW_RESULT=INCOMPLETE`, persist the supplied reason:
+
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+set_loop_field "$LOOP_STATE_FILE" "workflow_result" "incomplete"
+set_loop_field "$LOOP_STATE_FILE" "workflow_reason" "$WORKFLOW_REASON"
+set_loop_phase "$LOOP_STATE_FILE" "incomplete"
+set_loop_field "$LOOP_STATE_FILE" "completion_promise" "INCOMPLETE"
+```
+
+Output `<done>INCOMPLETE</done>` and stop. Never fetch feedback, edit files,
+push, or output `<done>COMPLETE</done>` from an invariant-failure path.
+
 ## Context & Bot Discovery
 
 Read `setup-and-discovery.md` for PR context gathering, mode banner display, and bot discovery via GraphQL. Match discovered authors against `bot-registry.md`.

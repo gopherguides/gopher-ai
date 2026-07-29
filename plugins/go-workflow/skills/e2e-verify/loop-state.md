@@ -41,7 +41,8 @@ STATE_FILE=".local/state/e2e-verify-${PR_NUM}.loop.local.json"
 TMP="$STATE_FILE.tmp"
 jq --arg mode "$MODE" --arg pr_number "$PR_NUM" --arg build_result "" \
    --arg e2e_result "" --argjson pages_tested 0 --arg base_branch "" \
-   '. + {mode: $mode, pr_number: $pr_number, build_result: $build_result, e2e_result: $e2e_result, pages_tested: $pages_tested, base_branch: $base_branch}' \
+   --arg workflow_result "" --arg workflow_reason "" \
+   '. + {mode: $mode, pr_number: $pr_number, build_result: $build_result, e2e_result: $e2e_result, pages_tested: $pages_tested, base_branch: $base_branch, workflow_result: $workflow_result, workflow_reason: $workflow_reason}' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 

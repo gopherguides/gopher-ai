@@ -41,8 +41,14 @@ echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
 **If `$BEHIND` is 0:** Proceed to Step 2.
 
 **If `$BEHIND` > 0:**
-1. Check `git status --porcelain`. **If dirty, STOP** — ask user how to proceed.
-2. `git rebase "${BASE_REMOTE}/${BASE_BRANCH}"` — resolve conflicts intelligently or ask user if too complex.
+1. Check `git status --porcelain`. If dirty, report
+   `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=dirty-worktree`, follow the
+   top-level **Hard Invariant Failure** procedure, and stop.
+2. Run `git rebase "${BASE_REMOTE}/${BASE_BRANCH}"`. Resolve conflicts only
+   when the correct resolution is evident and every conflict is cleared. If
+   any conflict remains, run `git rebase --abort`, report
+   `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=rebase-conflict`, then
+   follow the top-level **Hard Invariant Failure** procedure and stop.
 3. Force-push:
    ```bash
    PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
