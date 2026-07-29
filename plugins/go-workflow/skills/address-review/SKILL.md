@@ -137,6 +137,8 @@ All above, PLUS all detected review bots signaled approval per `bot-registry.md`
 
 **When ALL criteria are met, output exactly:** `<done>COMPLETE</done>`
 
+If the user exits or skips a bot before all detected bots approve, follow the **Incomplete Approval Outcome** procedure in `watch-loop.md`. Persist `approval_result` and `approval_reason`, then output `<done>INCOMPLETE</done>` instead. Never output the completion marker for this path.
+
 **Safety:** If 15+ iterations without success, document blockers and ask user.
 
 ## Supporting Files

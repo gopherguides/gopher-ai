@@ -168,6 +168,43 @@ else
   echo "OK"
 fi
 
+echo -n "Address-review stages only fix-cycle files... "
+ADDRESS_REVIEW_FIX_CYCLE="$ROOT_DIR/plugins/go-workflow/skills/address-review/fix-cycle.md"
+if file_contains 'git add -A' "$ADDRESS_REVIEW_FIX_CYCLE"; then
+  echo "FAIL (broad staging can capture unrelated worktree changes)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'Stage only files modified during this fix cycle' "$ADDRESS_REVIEW_FIX_CYCLE"; then
+  echo "FAIL (owned-file staging policy missing)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'git status --porcelain -- "$TARGET_FILE"' "$ADDRESS_REVIEW_FIX_CYCLE"; then
+  echo "FAIL (pre-existing target-file changes are not guarded)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'git add -- "${OWNED_FILES[@]}"' "$ADDRESS_REVIEW_FIX_CYCLE"; then
+  echo "FAIL (owned-file staging command missing)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Address-review records incomplete bot approval outcomes... "
+ADDRESS_REVIEW_WATCH_LOOP="$ROOT_DIR/plugins/go-workflow/skills/address-review/watch-loop.md"
+if file_contains 'If "exit" → output `<done>COMPLETE</done>`' "$ADDRESS_REVIEW_WATCH_LOOP"; then
+  echo "FAIL (timeout exit is mislabeled complete)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'approval_result' "$ADDRESS_REVIEW_WATCH_LOOP" ||
+     ! file_contains 'approval_reason' "$ADDRESS_REVIEW_WATCH_LOOP" ||
+     ! file_contains 'bot-approval-timeout' "$ADDRESS_REVIEW_WATCH_LOOP" ||
+     ! file_contains 'bot-approval-exhausted' "$ADDRESS_REVIEW_WATCH_LOOP" ||
+     ! file_contains 'APPROVAL_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-}}"' "$ADDRESS_REVIEW_WATCH_LOOP" ||
+     ! file_contains 'set_loop_field "$APPROVAL_STATE_FILE" "approval_result"' "$ADDRESS_REVIEW_WATCH_LOOP" ||
+     ! file_contains 'completion_promise" "INCOMPLETE"' "$ADDRESS_REVIEW_WATCH_LOOP" ||
+     ! file_contains '<done>INCOMPLETE</done>' "$ADDRESS_REVIEW_WATCH_LOOP"; then
+  echo "FAIL (durable incomplete approval outcome contract missing)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 if ! "$ROOT_DIR/scripts/test-go-web-templates.sh"; then
   ERRORS=$((ERRORS + 1))
 fi
