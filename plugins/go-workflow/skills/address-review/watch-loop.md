@@ -30,6 +30,27 @@ if [ -f "$LOOP_STATE_FILE" ]; then
 fi
 ```
 
+## Incomplete Approval Outcome
+
+If the user chooses a terminal path before every detected bot approves, do not report the workflow as complete. Set `APPROVAL_REASON` to the reason code specified by the decision branch, then persist the incomplete outcome:
+
+```bash
+APPROVAL_REASON="${APPROVAL_REASON:?approval reason is required}"
+if [ ! -f "$LOOP_STATE_FILE" ]; then
+  echo "Error: Cannot persist incomplete approval outcome without loop state."
+  exit 1
+fi
+
+source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+set_loop_field "$LOOP_STATE_FILE" "approval_result" "incomplete"
+set_loop_field "$LOOP_STATE_FILE" "approval_reason" "$APPROVAL_REASON"
+set_loop_phase "$LOOP_STATE_FILE" "approval-incomplete"
+set_loop_field "$LOOP_STATE_FILE" "completion_promise" "INCOMPLETE"
+echo "Address-review stopped without required bot approvals: $APPROVAL_REASON"
+```
+
+After the state update succeeds, output `<done>INCOMPLETE</done>` and stop. The changed completion promise lets the stop hook accept the distinct terminal marker, while `approval_result` and `approval_reason` give callers a machine-readable outcome before loop cleanup.
+
 ---
 
 ## Step 12: Watch for Bot Re-review (default, skipped with --no-watch)
@@ -73,7 +94,7 @@ If any bot hasn't approved yet:
    - Use `AskUserQuestion` to ask: "Bots haven't responded after 5 minutes. Would you like to keep waiting, re-trigger bot reviews, or exit?"
    - If "keep waiting" → reset timeout, continue polling
    - If "re-trigger" → go to 12d
-   - If "exit" → output `<done>COMPLETE</done>`
+   - If "exit" → set `APPROVAL_REASON="bot-approval-timeout"`, follow **Incomplete Approval Outcome**, and stop
 
 ### 12c. New comments found — loop back to Step 2
 
@@ -108,4 +129,8 @@ If a bot's quiet period ended with no new comments but it still hasn't approved:
    ```
 3. **Max 3 re-trigger attempts per bot.** Track the count.
 4. If 3 attempts exhausted → use `AskUserQuestion`: "Bot <login> hasn't approved after 3 re-trigger attempts. Keep trying, skip this bot, or exit?"
-5. After re-triggering → return to 12b to wait again.
+5. Handle the response:
+   - If "keep trying" → reset the bot's re-trigger count and return to 12b
+   - If "skip this bot" → set `APPROVAL_REASON="bot-approval-exhausted-skip"`, follow **Incomplete Approval Outcome**, and stop
+   - If "exit" → set `APPROVAL_REASON="bot-approval-exhausted-exit"`, follow **Incomplete Approval Outcome**, and stop
+6. After re-triggering → return to 12b to wait again.

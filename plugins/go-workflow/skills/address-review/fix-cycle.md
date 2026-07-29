@@ -76,11 +76,11 @@ Make the **minimal change** that addresses the comment. Follow existing patterns
 4. Avoid mechanical edits that miss the underlying concern
 
 ### 4e. Track the Fix
-Note: thread ID, what was fixed, brief explanation, testability (`testable`/`not-testable`), source file/function/package if testable.
+Note: thread ID, what was fixed, brief explanation, testability (`testable`/`not-testable`), source file/function/package if testable, and every file modified by the fix. Maintain one explicit owned-files list for this fix cycle. Do not add files that were already modified before the cycle or changed for unrelated work.
 
 ## Step 4.5: Generate Tests for Testable Fixes
 
-Read `test-generation.md` for full test generation guidelines including testability rules, existing test detection, pattern matching, and test writing procedures.
+Read `test-generation.md` for full test generation guidelines including testability rules, existing test detection, pattern matching, and test writing procedures. Add every generated or modified test file to the owned-files list.
 
 ---
 
@@ -98,12 +98,28 @@ Fix any failures and re-run until all green.
 
 ## Step 6: Commit and Push
 
+Stage only files modified during this fix cycle. Build `OWNED_FILES` from the paths tracked in Steps 4 and 4.5, inspect `git status --short`, and exclude every pre-existing or unrelated change. Start from an empty index so an earlier staged change cannot enter the review-fix commit.
+
 ```bash
-git add -A
-git commit -m "address review comments
+if ! git diff --cached --quiet; then
+  echo "Error: Pre-existing staged changes must be committed or unstaged before address-review can commit."
+  exit 1
+fi
+
+OWNED_FILES=(
+  "path/to/fixed-file.go"
+  "path/to/generated_test.go"
+)
+git add -- "${OWNED_FILES[@]}"
+
+if ! git diff --cached --quiet; then
+  git commit -m "address review comments
 
 - [brief summary of each fix]
 - [tests added for testable fixes, if any]"
+else
+  echo "No owned review-fix changes to commit."
+fi
 git push
 ```
 
