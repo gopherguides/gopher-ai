@@ -173,13 +173,23 @@ echo -n "Shared go-workflow skills bind native capabilities by intent... "
 GO_WORKFLOW_SKILLS="$ROOT_DIR/plugins/go-workflow/skills"
 GO_WORKFLOW_LIB="$ROOT_DIR/plugins/go-workflow/lib"
 DRIVER_INTERACTION="$GO_WORKFLOW_LIB/driver-interaction.md"
-PLATFORM_TOOL_NAMES=$(rg -n '\b(AskUserQuestion|EnterPlanMode|Agent|Task)\b' \
-  "$GO_WORKFLOW_SKILLS" "$GO_WORKFLOW_LIB" --glob '*.md' || true)
-SHARED_ALLOWED_TOOLS=$(rg -n '^allowed-tools:' \
-  "$GO_WORKFLOW_SKILLS"/*/SKILL.md || true)
+shopt -s nullglob
+GO_WORKFLOW_MARKDOWN=(
+  "$GO_WORKFLOW_SKILLS"/*/*.md
+  "$GO_WORKFLOW_LIB"/*.md
+  "$GO_WORKFLOW_LIB"/*/*.md
+)
+PLATFORM_TOOL_NAMES=$(awk '
+  /(^|[^[:alnum:]_])(AskUserQuestion|EnterPlanMode|Agent|Task)([^[:alnum:]_]|$)/ {
+    print FILENAME ":" FNR ":" $0
+  }
+' "${GO_WORKFLOW_MARKDOWN[@]}")
+SHARED_ALLOWED_TOOLS=$(awk '
+  /^allowed-tools:/ { print FILENAME ":" FNR ":" $0 }
+' "$GO_WORKFLOW_SKILLS"/*/SKILL.md)
 MISSING_DRIVER_BINDING=""
 for skill_file in "$GO_WORKFLOW_SKILLS"/*/SKILL.md; do
-  if ! rg -q 'driver-interaction\.md' "$skill_file"; then
+  if ! file_contains 'driver-interaction.md' "$skill_file"; then
     MISSING_DRIVER_BINDING="${skill_file#"$ROOT_DIR"/}"
     break
   fi
@@ -196,10 +206,10 @@ elif [ -n "$SHARED_ALLOWED_TOOLS" ]; then
 elif [ -n "$MISSING_DRIVER_BINDING" ]; then
   echo "FAIL ($MISSING_DRIVER_BINDING does not load the driver interaction rules)"
   ERRORS=$((ERRORS + 1))
-elif ! rg -q 'native structured-input capability' "$DRIVER_INTERACTION" ||
-     ! rg -q 'ask the concise question in the final' "$DRIVER_INTERACTION" ||
-     ! rg -q 'Do not advance the phase' "$DRIVER_INTERACTION" ||
-     ! rg -q 'emit a completion' "$DRIVER_INTERACTION"; then
+elif ! file_contains 'native structured-input capability' "$DRIVER_INTERACTION" ||
+     ! file_contains 'ask the concise question in the final' "$DRIVER_INTERACTION" ||
+     ! file_contains 'Do not advance the phase' "$DRIVER_INTERACTION" ||
+     ! file_contains 'emit a completion' "$DRIVER_INTERACTION"; then
   echo "FAIL (driver interaction rules do not preserve incomplete stop semantics)"
   ERRORS=$((ERRORS + 1))
 else
