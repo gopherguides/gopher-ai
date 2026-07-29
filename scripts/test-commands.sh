@@ -301,6 +301,10 @@ if [[ "$LOW_COVERAGE_SECTION" == *"AskUserQuestion"* ]] ||
 elif [[ "$CI_REGISTRATION_SECTION" == *"AskUserQuestion"* ]] ||
      [[ "$CI_REGISTRATION_SECTION" == *"proceed without CI"* ]]; then
   INVARIANT_FAILURE="CI registration timeout still offers a bypass"
+elif [[ "$CI_REGISTRATION_SECTION" != *"ci_skip_reason=no-applicable-workflow"* ]] ||
+     [[ "$CI_REGISTRATION_SECTION" != *"WORKFLOW_REASON=ci-checks-not-registered"* ]] ||
+     [[ "$CI_REGISTRATION_SECTION" != *"WORKFLOW_REASON=ci-applicability-unknown"* ]]; then
+  INVARIANT_FAILURE="CI registration does not distinguish inapplicable and missing checks"
 elif [[ "$WORKTREE_UNSAFE_SECTION" == *"--force"* ]]; then
   INVARIANT_FAILURE="unsafe worktree removal still force-deletes"
 elif [[ "$SHIP_FINAL_CHECKS" != *"WORKFLOW_REASON=unresolved-review-threads"* ]] ||
@@ -322,6 +326,9 @@ elif ! file_contains 'completion_promise" "INCOMPLETE"' "$ADDRESS_SKILL"; then
 elif [[ "$REVIEW_DEEP_VERIFICATION" == *"|| true"* ]] ||
      [[ "$E2E_BUILD_VERIFICATION" == *"|| true"* ]]; then
   INVARIANT_FAILURE="verification failure is still ignored"
+elif ! file_contains "cargo clippy --version" "$REVIEW_DEEP_FIX" ||
+     ! file_contains "cargo clippy --version" "$SHIP_REVIEW"; then
+  INVARIANT_FAILURE="Rust verification does not gate optional Clippy"
 elif file_contains "Skipping codegen check" "$E2E_REBASE" ||
      file_contains "Skipping codegen check" "$SHIP_REVIEW"; then
   INVARIANT_FAILURE="generation failure is still ignored"

@@ -182,8 +182,14 @@ npm run lint --if-present
 **Rust** (Cargo.toml exists):
 ```bash
 cargo build && cargo test
-cargo clippy
+if cargo clippy --version >/dev/null 2>&1; then
+  cargo clippy
+fi
 ```
+
+If the repository explicitly configures Clippy in CI or its verification
+scripts, an unavailable Clippy component is a verification failure instead of
+an optional-tool skip.
 
 **Python** (pyproject.toml or setup.py exists):
 ```bash

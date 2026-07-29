@@ -443,7 +443,7 @@ verification or commit.
 |---|---|
 | **Go** (`go.mod`) | `go build ./... && go test ./...`; run `golangci-lint run` when installed |
 | **Node/TS** (`package.json`) | `npm run build && npm test && npm run lint --if-present` |
-| **Rust** (`Cargo.toml`) | `cargo build && cargo test && cargo clippy` |
+| **Rust** (`Cargo.toml`) | `cargo build && cargo test`; run `cargo clippy` when `cargo clippy --version` succeeds or the repository explicitly configures Clippy |
 | **Python** (`pyproject.toml`/`setup.py`) | `pytest` or `python -m pytest`; run installed `ruff check .` or `flake8 .` |
 
 If any verification fails: analyze, fix, and rerun until all pass. If a

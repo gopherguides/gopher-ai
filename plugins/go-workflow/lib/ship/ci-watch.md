@@ -8,7 +8,10 @@ Loaded by `skills/ship/SKILL.md` Phase 3. Owns SHA-anchored CI watching.
 HAS_WORKFLOWS=$(find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1)
 ```
 
-If no workflow files exist → persist `has_ci: false` and skip to Step 11. Otherwise persist `has_ci: true`.
+If no workflow files exist → persist `has_ci: false`,
+`ci_skip_reason: no-workflow-files`, and skip to Step 11. Workflow files alone
+do not establish that CI applies to the current PR; leave `has_ci` unset until
+Step 10b determines whether checks registered or an active workflow applies.
 
 Read `head_sha` from state file (set during push in Step 9c, after CI failure recovery in Step 10e, or after Step 12c):
 
@@ -40,7 +43,31 @@ for i in $(seq 1 12); do
 done
 ```
 
-If still not ready after 120s, do not treat the absence as a pass:
+When checks register, persist `has_ci: true` and clear `ci_skip_reason`.
+
+If checks do not register after 120s, determine whether any workflow can
+produce a check for this PR before stopping:
+
+1. Read the PR base branch, head branch, and changed paths.
+2. Inspect each workflow's GitHub Actions state and `on` filters. Ignore
+   disabled workflows and workflows limited to unrelated events such as
+   `schedule` or `workflow_dispatch`.
+3. Apply GitHub Actions branch and path filter semantics to
+   `pull_request`/`pull_request_target` against the base branch and to `push`
+   against the head branch. Include reusable workflows through any applicable
+   caller.
+
+If this establishes that definitively no active workflow applies, this is a
+valid no-CI repository state rather than a passing check. Persist:
+
+```
+has_ci=false
+ci_skip_reason=no-applicable-workflow
+```
+
+Then skip to Step 11. Do not offer a menu or ask the user to waive CI.
+
+If at least one workflow applies, do not treat the absence as a pass:
 
 ```
 WORKFLOW_RESULT=INCOMPLETE
@@ -49,6 +76,10 @@ WORKFLOW_REASON=ci-checks-not-registered
 
 Follow the top-level **Hard Invariant Failure** procedure and stop. A later
 invocation may repeat the bounded registration wait for the same `HEAD_SHA`.
+
+If applicability cannot be determined from workflow state, triggers, filters,
+callers, and changed paths, stop incomplete with
+`WORKFLOW_REASON=ci-applicability-unknown`. Do not guess that CI is absent.
 
 ## 10c. Watch checks for the correct SHA
 

@@ -81,7 +81,7 @@ Persist arguments to `.local/state/ship.loop.local.json` via `jq` so the
 stop-hook can recover all fields on re-entry. The full jq invocation lives in
 `${CLAUDE_PLUGIN_ROOT}/lib/ship/state-fields.md` — fields written: `args`,
 `llm`, `pass`, `no_merge`, `pr_number`, `base_branch`,
-`bot_review_baseline`, `discovered_bots`, `has_ci`, `skip_coverage`,
+`bot_review_baseline`, `discovered_bots`, `has_ci`, `ci_skip_reason`, `skip_coverage`,
 `coverage_threshold`, `coverage_result`, `coverage_tests_generated`,
 `e2e_required`, `e2e_attempted`, `e2e_result`, `e2e_skip_reason`,
 `e2e_pages_tested`, `review_clean`, `review_result`,
@@ -267,8 +267,10 @@ latest pushed `HEAD_SHA` before considering CI as passed. You MUST NOT:
 The ENTIRE purpose of CI is to validate the EXACT code being merged. Stale check
 results are meaningless.
 
-If no `.github/workflows/*.yml` files exist → persist `has_ci: false` and skip
-to Step 11.
+If no `.github/workflows/*.yml` files exist → persist `has_ci: false` with
+`ci_skip_reason: no-workflow-files` and skip to Step 11. When workflow files
+exist but no checks register, only skip CI after Step 10b establishes that no
+active workflow applies to the current PR.
 
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/ci-watch.md` for: HEAD-SHA
 capture-and-verify, the 120s wait for checks to register against the SHA,
