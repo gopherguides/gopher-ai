@@ -485,7 +485,7 @@ Generated test files will be staged + committed in Step 8 alongside LLM review f
 ### Skip vs. block decision
 
 E2E is a gate for UI-visible diffs. Skipping is allowed only when there is
-nothing visual to verify, or when a previous `$e2e-verify` pass is
+nothing visual to verify, or when a previous `$go-workflow:e2e-verify` pass is
 explicitly being reused.
 
 Skip to Step 8 only when ONE of:
@@ -496,7 +496,7 @@ Skip to Step 8 only when ONE of:
 - No UI-visible files were changed in the diff.
 - The PR is already marked `e2e-verified` or the current loop state shows a
   prior passing E2E result. This is the deliberate reuse path used after
-  `$e2e-verify`; the coverage compatibility flag is not permission to skip
+  `$go-workflow:e2e-verify`; the coverage compatibility flag is not permission to skip
   E2E.
 
 Block the workflow when the diff is UI-visible and E2E cannot run or fails:
@@ -549,7 +549,7 @@ Display:
 
 ```
 E2E PREREQUISITE MISSING - Chrome DevTools MCP tooling is unavailable for a UI-visible diff.
-No merge. Fix the browser tooling or run $e2e-verify successfully, then re-run $ship.
+No merge. Fix the browser tooling or run $go-workflow:e2e-verify successfully, then re-run $go-workflow:ship.
 ```
 
 Stop the workflow. Do not continue to push, CI watch, or merge.
@@ -569,7 +569,7 @@ Detect port: Air config, `PORT` env var, `.env`/`.env.local`, defaults `8080` (G
 First check whether the detected URL is already responding. If it is not
 responding, start `DEV_SERVER_CMD` only when project guidance permits the agent
 to start the dev server. If guidance says the user/operator owns the dev server,
-do not start it from `$ship`; block with the prerequisite message below.
+do not start it from `$go-workflow:ship`; block with the prerequisite message below.
 
 ```bash
 if curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[1234]'; then
@@ -605,7 +605,7 @@ Display:
 
 ```
 E2E PREREQUISITE MISSING - local dev server is not responding at http://localhost:$PORT.
-Start it (`make dev` or the project equivalent), then re-run `$ship`.
+Start it (`make dev` or the project equivalent), then re-run `$go-workflow:ship`.
 Pages tested: 0
 No merge.
 ```
@@ -683,7 +683,7 @@ Display:
 Pages tested: N | Passed: N | Errors: N
 ```
 
-For UI-visible diffs, only `e2e_result="passed"` allows `$ship` to continue.
+For UI-visible diffs, only `e2e_result="passed"` allows `$go-workflow:ship` to continue.
 `e2e_result="blocked"` is a hard stop and must not be summarized as
 verification complete.
 

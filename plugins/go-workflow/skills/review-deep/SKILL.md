@@ -20,7 +20,7 @@ coverage or post-review actions.
 
 Parse `$ARGUMENTS` to extract:
 
-- Bare numeric value: PR number (e.g., `$review-deep 42`)
+- Bare numeric value: PR number (e.g., `$go-workflow:review-deep 42`)
 - `--issue <N>`: Use specific issue as context (no PR required)
 - `--post`: Auto-post findings to PR as a comment (skip asking)
 - `--scope <hint>`: Focus area for the review (e.g., "error handling", "concurrency")

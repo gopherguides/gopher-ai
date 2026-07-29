@@ -30,7 +30,7 @@ If no PR is found, display usage:
 
 **Claude Code:** `/go-workflow:address-review [PR-number] [--no-watch]`
 
-**Codex:** `$address-review [PR-number] [--no-watch]`
+**Codex:** `$go-workflow:address-review [PR-number] [--no-watch]`
 
 **Example:** `/address-review 123` or just `/address-review` on a PR branch. Add `--no-watch` to exit after one fix cycle instead of watching for bot re-reviews.
 

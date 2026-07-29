@@ -14,7 +14,7 @@ finish action), maps `MODE` to the closing action, and contains the
   - `E2E_RESULT` is anything else (`fail`, `partial`, `skipped-server-failed`,
     `missing-browser-tooling`, `uninspected-screenshots`) → **stop**. Do NOT
     add `run-full-ci`. Do NOT add `e2e-verified`. Do NOT invoke
-    `$ship`. The Step 6 comment already records the failure with
+    `$go-workflow:ship`. The Step 6 comment already records the failure with
     findings. Output `<done>E2E_FAIL</done>` so the loop exits without a
     verified state.
 - **Non-UI diff** (no web indicators, no UI-facing files changed):

@@ -23,11 +23,11 @@ The component workflow skills are user-only. Do not call them with the Skill
 tool. Load their `SKILL.md` files with Read and execute their instructions
 directly with the arguments specified below.
 
-The `$start-issue` phase owns subagent model tiering through agent prompt
+The `$go-workflow:start-issue` phase owns subagent model tiering through agent prompt
 frontmatter: Explore uses Haiku, Spec Review and Quality Review use Sonnet,
 and Implementer inherits the parent session model. To override all subagent
 models for a run, set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking
-`$complete-issue`; pass `--no-agents` through to run the start phase without
+`$go-workflow:complete-issue`; pass `--no-agents` through to run the start phase without
 subagents.
 
 ## Parse Arguments
@@ -54,7 +54,7 @@ done
 
 if [ -z "$ISSUE_NUM" ]; then
   echo "Claude Code: /go-workflow:complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
-  echo "Codex: \$complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
+  echo "Codex: \$go-workflow:complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
 fi
 
 echo "Issue: $ISSUE_NUM | Flags: $FLAGS"
@@ -78,7 +78,7 @@ Phase → step routing:
 
 ---
 
-## Phase 1: Implement (`$start-issue`)
+## Phase 1: Implement (`$go-workflow:start-issue`)
 
 ```bash
 set_loop_phase "$STATE_FILE" "implementing"
@@ -90,7 +90,7 @@ Skill tool. Read `phases.md` for the full sub-step list (fetch issue, create
 worktree, detect type, explore, design, TDD, verify, coverage, security review,
 commit/push/PR, watch CI).
 
-After `$start-issue` completes, detect the PR number and worktree context, reassign `STATE_FILE` to an absolute path (because CWD may have changed if a worktree was created), and persist:
+After `$go-workflow:start-issue` completes, detect the PR number and worktree context, reassign `STATE_FILE` to an absolute path (because CWD may have changed if a worktree was created), and persist:
 
 ```bash
 PR_NUM=$(gh pr view --json number --jq '.number' 2>/dev/null)
@@ -191,6 +191,6 @@ evidence and stop incomplete. Do not bypass a completion criterion.
 
 ## Further Reading
 
-- `phases.md` — full sub-step lists for Phase 1 (`$start-issue`) and the codex run for Phase 2
+- `phases.md` — full sub-step lists for Phase 1 (`$go-workflow:start-issue`) and the codex run for Phase 2
 - `loop-state.md` — bootstrap, re-entry, and persist blocks
 - `codex-fallback.md` — evidence-based recovery for codex unavailable / runtime failure / timeout

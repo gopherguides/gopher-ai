@@ -4,7 +4,7 @@ Loaded by `SKILL.md` Phases 1 and 2 when the agent needs the full sub-step
 list (Phase 1) or the codex invocation bash (Phase 2). Phase 3 loads the
 user-only `e2e-verify` workflow directly, so it has no extra detail here.
 
-## Phase 1: `$start-issue` Sub-Steps
+## Phase 1: `$go-workflow:start-issue` Sub-Steps
 
 The `start-issue` workflow runs with `$ISSUE_NUM $FLAGS` as its arguments:
 
@@ -20,13 +20,13 @@ The `start-issue` workflow runs with `$ISSUE_NUM $FLAGS` as its arguments:
 10. Commit, push, create PR
 11. Watch CI
 
-This is purely informational — `$start-issue` owns the implementation. The
+This is purely informational — `$go-workflow:start-issue` owns the implementation. The
 trunk in `SKILL.md` does the post-completion bookkeeping (PR detection,
 worktree-CWD reassignment, state persistence).
 
-`$start-issue` also owns subagent model tiering. Its orchestrated workflow uses
+`$go-workflow:start-issue` also owns subagent model tiering. Its orchestrated workflow uses
 the `model` frontmatter in `agents/*.md` unless the user sets
-`CLAUDE_CODE_SUBAGENT_MODEL` before invoking `$complete-issue`.
+`CLAUDE_CODE_SUBAGENT_MODEL` before invoking `$go-workflow:complete-issue`.
 
 ## Phase 2: Codex Run
 

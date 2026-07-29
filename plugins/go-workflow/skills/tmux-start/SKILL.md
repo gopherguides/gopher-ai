@@ -23,7 +23,7 @@ Claude Code, and sends `/go-workflow:start-issue` automatically.
 
 **Claude Code:** `/go-workflow:tmux-start <issue-number>`.
 
-**Codex:** `$tmux-start <issue-number>`.
+**Codex:** `$go-workflow:tmux-start <issue-number>`.
 
 **Prerequisites:** running inside a tmux session (`$TMUX` set); `gh`
 authenticated; inside a git repo.

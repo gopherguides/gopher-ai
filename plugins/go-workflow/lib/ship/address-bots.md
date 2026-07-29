@@ -26,8 +26,8 @@ applying review fixes.
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow **Steps 2–11 only**:
 
-- **Skip Step 1** (loop init / PR checkout) — we're already on the branch; loop is owned by `$ship`
-- **Skip Step 12** (bot watch) — `$ship` Step 11 owns that
+- **Skip Step 1** (loop init / PR checkout) — we're already on the branch; loop is owned by `$go-workflow:ship`
+- **Skip Step 12** (bot watch) — `$go-workflow:ship` Step 11 owns that
 - Do NOT create a second loop state file — all phases run under the `ship` loop
 
 ## 12c. Capture baseline BEFORE push, HEAD SHA AFTER push
