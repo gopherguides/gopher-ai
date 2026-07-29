@@ -26,7 +26,7 @@ Defaults:
 | `quality-review-prompt.md` | `sonnet` | Go idiom, complexity, security, and test review |
 
 To override all subagent models for a run, set `CLAUDE_CODE_SUBAGENT_MODEL`
-before invoking `$start-issue` or `$complete-issue`. To avoid subagents
+before invoking `$go-workflow:start-issue` or `$go-workflow:complete-issue`. To avoid subagents
 entirely, pass `--no-agents`.
 
 ## Step 1: Check for Duplicates (Bug Fix Only)

@@ -76,7 +76,7 @@ Parse `$ARGUMENTS` to extract:
 - `--no-merge`: stop after bot approval, don't auto-merge
 - `--skip-coverage`: compatibility hint for source-free changes. Changed source
   files always run the coverage gate. E2E may be reused only when a prior
-  `$e2e-verify` pass is recorded.
+  `$go-workflow:e2e-verify` pass is recorded.
 - `--coverage-threshold <n>`: override the default 60% threshold
 - `--tier <value>`: gemini service tier (`flex`/`standard`/`priority`; gemini only; default: unset)
 

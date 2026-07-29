@@ -14,7 +14,7 @@ cross-platform capability-binding rules.
 ## Usage
 
 ```
-$commit
+$go-workflow:commit
 ```
 
 ## Steps

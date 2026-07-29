@@ -4,7 +4,7 @@ Batch cleanup of all git worktrees for issues that are closed and branches that 
 
 ## Usage
 
-User-facing slash command: `/prune-worktree` (no args). Skill invocation: `$worktree` (with prune intent).
+User-facing slash command: `/prune-worktree` (no args). Skill invocation: `$go-workflow:worktree prune`.
 
 ## Steps
 

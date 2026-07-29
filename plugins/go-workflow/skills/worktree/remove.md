@@ -4,7 +4,7 @@ Interactively select and safely remove a single git worktree. Loaded by `SKILL.m
 
 ## Usage
 
-User-facing slash command: `/remove-worktree` (interactive, no args). Skill invocation: `$worktree` (with remove intent).
+User-facing slash command: `/remove-worktree` (interactive, no args). Skill invocation: `$go-workflow:worktree remove`.
 
 ## Steps
 

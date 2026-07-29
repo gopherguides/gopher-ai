@@ -78,7 +78,7 @@ E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
 if [ "$E2E_REQUIRED" = "true" ] && [ "$E2E_RESULT" != "passed" ]; then
   echo "E2E PREREQUISITE MISSING - UI-visible diff has no passing browser E2E result."
   echo "E2E status: ${E2E_RESULT}; reason: ${E2E_SKIP_REASON:-unknown}; pages tested: ${E2E_PAGES}"
-  echo "No merge. Start the dev server or fix E2E, then re-run \$ship."
+  echo "No merge. Start the dev server or fix E2E, then re-run \$go-workflow:ship."
   WORKFLOW_REASON="required-e2e-not-passed"
 fi
 ```

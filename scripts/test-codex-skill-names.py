@@ -12,14 +12,27 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-DOCUMENTATION_FILES = (
+TOP_LEVEL_DOCUMENTATION_FILES = (
     ROOT_DIR / "AGENTS.md",
     ROOT_DIR / "README.md",
     ROOT_DIR / "plugins/go-workflow/README.md",
 )
+PACKAGED_DOCUMENTATION_DIRS = (
+    ROOT_DIR / "plugins/go-workflow/skills",
+    ROOT_DIR / "plugins/go-workflow/lib",
+)
 QUALIFIED_SKILL_PATTERN = re.compile(r"\$(go-workflow:[a-z][a-z0-9-]*)")
-BARE_SKILL_PATTERN = re.compile(r"\$([a-z][a-z0-9-]*)")
+BARE_SKILL_PATTERN = re.compile(r"\$([a-z][a-z0-9-]*)(?![a-z0-9_-])")
 WORKTREE_SLASH_COMMANDS = {"create-worktree", "remove-worktree", "prune-worktree"}
+
+
+def documentation_files():
+    packaged_files = (
+        path
+        for directory in PACKAGED_DOCUMENTATION_DIRS
+        for path in directory.rglob("*.md")
+    )
+    return (*TOP_LEVEL_DOCUMENTATION_FILES, *packaged_files)
 
 
 class AppServerClient:
@@ -100,7 +113,7 @@ def run_codex(env, *args):
 
 def documented_skill_names():
     names = set()
-    for path in DOCUMENTATION_FILES:
+    for path in documentation_files():
         names.update(QUALIFIED_SKILL_PATTERN.findall(path.read_text(encoding="utf-8")))
     if not names:
         raise AssertionError("documentation contains no qualified go-workflow skills")
@@ -109,7 +122,7 @@ def documented_skill_names():
 
 def documented_bare_names():
     names = set()
-    for path in DOCUMENTATION_FILES:
+    for path in documentation_files():
         names.update(BARE_SKILL_PATTERN.findall(path.read_text(encoding="utf-8")))
     return names
 

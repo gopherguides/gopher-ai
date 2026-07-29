@@ -51,7 +51,7 @@ echo "MODE=$MODE PR_ARG=$PR_ARG"
 PR_NUM="${PR_ARG:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"
 if [ -z "$PR_NUM" ]; then
   echo "Claude Code: /go-workflow:e2e-verify [PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
-  echo "Codex: \$e2e-verify [PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
+  echo "Codex: \$go-workflow:e2e-verify [PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
 else
   gh pr view "$PR_NUM" --json number >/dev/null 2>&1 || { echo "Error: PR #$PR_NUM does not exist"; exit 1; }
   echo "Working on PR #$PR_NUM in mode: $MODE"
@@ -235,7 +235,7 @@ Output `<done>VERIFIED</done>` only when ALL of these are true:
 6. Mode-specific finish action completed (only reached when the E2E gate passed)
 
 If the E2E gate failed on a UI-visible diff, output `<done>E2E_FAIL</done>`
-after Step 6 instead. Do not invoke `$ship`. Do not add labels.
+after Step 6 instead. Do not invoke `$go-workflow:ship`. Do not add labels.
 
 **Safety:** If 15+ iterations complete without success, document the blocking
 evidence and stop incomplete. Do not bypass E2E or completion criteria.

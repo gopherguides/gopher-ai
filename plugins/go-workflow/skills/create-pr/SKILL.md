@@ -17,7 +17,7 @@ selection.
 ## Usage
 
 ```
-$create-pr
+$go-workflow:create-pr
 ```
 
 ## Steps

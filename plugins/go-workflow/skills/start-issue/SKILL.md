@@ -23,9 +23,9 @@ If `$ARGUMENTS` is empty or not provided, explain:
 >
 > **Claude Code:** `/go-workflow:start-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>]`
 >
-> **Codex:** `$start-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>]`
+> **Codex:** `$go-workflow:start-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>]`
 >
-> **Example:** `/go-workflow:start-issue 123` or `$start-issue 123 --coverage-threshold 80`
+> **Example:** `/go-workflow:start-issue 123` or `$go-workflow:start-issue 123 --coverage-threshold 80`
 >
 > **Options:**
 > - `--skip-coverage`: Compatibility hint for source-free changes; changed
@@ -59,7 +59,7 @@ Default orchestrated mode uses model frontmatter from `${CLAUDE_PLUGIN_ROOT}/age
 | Spec Review | `sonnet` |
 | Quality Review | `sonnet` |
 
-Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking `$start-issue` to
+Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking `$go-workflow:start-issue` to
 override all subagent models for a run. Use `--no-agents` to run the
 single-session workflow without subagent dispatch.
 
@@ -74,7 +74,7 @@ must remain interpretable after a future refactor.
 ## Clear Stale Worktree State
 
 Clear any leftover worktree state from a prior session. This prevents the
-pre-tool-use hook from blocking commands in a fresh `$start-issue` invocation:
+pre-tool-use hook from blocking commands in a fresh `$go-workflow:start-issue` invocation:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true
@@ -92,7 +92,7 @@ NO_AGENTS=$(echo "$ARGUMENTS" | grep -q '\-\-no-agents' && echo "true" || echo "
 if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then
   echo "Error: Issue number must be numeric."
   echo "Claude Code: /go-workflow:start-issue <number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
-  echo "Codex: \$start-issue <number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
+  echo "Codex: \$go-workflow:start-issue <number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
   exit 1
 fi
 echo "Issue: $ISSUE_NUM | skip-coverage: $HAS_SKIP | coverage-threshold: ${COV_THRESH:-60} | no-agents: $NO_AGENTS"
