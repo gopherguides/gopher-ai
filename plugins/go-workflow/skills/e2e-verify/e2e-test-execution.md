@@ -209,11 +209,17 @@ tool calls. If `evaluate_script` is unavailable, use `wait_for` with a
 reasonable timeout before capturing.
 
 After `new_page`, `navigate_page`, or `resize_page`, compare the returned
-`url` with the route being tested. If a page-scoped tool schema exposes an
-explicit page identifier, pass the same identifier to every page-scoped call.
-Otherwise, the current server's selected page is connection state: never
-assume it survives a tool error or MCP reconnect. A mismatch or call error
-uses the `missing-browser-tooling` failure path in §5a.2.
+`url` with the route being tested. Allow an expected canonical or authentication redirect when the application behavior or login flow explains it, and continue
+against the redirected route. For an unexpected URL after a successful tool
+call, navigate to the intended route once more. If the tool still succeeds but
+returns an unexpected URL, record a route failure with `E2E_RESULT='fail'`;
+that is application behavior, not missing tooling.
+
+If a page-scoped tool schema exposes an explicit page identifier, pass the
+same identifier to every page-scoped call. Otherwise, the current server's
+selected page is connection state: never assume it survives a tool error or
+MCP reconnect. A tool error or a lost selected-page target uses the
+`missing-browser-tooling` failure path in §5a.2.
 
 Remove the `document.activeElement?.blur()` statement when testing a
 focus-dependent state such as validation, keyboard navigation, or an active

@@ -75,6 +75,10 @@ require_text "$E2E_EXECUTION" "first browser tool call fails" \
   "e2e verification must cover a connected server that fails on first use"
 require_text "$E2E_EXECUTION" "E2E_RESULT='missing-browser-tooling'" \
   "e2e verification must map runtime browser failures to a blocking result"
+require_text "$E2E_EXECUTION" "expected canonical or authentication redirect" \
+  "e2e verification must allow expected navigation redirects"
+reject_text "$E2E_EXECUTION" "A mismatch or call error" \
+  "e2e verification must not classify every URL mismatch as missing tooling"
 for skill_file in "$SHIP_SKILL" "$COMPLETE_ISSUE" "$E2E_SKILL"; do
   require_text "$skill_file" "mcp__chrome-devtools__\\*" \
     "$(basename "$(dirname "$skill_file")") must allow the official Chrome DevTools namespace"
