@@ -136,14 +136,64 @@ else
   echo "OK"
 fi
 
-echo -n "Codex distribution builds... "
-if ! "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-build.log 2>&1; then
-  echo "FAIL"
-  sed -n '1,120p' /tmp/gopher-ai-build.log
+ARCHIVE_TEMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+ARCHIVE_TEMP_TEST_ROOT=$(mktemp -d "$ARCHIVE_TEMP_BASE/gopher-ai-universal-archive.XXXXXX")
+ARCHIVE_TEMP_DIR="$ARCHIVE_TEMP_TEST_ROOT/configured"
+ARCHIVE_MKTEMP_BIN="$ARCHIVE_TEMP_TEST_ROOT/bin"
+ARCHIVE_MKTEMP_LOG="$ARCHIVE_TEMP_TEST_ROOT/mktemp.log"
+ARCHIVE_REAL_MKTEMP=$(type -P mktemp)
+mkdir -p "$ARCHIVE_TEMP_DIR" "$ARCHIVE_MKTEMP_BIN"
+printf '%s\n' \
+  '#!/bin/sh' \
+  "printf '%s\n' \"\$*\" >> \"\${GOPHER_AI_MKTEMP_LOG:?}\"" \
+  "if [ \"\${GOPHER_AI_MKTEMP_FAIL:-false}\" = true ]; then exit 73; fi" \
+  "exec \"\${GOPHER_AI_REAL_MKTEMP:?}\" \"\$@\"" \
+  > "$ARCHIVE_MKTEMP_BIN/mktemp"
+chmod +x "$ARCHIVE_MKTEMP_BIN/mktemp"
+
+echo -n "Archive allocation failures stop universal builds... "
+if PATH="$ARCHIVE_MKTEMP_BIN:$PATH" \
+  GOPHER_AI_MKTEMP_FAIL=true \
+  GOPHER_AI_MKTEMP_LOG="$ARCHIVE_MKTEMP_LOG" \
+  GOPHER_AI_REAL_MKTEMP="$ARCHIVE_REAL_MKTEMP" \
+  TMPDIR="$ARCHIVE_TEMP_DIR" \
+  TMP="$ARCHIVE_TEMP_TEST_ROOT/unused-tmp" \
+  TEMP="$ARCHIVE_TEMP_TEST_ROOT/unused-temp" \
+  "$ROOT_DIR/scripts/build-universal.sh" >"$ARCHIVE_TEMP_TEST_ROOT/failure.log" 2>&1; then
+  echo "FAIL (build succeeded)"
+  ERRORS=$((ERRORS + 1))
+elif compgen -G "$ROOT_DIR/dist/*.tar.gz" >/dev/null; then
+  echo "FAIL (archive created)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
 fi
+
+echo -n "Universal archives use the configured temp directory... "
+: > "$ARCHIVE_MKTEMP_LOG"
+if ! PATH="$ARCHIVE_MKTEMP_BIN:$PATH" \
+  GOPHER_AI_MKTEMP_LOG="$ARCHIVE_MKTEMP_LOG" \
+  GOPHER_AI_REAL_MKTEMP="$ARCHIVE_REAL_MKTEMP" \
+  TMPDIR="$ARCHIVE_TEMP_DIR" \
+  TMP="$ARCHIVE_TEMP_TEST_ROOT/unused-tmp" \
+  TEMP="$ARCHIVE_TEMP_TEST_ROOT/unused-temp" \
+  "$ROOT_DIR/scripts/build-universal.sh" >"$ARCHIVE_TEMP_TEST_ROOT/build.log" 2>&1; then
+  echo "FAIL (build failed)"
+  sed -n '1,120p' "$ARCHIVE_TEMP_TEST_ROOT/build.log"
+  ERRORS=$((ERRORS + 1))
+else
+  EXPECTED_ARCHIVE_TEMPLATE="$ARCHIVE_TEMP_DIR/gopher-ai-archive-members.XXXXXX"
+  if ! awk -v expected="$EXPECTED_ARCHIVE_TEMPLATE" \
+    '$0 != expected { exit 1 } END { exit NR == 2 ? 0 : 1 }' \
+    "$ARCHIVE_MKTEMP_LOG"; then
+    echo "FAIL (unexpected mktemp arguments)"
+    sed -n '1,20p' "$ARCHIVE_MKTEMP_LOG"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+rm -rf "$ARCHIVE_TEMP_TEST_ROOT"
 
 EXPECTED_VERSION=$(jq -r '.metadata.version' "$ROOT_DIR/.claude-plugin/marketplace.json")
 CODEX_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-codex-plugins-v${EXPECTED_VERSION}.tar.gz"

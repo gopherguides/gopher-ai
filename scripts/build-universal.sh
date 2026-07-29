@@ -508,10 +508,14 @@ create_archive() {
     local source_dir="$1"
     local archive="$2"
     local archive_tar="${archive%.gz}"
+    local temp_base="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
     local member_list
     local tar_owner_args
 
-    member_list=$(mktemp)
+    if ! member_list=$(mktemp "${temp_base%/}/gopher-ai-archive-members.XXXXXX"); then
+        echo "error: failed to allocate archive member list in $temp_base" >&2
+        return 1
+    fi
     find "$source_dir" -depth \( -name '._*' -o -name '.DS_Store' \) -delete
     find "$source_dir" -type d -exec chmod 0755 {} +
     find "$source_dir" -type f -perm -0100 -exec chmod 0755 {} +
