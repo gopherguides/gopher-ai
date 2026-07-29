@@ -1,7 +1,7 @@
 ---
 name: review-deep
-description: "Deep-review a PR or branch with issue and repo context, then fix actionable findings. Use for 'review my changes', 'check this PR', or post-implementation quality/spec review requests. SKIP existing human/bot review comments that need replies/thread resolution; use address-review."
-argument-hint: "[PR-number|--issue <N>] [--post] [--scope <hint>]"
+description: "Deep-review a PR or branch with issue and repo context, then fix and commit actionable findings; PR-backed runs push new review commits by default. Use for 'review my changes', 'check this PR', or post-implementation quality/spec review requests. SKIP existing human/bot review comments that need replies/thread resolution; use address-review."
+argument-hint: "[PR-number|--issue <N>] [--post] [--scope <hint>] [--no-fix] [--no-commit] [--push|--no-push]"
 allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---
 
@@ -18,15 +18,24 @@ Parse `$ARGUMENTS` to extract:
 - `--issue <N>`: Use specific issue as context (no PR required)
 - `--post`: Auto-post findings to PR as a comment (skip asking)
 - `--scope <hint>`: Focus area for the review (e.g., "error handling", "concurrency")
+- `--no-fix`: Review only; do not edit files
+- `--no-commit`: Apply fixes but leave review-owned changes uncommitted
+- `--push`: Push the resulting local HEAD, including for a branch-only run
+- `--no-push`: Never push; return the local and remote head state
 - Remaining text after flags: treated as scope hint
 
-Store as `PR_ARG`, `ISSUE_ARG`, `AUTO_POST` (default: `false`), `SCOPE_HINT`.
+Store as `PR_ARG`, `ISSUE_ARG`, `AUTO_POST` (default: `false`), `SCOPE_HINT`,
+`FIX_CHANGES` (default: `true`), `COMMIT_CHANGES` (default: `true`), and
+`PUSH_CHANGES` (default: `auto`).
 
 ```bash
 PR_ARG=""
 ISSUE_ARG=""
 AUTO_POST=false
 SCOPE_HINT=""
+FIX_CHANGES=true
+COMMIT_CHANGES=true
+PUSH_CHANGES=auto
 ARGS="$ARGUMENTS"
 
 while [ -n "$ARGS" ]; do
@@ -47,6 +56,26 @@ while [ -n "$ARGS" ]; do
       SCOPE_HINT="$ARGS"
       ARGS=""
       ;;
+    --no-fix*)
+      FIX_CHANGES=false
+      ARGS="${ARGS#--no-fix}"
+      ARGS="${ARGS# }"
+      ;;
+    --no-commit*)
+      COMMIT_CHANGES=false
+      ARGS="${ARGS#--no-commit}"
+      ARGS="${ARGS# }"
+      ;;
+    --no-push*)
+      PUSH_CHANGES=false
+      ARGS="${ARGS#--no-push}"
+      ARGS="${ARGS# }"
+      ;;
+    --push*)
+      PUSH_CHANGES=true
+      ARGS="${ARGS#--push}"
+      ARGS="${ARGS# }"
+      ;;
     [0-9]*)
       PR_ARG="${ARGS%% *}"
       ARGS="${ARGS#"$PR_ARG"}"
@@ -59,8 +88,25 @@ while [ -n "$ARGS" ]; do
   esac
 done
 
-echo "PR_ARG=$PR_ARG ISSUE_ARG=$ISSUE_ARG AUTO_POST=$AUTO_POST SCOPE_HINT=$SCOPE_HINT"
+echo "PR_ARG=$PR_ARG ISSUE_ARG=$ISSUE_ARG AUTO_POST=$AUTO_POST SCOPE_HINT=$SCOPE_HINT FIX_CHANGES=$FIX_CHANGES COMMIT_CHANGES=$COMMIT_CHANGES PUSH_CHANGES=$PUSH_CHANGES"
 ```
+
+### Action Contract
+
+Fix, commit, and push are separately controllable:
+
+| Configuration | Post-review state |
+|---------------|-------------------|
+| Default with a detected PR and fixes | Fix, commit, and push; local and PR remote heads must match |
+| Default without a PR | Fix and commit locally; do not push |
+| `--no-fix` | Review only; do not create a review commit or auto-push |
+| `--no-commit` | Leave review-owned fixes in the working tree; auto-push is disabled |
+| `--no-push` | Commit review-owned fixes locally and report that the remote is unchanged |
+| `--push` | Push explicitly; fail if review-owned fixes are still uncommitted |
+
+PR-backed runs push newly created review commits by default. Branch-only runs
+require `--push`. Every run returns a structured commit/push result with local
+and remote head SHAs; a push failure is an incomplete review, never success.
 
 ## Step 1: Detect Scope & Base Branch
 
@@ -69,7 +115,7 @@ If `PR_ARG` is set, use it directly. Otherwise, auto-detect from the current bra
 **Strategy 1 — current branch:**
 
 ```bash
-PR_JSON=$(gh pr view --json number,title,body,state,baseRefName,closingIssuesReferences --jq '.' 2>/dev/null)
+PR_JSON=$(gh pr view --json number,title,body,state,baseRefName,headRefName,closingIssuesReferences --jq '.' 2>/dev/null)
 ```
 
 **Strategy 2 — match HEAD commit against open PRs:**
@@ -79,7 +125,7 @@ if [ -z "$PR_JSON" ]; then
   HEAD_SHA=$(git rev-parse HEAD 2>/dev/null)
   PR_NUM=$(gh pr list --search "$HEAD_SHA" --state open --json number --jq '.[0].number' 2>/dev/null)
   if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,closingIssuesReferences 2>/dev/null)
+    PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,headRefName,closingIssuesReferences 2>/dev/null)
   fi
 fi
 ```
@@ -91,7 +137,7 @@ if [ -z "$PR_JSON" ]; then
   HEAD_SHA=$(git rev-parse HEAD 2>/dev/null)
   PR_NUM=$(gh pr list --search "$HEAD_SHA" --state all --limit 5 --json number --jq '.[0].number' 2>/dev/null)
   if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,closingIssuesReferences 2>/dev/null)
+    PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,headRefName,closingIssuesReferences 2>/dev/null)
   fi
 fi
 ```
@@ -102,9 +148,11 @@ fi
 if [ -n "$PR_JSON" ]; then
   PR_NUM=$(echo "$PR_JSON" | jq -r '.number')
   BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.baseRefName')
-  echo "Found PR #$PR_NUM (base: $BASE_BRANCH)"
+  PR_HEAD_BRANCH=$(echo "$PR_JSON" | jq -r '.headRefName')
+  echo "Found PR #$PR_NUM (base: $BASE_BRANCH, head: $PR_HEAD_BRANCH)"
 else
   BASE_BRANCH=$( (git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||' | grep .) || (git remote show -n origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep .) || echo "main" )
+  PR_HEAD_BRANCH=""
   echo "No PR found. Using base branch: $BASE_BRANCH"
 fi
 ```
@@ -179,12 +227,16 @@ For the exact findings-table layout, spec-compliance table, review-comments-stat
 
 Read `fix-and-verify.md` and follow it end-to-end. Highlights:
 
+- When `FIX_CHANGES=false`, skip file edits, test generation, and verification
+  for fixes; continue to the post-fix action result
 - Process findings in priority order (P0 → P3)
 - Auto-skip priority 3 AND confidence < 0.5 (nit noise)
 - Make minimal fixes; track which fixes are testable
 - Parallel-dispatch Agent subagents when 3+ findings target different files
 - Generate tests for testable fixes; verify build/test/lint pass
-- Stage only modified files (never `git add -A`); commit with a descriptive message
+- Pass only review-owned files to the post-fix helper
+- Apply `COMMIT_CHANGES` and `PUSH_CHANGES` independently
+- Treat any commit, push, or remote-head verification failure as incomplete
 
 ## Step 7: Post-Review Summary & Actions
 
@@ -199,8 +251,16 @@ Display the final summary:
 - **Files changed:** <list>
 - **Quality Score:** <n>/100
 - **All verifications passed:** yes/no
+- **Commit result:** created / none / skipped
+- **Push result:** pushed / skipped
+- **Local head:** <sha>
+- **Remote head:** <sha or empty when unavailable>
 - **Recommendation:** APPROVE / REQUEST_CHANGES / COMMENT
 ```
+
+Use the exact structured result from `post-fix-actions.sh`. If that helper
+failed, do not display `Review Complete`, post an approval, or imply that PR
+fixes reached the remote.
 
 ### Post to PR
 
@@ -219,6 +279,7 @@ Default: `Done`.
 
 - `context-gathering.md` — PR/issue/review-thread fetching, repo-guideline detection, size guard
 - `review-criteria.md` — full review criteria, Go idiom checks, Quality Score Rubric, confidence scoring, breaking-change detection
-- `fix-and-verify.md` — fix iteration, parallel dispatch, test generation, verification, commit
+- `fix-and-verify.md` — fix iteration, parallel dispatch, test generation, verification, commit, and push
+- `post-fix-actions.sh` — deterministic owned-file commit, optional push, and remote-head verification
 - `output-format.md` — findings table, spec-compliance table, review-comments-status table, PR-comment template
 - `../../lib/review-planning.md` — shared adaptive coverage planning and finding coordination

@@ -1,6 +1,9 @@
-# Fix, Test Generation, Verification, and Commit
+# Fix, Test Generation, Verification, Commit, and Push
 
 This document details the fix phase that runs after the review completes.
+
+When `FIX_CHANGES=false`, skip directly to **Post-Fix Actions** with an empty
+`OWNED_FILES` array and `FIXES_APPLIED=false`.
 
 ## Fix Iteration
 
@@ -224,26 +227,109 @@ Stop without committing or reporting the review workflow complete.
 
 ---
 
-## Commit
+## Post-Fix Actions
 
-Stage only files modified during this fix phase. Do NOT use `git add -A` -- it may capture unrelated changes.
-
-```bash
-# Stage only the specific files that were fixed
-git add <file1> <file2> <file3>
-```
-
-Only commit if there are staged changes (some passes may have zero fixable findings):
+Track every file modified during this fix phase in `OWNED_FILES`. Do not include
+pre-existing or unrelated changes. The helper stages only these paths and
+refuses to commit when the index already contains changes.
 
 ```bash
-if ! git diff --cached --quiet; then
-  git commit -m "fix: address review-deep findings
+OWNED_FILES=(
+  "path/to/fixed-file.go"
+  "path/to/generated_test.go"
+)
+
+FIXES_APPLIED=false
+if [ "${#OWNED_FILES[@]}" -gt 0 ] &&
+   [ -n "$(git status --porcelain -- "${OWNED_FILES[@]}")" ]; then
+  FIXES_APPLIED=true
+fi
+
+CURRENT_BRANCH=$(git branch --show-current)
+PUSH_BRANCH="${PR_HEAD_BRANCH:-$CURRENT_BRANCH}"
+PUSH_REMOTE=$(git config "branch.$CURRENT_BRANCH.remote" 2>/dev/null || true)
+PUSH_REMOTE="${PUSH_REMOTE:-origin}"
+
+DO_PUSH=false
+case "$PUSH_CHANGES" in
+  true)
+    DO_PUSH=true
+    ;;
+  false)
+    DO_PUSH=false
+    ;;
+  auto)
+    if [ -n "${PR_NUM:-}" ] &&
+       [ "$FIXES_APPLIED" = true ] &&
+       [ "$COMMIT_CHANGES" = true ]; then
+      DO_PUSH=true
+    fi
+    ;;
+  *)
+    echo "Error: invalid push mode: $PUSH_CHANGES"
+    exit 1
+    ;;
+esac
+
+if [ "$DO_PUSH" = true ] &&
+   [ -n "${PR_NUM:-}" ] &&
+   [ "$CURRENT_BRANCH" != "$PR_HEAD_BRANCH" ]; then
+  echo "Error: current branch $CURRENT_BRANCH does not match PR head $PR_HEAD_BRANCH."
+  exit 1
+fi
+
+ACTION_ARGS=()
+if [ "$FIX_CHANGES" = false ]; then
+  ACTION_ARGS+=(--no-commit)
+elif [ "$COMMIT_CHANGES" = true ]; then
+  ACTION_ARGS+=(--commit)
+else
+  ACTION_ARGS+=(--no-commit)
+fi
+
+case "$PUSH_CHANGES" in
+  true)
+    ACTION_ARGS+=(--push)
+    ;;
+  false)
+    ACTION_ARGS+=(--no-push)
+    ;;
+  auto)
+    ACTION_ARGS+=(--auto-push --pr-number "${PR_NUM:-}")
+    ;;
+esac
+
+if git remote get-url "$PUSH_REMOTE" >/dev/null 2>&1; then
+  ACTION_ARGS+=(--remote "$PUSH_REMOTE" --branch "$PUSH_BRANCH")
+elif [ "$DO_PUSH" = true ]; then
+  echo "Error: push requested but remote $PUSH_REMOTE is unavailable."
+  exit 1
+fi
+
+COMMIT_MESSAGE="fix: address review-deep findings
 
 - <brief summary of each fix>
 - <tests added for testable fixes, if any>"
-else
-  echo "No changes to commit (all findings skipped or invalid)"
-fi
+
+POST_FIX_RESULT=$(
+  bash "${CLAUDE_PLUGIN_ROOT}/skills/review-deep/post-fix-actions.sh" \
+    "${ACTION_ARGS[@]}" \
+    --message "$COMMIT_MESSAGE" \
+    -- "${OWNED_FILES[@]}"
+)
+echo "$POST_FIX_RESULT"
 ```
 
-Track the list of files edited during the fix phase and only stage those specific files.
+`PUSH_CHANGES=auto` pushes only a newly created review commit for a detected
+PR. It never auto-pushes a review-only run, a zero-fix run, or uncommitted
+review fixes. `--push` may push a clean existing local HEAD, but the helper
+refuses to push while any supplied review-owned file remains uncommitted.
+
+The helper returns one JSON object:
+
+```json
+{"commit":"created|none|skipped","push":"pushed|skipped","local_head":"<sha>","remote_head":"<sha or empty>"}
+```
+
+When push is enabled, `local_head` and `remote_head` must match. If the helper
+exits nonzero, stop and report the review as incomplete.
