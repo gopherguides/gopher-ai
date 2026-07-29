@@ -146,12 +146,28 @@ fi
   `codex-fallback.md` and follow its evidence-based recovery order.
 - **If codex IS available** → run codex review on the PR diff with an adaptive timeout, address findings, and commit fixes. See `phases.md` for the full bash (diff sizing, timeout calculation, large-diff warning).
 
-Address findings: for each valid finding, make the fix. Skip false positives or cosmetic-only items. Commit fixes if any changes were made:
+Address findings: for each valid finding, make the fix. Skip false positives or
+cosmetic-only items. Maintain `REVIEW_FILES` as the exact list of files modified
+in this review phase, including generated or updated tests. Before modifying an
+existing path, confirm `git status --porcelain -- "$TARGET_FILE"` is empty so
+pre-existing changes cannot enter the review-fix commit. Commit fixes if any
+changes were made:
 
 ```bash
-git add -A
-git commit -m "fix: address codex review findings"
-git push
+if ! git diff --cached --quiet; then
+  echo "Error: Pre-existing staged changes must be committed or unstaged before complete-issue can commit review fixes."
+  exit 1
+fi
+
+REVIEW_FILES=(
+  "path/to/reviewed-file.go"
+  "path/to/reviewed-file_test.go"
+)
+if [ "${#REVIEW_FILES[@]}" -gt 0 ]; then
+  git add -- "${REVIEW_FILES[@]}"
+  git commit -m "fix: address codex review findings"
+  git push
+fi
 ```
 
 ---

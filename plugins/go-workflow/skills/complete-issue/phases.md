@@ -73,12 +73,27 @@ each valid fix in ranked order. Skip findings that are:
 - Cosmetic-only and don't change observable behavior
 - Pre-existing issues not introduced by this PR
 
-Commit fixes if any changes were made:
+Maintain `REVIEW_FILES` as the exact list of files modified while addressing
+valid findings, including generated or updated tests. Before modifying an
+existing path, confirm `git status --porcelain -- "$TARGET_FILE"` is empty so
+pre-existing changes cannot be attributed to this review phase. Commit fixes if
+any changes were made:
 
 ```bash
-git add -A
-git commit -m "fix: address codex review findings"
-git push
+if ! git diff --cached --quiet; then
+  echo "Error: Pre-existing staged changes must be committed or unstaged before complete-issue can commit review fixes."
+  exit 1
+fi
+
+REVIEW_FILES=(
+  "path/to/reviewed-file.go"
+  "path/to/reviewed-file_test.go"
+)
+if [ "${#REVIEW_FILES[@]}" -gt 0 ]; then
+  git add -- "${REVIEW_FILES[@]}"
+  git commit -m "fix: address codex review findings"
+  git push
+fi
 ```
 
 If no fixes were needed, skip the commit and proceed to Phase 3.

@@ -237,6 +237,22 @@ else
   echo "OK"
 fi
 
+echo -n "Go-workflow stages only phase-owned files... "
+COMPLETE_ISSUE_PHASES="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/phases.md"
+LIVE_BROAD_STAGING=$(rg -n '^[[:space:]]*git add -A([[:space:]]|$)' \
+  "$GO_WORKFLOW_SKILLS" "$GO_WORKFLOW_LIB" || true)
+if [ -n "$LIVE_BROAD_STAGING" ]; then
+  echo "FAIL (live broad staging commands found)"
+  echo "$LIVE_BROAD_STAGING"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'git add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_SKILL" ||
+     ! file_contains 'git add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_PHASES"; then
+  echo "FAIL (complete-issue review-owned staging command missing)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Address-review records incomplete bot approval outcomes... "
 ADDRESS_REVIEW_WATCH_LOOP="$ROOT_DIR/plugins/go-workflow/skills/address-review/watch-loop.md"
 if file_contains 'If "exit" → output `<done>COMPLETE</done>`' "$ADDRESS_REVIEW_WATCH_LOOP"; then
