@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 265
+# Total entries: 266
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0322d4a7ddc204a9bf5addfec4e512edaea92ab8f4ebdd0541ca099330a09408 worktree
 03dac3a27d6da4b0a0c64ff6511df17004747e20b47a1691b4f9f030478877b9 commit
@@ -83,6 +83,7 @@
 50e96364d86fc6aeb8cb6faac5cd072eaca29b3f4a6f8e0311cb49bd0f29fc66 go-profiling-optimization
 51b1e73c2f453e64ea77c4fecbbeae73f694bc69b155231d8fbacafdbbc03a8c address-review
 521d0d2b48375a1c21dc14063355b3dfdf7efd604d6367452078bd66a5a80478 tailwind-best-practices
+535cd5fe5b19eef5f29f698dbc9ab707e47b20bf81f4412e7e50502290f5cf77 complete-issue
 53790f3a3e2cf8f7536bb9cb798e84d0b32f4b0199ff5b58b5fe6b16fbc4c14a gemini-image
 559553d981c74398d66e814aa5fa69b6407987e36a171f0d41b9183c396c8b29 gemini-image
 570319e1897945237a4940a65c0f363b6a685f4f1275e6b301f878a06ef9c8bb gopher-guides
