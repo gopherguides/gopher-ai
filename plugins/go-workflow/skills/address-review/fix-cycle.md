@@ -43,6 +43,20 @@ if [ -f "$LOOP_STATE_FILE" ]; then
 fi
 ```
 
+### Protect Pre-existing Target Changes
+
+Before the first edit to each unique source or test path in this fix cycle, verify that the target path has no staged, unstaged, or untracked changes. Run this guard exactly once per path, before sequential work or agent dispatch:
+
+```bash
+TARGET_FILE="path/from-review-thread"
+if [ -n "$(git status --porcelain -- "$TARGET_FILE")" ]; then
+  echo "Error: $TARGET_FILE already has changes that are not owned by this review-fix cycle."
+  exit 1
+fi
+```
+
+If the guard fails, stop and ask the user to commit, stash, or otherwise separate those changes. Do not edit the path and do not attempt path-level staging, because Git cannot distinguish the pre-existing hunks from the review fix.
+
 ### Parallel Fix Dispatch (when 3+ comments target different files)
 
 When there are 3 or more unresolved comments targeting **different files**, dispatch parallel Implementer subagents:
@@ -52,7 +66,7 @@ When there are 3 or more unresolved comments targeting **different files**, disp
 3. **For each file group**, dispatch an Agent subagent (sonnet) with:
    - "You are addressing PR review comments in `{FILE_PATH}`. Working directory: `{PROJECT_ROOT}`."
    - All comments for that file (reviewer text, line number, suggested change)
-   - "For each comment: understand the request, locate the code, make the minimal fix, validate against feedback. Report: files changed, fixes applied, testability of each fix."
+   - "Before editing, run the pre-existing target changes guard. For each comment: understand the request, locate the code, make the minimal fix, validate against feedback. Report: files changed, fixes applied, testability of each fix."
 3. **Dispatch all file-group agents in parallel** using `run_in_background: true`
 4. **Collect results** — proceed to Step 4.5 (test generation) with combined fix list
 
@@ -80,7 +94,7 @@ Note: thread ID, what was fixed, brief explanation, testability (`testable`/`not
 
 ## Step 4.5: Generate Tests for Testable Fixes
 
-Read `test-generation.md` for full test generation guidelines including testability rules, existing test detection, pattern matching, and test writing procedures. Add every generated or modified test file to the owned-files list.
+Read `test-generation.md` for full test generation guidelines including testability rules, existing test detection, pattern matching, and test writing procedures. Run the pre-existing target changes guard before modifying an existing test path, then add every generated or modified test file to the owned-files list.
 
 ---
 

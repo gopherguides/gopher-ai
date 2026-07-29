@@ -36,20 +36,21 @@ If the user chooses a terminal path before every detected bot approves, do not r
 
 ```bash
 APPROVAL_REASON="${APPROVAL_REASON:?approval reason is required}"
-if [ ! -f "$LOOP_STATE_FILE" ]; then
+APPROVAL_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-}}"
+if [ -z "$APPROVAL_STATE_FILE" ] || [ ! -f "$APPROVAL_STATE_FILE" ]; then
   echo "Error: Cannot persist incomplete approval outcome without loop state."
   exit 1
 fi
 
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_field "$LOOP_STATE_FILE" "approval_result" "incomplete"
-set_loop_field "$LOOP_STATE_FILE" "approval_reason" "$APPROVAL_REASON"
-set_loop_phase "$LOOP_STATE_FILE" "approval-incomplete"
-set_loop_field "$LOOP_STATE_FILE" "completion_promise" "INCOMPLETE"
+set_loop_field "$APPROVAL_STATE_FILE" "approval_result" "incomplete"
+set_loop_field "$APPROVAL_STATE_FILE" "approval_reason" "$APPROVAL_REASON"
+set_loop_phase "$APPROVAL_STATE_FILE" "approval-incomplete"
+set_loop_field "$APPROVAL_STATE_FILE" "completion_promise" "INCOMPLETE"
 echo "Address-review stopped without required bot approvals: $APPROVAL_REASON"
 ```
 
-After the state update succeeds, output `<done>INCOMPLETE</done>` and stop. The changed completion promise lets the stop hook accept the distinct terminal marker, while `approval_result` and `approval_reason` give callers a machine-readable outcome before loop cleanup.
+`STATE_FILE` is the caller-owned state used when ship consumes Steps 12a-12d; standalone address-review falls back to `LOOP_STATE_FILE`. After the state update succeeds, output `<done>INCOMPLETE</done>` and stop. The changed completion promise lets the active caller's stop hook accept the distinct terminal marker, while `approval_result` and `approval_reason` give callers a machine-readable outcome before loop cleanup.
 
 ---
 
