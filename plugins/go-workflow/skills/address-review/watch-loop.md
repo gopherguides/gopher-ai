@@ -32,7 +32,9 @@ fi
 
 ## Incomplete Approval Outcome
 
-If the user chooses a terminal path before every detected bot approves, do not report the workflow as complete. Set `APPROVAL_REASON` to the reason code specified by the decision branch, then persist the incomplete outcome:
+If a terminal path is reached before every detected bot approves, do not report
+the workflow as complete. Set `APPROVAL_REASON` to the reason code specified by
+the decision branch, then persist the incomplete outcome:
 
 ```bash
 APPROVAL_REASON="${APPROVAL_REASON:?approval reason is required}"
@@ -73,7 +75,13 @@ For each bot from your Bot Discovery results, use the approval detection logic f
 
 **Do NOT run checks for bots that were not in your Bot Discovery results.**
 
-**If ALL detected bots are done → output `<done>COMPLETE</done>` and stop.**
+**If ALL detected bots are done:**
+
+- When ship loaded this watch loop, return control to ship Step 13 without
+  emitting a completion marker.
+- In standalone address-review, output `<done>COMPLETE</done>` and stop.
+
+The calling workflow's top-level completion criteria own its completion marker.
 
 ### 12b. Wait for bot re-review (quiet period detection)
 
@@ -91,11 +99,14 @@ If any bot hasn't approved yet:
    - If counts changed since last poll → reset quiet timer, bot is still posting. Keep polling.
    - If counts are stable for 2 consecutive polls (30 seconds of no new activity) → bot has finished posting. Proceed to 12c.
 
-4. **Timeout:** If 5 minutes pass with no new activity from any bot AND bots haven't approved:
-   - Request a driver decision: "Bots haven't responded after 5 minutes. Would you like to keep waiting, re-trigger bot reviews, or exit?"
-   - If "keep waiting" → reset timeout, continue polling
-   - If "re-trigger" → go to 12d
-   - If "exit" → set `APPROVAL_REASON="bot-approval-timeout"`, follow **Incomplete Approval Outcome**, and stop
+4. **Timeout:** If 5 minutes pass with no new activity from any bot and bots
+   have not approved, resolve a **driver-resolvable gate** from the bot registry
+   and observed activity:
+   - If every pending bot has a re-review trigger, state `Decision`, `Evidence`,
+     and `Rationale`, then go to 12d.
+   - If any pending bot has no trigger, set
+     `APPROVAL_REASON="bot-approval-timeout"`, follow **Incomplete Approval
+     Outcome**, and stop.
 
 ### 12c. New comments found — loop back to Step 2
 
@@ -129,9 +140,10 @@ If a bot's quiet period ended with no new comments but it still hasn't approved:
    gh pr comment "$PR_NUM" --body "<trigger command>"
    ```
 3. **Max 3 re-trigger attempts per bot.** Track the count.
-4. If 3 attempts exhausted → request a driver decision: "Bot <login> hasn't approved after 3 re-trigger attempts. Keep trying, skip this bot, or exit?"
-5. Handle the response:
-   - If "keep trying" → reset the bot's re-trigger count and return to 12b
-   - If "skip this bot" → set `APPROVAL_REASON="bot-approval-exhausted-skip"`, follow **Incomplete Approval Outcome**, and stop
-   - If "exit" → set `APPROVAL_REASON="bot-approval-exhausted-exit"`, follow **Incomplete Approval Outcome**, and stop
-6. After re-triggering → return to 12b to wait again.
+4. After the third unsuccessful re-review trigger:
+   - Report the `Decision`, `Evidence`, and `Rationale`.
+   - Record `bot-approval-exhausted` as the approval reason.
+   - Follow **Incomplete Approval Outcome** and stop.
+
+   Bot approval remains a caller-owned completion condition.
+5. After re-triggering, return to 12b to wait again.

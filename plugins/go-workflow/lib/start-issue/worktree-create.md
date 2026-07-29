@@ -1,6 +1,6 @@
 # Start-Issue — Worktree Creation
 
-Loaded by `skills/start-issue/SKILL.md` when the user picked "Yes, create
+Loaded by `skills/start-issue/SKILL.md` when the driver selected "create
 worktree". The executable script owns naming, default-branch fetch, worktree
 creation/reuse, optional env-file copy, and state-file registration.
 
@@ -19,14 +19,15 @@ SOURCE_DIR="$(pwd)"
 "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
 ```
 
-If the output starts with `ENV_FILES_FOUND=true`, request the missing consent
-from the driver: "Found environment files (may contain secrets). Copy them to
-worktree?" with **Yes, copy them** / **No, skip**. Stop before copying or
-creating the worktree until the answer arrives.
+If the output starts with `ENV_FILES_FOUND=true`, this is a
+**missing-intent gate** because the files may contain secrets. Request consent:
+"Found environment files that may contain secrets. Copy them to the worktree?"
+If structured input is unavailable, ask in the final response and stop before
+creating the worktree. Do not infer consent.
 
 ## 3. Create or reuse the worktree
 
-If the user chose to copy env files:
+If copying environment files was explicitly authorized:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --copy-env

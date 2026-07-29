@@ -8,7 +8,7 @@ Owns the full `jq` invocation and field-name reference.
 ```bash
 STATE_FILE=".local/state/ship.loop.local.json"
 TMP="$STATE_FILE.tmp"
-jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
+jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --arg llm_explicit "$LLM_EXPLICIT" --argjson pass 0 \
    --arg no_merge "$NO_MERGE" --arg pr_number "" --arg base_branch "" \
    --arg bot_review_baseline "" --arg discovered_bots "" --arg has_ci "" \
    --arg ci_skip_reason "" \
@@ -19,7 +19,7 @@ jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --argjson pass 0 \
    --arg review_clean "" --arg review_result "" --arg review_skip_reason "" \
    --arg head_sha "" --arg gemini_tier "$GEMINI_TIER" \
    --arg ollama_model "" --arg workflow_result "" --arg workflow_reason "" \
-   '. + {args: $args, llm: $llm, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, ci_skip_reason: $ci_skip_reason, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_required: $e2e_required, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_skip_reason: $e2e_skip_reason, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, review_result: $review_result, review_skip_reason: $review_skip_reason, head_sha: $head_sha, gemini_tier: $gemini_tier, ollama_model: $ollama_model, workflow_result: $workflow_result, workflow_reason: $workflow_reason}' \
+   '. + {args: $args, llm: $llm, llm_explicit: $llm_explicit, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, ci_skip_reason: $ci_skip_reason, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_required: $e2e_required, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_skip_reason: $e2e_skip_reason, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, review_result: $review_result, review_skip_reason: $review_skip_reason, head_sha: $head_sha, gemini_tier: $gemini_tier, ollama_model: $ollama_model, workflow_result: $workflow_result, workflow_reason: $workflow_reason}' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
@@ -32,6 +32,7 @@ routing and subsequent steps depend on these exact names.
 |-------|------|--------|---------|
 | `args` | string | Step 1 | Original `$ARGUMENTS` for re-parsing on re-entry |
 | `llm` | string | Step 1 | `codex` / `gemini` / `ollama` |
+| `llm_explicit` | string | Step 1 | `"true"` only when the invocation explicitly selected `--llm`; protects user backend intent |
 | `pass` | int | Step 8 | Current LLM review pass; incremented after each commit cycle |
 | `no_merge` | string | Step 1 | `"true"` if `--no-merge` was passed |
 | `pr_number` | string | Step 9b | PR number after creation (empty pre-push) |
@@ -59,7 +60,7 @@ routing and subsequent steps depend on these exact names.
 | `workflow_result` | string | Hard invariant failure | `"incomplete"` when an invariant stops the workflow |
 | `workflow_reason` | string | Hard invariant failure | Machine-readable hard-stop reason |
 | `llm_check_failed` | string | Step 4b | `"true"` after diagnostic; cleared on Retry success |
-| `use_agent_review` | string | Step 4b | `"true"` when user chose agent-based review fallback |
-| `quick_mode` | string | Step 5b | `"true"` when user picked `codex review --base` after large-diff warning or timeout |
+| `use_agent_review` | string | Step 4b | `"true"` when the driver selected agent-based review for an unpinned backend or the user authorized replacing a pinned backend |
+| `quick_mode` | string | Step 5b | `"true"` when the driver selected `codex review --base` after evidence showed exhaustive mode could not complete |
 | `awaiting_driver_input` | boolean | Driver interaction rules | `true` while the workflow is paused for missing intent |
 | `driver_input_reason` | string | Driver interaction rules | Missing intent recorded while the loop is paused |

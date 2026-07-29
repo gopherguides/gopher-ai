@@ -13,6 +13,9 @@ Before requesting decisions or delegating work, read
 `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
+Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving review
+coverage or post-review actions.
+
 ## Step 0: Parse Arguments
 
 Parse `$ARGUMENTS` to extract:
@@ -269,14 +272,11 @@ fixes reached the remote.
 
 If `AUTO_POST` is `true` and a PR was detected, post immediately with `gh pr comment "$PR_NUM" --body ...` using the formatting from `output-format.md`.
 
-If `AUTO_POST` is `false` and a PR was detected, request a driver decision:
-
-| Option | Description |
-|--------|-------------|
-| Post to PR | Add review findings as a PR comment |
-| Done | Exit the review |
-
-Default: `Done`.
+If `AUTO_POST` is `false` and a PR was detected, resolve a
+**driver-resolvable gate**. Post only when the original request explicitly asks
+for a PR comment; otherwise keep the report in the current response. State
+`Decision`, `Evidence`, and `Rationale`. Do not request input for this
+reversible delivery choice.
 
 ## Further Reading
 

@@ -42,7 +42,13 @@ Follow the displayed plan:
    Discard stale or speculative findings, deduplicate by root cause and code
    location, then rank the remaining findings by priority and confidence.
 
-An unusually large plan is review-risk information, not an interruption. Ask
-the user only when `REVIEW_PLAN_REQUIRES_INPUT=yes` or partitioning exposes a
-material product decision. An explicit `--scope` changes emphasis, not baseline
-coverage.
+An unusually large plan is review-risk information, not an interruption. When
+`REVIEW_PLAN_REQUIRES_INPUT=yes`, resolve a **driver-resolvable gate** by further
+partitioning or selecting an available higher-capacity backend that was not
+explicitly chosen. State `Decision`, `Evidence`, and `Rationale`; baseline
+coverage cannot be narrowed.
+
+Follow the shared **missing-intent gate** only when reliable coverage would
+require replacing an explicitly selected backend or partitioning exposes a
+material unspecified product decision. An explicit `--scope` changes emphasis,
+not baseline coverage.

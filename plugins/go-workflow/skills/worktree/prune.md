@@ -47,23 +47,31 @@ For each issue worktree:
    - **Pruneable**: Issue is closed (`STATE` = `CLOSED`) AND branch is merged (`MERGED` = `true`)
    - **Keep**: Issue is open OR branch is not merged
 
-### Step 4: Report and Confirm
+### Step 4: Report and Resolve Cleanup Scope
 
 Display a summary:
 - Worktrees to prune (with issue number and status)
 - Worktrees to keep (with reason)
 
-Request explicit confirmation from the driver before removing any worktrees.
-Stop until confirmation arrives.
+The prune request authorizes removal of every worktree classified as
+pruneable. State `Decision`, `Evidence`, and `Rationale`, then proceed without a
+redundant confirmation.
+
+Deleting the associated branches is optional and therefore a
+**missing-intent gate** unless the original request specified it. Request one
+branch-cleanup decision for the reported pruneable set. If structured input is
+unavailable, ask in the final response and stop before any removal.
 
 ### Step 5: Remove Pruneable Worktrees
 
-For each confirmed worktree:
+For each pruneable worktree:
 
 ```bash
 git worktree remove "$WORKTREE_PATH"
-git branch -D "$BRANCH" 2>/dev/null || true
 ```
+
+Delete a branch with `git branch -d "$BRANCH"` only when branch cleanup was
+explicitly authorized. The merge check makes forced deletion unnecessary.
 
 ### Step 6: Clean Up Stale Entries
 

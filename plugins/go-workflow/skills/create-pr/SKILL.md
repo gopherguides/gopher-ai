@@ -11,6 +11,9 @@ Before requesting decisions, read
 `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
+Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving template
+selection.
+
 ## Usage
 
 ```
@@ -59,8 +62,11 @@ cat pull_request_template.md 2>/dev/null || \
 echo "NO_TEMPLATE"
 ```
 
-If a template directory exists (`.github/PULL_REQUEST_TEMPLATE/`), list the
-templates and request a driver selection.
+If a template directory exists, resolve a **driver-resolvable gate**. Prefer an
+explicit repository configuration or the template whose name and required
+sections match the change type. Otherwise choose the general-purpose template,
+or the first lexical template when all candidates are equally general. State
+`Decision`, `Evidence`, and `Rationale`; do not request input.
 
 ### Step 5: Build PR Body
 

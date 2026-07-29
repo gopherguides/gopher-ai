@@ -53,7 +53,7 @@ Otherwise set `REVIEW_BASE="origin/${BASE_BRANCH}"`,
 `REVIEW_BACKEND="$LLM_CHOICE"`, and `REVIEW_CONCURRENCY=auto`. Read
 `../review-planning.md`, run the shared planner, display the coverage plan, and
 follow its units and final coordinator pass. The planner, not raw diff length,
-determines whether user input is necessary.
+determines whether further partitioning or a backend decision is necessary.
 
 ### 5b. Run LLM Review
 
@@ -80,8 +80,9 @@ if [ "$CODEX_TIMEOUT" -gt 900 ]; then CODEX_TIMEOUT=900; fi
 ```
 
 Use the shared coverage plan for full-context or partitioned execution. If it
-reports `REVIEW_PLAN_REQUIRES_INPUT=yes`, ask whether to narrow coverage,
-change backend, or abort. Never offer to skip review solely due to size.
+reports `REVIEW_PLAN_REQUIRES_INPUT=yes`, apply the decision policy in
+`../review-planning.md`. Never narrow baseline coverage or request input solely
+because the diff is large.
 
 #### Codex Exhaustive (`codex exec --output-schema`)
 
@@ -158,44 +159,37 @@ DOUBLED_TIMEOUT=$(( CODEX_TIMEOUT * 2 ))
 if [ "$DOUBLED_TIMEOUT" -gt 1800 ]; then DOUBLED_TIMEOUT=1800; fi
 ```
 
-Display diff size, timeout used, partial output, and stderr. Request a driver
-decision:
+Display diff size, timeout used, partial output, and stderr. Resolve a
+**driver-resolvable gate**:
 
-| Option | Description |
-|--------|-------------|
-| **Retry with longer timeout** | Double the timeout to ${DOUBLED_TIMEOUT}s |
-| **Switch to Fable subagent review** | Same prompt + schema via a Claude subagent — no timeout, no extra cost |
-| **Use `codex review --base`** | Faster mode, limited to 2-3 findings per pass |
-| **Drop `--output-schema`** | Run codex exec without structured output (faster, parse free-text) |
-| **Use agent-based review** | Fall back to Claude agent review |
-| **Abort** | Stop the `$ship` workflow |
+1. Retry once with `CODEX_TIMEOUT=$DOUBLED_TIMEOUT`.
+2. If the longer attempt times out and schema processing is implicated, set
+   `CODEX_EXEC_FALLBACK=true` and retry without `--output-schema`.
+3. Otherwise select `codex review --base` when its bounded findings can be
+   covered across the remaining passes.
+4. If the selected recovery cannot provide complete coverage, use an available
+   fallback only when `LLM_EXPLICIT=false`; state `Decision`, `Evidence`, and
+   `Rationale`.
 
-For "Retry": set `CODEX_TIMEOUT=$DOUBLED_TIMEOUT` and re-run. For "Switch to Fable subagent review": set `LLM_CHOICE=fable` for this pass, re-assemble the prompt and schema (steps 1–2 above), and run the Fable section below. For "Drop --output-schema": set `CODEX_EXEC_FALLBACK=true`.
+If recovery would replace an explicitly selected backend, follow the shared
+**missing-intent gate** and stop before switching.
 
 #### Other non-zero exit codes
 
-Display exit code, stderr, and output. Request a driver decision:
-
-| Option | Description |
-|--------|-------------|
-| **Retry** | Run the LLM review command again |
-| **Debug / Fix** | Show diagnostics (version, API key, auth, network) |
-| **Use agent-based review** | Fall back for this pass |
-| **Abort** | Stop `$ship` |
+Display exit code, stderr, and output. Inspect version, authentication, network,
+and command diagnostics. Retry once when the evidence identifies a transient or
+correctable failure. If failure persists, use an available fallback only when
+`LLM_EXPLICIT=false`; otherwise follow the shared **missing-intent gate** before
+replacing the explicitly selected backend. If no complete review path remains,
+stop incomplete with `WORKFLOW_REASON=review-backend-failed`.
 
 #### Invalid JSON
 
 If `codex exec` returns non-JSON or empty output (and exit code 0), do NOT fall
 through to the free-text clean-review path. Display the raw output (first 500
-chars), then request a driver decision:
-
-| Option | Description |
-|--------|-------------|
-| **Retry** | Run again |
-| **Debug / Fix** | Show codex version, API key, raw output |
-| **Use `codex review --base`** | Switch modes for this pass |
-| **Use agent-based review** | Fall back |
-| **Abort** | Stop |
+chars), retry once, then set `CODEX_EXEC_FALLBACK=true` and run the same backend
+without structured output. If output is still unusable, apply the explicit
+backend rule above. Never interpret invalid output as a clean review.
 
 ### Codex Quick Mode (`codex review --base`)
 
@@ -248,17 +242,20 @@ implementer's assumptions loaded, which is what makes it a genuine second read.
 
 **Error handling:** invalid JSON from the subagent is a review failure — do
 NOT fall through to the free-text clean path. Display the raw output (first
-500 chars), then request a driver decision: **Retry** / **Debug** (show raw
-output) / **Use agent-based review** / **Abort**.
+500 chars) and retry once. If the backend was explicitly selected, follow the
+shared missing-intent gate before replacing it. Otherwise select the next
+usable review path from prerequisite evidence and state the rationale.
 
 **When native Claude-subagent delegation is unavailable:** never shell out to
 `claude -p` — headless print mode bills metered API usage, not the
 subscription. Instead drive an interactive Claude window via tmux: write the
 assembled prompt to a temp file, then `tmux send-keys -t <claude-window> "Read
 <prompt-file> and follow it; write the JSON result to <result-file>" Enter`,
-and poll for the result file. If no Claude tmux window is available, request a
-driver decision (open one / switch to codex / skip) — never silently switch
-backends.
+and poll for the result file. If no Claude tmux window is available and Fable
+was explicitly selected, follow the shared missing-intent gate before switching
+backends. If it was driver-selected as an unpinned fallback, select the next
+usable backend, state the evidence and rationale, and continue. Never skip the
+review silently.
 
 ### Gemini
 
@@ -297,11 +294,11 @@ fi
 ```
 
 If model selection exits non-zero or returns an empty model, display
-`OLLAMA_SELECT_STDERR` and request a driver decision with **Retry** / **Debug /
-Fix** / **Use agent-based review** / **Abort**, using the same outcomes as the
-Gemini/Ollama run recovery below. Retry selection; for agent-based review,
-persist `use_agent_review=true` before continuing to that section. Do not
-persist a model or continue to `ollama run` until selection succeeds.
+`OLLAMA_SELECT_STDERR`, inspect the installed model list and service state, and
+retry selection once after any evidenced local fix. If Ollama was explicitly
+selected, follow the shared missing-intent gate before replacing it. Otherwise
+select the next usable review path and state the rationale. Do not persist a
+model or continue to `ollama run` until selection succeeds.
 
 After successful selection, persist the model:
 
@@ -337,14 +334,17 @@ rm -f "/tmp/llm-review-stderr-$$"
 set -e
 ```
 
-If exit code non-zero or output empty, display diagnostics, including the
-selected Ollama model for an Ollama run failure. Request a driver decision with
-**Retry** / **Debug / Fix** / **Use agent-based review** / **Abort**. Retry the
-same persisted model; do not silently select a different one.
+If exit code is non-zero or output is empty, display diagnostics, including the
+selected Ollama model for an Ollama run failure. Retry the same persisted model
+once when diagnostics identify a transient or correctable failure. Do not
+silently select a different Ollama model. Replacing an explicitly selected
+backend follows the shared missing-intent gate; an unpinned backend follows the
+prerequisite fallback ordering with a stated rationale.
 
 ### Delegated agent review (only when `USE_AGENT_REVIEW=true`)
 
-This section runs **ONLY** when the user explicitly chose agent-based review. It NEVER activates automatically.
+This section runs only when the driver selected agent-based review for an
+unpinned backend or the user explicitly authorized replacing a pinned backend.
 
 1. Set `CODEX_EXEC_FALLBACK=true`
 2. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md`. Adapt for the detected project language (replace Go-specific criteria when not a Go project).

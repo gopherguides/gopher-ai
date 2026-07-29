@@ -11,6 +11,9 @@ Before requesting decisions or delegating work, read
 `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
+Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
+choice.
+
 ## Output Durability
 
 Replies to review comments and any new commit messages describe what behavior changed and why, not file paths or line numbers. A reviewer reading the reply six months later, after the file in question has moved, must still understand what was fixed.
@@ -23,7 +26,7 @@ Auto-detect PR from current branch:
 gh pr view --json number --jq '.number' 2>/dev/null
 ```
 
-If no PR found, display usage and ask:
+If no PR is found, display usage:
 
 **Claude Code:** `/go-workflow:address-review [PR-number] [--no-watch]`
 
@@ -31,8 +34,10 @@ If no PR found, display usage and ask:
 
 **Example:** `/address-review 123` or just `/address-review` on a PR branch. Add `--no-watch` to exit after one fix cycle instead of watching for bot re-reviews.
 
-Request the missing PR number from the driver: "No PR found for current branch.
-What PR number would you like to address?" Stop until the answer arrives.
+This is a **missing-intent gate**. Request: "No PR was found for the current
+branch. What PR number should I address?" If structured input is unavailable,
+ask in the final response and stop before loop initialization or a completion
+claim.
 
 ---
 
@@ -159,8 +164,8 @@ All above, PLUS all detected review bots signaled approval per `bot-registry.md`
 
 If the user exits or skips a bot before all detected bots approve, follow the **Incomplete Approval Outcome** procedure in `watch-loop.md`. Persist `approval_result` and `approval_reason`, then output `<done>INCOMPLETE</done>` instead. Never output the completion marker for this path.
 
-**Safety:** If 15+ iterations pass without success, document blockers, request
-driver guidance, and stop without claiming completion until guidance arrives.
+**Safety:** If 15+ iterations complete without success, document the blocking
+evidence and stop incomplete. Do not bypass review or approval criteria.
 
 ## Supporting Files
 

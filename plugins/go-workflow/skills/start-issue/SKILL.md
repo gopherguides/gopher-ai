@@ -11,6 +11,9 @@ Before requesting decisions, entering a planning workflow, or delegating work,
 read `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
+Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
+choice.
+
 ## Empty Arguments
 
 If `$ARGUMENTS` is empty or not provided, explain:
@@ -39,8 +42,9 @@ If `$ARGUMENTS` is empty or not provided, explain:
 > 6. For features: Plan approach → TDD red-green → verify → **coverage check** → security review
 > 7. Commit, push, and create PR
 
-Request the missing issue number from the driver: "What issue number would you
-like to work on?" Stop until the answer arrives.
+This is a **missing-intent gate**. Request the issue number: "What issue number
+would you like to work on?" If structured input is unavailable, ask in the final
+response and stop without initializing the loop or claiming completion.
 
 ---
 
@@ -159,28 +163,23 @@ to "Plan Mode Check" (the "No, work in current directory" path). Display:
 Already running in a worktree — skipping worktree creation.
 ```
 
-**If `IN_WORKTREE=false`:** You MUST request a driver decision NOW before doing
-anything else — including starting the planning workflow.
+**If `IN_WORKTREE=false`:** resolve this as a **driver-resolvable gate** before
+planning:
 
-Do not:
+1. Use the current checkout when the request or execution environment already
+   provides isolation, or when the checkout is a clean non-default feature
+   branch dedicated to this issue.
+2. Create a worktree when the user explicitly requested one or when the current
+   checkout is the shared default checkout and isolation is available.
+3. Otherwise use the current checkout and create the required feature branch.
 
-- Start the planning workflow yet
-- Analyze the issue beyond the context already gathered
-- Delegate exploration or implementation work
-- Start any implementation work
-
-Request a driver decision with this exact configuration:
-
-- **Question:** "Would you like to create a worktree for isolated work on issue #$ISSUE_NUM?"
-- **Options:**
-  1. "Yes, create worktree" - Create isolated worktree and switch to it
-  2. "No, work in current directory" - Stay here and create a branch
-
-**WAIT for the user's response. Do not proceed until they answer.**
+State `Decision`, `Evidence`, and `Rationale` as defined by
+`decision-gates.md`, then continue. Do not request input for this technical
+choice.
 
 ---
 
-## If user chose "Yes, create worktree"
+## If the driver selected "create worktree"
 
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/start-issue/worktree-create.md` and follow the
 full procedure: capture `SOURCE_DIR`, derive `WORKTREE_NAME`/`BRANCH_NAME` from
@@ -191,7 +190,7 @@ preserved, capture `WORKTREE_ABS_PATH`, register the worktree state file
 
 After the worktree is established, continue to **Plan Mode Check** below.
 
-## If user chose "No, work in current directory"
+## If the driver selected "work in current directory"
 
 Continue to **Step 1: Detect Issue Type** below. You will create a branch in the
 appropriate workflow step.
@@ -289,9 +288,11 @@ Analyze the issue to determine if it's a **bug fix** or **new feature**.
 - Bug patterns: "fix", "broken", "error", "fail", "crash", "doesn't work", "issue with", "problem", "bug", "regression", "incorrect"
 - Feature patterns: "add", "implement", "create", "new", "support", "enable", "allow", "introduce", "enhance"
 
-**If still uncertain**, request the missing intent from the driver: "I couldn't
-determine if this is a bug fix or new feature. Which workflow should I follow?"
-with options **Bug Fix** / **New Feature**. Stop until the answer arrives.
+**If still uncertain after labels, title, body, comments, and acceptance
+criteria**, this is a **missing-intent gate**. Request: "The issue semantics
+remain ambiguous. Should this follow the bug-fix or feature workflow?" If
+structured input is unavailable, ask in the final response and stop before
+branch creation, implementation, or a completion claim.
 
 ---
 
@@ -356,9 +357,9 @@ When ALL criteria are met, output exactly:
 This signals the loop to exit. If you output this prematurely, the issue will
 not be properly resolved.
 
-**Safety note:** If you've iterated 15+ times without success, document what's
-blocking, request driver guidance, and stop without claiming completion until
-guidance arrives.
+**Safety note:** If you've iterated 15+ times without success, document the
+blocking evidence and stop incomplete. Do not treat the iteration limit as
+permission to bypass completion criteria.
 
 Use extended thinking for complex analysis.
 

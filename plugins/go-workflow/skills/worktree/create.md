@@ -15,6 +15,10 @@ invocation: `$worktree` (with create intent).
 Set `NUMBER` to the issue or PR number from the user. The script validates that
 the value is numeric and resolves whether it is an issue or PR.
 
+If no number is available from the request, branch, or linked pull request,
+follow the shared **missing-intent gate**. Request the target number and stop
+before checking environment files or creating a worktree.
+
 ```bash
 NUMBER="<issue-or-pr-number>"
 ```
@@ -26,14 +30,14 @@ SOURCE_DIR="$(pwd)"
 "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
 ```
 
-If the output starts with `ENV_FILES_FOUND=true`, request the missing consent
-from the driver: "Found environment files (may contain secrets). Copy them to
-the worktree?" Stop before copying or creating the worktree until the answer
-arrives.
+If the output starts with `ENV_FILES_FOUND=true`, follow the shared
+**missing-intent gate**. Request explicit consent: "Found environment files
+that may contain secrets. Copy them to the worktree?" Stop before creation when
+structured input is unavailable; never infer consent.
 
 ### Step 3: Create or Reuse Worktree
 
-If the user chose to copy env files:
+If copying environment files was explicitly authorized:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" create "$NUMBER" --source-dir "$SOURCE_DIR" --copy-env

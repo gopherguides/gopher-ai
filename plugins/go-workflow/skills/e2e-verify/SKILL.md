@@ -11,6 +11,9 @@ Before requesting decisions or delegating work, read
 `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
+Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving a missing
+target or other workflow choice.
+
 ## Core Principle: Visual Verification is Non-Negotiable
 
 **Every screenshot you take MUST be read and visually inspected.** Taking a screenshot without reading it is useless. The entire point of E2E testing is to verify what the USER sees, not just what the DOM contains.
@@ -47,14 +50,17 @@ echo "MODE=$MODE PR_ARG=$PR_ARG"
 ```bash
 PR_NUM="${PR_ARG:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"
 if [ -z "$PR_NUM" ]; then
-  echo "Error: No PR found for current branch and no PR number provided."
   echo "Claude Code: /go-workflow:e2e-verify [PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
   echo "Codex: \$e2e-verify [PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
-  exit 1
+else
+  gh pr view "$PR_NUM" --json number >/dev/null 2>&1 || { echo "Error: PR #$PR_NUM does not exist"; exit 1; }
+  echo "Working on PR #$PR_NUM in mode: $MODE"
 fi
-gh pr view "$PR_NUM" --json number >/dev/null 2>&1 || { echo "Error: PR #$PR_NUM does not exist"; exit 1; }
-echo "Working on PR #$PR_NUM in mode: $MODE"
 ```
+
+If `PR_NUM` is empty, this is a **missing-intent gate**. Request the PR number
+through native structured input when available; otherwise ask in the final
+response and stop before loop initialization or a completion claim.
 
 ## Loop Initialization & Re-entry
 
@@ -231,8 +237,8 @@ Output `<done>VERIFIED</done>` only when ALL of these are true:
 If the E2E gate failed on a UI-visible diff, output `<done>E2E_FAIL</done>`
 after Step 6 instead. Do not invoke `$ship`. Do not add labels.
 
-**Safety:** If 15+ iterations pass without success, document blockers, request
-driver guidance, and stop without claiming completion until guidance arrives.
+**Safety:** If 15+ iterations complete without success, document the blocking
+evidence and stop incomplete. Do not bypass E2E or completion criteria.
 
 ---
 

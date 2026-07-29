@@ -304,7 +304,7 @@ if [ "$DIRTY_HEAD_SHIFT_STATUS" -ne 1 ]; then
   fail "dirty-tree head-shift recovery must return a blocking status"
 fi
 if [[ "$DIRTY_HEAD_SHIFT_OUTPUT" != *"working tree has uncommitted changes"* ]] || \
-   [[ "$DIRTY_HEAD_SHIFT_OUTPUT" != *"Commit them before shipping, or abort?"* ]]; then
+   [[ "$DIRTY_HEAD_SHIFT_OUTPUT" != *"Inspect ownership before synchronization"* ]]; then
   fail "dirty-tree head-shift recovery must surface ship's dirty-tree policy"
 fi
 if [ -f "$DIRTY_HEAD_SHIFT_TMP/reset-attempted" ]; then

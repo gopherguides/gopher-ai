@@ -18,8 +18,10 @@ Filter for issue worktrees (matching `*-issue-*` pattern). If none found, inform
 
 ### Step 2: Select Worktree
 
-If multiple worktrees exist, list them and request the missing selection from
-the driver. Stop until the answer arrives.
+If the request, current path, or issue/PR context identifies exactly one
+worktree, select it. If multiple worktrees remain equally valid, follow the
+shared **missing-intent gate**: list them, request the target, and stop before
+removal.
 
 ### Step 3: Safety Checks
 
@@ -47,8 +49,9 @@ For the selected worktree, check:
 
 **Safe removal** (issue closed + branch merged + no uncommitted changes):
 
-Request explicit confirmation from the driver: "Remove worktree at
-$WORKTREE_PATH? (issue closed, branch merged)" Stop until confirmation arrives.
+Treat the original removal request as authorization for this safe target. State
+`Decision`, `Evidence`, and `Rationale`, including the closed issue, merged
+branch, and clean status, then remove it without a redundant confirmation.
 
 ```bash
 git worktree remove "$WORKTREE_PATH"
@@ -67,8 +70,10 @@ worktree safe first, then rerun the workflow.
 
 ### Step 5: Optional Branch Cleanup
 
-Request the optional branch-deletion intent from the driver: "Also delete the
-branch $BRANCH_NAME?" Stop until the answer arrives.
+Branch deletion is a **missing-intent gate** unless the original request
+explicitly included branch cleanup. Request: "Also delete the local and remote
+branch `$BRANCH_NAME`?" If structured input is unavailable, ask in the final
+response and stop without deleting either branch or claiming branch cleanup.
 
 ```bash
 git branch -d "$BRANCH_NAME"

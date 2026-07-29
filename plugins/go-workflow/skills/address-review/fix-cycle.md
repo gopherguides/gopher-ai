@@ -55,10 +55,13 @@ if [ -n "$(git status --porcelain -- "$TARGET_FILE")" ]; then
 fi
 ```
 
-If the guard fails, stop and request the missing intent from the driver:
-commit, stash, or otherwise separate those changes. Do not edit the path and
-do not attempt path-level staging, because Git cannot distinguish the
-pre-existing hunks from the review fix.
+If the guard fails, inspect the pre-existing diff, review request, and current
+workflow-owned file list. State `Decision`, `Evidence`, and `Rationale`. Because
+Git cannot distinguish those hunks from a new review fix, do not edit or stage
+the path. Stop incomplete with
+`WORKFLOW_REASON=unowned-review-target-changes` until the changes are committed,
+stashed, or otherwise separated. Follow the caller's **Hard Invariant Failure**
+procedure so the workflow cannot advance.
 
 ### Parallel Fix Dispatch (when 3+ comments target different files)
 

@@ -162,7 +162,7 @@ done
 
 echo "  final pass: cross-cutting interfaces, dependencies, and omitted-file audit"
 if [ "$REQUIRES_INPUT" = yes ]; then
-  echo "Coverage status: requires user input; effective scope exceeds ${MAX_UNITS} reliable ${BACKEND} review units"
+  echo "Coverage status: requires driver decision; effective scope exceeds ${MAX_UNITS} reliable ${BACKEND} review units"
 else
   execution=sequential
   [ "$CONCURRENT" = yes ] && execution=concurrent

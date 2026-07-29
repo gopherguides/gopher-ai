@@ -18,9 +18,9 @@ flow for simple issues where subagent overhead is not justified.
 
 ## Feature (Manual)
 
-1. **Understand requirements**: read issue + comments, ask clarifying questions if ambiguous
+1. **Understand requirements**: read the issue and comments. Resolve technical ambiguity from repository evidence. If materially different product behavior or acceptance criteria remain unspecified, follow the shared missing-intent gate and stop before implementation.
 2. **Explore codebase**: find similar implementations, patterns, integration points
-3. **Design approach — HARD GATE**: propose 2-3 approaches, get user approval before coding
+3. **Design approach**: propose 2-3 approaches, then choose from requirements, repository patterns, reversibility, and risk. State `Decision`, `Evidence`, and `Rationale`. Use the missing-intent gate only when the approaches imply materially different unspecified product behavior.
 4. **Create branch** (skip if worktree): `git checkout -b "feat/$ISSUE_NUM-<short-desc>"`
 5. **TDD Red — IRON LAW: No implementation code before these tests.** If you already wrote code, DELETE IT. Write comprehensive tests (happy path, edge cases, errors). Each test = ONE behavior. Run them. Verify they fail FOR THE RIGHT REASONS. **Red flag: test passes immediately = wrong test.**
 6. **TDD Green**: implement minimal code. Run tests. Verify all pass.
