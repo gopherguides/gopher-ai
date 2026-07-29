@@ -531,8 +531,12 @@ jq --arg required "false" --arg attempted "false" --arg result "skipped" --arg r
 
 Then skip to Step 8.
 
-If `UI_VISIBLE_CHANGES` is non-empty and Chrome DevTools MCP tools are missing,
-persist:
+Resolve the Chrome DevTools namespace from the available tools once. The
+official Chrome DevTools Claude plugin uses `mcp__chrome-devtools__*`; existing
+user configurations may expose `mcp__chrome-devtools-mcp__*`. Examples below
+show the latter, but invoke the namespace that is actually available. If
+`UI_VISIBLE_CHANGES` is non-empty and neither namespace provides the required
+browser tools, persist:
 
 ```bash
 TMP=".local/state/ship.loop.local.json.tmp"
@@ -608,6 +612,29 @@ No merge.
 
 Stop the workflow. Do not continue to push, CI watch, or merge.
 
+### Browser tool-call failures
+
+MCP connection and tool discovery prove only that the client and server can
+complete discovery. The first real browser call can still fail because the
+browser cannot launch, the selected page was lost, a tool schema changed, or
+the client/server connection churned. Treat any browser tool error before all
+required pages are inspected as a blocking runtime failure. A failure on the
+first call records zero pages; a later failure preserves the number already
+inspected. Never downgrade either case to skipped or passed.
+
+### Record browser tool-call failure
+
+```bash
+TMP=".local/state/ship.loop.local.json.tmp"
+jq --arg required "true" --arg attempted "true" --arg result "blocked" --arg reason "browser-tool-call-failed" --argjson pages "${PAGES_TESTED:-0}" \
+   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
+   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+```
+
+Display the failed tool, route, and returned error, clean up a server started
+by the workflow, and stop. Do not retry against a reconnected MCP server in the
+same E2E result because its page selection and browser state are not proven.
+
 ### Execute smoke tests
 
 For each changed handler/route/template, identify the URL path and:
@@ -622,8 +649,9 @@ Record per page: URL, HTTP status, console errors, screenshot path.
 
 If any page has an unexpected 4xx/5xx status, console JavaScript errors, failed
 5xx network requests, browser tooling errors, or an uninspected screenshot,
-persist `e2e_result="blocked"` with an explanatory `e2e_skip_reason`, display
-the failed route(s), and stop the workflow. No merge.
+persist `e2e_result="blocked"` with an explanatory `e2e_skip_reason`. Browser
+tooling errors use the recording block above. Display the failed route(s) and
+stop the workflow. No merge.
 
 ### Cleanup and report
 

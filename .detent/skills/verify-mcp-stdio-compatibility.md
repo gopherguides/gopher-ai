@@ -23,7 +23,10 @@ when_to_use: Use when auditing or pinning an MCP server after a protocol revisio
    rely on a documented tool count when source references can be enumerated.
 8. Capture non-JSON stdout separately from stderr because STDIO MCP requires
    stdout to contain protocol messages only.
-9. Verify at least one current client from each supported client family can
-   connect through an isolated configuration.
-10. Document the negotiated protocol, unsupported modern version, exact pin,
-    and non-MCP fallback behavior.
+9. After discovery succeeds, invoke one real stateful tool through each current
+   client. A successful connection and `tools/list` do not prove that the
+   server can launch its backing process or preserve tool-call state.
+10. Verify at least one current client from each supported client family can
+    connect through an isolated configuration.
+11. Document the negotiated protocol, unsupported modern version, exact pin,
+    discovery result, first-call result, and non-MCP fallback behavior.
