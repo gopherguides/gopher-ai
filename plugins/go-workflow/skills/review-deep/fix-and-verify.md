@@ -2,7 +2,7 @@
 
 This document details the fix phase that runs after the review completes.
 
-When `FIX_CHANGES=false`, skip directly to **Post-Fix Actions** with an empty
+When `FIX_CHANGES=false`, skip directly to **Commit and Push** with an empty
 `OWNED_FILES` array and `FIXES_APPLIED=false`.
 
 ## Fix Iteration
@@ -227,7 +227,7 @@ Stop without committing or reporting the review workflow complete.
 
 ---
 
-## Post-Fix Actions
+## Commit and Push
 
 Track every file modified during this fix phase in `OWNED_FILES`. Do not include
 pre-existing or unrelated changes. The helper stages only these paths and
