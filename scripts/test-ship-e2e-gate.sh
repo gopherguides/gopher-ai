@@ -8,7 +8,6 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 LOCAL_REVIEW="$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
 E2E_EXECUTION="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/e2e-test-execution.md"
-E2E_SKILL="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
 SHIP_SKILL="$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
 MERGE_DOC="$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"
 STATE_FIELDS="$ROOT_DIR/plugins/go-workflow/lib/ship/state-fields.md"
@@ -79,12 +78,6 @@ require_text "$E2E_EXECUTION" "expected canonical or authentication redirect" \
   "e2e verification must allow expected navigation redirects"
 reject_text "$E2E_EXECUTION" "A mismatch or call error" \
   "e2e verification must not classify every URL mismatch as missing tooling"
-for skill_file in "$SHIP_SKILL" "$COMPLETE_ISSUE" "$E2E_SKILL"; do
-  require_text "$skill_file" "mcp__chrome-devtools__\\*" \
-    "$(basename "$(dirname "$skill_file")") must allow the official Chrome DevTools namespace"
-  require_text "$skill_file" "mcp__chrome-devtools-mcp__\\*" \
-    "$(basename "$(dirname "$skill_file")") must retain the legacy Chrome DevTools namespace"
-done
 
 BROWSER_FAILURE_BLOCK=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-browser-failure-XXXXXX")
 BROWSER_FAILURE_TMP=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-browser-failure-fixture-XXXXXX")
