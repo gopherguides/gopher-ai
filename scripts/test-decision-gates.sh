@@ -190,6 +190,17 @@ assert_contains "$backend_gate" "LLM_EXPLICIT=false" "ship cannot resolve an unp
 assert_contains "$backend_gate" "review-backend-unavailable" "ship lacks no-backend incomplete outcome"
 assert_contains "$(file_text "$COMPLETE_FALLBACK")" "Never continue to Phase 3 without" "complete-issue can bypass review after fallback failure"
 
+terminal_review=$(section_text "$COMPLETE_FALLBACK" "## Terminal Review Failure" "## Codex NOT Available")
+assert_contains "$terminal_review" '.workflow_result = "incomplete"' "complete-issue fallback does not persist its result"
+assert_contains "$terminal_review" '.workflow_reason = $reason' "complete-issue fallback does not persist its reason"
+assert_contains "$terminal_review" '.phase = "incomplete"' "complete-issue fallback can re-enter Phase 3"
+assert_contains "$terminal_review" '.completion_promise = "INCOMPLETE"' "complete-issue fallback cannot terminate its loop"
+assert_contains "$terminal_review" "<done>INCOMPLETE</done>" "complete-issue fallback lacks a terminal marker"
+
+complete_routing=$(section_text "$COMPLETE" "Phase → step routing:" "---")
+assert_contains "$complete_routing" '`incomplete`' "complete-issue lacks terminal re-entry routing"
+assert_contains "$complete_routing" "stop without entering Phase 3" "complete-issue terminal re-entry can advance"
+
 ship_completion=$(section_text "$SHIP" "## Completion Criteria" "## Cancel")
 assert_contains "$ship_completion" 'durably recorded as `void`/`skipped`' "ship top-level criteria ignore durable review recovery"
 assert_contains "$ship_completion" "exact current head passes CI" "ship durable recovery is not anchored to current-head CI"

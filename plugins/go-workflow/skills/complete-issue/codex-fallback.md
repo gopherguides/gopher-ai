@@ -3,6 +3,26 @@
 Loaded by `SKILL.md` Phase 2 when codex is unavailable or fails at runtime.
 Never skip review or replace an explicitly required backend silently.
 
+## Terminal Review Failure
+
+When no authorized review backend can complete after the recovery steps, set
+`WORKFLOW_REASON` to the branch-specific reason and persist the terminal
+outcome atomically:
+
+```bash
+WORKFLOW_REASON="${WORKFLOW_REASON:?review failure reason is required}"
+STATE_TMP="${STATE_FILE}.tmp"
+jq --arg reason "$WORKFLOW_REASON" \
+  '.workflow_result = "incomplete"
+   | .workflow_reason = $reason
+   | .phase = "incomplete"
+   | .completion_promise = "INCOMPLETE"' \
+  "$STATE_FILE" > "$STATE_TMP" && mv "$STATE_TMP" "$STATE_FILE"
+```
+
+Output `<done>INCOMPLETE</done>` and stop. Do not enter Phase 3 or claim the
+top-level completion promise.
+
 ## Codex NOT Available
 
 Display: `npm install -g @openai/codex`, then run `codex login` for ChatGPT sign-in or API-key authentication.
@@ -15,9 +35,9 @@ available. State `Decision`, `Evidence`, and `Rationale`. Never use `claude -p`
 because it bills metered API usage rather than the subscription.
 
 If Codex was explicitly required, follow the shared **missing-intent gate**
-before replacing it. If neither backend can complete in the current session,
-persist `WORKFLOW_RESULT=INCOMPLETE` and
-`WORKFLOW_REASON=review-backend-unavailable`, then stop before Phase 3.
+before replacing it. If no authorized backend can complete in the current
+session, set `WORKFLOW_REASON=review-backend-unavailable` and follow
+**Terminal Review Failure**.
 
 ## Codex Exec Fails at Runtime
 
@@ -33,8 +53,10 @@ stderr, and partial output, then apply the recovery order below.
    review across its units.
 4. If Codex was not explicitly required, use synchronous Fable review when
    available and state the rationale.
-5. Otherwise follow the shared missing-intent gate before replacing Codex, or
-   stop incomplete when no review path remains.
+5. Otherwise follow the shared missing-intent gate before replacing Codex. If
+   no authorized review path remains, set
+   `WORKFLOW_REASON=review-backend-timeout` and follow **Terminal Review
+   Failure**.
 
 ### Other Exit Codes
 
@@ -42,6 +64,7 @@ Inspect the exit code, last 50 lines of stderr, command, authentication, and
 network state. Retry once for a transient or locally correctable failure. Then
 apply the same explicit-backend rule: an unpinned run may use synchronous Fable
 with a stated rationale; an explicitly required Codex backend needs missing
-intent before replacement. If no complete review path remains, stop incomplete
-with `WORKFLOW_REASON=review-backend-failed`. Never continue to Phase 3 without
-the review required by the top-level completion criteria.
+intent before replacement. If no complete review path remains, set
+`WORKFLOW_REASON=review-backend-failed` and follow **Terminal Review Failure**.
+Never continue to Phase 3 without the review required by the top-level
+completion criteria.

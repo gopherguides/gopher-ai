@@ -73,6 +73,8 @@ Phase → step routing:
 - `implementing` → Phase 1
 - `reviewing` → Phase 3; the earlier in-session review is void and must not be restarted
 - `verifying` → Phase 3
+- `incomplete` → display the persisted `workflow_reason`, output
+  `<done>INCOMPLETE</done>`, and stop without entering Phase 3
 
 ---
 
