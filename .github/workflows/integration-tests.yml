@@ -18,12 +18,15 @@ jobs:
           node-version: '22'
 
       - name: Install supported Codex CLI
-        run: npm install --global @openai/codex@0.144.6
+        run: npm install --global @openai/codex@0.146.0
 
       - name: Test real Codex plugin lifecycle
         env:
-          CODEX_LIFECYCLE_EXPECTED_VERSION: 0.144.6
+          CODEX_LIFECYCLE_EXPECTED_VERSION: 0.146.0
         run: ./scripts/test-codex-plugin-lifecycle.sh
+
+      - name: Probe Default-mode shared-skill input behavior
+        run: python3 ./scripts/test-codex-default-mode-input.py
 
   test-installation:
     runs-on: ubuntu-latest

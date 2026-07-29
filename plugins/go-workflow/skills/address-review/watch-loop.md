@@ -92,7 +92,7 @@ If any bot hasn't approved yet:
    - If counts are stable for 2 consecutive polls (30 seconds of no new activity) → bot has finished posting. Proceed to 12c.
 
 4. **Timeout:** If 5 minutes pass with no new activity from any bot AND bots haven't approved:
-   - Use `AskUserQuestion` to ask: "Bots haven't responded after 5 minutes. Would you like to keep waiting, re-trigger bot reviews, or exit?"
+   - Request a driver decision: "Bots haven't responded after 5 minutes. Would you like to keep waiting, re-trigger bot reviews, or exit?"
    - If "keep waiting" → reset timeout, continue polling
    - If "re-trigger" → go to 12d
    - If "exit" → set `APPROVAL_REASON="bot-approval-timeout"`, follow **Incomplete Approval Outcome**, and stop
@@ -129,7 +129,7 @@ If a bot's quiet period ended with no new comments but it still hasn't approved:
    gh pr comment "$PR_NUM" --body "<trigger command>"
    ```
 3. **Max 3 re-trigger attempts per bot.** Track the count.
-4. If 3 attempts exhausted → use `AskUserQuestion`: "Bot <login> hasn't approved after 3 re-trigger attempts. Keep trying, skip this bot, or exit?"
+4. If 3 attempts exhausted → request a driver decision: "Bot <login> hasn't approved after 3 re-trigger attempts. Keep trying, skip this bot, or exit?"
 5. Handle the response:
    - If "keep trying" → reset the bot's re-trigger count and return to 12b
    - If "skip this bot" → set `APPROVAL_REASON="bot-approval-exhausted-skip"`, follow **Incomplete Approval Outcome**, and stop

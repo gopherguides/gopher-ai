@@ -169,6 +169,43 @@ else
   echo "OK"
 fi
 
+echo -n "Shared go-workflow skills bind native capabilities by intent... "
+GO_WORKFLOW_SKILLS="$ROOT_DIR/plugins/go-workflow/skills"
+GO_WORKFLOW_LIB="$ROOT_DIR/plugins/go-workflow/lib"
+DRIVER_INTERACTION="$GO_WORKFLOW_LIB/driver-interaction.md"
+PLATFORM_TOOL_NAMES=$(rg -n '\b(AskUserQuestion|EnterPlanMode|Agent|Task)\b' \
+  "$GO_WORKFLOW_SKILLS" "$GO_WORKFLOW_LIB" --glob '*.md' || true)
+SHARED_ALLOWED_TOOLS=$(rg -n '^allowed-tools:' \
+  "$GO_WORKFLOW_SKILLS"/*/SKILL.md || true)
+MISSING_DRIVER_BINDING=""
+for skill_file in "$GO_WORKFLOW_SKILLS"/*/SKILL.md; do
+  if ! rg -q 'driver-interaction\.md' "$skill_file"; then
+    MISSING_DRIVER_BINDING="${skill_file#"$ROOT_DIR"/}"
+    break
+  fi
+done
+
+if [ -n "$PLATFORM_TOOL_NAMES" ]; then
+  echo "FAIL (platform-specific tool names found)"
+  echo "$PLATFORM_TOOL_NAMES"
+  ERRORS=$((ERRORS + 1))
+elif [ -n "$SHARED_ALLOWED_TOOLS" ]; then
+  echo "FAIL (shared skill frontmatter still contains a platform tool allowlist)"
+  echo "$SHARED_ALLOWED_TOOLS"
+  ERRORS=$((ERRORS + 1))
+elif [ -n "$MISSING_DRIVER_BINDING" ]; then
+  echo "FAIL ($MISSING_DRIVER_BINDING does not load the driver interaction rules)"
+  ERRORS=$((ERRORS + 1))
+elif ! rg -q 'native structured-input capability' "$DRIVER_INTERACTION" ||
+     ! rg -q 'ask the concise question in the final' "$DRIVER_INTERACTION" ||
+     ! rg -q 'Do not advance the phase' "$DRIVER_INTERACTION" ||
+     ! rg -q 'emit a completion' "$DRIVER_INTERACTION"; then
+  echo "FAIL (driver interaction rules do not preserve incomplete stop semantics)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Address-review stages only fix-cycle files... "
 ADDRESS_REVIEW_FIX_CYCLE="$ROOT_DIR/plugins/go-workflow/skills/address-review/fix-cycle.md"
 if file_contains 'git add -A' "$ADDRESS_REVIEW_FIX_CYCLE"; then

@@ -2,11 +2,14 @@
 name: e2e-verify
 description: "Run end-to-end PR verification with browser testing. Use before merge or in fix-and-ship mode when the user asks to verify a PR, run E2E, browser-test, or visually check UI changes. SKIP backend-only checks with no browser/UI path; use review-deep or ship as appropriate."
 argument-hint: "[PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page", "mcp__chrome-devtools-mcp__fill_form", "mcp__chrome-devtools-mcp__wait_for", "mcp__chrome-devtools-mcp__evaluate_script"]
 disable-model-invocation: true
 ---
 
 # E2E Verify
+
+Before requesting decisions or delegating work, read
+`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+cross-platform capability-binding rules.
 
 ## Core Principle: Visual Verification is Non-Negotiable
 
@@ -228,7 +231,8 @@ Output `<done>VERIFIED</done>` only when ALL of these are true:
 If the E2E gate failed on a UI-visible diff, output `<done>E2E_FAIL</done>`
 after Step 6 instead. Do not invoke `$ship`. Do not add labels.
 
-**Safety:** If 15+ iterations without success, document blockers and ask user.
+**Safety:** If 15+ iterations pass without success, document blockers, request
+driver guidance, and stop without claiming completion until guidance arrives.
 
 ---
 

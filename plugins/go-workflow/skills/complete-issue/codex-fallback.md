@@ -5,7 +5,7 @@ The user chooses how to proceed — never fall back silently.
 
 ## Codex NOT Available
 
-Use `AskUserQuestion`:
+Request a driver decision:
 
 > **"Codex CLI is not available for self-review. How would you like to proceed?"**
 
@@ -20,14 +20,13 @@ Handle the user's choice:
 
 - **Retry** → Re-run the availability check from `SKILL.md` Phase 2.
 - **Install instructions** → Display: `npm install -g @openai/codex`, then run `codex login` for ChatGPT sign-in or API-key authentication. Then re-check.
-- **Use Fable subagent review** → Dispatch a fresh-context Agent subagent synchronously with `run_in_background=false`, wait for its final response in the current session, and parse it through the same structured path (see the Fable section in go-workflow `lib/ship/local-review.md`). Never use `claude -p` — it bills metered API usage, not the subscription. If it cannot complete before a headless session ends, treat the review as skipped and proceed to Phase 3; never resume or replace it in a successor session.
+- **Use Fable subagent review** → Delegate a fresh-context review synchronously through the active surface, wait for its final response in the current session, and parse it through the same structured path (see the Fable section in go-workflow `lib/ship/local-review.md`). Never use `claude -p` — it bills metered API usage, not the subscription. If it cannot complete before a headless session ends, treat the review as skipped and proceed to Phase 3; never resume or replace it in a successor session.
 - **Skip review** → Warn "Self-review skipped — proceeding to E2E verification without code review." and go directly to Phase 3.
 
 ## Codex Exec Fails at Runtime
 
 If `codex exec` exits non-zero or produces no output, do NOT silently fall
-back. Display the exit code and stderr first, then ask via
-`AskUserQuestion`.
+back. Display the exit code and stderr first, then request a driver decision.
 
 ### Exit Code 124 (Timeout)
 

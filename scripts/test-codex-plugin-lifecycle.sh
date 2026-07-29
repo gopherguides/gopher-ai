@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-EXPECTED_CODEX_VERSION="${CODEX_LIFECYCLE_EXPECTED_VERSION:-0.144.6}"
+EXPECTED_CODEX_VERSION="${CODEX_LIFECYCLE_EXPECTED_VERSION:-0.146.0}"
 TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
 TEST_ROOT="$(mktemp -d "$TMP_BASE/gopher-ai-codex-lifecycle.XXXXXX")"
 FIXTURE_WORK="$TEST_ROOT/fixture-work"

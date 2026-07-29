@@ -18,7 +18,8 @@ Filter for issue worktrees (matching `*-issue-*` pattern). If none found, inform
 
 ### Step 2: Select Worktree
 
-If multiple worktrees exist, list them and ask the user which one to remove.
+If multiple worktrees exist, list them and request the missing selection from
+the driver. Stop until the answer arrives.
 
 ### Step 3: Safety Checks
 
@@ -46,7 +47,8 @@ For the selected worktree, check:
 
 **Safe removal** (issue closed + branch merged + no uncommitted changes):
 
-Ask: "Remove worktree at $WORKTREE_PATH? (issue closed, branch merged)"
+Request explicit confirmation from the driver: "Remove worktree at
+$WORKTREE_PATH? (issue closed, branch merged)" Stop until confirmation arrives.
 
 ```bash
 git worktree remove "$WORKTREE_PATH"
@@ -65,7 +67,8 @@ worktree safe first, then rerun the workflow.
 
 ### Step 5: Optional Branch Cleanup
 
-Ask: "Also delete the branch $BRANCH_NAME?"
+Request the optional branch-deletion intent from the driver: "Also delete the
+branch $BRANCH_NAME?" Stop until the answer arrives.
 
 ```bash
 git branch -d "$BRANCH_NAME"

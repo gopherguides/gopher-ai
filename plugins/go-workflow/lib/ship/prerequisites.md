@@ -2,7 +2,7 @@
 
 Loaded by `skills/ship/SKILL.md` Step 4 when the selected LLM CLI is not
 available. Print diagnostics, persist failure, then route the user via
-`AskUserQuestion`.
+the shared driver-decision protocol.
 
 ## Detect LLM CLI
 
@@ -23,12 +23,12 @@ elif [ "$LLM_CHOICE" = "fable" ]; then
 fi
 ```
 
-For `fable`: no external CLI is required in a Claude Code session — the Agent
-tool dispatches the review subagent (subscription-billed). Under Codex CLI
-there is no Agent tool — **never shell out to `claude -p`** (headless print
+For `fable`: no external CLI is required when the active surface can delegate
+the review to a Claude subagent (subscription-billed). When that delegation
+capability is unavailable, **never shell out to `claude -p`** (headless print
 mode bills metered API usage, not the subscription); use the tmux-driven
 interactive Claude window path described in `local-review.md`. If neither is
-available, present the `AskUserQuestion` below.
+available, present the driver decision below.
 
 ## Diagnostic Output
 
@@ -54,7 +54,7 @@ TMP="$STATE_FILE.tmp"
 jq '.llm_check_failed = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
-## AskUserQuestion
+## Driver Decision
 
 > **"`$LLM_CHOICE` CLI not found. How would you like to proceed?"**
 

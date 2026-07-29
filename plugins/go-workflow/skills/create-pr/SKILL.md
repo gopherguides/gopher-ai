@@ -1,12 +1,15 @@
 ---
 name: create-pr
 description: "Create a pull request using the repo PR template. Use when the user wants to open or submit a PR without immediately merging it. SKIP for end-to-end ship flows; use `ship` instead."
-allowed-tools: ["Read", "Bash(git:*)", "Bash(gh:*)", "Bash(cat:*)", "Bash(ls:*)", "Glob", "AskUserQuestion"]
 ---
 
 # Create PR
 
 Create a pull request following the repo's PR template and conventions.
+
+Before requesting decisions, read
+`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+cross-platform capability-binding rules.
 
 ## Usage
 
@@ -56,7 +59,8 @@ cat pull_request_template.md 2>/dev/null || \
 echo "NO_TEMPLATE"
 ```
 
-If a template directory exists (`.github/PULL_REQUEST_TEMPLATE/`), list templates and ask the user which to use.
+If a template directory exists (`.github/PULL_REQUEST_TEMPLATE/`), list the
+templates and request a driver selection.
 
 ### Step 5: Build PR Body
 

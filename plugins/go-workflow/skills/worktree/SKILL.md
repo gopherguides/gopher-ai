@@ -8,6 +8,10 @@ disable-model-invocation: true
 
 Manage git worktrees for isolated per-issue/per-PR work. Three sub-actions, each in its own sibling file.
 
+Before requesting decisions, read
+`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+cross-platform capability-binding rules.
+
 ## Action selection
 
 | User intent | Sibling | Slash command |

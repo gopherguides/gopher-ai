@@ -158,7 +158,8 @@ DOUBLED_TIMEOUT=$(( CODEX_TIMEOUT * 2 ))
 if [ "$DOUBLED_TIMEOUT" -gt 1800 ]; then DOUBLED_TIMEOUT=1800; fi
 ```
 
-Display diff size, timeout used, partial output, stderr. `AskUserQuestion`:
+Display diff size, timeout used, partial output, and stderr. Request a driver
+decision:
 
 | Option | Description |
 |--------|-------------|
@@ -173,7 +174,7 @@ For "Retry": set `CODEX_TIMEOUT=$DOUBLED_TIMEOUT` and re-run. For "Switch to Fab
 
 #### Other non-zero exit codes
 
-Display exit code, stderr, output. `AskUserQuestion`:
+Display exit code, stderr, and output. Request a driver decision:
 
 | Option | Description |
 |--------|-------------|
@@ -184,7 +185,9 @@ Display exit code, stderr, output. `AskUserQuestion`:
 
 #### Invalid JSON
 
-If `codex exec` returns non-JSON or empty output (and exit code 0), do NOT fall through to the free-text clean-review path. Display the raw output (first 500 chars). `AskUserQuestion`:
+If `codex exec` returns non-JSON or empty output (and exit code 0), do NOT fall
+through to the free-text clean-review path. Display the raw output (first 500
+chars), then request a driver decision:
 
 | Option | Description |
 |--------|-------------|
@@ -236,26 +239,25 @@ implementer's assumptions loaded, which is what makes it a genuine second read.
    <contents of $SCHEMA_FILE>
    ```
 
-3. **Dispatch synchronously** via
-   `Agent(prompt=<assembled>, run_in_background=false)`. Do not override the
-   model — it inherits the session's model. Wait for the final response in the
-   current session, capture it as `REVIEW_JSON`, strip any accidental markdown
-   fences, and validate with `jq empty`.
+3. **Delegate synchronously** through the active surface with the assembled
+   prompt. Do not override the model — it inherits the session's model. Wait
+   for the final response in the current session, capture it as `REVIEW_JSON`,
+   strip any accidental markdown fences, and validate with `jq empty`.
 4. **Parse** via the structured-JSON path in 5c — identical handling to codex
    exhaustive (confidence filter, priority sort, de-duplication, state file).
 
 **Error handling:** invalid JSON from the subagent is a review failure — do
 NOT fall through to the free-text clean path. Display the raw output (first
-500 chars), then `AskUserQuestion`: **Retry** / **Debug** (show raw output) /
-**Use agent-based review** / **Abort**.
+500 chars), then request a driver decision: **Retry** / **Debug** (show raw
+output) / **Use agent-based review** / **Abort**.
 
-**Running under Codex CLI (no Agent tool):** never shell out to `claude -p` —
-headless print mode bills metered API usage, not the subscription. Instead
-drive an interactive Claude window via tmux: write the assembled prompt to a
-temp file, then `tmux send-keys -t <claude-window> "Read <prompt-file> and
-follow it; write the JSON result to <result-file>" Enter`, and poll for the
-result file. If no Claude tmux window is available, ask the user via
-`AskUserQuestion` (open one / switch to codex / skip) — never silently switch
+**When native Claude-subagent delegation is unavailable:** never shell out to
+`claude -p` — headless print mode bills metered API usage, not the
+subscription. Instead drive an interactive Claude window via tmux: write the
+assembled prompt to a temp file, then `tmux send-keys -t <claude-window> "Read
+<prompt-file> and follow it; write the JSON result to <result-file>" Enter`,
+and poll for the result file. If no Claude tmux window is available, request a
+driver decision (open one / switch to codex / skip) — never silently switch
 backends.
 
 ### Gemini
@@ -295,8 +297,8 @@ fi
 ```
 
 If model selection exits non-zero or returns an empty model, display
-`OLLAMA_SELECT_STDERR` and `AskUserQuestion` with **Retry** / **Debug / Fix** /
-**Use agent-based review** / **Abort**, using the same outcomes as the
+`OLLAMA_SELECT_STDERR` and request a driver decision with **Retry** / **Debug /
+Fix** / **Use agent-based review** / **Abort**, using the same outcomes as the
 Gemini/Ollama run recovery below. Retry selection; for agent-based review,
 persist `use_agent_review=true` before continuing to that section. Do not
 persist a model or continue to `ollama run` until selection succeeds.
@@ -336,19 +338,20 @@ set -e
 ```
 
 If exit code non-zero or output empty, display diagnostics, including the
-selected Ollama model for an Ollama run failure. `AskUserQuestion` with
+selected Ollama model for an Ollama run failure. Request a driver decision with
 **Retry** / **Debug / Fix** / **Use agent-based review** / **Abort**. Retry the
 same persisted model; do not silently select a different one.
 
-### Agent-based review (only when `USE_AGENT_REVIEW=true`)
+### Delegated agent review (only when `USE_AGENT_REVIEW=true`)
 
 This section runs **ONLY** when the user explicitly chose agent-based review. It NEVER activates automatically.
 
 1. Set `CODEX_EXEC_FALLBACK=true`
 2. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md`. Adapt for the detected project language (replace Go-specific criteria when not a Go project).
 3. Fill template variables: `{WORKTREE_PATH}`, `{CHANGED_FILES}`, `{DIFF}`, `{PATTERNS}` ("Follow existing project conventions"), `{REPO_CONVENTIONS}` (from CLAUDE.md/AGENTS.md if present)
-4. Run `Agent(prompt=<filled>, model=sonnet, run_in_background=false)` and wait
-   for its final response in the current session.
+4. Delegate synchronously through the active surface with the filled prompt,
+   selecting sonnet when the surface supports model choice, and wait for the
+   final response in the current session.
 5. Parse the agent's structured response (skip JSON parsing in 5c):
    - `CLEAN` → `REVIEW_CLEAN=true`, persist, skip Step 6
    - `HAS_FINDINGS` → use FINDINGS section as free-text findings for Step 6

@@ -2,13 +2,16 @@
 name: complete-issue
 description: "Take a GitHub issue from implementation to merged PR. Use for 'complete issue #N', 'finish this issue end-to-end', or fully autonomous issue-to-merge requests. SKIP issue startup without merge intent; use start-issue."
 argument-hint: "<issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "EnterPlanMode", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page", "mcp__chrome-devtools-mcp__fill_form", "mcp__chrome-devtools-mcp__wait_for", "mcp__chrome-devtools-mcp__evaluate_script"]
 disable-model-invocation: true
 ---
 
 # Complete Issue
 
 Autonomous end-to-end pipeline: **issue number in → merged PR out.**
+
+Before requesting decisions, entering a planning workflow, or delegating work,
+read `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+cross-platform capability-binding rules.
 
 Chains the `start-issue` workflow, Codex review, and the `e2e-verify`
 `fix-and-ship` workflow.
@@ -114,7 +117,7 @@ set_loop_phase "$STATE_FILE" "reviewing"
 
 Run an LLM review to catch issues before E2E verification. **CRITICAL: Never silently fall back** — always present the user with options if codex fails.
 
-Agent-backed fallback reviews are session-local and must complete
+Delegated fallback reviews are session-local and must complete
 synchronously. Never dispatch them in the background or persist them for a
 successor session. If a successor re-enters with `phase="reviewing"`, skip the
 expired review and continue to Phase 3; the PR already created in Phase 1 and
@@ -130,7 +133,7 @@ if command -v codex &>/dev/null; then
 fi
 ```
 
-- **If codex is NOT available** OR **if codex exec fails at runtime** → Read `codex-fallback.md` and follow the `AskUserQuestion` flow for the matching scenario. Do NOT silently fall back.
+- **If codex is NOT available** OR **if codex exec fails at runtime** → Read `codex-fallback.md` and follow the driver-decision flow for the matching scenario. Do NOT silently fall back.
 - **If codex IS available** → run codex review on the PR diff with an adaptive timeout, address findings, and commit fixes. See `phases.md` for the full bash (diff sizing, timeout calculation, large-diff warning).
 
 Address findings: for each valid finding, make the fix. Skip false positives or cosmetic-only items. Commit fixes if any changes were made:
@@ -171,10 +174,11 @@ Output `<done>COMPLETE</done>` when ALL of these are true:
 
 **When ALL criteria are met, output exactly:** `<done>COMPLETE</done>`
 
-**Safety:** If 15+ iterations without success, document blockers and ask user.
+**Safety:** If 15+ iterations pass without success, document blockers, request
+driver guidance, and stop without claiming completion until guidance arrives.
 
 ## Further Reading
 
 - `phases.md` — full sub-step lists for Phase 1 (`$start-issue`) and the codex run for Phase 2
 - `loop-state.md` — bootstrap, re-entry, and persist blocks
-- `codex-fallback.md` — `AskUserQuestion` flows for codex unavailable / runtime failure / timeout
+- `codex-fallback.md` — driver-decision flows for codex unavailable / runtime failure / timeout

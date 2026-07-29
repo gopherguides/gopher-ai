@@ -2,11 +2,14 @@
 name: tmux-start
 description: "Start issue work in a new tmux window with its own worktree. Use when the user has tmux running and wants issue startup to continue outside the current session. SKIP when not inside a tmux session ($TMUX unset) or when the user wants to work in the current session; use start-issue directly."
 argument-hint: "<issue-number>"
-allowed-tools: ["Bash(*worktree-state.sh*)", "Bash(*worktree-create.sh*)", "Bash(*tmux-start.sh*)", "Bash(pwd:*)", "Read", "AskUserQuestion"]
 disable-model-invocation: true
 ---
 
 # Start Issue in tmux Window
+
+Before requesting decisions, read
+`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+cross-platform capability-binding rules.
 
 ## Empty Arguments
 
@@ -22,7 +25,8 @@ Claude Code, and sends `/go-workflow:start-issue` automatically.
 **Prerequisites:** running inside a tmux session (`$TMUX` set); `gh`
 authenticated; inside a git repo.
 
-Ask: "What issue number would you like to start in a tmux window?"
+Request the missing issue number from the driver: "What issue number would you
+like to start in a tmux window?" Stop until the answer arrives.
 
 ---
 
@@ -47,9 +51,10 @@ SOURCE_DIR="$(pwd)"
 "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
 ```
 
-If the output starts with `ENV_FILES_FOUND=true`, use `AskUserQuestion`: "Found
-environment files (may contain secrets). Copy them to the new worktree?" with
-**Yes, copy them** / **No, skip**.
+If the output starts with `ENV_FILES_FOUND=true`, request the missing consent
+from the driver: "Found environment files (may contain secrets). Copy them to
+the new worktree?" with **Yes, copy them** / **No, skip**. Stop before copying
+or creating the worktree until the answer arrives.
 
 ## Start tmux Workflow
 

@@ -2,11 +2,14 @@
 name: start-issue
 description: "Start implementation of a GitHub issue: fetch context, prepare worktree flow, implement with TDD, verify, and submit PR. Use for 'start issue #N', issue URLs, or requests to begin issue work. SKIP fully autonomous issue-to-merge requests; use complete-issue."
 argument-hint: "<issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "EnterPlanMode", "Agent"]
 disable-model-invocation: true
 ---
 
 # Start Issue
+
+Before requesting decisions, entering a planning workflow, or delegating work,
+read `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+cross-platform capability-binding rules.
 
 ## Empty Arguments
 
@@ -36,7 +39,8 @@ If `$ARGUMENTS` is empty or not provided, explain:
 > 6. For features: Plan approach → TDD red-green → verify → **coverage check** → security review
 > 7. Commit, push, and create PR
 
-Ask the user: "What issue number would you like to work on?"
+Request the missing issue number from the driver: "What issue number would you
+like to work on?" Stop until the answer arrives.
 
 ---
 
@@ -44,7 +48,7 @@ Ask the user: "What issue number would you like to work on?"
 
 Default orchestrated mode uses model frontmatter from `${CLAUDE_PLUGIN_ROOT}/agents/*.md`:
 
-| Agent | Model policy |
+| Role | Model policy |
 |-------|--------------|
 | Explore | `haiku` |
 | Implementer | `inherit` |
@@ -155,17 +159,17 @@ to "Plan Mode Check" (the "No, work in current directory" path). Display:
 Already running in a worktree — skipping worktree creation.
 ```
 
-**If `IN_WORKTREE=false`:** You MUST use AskUserQuestion NOW before doing
-anything else — including EnterPlanMode.
+**If `IN_WORKTREE=false`:** You MUST request a driver decision NOW before doing
+anything else — including starting the planning workflow.
 
 Do not:
 
-- Call EnterPlanMode yet
+- Start the planning workflow yet
 - Analyze the issue beyond the context already gathered
-- Launch Task or Explore agents
+- Delegate exploration or implementation work
 - Start any implementation work
 
-Use AskUserQuestion with this exact configuration:
+Request a driver decision with this exact configuration:
 
 - **Question:** "Would you like to create a worktree for isolated work on issue #$ISSUE_NUM?"
 - **Options:**
@@ -192,17 +196,17 @@ After the worktree is established, continue to **Plan Mode Check** below.
 Continue to **Step 1: Detect Issue Type** below. You will create a branch in the
 appropriate workflow step.
 
-**Now** call `EnterPlanMode` to create a plan for the implementation (if not
-already in plan mode).
+**Now** use the active surface's planning capability to create a plan for the
+implementation. If no native planning capability is available, write and
+maintain an explicit plan as required by the cross-platform binding rules.
 
 ---
 
 ## Plan Mode Check (AFTER worktree is established)
 
-**Now** call `EnterPlanMode` to create a plan for the implementation.
-
-If you are NOT currently in plan mode (no "Plan mode is active" in your system
-context), call the `EnterPlanMode` tool now.
+**Now** enter the active surface's planning workflow to create a plan for the
+implementation. If no native planning workflow is available, write and
+maintain an explicit plan.
 
 **CRITICAL: When writing your plan, include these facts at the top of the plan
 file:**
@@ -285,9 +289,9 @@ Analyze the issue to determine if it's a **bug fix** or **new feature**.
 - Bug patterns: "fix", "broken", "error", "fail", "crash", "doesn't work", "issue with", "problem", "bug", "regression", "incorrect"
 - Feature patterns: "add", "implement", "create", "new", "support", "enable", "allow", "introduce", "enhance"
 
-**If still uncertain**, ask the user via `AskUserQuestion`: "I couldn't
+**If still uncertain**, request the missing intent from the driver: "I couldn't
 determine if this is a bug fix or new feature. Which workflow should I follow?"
-with options **Bug Fix** / **New Feature**.
+with options **Bug Fix** / **New Feature**. Stop until the answer arrives.
 
 ---
 
@@ -353,7 +357,8 @@ This signals the loop to exit. If you output this prematurely, the issue will
 not be properly resolved.
 
 **Safety note:** If you've iterated 15+ times without success, document what's
-blocking and ask the user.
+blocking, request driver guidance, and stop without claiming completion until
+guidance arrives.
 
 Use extended thinking for complex analysis.
 

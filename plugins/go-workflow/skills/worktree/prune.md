@@ -53,7 +53,8 @@ Display a summary:
 - Worktrees to prune (with issue number and status)
 - Worktrees to keep (with reason)
 
-Ask the user to confirm before removing any worktrees.
+Request explicit confirmation from the driver before removing any worktrees.
+Stop until confirmation arrives.
 
 ### Step 5: Remove Pruneable Worktrees
 

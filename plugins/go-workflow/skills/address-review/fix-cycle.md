@@ -55,7 +55,10 @@ if [ -n "$(git status --porcelain -- "$TARGET_FILE")" ]; then
 fi
 ```
 
-If the guard fails, stop and ask the user to commit, stash, or otherwise separate those changes. Do not edit the path and do not attempt path-level staging, because Git cannot distinguish the pre-existing hunks from the review fix.
+If the guard fails, stop and request the missing intent from the driver:
+commit, stash, or otherwise separate those changes. Do not edit the path and
+do not attempt path-level staging, because Git cannot distinguish the
+pre-existing hunks from the review fix.
 
 ### Parallel Fix Dispatch (when 3+ comments target different files)
 
@@ -63,7 +66,9 @@ When there are 3 or more unresolved comments targeting **different files**, disp
 
 1. **Group comments by file** — comments in the same file are handled by one subagent
 2. **Group by shared test files** — if two source files are in the same package and share a `_test.go`, they must be in the same group to avoid write conflicts
-3. **For each file group**, dispatch an Agent subagent (sonnet) with:
+3. **For each file group**, delegate a fresh-context implementation worker
+   through the active surface, selecting sonnet when the surface supports model
+   choice, with:
    - "You are addressing PR review comments in `{FILE_PATH}`. Working directory: `{PROJECT_ROOT}`."
    - All comments for that file (reviewer text, line number, suggested change)
    - "Before editing, run the pre-existing target changes guard. For each comment: understand the request, locate the code, make the minimal fix, validate against feedback. Report: files changed, fixes applied, testability of each fix."
