@@ -28,6 +28,9 @@ jobs:
       - name: Probe Default-mode shared-skill input behavior
         run: python3 ./scripts/test-codex-default-mode-input.py
 
+      - name: Probe qualified go-workflow skill names
+        run: python3 ./scripts/test-codex-skill-names.py
+
   test-installation:
     runs-on: ubuntu-latest
     steps:

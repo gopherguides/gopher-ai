@@ -21,30 +21,31 @@ The Codex plugin set currently includes `go-workflow`, `go-dev`, `gopher-guides`
 
 ## Workflow Skills (go-workflow plugin)
 
-Invoke explicitly with `$skill-name`:
+Invoke explicitly with `$go-workflow:<skill-name>`. Codex does not resolve bare
+skill names as aliases.
 
 | Skill | Description |
 |-------|-------------|
-| `$start-issue <number>` | Full issue-to-PR workflow: fetch, branch, TDD, verify, submit |
-| `$create-worktree <number>` | Create isolated git worktree for an issue or PR |
-| `$commit` | Auto-generate conventional commit message |
-| `$create-pr` | Create PR following repo template |
-| `$ship` | Ship a PR: verify, push, create PR, watch CI, merge |
-| `$remove-worktree` | Interactively remove a single worktree |
-| `$prune-worktree` | Batch cleanup of completed worktrees |
-| `$review-deep [PR]` | Deep code review with full PR/issue context, then fix findings |
+| `$go-workflow:start-issue <number>` | Full issue-to-PR workflow: fetch, branch, TDD, verify, submit |
+| `$go-workflow:worktree create <number>` | Create isolated git worktree for an issue or PR |
+| `$go-workflow:commit` | Auto-generate conventional commit message |
+| `$go-workflow:create-pr` | Create PR following repo template |
+| `$go-workflow:ship` | Ship a PR: verify, push, create PR, watch CI, merge |
+| `$go-workflow:worktree remove` | Interactively remove a single worktree |
+| `$go-workflow:worktree prune` | Batch cleanup of completed worktrees |
+| `$go-workflow:review-deep [PR]` | Deep code review with full PR/issue context, then fix findings |
 
 ### Example Workflow
 
 ```
-$start-issue 42
+$go-workflow:start-issue 42
 # Codex fetches the issue, creates a worktree, detects bug vs feature,
 # guides you through TDD implementation, verifies, and creates a PR.
 
-$ship
+$go-workflow:ship
 # Verifies build/tests/lint, pushes, watches CI, and merges.
 
-$prune-worktree
+$go-workflow:worktree prune
 # Cleans up worktrees for closed issues.
 ```
 

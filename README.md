@@ -149,7 +149,7 @@ Workflow skill invocation modes:
 | Slash-only | `start-issue`, `address-review`, `worktree` (`/create-worktree`, `/remove-worktree`, `/prune-worktree`), `e2e-verify`, `ship`, `complete-issue`, `tmux-start` |
 | Auto-triggerable | `commit`, `create-pr`, `review-deep` |
 
-Slash-only skills require explicit invocation, and their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$<skill>` in Codex. In Claude Code, type the slash command directly; `$start-issue` is Codex syntax and causes a blocked Skill-tool invocation. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
+Slash-only skills require explicit invocation, and their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$go-workflow:<skill>` in Codex. Codex requires the qualified plugin name; bare skill names are not resolver aliases. In Claude Code, type the slash command directly; `$go-workflow:start-issue` is Codex syntax and causes a blocked Skill-tool invocation. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
 
 The `start-issue` skill handles the full issue-to-PR workflow:
 1. Fetches issue details including all comments
@@ -324,14 +324,14 @@ To migrate manually: `./scripts/install-codex.sh --user` (refresh the marketplac
 **Workflow skills** (from `go-workflow` plugin):
 
 ```
-$start-issue 42    # Full issue-to-PR workflow
-$review-deep       # Deep review with full PR/issue context + fix
-$create-worktree 42  # Create isolated worktree
-$commit            # Auto-generate commit message
-$create-pr         # Create PR with template
-$ship              # Verify, push, CI watch, merge
-$remove-worktree   # Remove a single worktree
-$prune-worktree    # Batch cleanup completed worktrees
+$go-workflow:start-issue 42     # Full issue-to-PR workflow
+$go-workflow:review-deep        # Deep review with full PR/issue context + fix
+$go-workflow:worktree create 42 # Create isolated worktree
+$go-workflow:commit             # Auto-generate commit message
+$go-workflow:create-pr          # Create PR with template
+$go-workflow:ship               # Verify, push, CI watch, merge
+$go-workflow:worktree remove    # Remove a single worktree
+$go-workflow:worktree prune     # Batch cleanup completed worktrees
 ```
 
 ### Google Gemini CLI
