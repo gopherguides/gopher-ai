@@ -171,13 +171,16 @@ fi
 
 echo -n "Universal archives use the configured temp directory... "
 : > "$ARCHIVE_MKTEMP_LOG"
-if ! PATH="$ARCHIVE_MKTEMP_BIN:$PATH" \
-  GOPHER_AI_MKTEMP_LOG="$ARCHIVE_MKTEMP_LOG" \
-  GOPHER_AI_REAL_MKTEMP="$ARCHIVE_REAL_MKTEMP" \
-  TMPDIR="$ARCHIVE_TEMP_DIR" \
-  TMP="$ARCHIVE_TEMP_TEST_ROOT/unused-tmp" \
-  TEMP="$ARCHIVE_TEMP_TEST_ROOT/unused-temp" \
-  "$ROOT_DIR/scripts/build-universal.sh" >"$ARCHIVE_TEMP_TEST_ROOT/build.log" 2>&1; then
+if ! (
+  cd "$ARCHIVE_TEMP_TEST_ROOT"
+  PATH="$ARCHIVE_MKTEMP_BIN:$PATH" \
+    GOPHER_AI_MKTEMP_LOG="$ARCHIVE_MKTEMP_LOG" \
+    GOPHER_AI_REAL_MKTEMP="$ARCHIVE_REAL_MKTEMP" \
+    TMPDIR="configured" \
+    TMP="$ARCHIVE_TEMP_TEST_ROOT/unused-tmp" \
+    TEMP="$ARCHIVE_TEMP_TEST_ROOT/unused-temp" \
+    "$ROOT_DIR/scripts/build-universal.sh" >"$ARCHIVE_TEMP_TEST_ROOT/build.log" 2>&1
+); then
   echo "FAIL (build failed)"
   sed -n '1,120p' "$ARCHIVE_TEMP_TEST_ROOT/build.log"
   ERRORS=$((ERRORS + 1))

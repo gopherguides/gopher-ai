@@ -512,6 +512,9 @@ create_archive() {
     local member_list
     local tar_owner_args
 
+    if [[ "$temp_base" != /* ]]; then
+        temp_base="$PWD/$temp_base"
+    fi
     if ! member_list=$(mktemp "${temp_base%/}/gopher-ai-archive-members.XXXXXX"); then
         echo "error: failed to allocate archive member list in $temp_base" >&2
         return 1
