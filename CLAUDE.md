@@ -40,7 +40,15 @@ plugins/
 **Skills** (`skills/*/SKILL.md`): Auto-invoked behaviors with YAML frontmatter specifying:
 - `description`: WHEN/WHEN NOT conditions for activation
 
-**MCP Servers**: Defined in `plugin.json` under `mcpServers` key, specifying command, args, and environment variables.
+**MCP Servers** use platform-specific manifest paths:
+- Claude Code reads the `mcpServers` object embedded in
+  `plugins/<name>/.claude-plugin/plugin.json`.
+- Codex reads `plugins/<name>/.codex-plugin/plugin.json`, whose `mcpServers`
+  field points to the plugin-root `.mcp.json`.
+- Gemini has no checked-in extension manifest. `scripts/build-universal.sh`
+  copies the plugin-root `.mcp.json` into the generated
+  `gemini-extension.json`; plugins without that file receive an empty
+  `mcpServers` object.
 
 ## Key Workflows
 
