@@ -197,6 +197,72 @@ require_text "$RESUME_MESSAGES" "Do not start another review.*Commit the validat
 require_text "$COMPLETE_ISSUE" '`reviewing` → Phase 3' \
   "complete-issue must not resume an expired agent review"
 
+CI_SHIFT_BLOCK=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-ci-shift-XXXXXX")
+DIRTY_HEAD_SHIFT_TMP=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-dirty-head-shift-XXXXXX")
+awk '
+  /^## 10d\./ { section=1 }
+  section && /^```bash$/ { block=1; next }
+  block && /^```$/ { exit }
+  block { print }
+' "$CI_WATCH" > "$CI_SHIFT_BLOCK"
+
+git -C "$DIRTY_HEAD_SHIFT_TMP" init -q -b fixture
+git -C "$DIRTY_HEAD_SHIFT_TMP" config user.name "Test User"
+git -C "$DIRTY_HEAD_SHIFT_TMP" config user.email "test@example.com"
+printf '%s\n' "clean" > "$DIRTY_HEAD_SHIFT_TMP/tracked.txt"
+git -C "$DIRTY_HEAD_SHIFT_TMP" add tracked.txt
+git -C "$DIRTY_HEAD_SHIFT_TMP" commit -q -m "test: initialize fixture"
+printf '%s\n' "dirty" >> "$DIRTY_HEAD_SHIFT_TMP/tracked.txt"
+mkdir -p "$DIRTY_HEAD_SHIFT_TMP/.local/state"
+printf '%s\n' '{"phase":"ci-watch"}' > "$DIRTY_HEAD_SHIFT_TMP/.local/state/ship.loop.local.json"
+
+set +e
+DIRTY_HEAD_SHIFT_OUTPUT=$(cd "$DIRTY_HEAD_SHIFT_TMP" && \
+  RESET_MARKER="$DIRTY_HEAD_SHIFT_TMP/reset-attempted" bash -c '
+    gh() {
+      if [[ "$*" == *"headRefOid"* ]]; then
+        printf "%s\n" "new-sha"
+      elif [[ "$*" == *"headRefName"* ]]; then
+        printf "%s\n" "fixture"
+      fi
+    }
+    git() {
+      if [ "$1" = "fetch" ] || [ "$1" = "checkout" ]; then
+        return 0
+      fi
+      if [ "$1" = "reset" ]; then
+        printf "%s\n" "reset" > "$RESET_MARKER"
+        return 0
+      fi
+      command git "$@"
+    }
+    HEAD_SHA="old-sha"
+    PR_NUM=1
+    source "$1"
+  ' _ "$CI_SHIFT_BLOCK" 2>&1)
+DIRTY_HEAD_SHIFT_STATUS=$?
+set -e
+
+if [ "$DIRTY_HEAD_SHIFT_STATUS" -ne 1 ]; then
+  fail "dirty-tree head-shift recovery must return a blocking status"
+fi
+if [[ "$DIRTY_HEAD_SHIFT_OUTPUT" != *"working tree has uncommitted changes"* ]] || \
+   [[ "$DIRTY_HEAD_SHIFT_OUTPUT" != *"Commit them before shipping, or abort?"* ]]; then
+  fail "dirty-tree head-shift recovery must surface ship's dirty-tree policy"
+fi
+if [ -f "$DIRTY_HEAD_SHIFT_TMP/reset-attempted" ]; then
+  fail "dirty-tree head-shift recovery must stop before reset"
+fi
+if git -C "$DIRTY_HEAD_SHIFT_TMP" diff --quiet; then
+  fail "dirty-tree head-shift recovery must preserve local changes"
+fi
+if ! jq -e '.phase == "ci-watch"' "$DIRTY_HEAD_SHIFT_TMP/.local/state/ship.loop.local.json" >/dev/null; then
+  fail "dirty-tree head-shift recovery must not advance the ship phase"
+fi
+
+rm -f "$CI_SHIFT_BLOCK"
+rm -rf "$DIRTY_HEAD_SHIFT_TMP"
+
 HEADLESS_TMP=$(mktemp -d /tmp/ship-headless-e2e-XXXXXX)
 mkdir -p "$HEADLESS_TMP/.local/state" "$HEADLESS_TMP/hooks" "$HEADLESS_TMP/lib"
 cp "$STOP_HOOK" "$HEADLESS_TMP/hooks/stop-hook.sh"

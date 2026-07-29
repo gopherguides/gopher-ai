@@ -60,6 +60,11 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   echo "STOP: PR head shifted to SHA $FINAL_SHA during watch (expected $HEAD_SHA)."
   echo "A new commit landed on this PR that was NOT reviewed locally."
   echo "Restarting from review phase against the new HEAD."
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "BLOCKED: PR head shifted, but the working tree has uncommitted changes."
+    echo "Commit them before shipping, or abort?"
+    exit 1
+  fi
   HEAD_SHA="$FINAL_SHA"
   BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote" 2>/dev/null || echo "origin")
   PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
@@ -73,6 +78,10 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   # Go back to Step 5, which marks the review in-flight before dispatch.
 fi
 ```
+
+The dirty-tree check reapplies Step 3's policy during recovery. Treat its
+non-zero exit as blocking: stop, surface the commit-or-abort choice to the user,
+and do not fetch, check out, or reset until the working tree is clean.
 
 The reset on SHA shift is critical: if a concurrent push lands content that
 wasn't reviewed locally, we MUST re-review it. The pass counter is reset to
