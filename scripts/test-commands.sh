@@ -239,6 +239,12 @@ fi
 
 echo -n "Go-workflow stages only phase-owned files... "
 COMPLETE_ISSUE_PHASES="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/phases.md"
+COMPLETE_ISSUE_SKILL_INDEX_GUARDS=$(awk \
+  '/^[[:space:]]*if ! git diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
+  "$COMPLETE_ISSUE_SKILL")
+COMPLETE_ISSUE_PHASE_INDEX_GUARDS=$(awk \
+  '/^[[:space:]]*if ! git diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
+  "$COMPLETE_ISSUE_PHASES")
 LIVE_BROAD_STAGING=$(rg -n '^[[:space:]]*git add -A([[:space:]]|$)' \
   "$GO_WORKFLOW_SKILLS" "$GO_WORKFLOW_LIB" || true)
 if [ -n "$LIVE_BROAD_STAGING" ]; then
@@ -248,6 +254,10 @@ if [ -n "$LIVE_BROAD_STAGING" ]; then
 elif ! file_contains 'git add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_SKILL" ||
      ! file_contains 'git add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_PHASES"; then
   echo "FAIL (complete-issue review-owned staging command missing)"
+  ERRORS=$((ERRORS + 1))
+elif [ "$COMPLETE_ISSUE_SKILL_INDEX_GUARDS" -ne 2 ] ||
+     [ "$COMPLETE_ISSUE_PHASE_INDEX_GUARDS" -ne 2 ]; then
+  echo "FAIL (complete-issue staged-diff commit guard missing)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"

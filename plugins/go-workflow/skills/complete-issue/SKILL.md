@@ -165,8 +165,10 @@ REVIEW_FILES=(
 )
 if [ "${#REVIEW_FILES[@]}" -gt 0 ]; then
   git add -- "${REVIEW_FILES[@]}"
-  git commit -m "fix: address codex review findings"
-  git push
+  if ! git diff --cached --quiet; then
+    git commit -m "fix: address codex review findings"
+    git push
+  fi
 fi
 ```
 
