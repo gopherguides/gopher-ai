@@ -35,7 +35,7 @@ Or install via marketplace:
 | Slash-only | `start-issue`, `address-review`, `worktree` (`/create-worktree`, `/remove-worktree`, `/prune-worktree`), `e2e-verify`, `ship`, `complete-issue`, `tmux-start` |
 | Auto-triggerable | `commit`, `create-pr`, `review-deep` |
 
-Slash-only skills still run through their slash commands, but their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$<skill>` in Codex. In Claude Code, type the slash command directly; `$start-issue` is Codex syntax and causes a blocked Skill-tool invocation. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
+Slash-only skills still run through their slash commands, but their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$go-workflow:<skill>` in Codex. Codex requires the qualified plugin name; bare skill names are not resolver aliases. In Claude Code, type the slash command directly; `$go-workflow:start-issue` is Codex syntax and causes a blocked Skill-tool invocation. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
 
 ## Workflows
 
@@ -63,20 +63,22 @@ rolling model aliases in agent prompt frontmatter:
 | Spec Review | Sonnet |
 | Quality Review | Sonnet |
 
-Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before running `$start-issue` or
-`$complete-issue` to override all subagent models for that run. Use
+Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before running
+`$go-workflow:start-issue` or `$go-workflow:complete-issue` to override all
+subagent models for that run. Use
 `--no-agents` to switch to the single-session workflow.
 
 #### Codex Model Defaults
 
-The `$ship` and `$complete-issue` Codex review stages omit model flags by
-default. A `model = "..."` pin in `~/.codex/config.toml` overrides the provider
-default for those stages; leaving it unset lets the Codex CLI use its latest
-recommended model automatically.
+The `$go-workflow:ship` and `$go-workflow:complete-issue` Codex review stages
+omit model flags by default. A `model = "..."` pin in `~/.codex/config.toml`
+overrides the provider default for those stages; leaving it unset lets the
+Codex CLI use its latest recommended model automatically.
 
 ### Address Review
 
-The `$address-review` skill handles PR review feedback automatically:
+The `$go-workflow:address-review` skill handles PR review feedback
+automatically:
 
 1. **Fetches all feedback** - Review threads (line comments) and pending reviews
 2. **Addresses each comment** - Makes code fixes based on feedback
