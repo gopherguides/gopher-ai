@@ -9,7 +9,7 @@ gopher-ai is a Claude Code plugin marketplace providing Go-focused development t
 - **go-workflow**: Issue-to-PR workflow automation with git worktree management
 - **go-dev**: Go-specific development tools (test generation, linting, code explanation)
 - **productivity**: Git activity reports (standup, weekly summaries, changelogs, releases)
-- **gopher-guides**: MCP integration with Gopher Guides training materials
+- **gopher-guides**: REST API integration with Gopher Guides training materials
 - **llm-tools**: Multi-LLM utilities (Ollama, Gemini, Codex delegation, comparisons)
 - **go-web**: Go web project scaffolding and templUI integration
 - **tailwind**: Tailwind CSS v4 migration and optimization tools
@@ -76,7 +76,7 @@ The `shared/` directory contains code used by multiple plugins:
 - **SessionStart hook** (`codex-cleanup-on-start.sh`): Auto-removes legacy gopher-ai skill files left in `~/.codex/skills/` from older `--user` installs. Gated by a per-version marker file (`~/.codex/.gopher-ai-cleanup-<version>`) so it's nearly free on subsequent sessions. Reads the shipped manifest at `hooks/legacy-skill-hashes.txt` (kept in sync with `scripts/legacy-skill-hashes.txt` by `regen-legacy-hashes.sh`). Removal requires three checks: matching skill name, matching frontmatter `name:`, and matching SKILL.md sha256 in the manifest — false positives are essentially impossible.
 - **Stop hook** (`stop-hook.sh`): Persistent loop management for `start-issue` style workflows
 - **PreToolUse hook** (`pre-tool-use.sh`): Validates environment, tools, and git state before tool execution:
-  - Checks for required env vars (GOPHER_GUIDES_API_KEY, GITHUB_TOKEN, OPENAI_API_KEY) contextually
+  - Checks for required env vars (GITHUB_TOKEN, OPENAI_API_KEY) contextually
   - Blocks execution if required tools are missing (golangci-lint, templ, gh, node)
   - Warns on uncommitted changes before tests; blocks releases with dirty git state
 - **PostToolUse hook** (`post-tool-use.sh`): Error detection and auto-retry after tool execution:
@@ -93,7 +93,7 @@ The `shared/` directory contains code used by multiple plugins:
 
 ## Environment Requirements
 
-- **GOPHER_GUIDES_API_KEY**: Required for gopher-guides MCP server
+- **GOPHER_GUIDES_API_KEY**: Required for Gopher Guides REST API requests
 - **gh CLI**: GitHub CLI for issue/PR operations
 - **golangci-lint**: For lint-fix command
 - **jq**: Required for `/release` command

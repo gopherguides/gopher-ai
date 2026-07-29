@@ -15,9 +15,6 @@ TOOL_INPUT=$(echo "$HOOK_INPUT" | jq -r '.tool_input // empty' 2>/dev/null)
 check_env_vars() {
   local missing=()
   case "$TOOL_NAME" in
-    mcp__gopher-guides__*)
-      [ -z "${GOPHER_GUIDES_API_KEY:-}" ] && missing+=("GOPHER_GUIDES_API_KEY")
-      ;;
     *)
       [ -z "${GITHUB_TOKEN:-}" ] && [ -z "${GH_TOKEN:-}" ] && {
         if echo "$TOOL_INPUT" | grep -qiE 'github|gh |pull.request|issue' 2>/dev/null; then
