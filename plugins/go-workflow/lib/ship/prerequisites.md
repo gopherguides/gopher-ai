@@ -1,8 +1,8 @@
 # Ship — Step 4 Prerequisite Diagnostics
 
 Loaded by `skills/ship/SKILL.md` Step 4 when the selected LLM CLI is not
-available. Print diagnostics, persist failure, then route the user via
-the shared driver-decision protocol.
+available. Print diagnostics, persist failure, then resolve the backend gate
+from explicit intent and available review capabilities.
 
 ## Detect LLM CLI
 
@@ -28,7 +28,7 @@ the review to a Claude subagent (subscription-billed). When that delegation
 capability is unavailable, **never shell out to `claude -p`** (headless print
 mode bills metered API usage, not the subscription); use the tmux-driven
 interactive Claude window path described in `local-review.md`. If neither is
-available, present the driver decision below.
+available, apply the recovery policy below.
 
 ## Diagnostic Output
 
@@ -54,30 +54,18 @@ TMP="$STATE_FILE.tmp"
 jq '.llm_check_failed = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
-## Driver Decision
+## Recovery policy
 
-> **"`$LLM_CHOICE` CLI not found. How would you like to proceed?"**
-
-| Option | Description |
-|--------|-------------|
-| **Retry** | Check again (after you install or fix `$LLM_CHOICE`) |
-| **Debug / Install instructions** | Show install steps and help troubleshoot |
-| **Use agent-based review** | Fall back to Claude agent review (no external LLM) |
-| **Abort** | Stop the `$ship` workflow entirely |
-
-### Retry
-
-Re-run `command -v` from above. On success:
+First re-run detection once after printing diagnostics. On success:
 
 ```bash
 TMP="$STATE_FILE.tmp"
 jq 'del(.llm_check_failed)' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
-Set `LLM_AVAILABLE=true` and continue to Step 5. If still failing, present
-options again.
+Set `LLM_AVAILABLE=true` and continue to Step 5.
 
-### Debug / Install instructions
+When the backend remains unavailable, display relevant install guidance:
 
 Display:
 
@@ -85,12 +73,21 @@ Display:
 - **gemini:** `npm install -g @google/gemini-cli`
 - **ollama:** `brew install ollama && ollama serve`
 
-After the user says they've fixed it, re-run detection. If still fails,
-present options again.
+Then classify the decision:
 
-### Use agent-based review
+- If `LLM_EXPLICIT=true`, replacing the backend is a **missing-intent gate**.
+  Request whether to retry the selected backend or replace it. If structured
+  input is unavailable, ask in the final response and stop without advancing
+  the phase or claiming completion.
+- If `LLM_EXPLICIT=false`, resolve a **driver-resolvable gate**. Select the first
+  usable independent path in this order: native Fable delegation, installed
+  Gemini, installed Ollama with a model, then agent-based review. State
+  `Decision`, `Evidence`, and `Rationale`.
+- If no review path is usable, stop incomplete with
+  `WORKFLOW_REASON=review-backend-unavailable`.
 
-Set `USE_AGENT_REVIEW=true` and `CODEX_EXEC_FALLBACK=true`, persist:
+When the selected path is agent-based review, set `USE_AGENT_REVIEW=true` and
+`CODEX_EXEC_FALLBACK=true`, then persist:
 
 ```bash
 TMP="$STATE_FILE.tmp"
@@ -99,11 +96,3 @@ jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE
 
 Continue to Step 5 — Phase 1 will route through the agent-based review
 section in `local-review.md`.
-
-### Abort
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
-```
-
-Stop. Do NOT output `<done>SHIPPED</done>`.

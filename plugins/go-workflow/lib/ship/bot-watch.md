@@ -58,11 +58,16 @@ Match both `BOT_AUTHORS` and `CHECK_BOTS` against the bot registry.
 
 ## No bots detected yet
 
-This may be because async bots haven't posted their first review. If `BOT_REVIEW_BASELINE` was captured less than 2 minutes ago, request a driver decision:
+This may be because async bots have not posted their first review. Resolve this
+as a **driver-resolvable gate**:
 
-> "No review bots detected yet. The push was recent — bots may still be starting. Wait for bots to respond, or proceed to merge without bot review?"
+1. If `BOT_REVIEW_BASELINE` is less than 2 minutes old, wait until the baseline
+   is at least 2 minutes old, polling every 30 seconds.
+2. Poll up to 3 additional times at 30-second intervals.
+3. If no registered bot appears, state `Decision`, `Evidence`, and `Rationale`,
+   record that no review bot is configured for this PR, and proceed to Step 13.
 
-If the user chooses to wait, poll up to 3 times (30s apart). If still no bots after retries → proceed to Step 13 (merging).
+Do not request input for this bounded observation.
 
 ## Persist discovered bots
 
@@ -80,4 +85,5 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/watch-loop.md` and follow Step
 
 - **All bots approved** → proceed to Step 13 (merging)
 - **New comments / `CHANGES_REQUESTED`** → go to Step 12 (address feedback)
-- **Timeout (5 min)** → request a driver decision
+- **Timeout (5 min)** → apply the deterministic re-trigger or incomplete
+  outcome from `watch-loop.md`

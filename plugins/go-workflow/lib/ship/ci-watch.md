@@ -99,7 +99,7 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   echo "Restarting from review phase against the new HEAD."
   if [ -n "$(git status --porcelain)" ]; then
     echo "BLOCKED: PR head shifted, but the working tree has uncommitted changes."
-    echo "Commit them before shipping, or abort?"
+    echo "Inspect ownership before synchronization; never overwrite unrelated work."
     exit 1
   fi
   HEAD_SHA="$FINAL_SHA"
@@ -116,9 +116,12 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
 fi
 ```
 
-The dirty-tree check reapplies Step 3's policy during recovery. Treat its
-non-zero exit as blocking: stop, surface the commit-or-abort choice to the user,
-and do not fetch, check out, or reset until the working tree is clean.
+The dirty-tree check reapplies Step 3's driver-resolvable ownership policy
+during recovery. Inspect the diff and original workflow scope. Commit only
+validated workflow-owned changes; preserve unrelated changes and stop
+incomplete with `WORKFLOW_REASON=dirty-worktree-head-shift` when they prevent
+safe synchronization. State `Decision`, `Evidence`, and `Rationale`. Do not
+fetch, check out, or reset until the working tree is clean.
 
 The reset on SHA shift is critical: if a concurrent push lands content that
 wasn't reviewed locally, we MUST re-review it. The pass counter is reset to

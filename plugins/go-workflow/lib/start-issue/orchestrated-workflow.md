@@ -37,8 +37,25 @@ If issue is a **bug**:
 gh issue list --state all --limit 50 --search "<key terms from title/body>"
 ```
 
-If potential duplicates are found, present them and request a driver decision
-on how to proceed (Continue / Skip / Link).
+If potential duplicates are found, resolve a **driver-resolvable gate**:
+
+- If an issue describes the same observable defect and already has an active
+  implementation, stop duplicate implementation and link the issues with
+  `WORKFLOW_REASON=duplicate-active-implementation`.
+- If an issue is closed with a merged fix, verify whether the reported behavior
+  still reproduces. Continue only for a verified regression; otherwise stop
+  with `WORKFLOW_REASON=duplicate-already-resolved`.
+- If the overlap is partial or the acceptance criteria differ, continue and
+  link the related issue for context.
+
+State `Decision`, `Evidence`, and `Rationale`. Do not request input merely
+because search returned similar issues.
+
+For either terminal duplicate outcome, persist `workflow_result=incomplete`,
+the supplied `workflow_reason`, phase `incomplete`, and completion promise
+`INCOMPLETE` in the active start-issue loop state. Output
+`<done>INCOMPLETE</done>` and stop without an implementation or completion
+claim.
 
 ## Step 2: Create Branch (skip if worktree was created)
 
@@ -81,7 +98,12 @@ Using the Explore results, propose 2-3 approaches with concrete trade-offs:
 
 **For trivial features** (single function, obvious implementation): state your plan and proceed unless the user objects.
 
-**For non-trivial features** (new package, API changes, data model changes): present approaches and recommend one. Use your judgment on whether to wait for an explicit reply — if the change is risky, irreversible, or you're genuinely uncertain which approach the user wants, ask. Otherwise, state the recommended plan and proceed unless the user objects.
+**For non-trivial features** (new package, API changes, data model changes):
+present approaches and recommend one. Choose and proceed when repository
+patterns, requirements, reversibility, and risk identify a best approach; state
+`Decision`, `Evidence`, and `Rationale`. If approaches produce materially
+different product behavior and the issue does not specify which behavior is
+correct, follow the shared **missing-intent gate** and stop before implementation.
 
 ## Step 5: Work Decomposition
 
@@ -130,7 +152,7 @@ For each task, read `${CLAUDE_PLUGIN_ROOT}/agents/implementer-prompt.md` and fil
 | DONE | Continue to next task or review phase |
 | DONE_WITH_CONCERNS | Evaluate concerns — fix correctness issues before proceeding |
 | NEEDS_CONTEXT | Supply the requested information, re-dispatch the implementer |
-| BLOCKED | Present blockers and request a driver decision |
+| BLOCKED | Inspect the requested context and available evidence. Supply technical context and re-dispatch when possible; if product intent or acceptance criteria are genuinely missing, follow the shared missing-intent gate; otherwise record the technical blocker and stop. |
 
 ## Step 7: Spec Compliance Review
 
@@ -213,7 +235,7 @@ Before submitting, scan for security issues in changed files:
 3. **Check for PR template** — look in these locations (in order):
    - `.github/pull_request_template.md`
    - `.github/PULL_REQUEST_TEMPLATE.md`
-   - `.github/PULL_REQUEST_TEMPLATE/` (directory with multiple templates — list and request a driver selection)
+   - `.github/PULL_REQUEST_TEMPLATE/` (directory with multiple templates — apply the template-selection policy below)
    - `docs/pull_request_template.md`
    - `docs/PULL_REQUEST_TEMPLATE/` (directory with multiple templates)
    - `pull_request_template.md` (repo root)
@@ -236,6 +258,12 @@ Before submitting, scan for security issues in changed files:
    EOF
    `"
    ```
+
+When multiple templates exist, resolve a **driver-resolvable gate**. Prefer an
+explicit repository configuration or a template whose name and required
+sections match the change type. Otherwise choose the general-purpose template,
+or the first lexical template when all candidates are equally general. State
+`Decision`, `Evidence`, and `Rationale`; do not request input.
 
 ## Step 12: Watch CI
 

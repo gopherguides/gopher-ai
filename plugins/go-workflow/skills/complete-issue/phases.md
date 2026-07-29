@@ -9,10 +9,10 @@ user-only `e2e-verify` workflow directly, so it has no extra detail here.
 The `start-issue` workflow runs with `$ISSUE_NUM $FLAGS` as its arguments:
 
 1. Fetch issue details
-2. Create worktree (if user chooses)
+2. Resolve worktree placement from isolation evidence
 3. Detect issue type (bug/feature)
 4. Explore codebase
-5. Design approach (features: get user approval)
+5. Design approach (features: driver selects from evidence; missing product intent stops)
 6. TDD implementation
 7. Verify (build, test, lint)
 8. Coverage check
@@ -57,9 +57,10 @@ its recommended default.
 
 Read `../../lib/review-planning.md`, run the shared planner, display the coverage
 plan, and execute every unit plus the coordinator pass. Partition sequentially
-when the selected fallback lacks concurrent agents. Ask only when the planner
-reports that reliable coverage is unavailable or a material scope choice is
-required; do not stop solely because the raw diff is large.
+when the selected fallback lacks concurrent agents. Apply the shared review
+planning decision policy when reliable coverage needs more partitions or an
+unpinned backend change. Missing product intent or replacement of an explicitly
+required backend stops at the missing-intent gate; raw diff size alone does not.
 
 Any runtime failure (non-zero exit, timeout, no output) → see `codex-fallback.md`.
 

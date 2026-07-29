@@ -13,6 +13,9 @@ Before requesting decisions, entering a planning workflow, or delegating work,
 read `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
+Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
+choice.
+
 Chains the `start-issue` workflow, Codex review, and the `e2e-verify`
 `fix-and-ship` workflow.
 
@@ -50,14 +53,16 @@ for arg in $ARGUMENTS; do
 done
 
 if [ -z "$ISSUE_NUM" ]; then
-  echo "Error: Issue number is required."
   echo "Claude Code: /go-workflow:complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
   echo "Codex: \$complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
-  exit 1
 fi
 
 echo "Issue: $ISSUE_NUM | Flags: $FLAGS"
 ```
+
+If `ISSUE_NUM` is empty, this is a **missing-intent gate**. Request the issue
+number through native structured input when available; otherwise ask in the
+final response and stop before loop initialization or a completion claim.
 
 ## Loop Initialization & Re-entry
 
@@ -115,7 +120,9 @@ echo "PR #$PR_NUM created"
 set_loop_phase "$STATE_FILE" "reviewing"
 ```
 
-Run an LLM review to catch issues before E2E verification. **CRITICAL: Never silently fall back** — always present the user with options if codex fails.
+Run an LLM review to catch issues before E2E verification. Never silently skip
+review. Resolve unpinned backend recovery from diagnostics; replacing a backend
+the user explicitly required is a missing-intent gate.
 
 Delegated fallback reviews are session-local and must complete
 synchronously. Never dispatch them in the background or persist them for a
@@ -133,7 +140,8 @@ if command -v codex &>/dev/null; then
 fi
 ```
 
-- **If codex is NOT available** OR **if codex exec fails at runtime** → Read `codex-fallback.md` and follow the driver-decision flow for the matching scenario. Do NOT silently fall back.
+- **If codex is NOT available** OR **if codex exec fails at runtime** → Read
+  `codex-fallback.md` and follow its evidence-based recovery order.
 - **If codex IS available** → run codex review on the PR diff with an adaptive timeout, address findings, and commit fixes. See `phases.md` for the full bash (diff sizing, timeout calculation, large-diff warning).
 
 Address findings: for each valid finding, make the fix. Skip false positives or cosmetic-only items. Commit fixes if any changes were made:
@@ -166,7 +174,9 @@ Output `<done>COMPLETE</done>` when ALL of these are true:
 
 1. Issue implemented with tests
 2. PR created and pushed
-3. Codex review completed and findings addressed
+3. Codex review completed and findings addressed, or an expired session-local
+   review is durably recorded as void and the exact current head passes the
+   downstream CI gates. An ordinary timeout or fallback failure does not count.
 4. E2E verification completed
 5. Results posted to PR
 6. CI passes
@@ -174,11 +184,11 @@ Output `<done>COMPLETE</done>` when ALL of these are true:
 
 **When ALL criteria are met, output exactly:** `<done>COMPLETE</done>`
 
-**Safety:** If 15+ iterations pass without success, document blockers, request
-driver guidance, and stop without claiming completion until guidance arrives.
+**Safety:** If 15+ iterations complete without success, document the blocking
+evidence and stop incomplete. Do not bypass a completion criterion.
 
 ## Further Reading
 
 - `phases.md` — full sub-step lists for Phase 1 (`$start-issue`) and the codex run for Phase 2
 - `loop-state.md` — bootstrap, re-entry, and persist blocks
-- `codex-fallback.md` — driver-decision flows for codex unavailable / runtime failure / timeout
+- `codex-fallback.md` — evidence-based recovery for codex unavailable / runtime failure / timeout

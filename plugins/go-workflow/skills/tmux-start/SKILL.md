@@ -11,6 +11,9 @@ Before requesting decisions, read
 `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
+Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving target or
+secret-copy intent.
+
 ## Empty Arguments
 
 If `$ARGUMENTS` is empty or not provided, explain:
@@ -25,8 +28,9 @@ Claude Code, and sends `/go-workflow:start-issue` automatically.
 **Prerequisites:** running inside a tmux session (`$TMUX` set); `gh`
 authenticated; inside a git repo.
 
-Request the missing issue number from the driver: "What issue number would you
-like to start in a tmux window?" Stop until the answer arrives.
+This is a **missing-intent gate**. Request: "What issue number should I start in
+a tmux window?" If structured input is unavailable, ask in the final response
+and stop before creating a worktree or tmux window.
 
 ---
 
@@ -51,14 +55,14 @@ SOURCE_DIR="$(pwd)"
 "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
 ```
 
-If the output starts with `ENV_FILES_FOUND=true`, request the missing consent
-from the driver: "Found environment files (may contain secrets). Copy them to
-the new worktree?" with **Yes, copy them** / **No, skip**. Stop before copying
-or creating the worktree until the answer arrives.
+If the output starts with `ENV_FILES_FOUND=true`, follow the shared
+**missing-intent gate**. Request explicit consent: "Found environment files
+that may contain secrets. Copy them to the new worktree?" Stop before worktree
+or tmux creation when structured input is unavailable.
 
 ## Start tmux Workflow
 
-If the user chose to copy env files:
+If copying environment files was explicitly authorized:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$ARGUMENTS" --copy-env

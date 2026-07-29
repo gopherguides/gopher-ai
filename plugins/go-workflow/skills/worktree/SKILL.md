@@ -12,6 +12,9 @@ Before requesting decisions, read
 `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
+Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving action,
+target, consent, or cleanup choices.
+
 ## Action selection
 
 | User intent | Sibling | Slash command |
@@ -21,6 +24,10 @@ cross-platform capability-binding rules.
 | Batch-clean all completed worktrees | `prune.md` | `/prune-worktree` |
 
 Match the user's request to one of the three rows, then read the corresponding sibling for the full procedure.
+
+If the request does not identify one action, follow the shared
+**missing-intent gate**. Request create, remove, or prune intent and stop before
+mutating worktrees.
 
 ## Conventions (apply to all three actions)
 

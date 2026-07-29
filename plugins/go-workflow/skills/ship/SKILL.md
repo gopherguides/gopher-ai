@@ -11,6 +11,9 @@ Before requesting decisions or delegating work, read
 `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
+Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
+choice.
+
 ## GraphQL Budget Discipline (read first)
 
 GitHub meters **two separate** hourly budgets: ~5,000 **GraphQL points/hr** and
@@ -78,7 +81,9 @@ Parse `$ARGUMENTS` to extract:
 - `--tier <value>`: gemini service tier (`flex`/`standard`/`priority`; gemini only; default: unset)
 
 Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`,
-`COVERAGE_THRESHOLD` (default `60`), `GEMINI_TIER`.
+`COVERAGE_THRESHOLD` (default `60`), `GEMINI_TIER`, and `LLM_EXPLICIT`.
+`LLM_EXPLICIT=true` only when `$ARGUMENTS` contains `--llm`; otherwise it is
+`false`.
 
 Persist arguments to `.local/state/ship.loop.local.json` via `jq` so the
 stop-hook can recover all fields on re-entry. The full jq invocation lives in
@@ -88,7 +93,7 @@ stop-hook can recover all fields on re-entry. The full jq invocation lives in
 `coverage_threshold`, `coverage_result`, `coverage_tests_generated`,
 `e2e_required`, `e2e_attempted`, `e2e_result`, `e2e_skip_reason`,
 `e2e_pages_tested`, `review_clean`, `review_result`,
-`review_skip_reason`, `head_sha`, `gemini_tier`.
+`review_skip_reason`, `head_sha`, `gemini_tier`, `llm_explicit`.
 For Ollama reviews, Step 5 also persists `ollama_model` after resolving it from
 the installed model list.
 
@@ -188,23 +193,33 @@ fi
 `WORKFLOW_REASON=default-branch`, follow **Hard Invariant Failure**, and stop.
 Do not ship from the default branch.
 
-If `git status --porcelain` shows uncommitted changes, request the missing
-intent from the driver: "Commit them before shipping, or abort?" Follow the
-cross-platform stop rules while waiting for the answer.
+If `git status --porcelain` shows uncommitted changes, resolve a
+**driver-resolvable gate**. Inspect the diff, staged state, original request,
+and workflow-owned file list:
+
+- Include and commit changes only when they are unambiguously in scope and have
+  fresh validation evidence.
+- Preserve unrelated changes and ship only committed `HEAD` when later steps
+  cannot overwrite or stage them.
+- If ownership is ambiguous or safe isolation is impossible, stop incomplete
+  with `WORKFLOW_REASON=unowned-worktree-changes`.
+
+State `Decision`, `Evidence`, and `Rationale`; do not request input for this
+technical ownership decision.
 
 Persist `BASE_BRANCH` and `PR_NUM` (if found) in the state file.
 
 ## 4. Prerequisite Check
 
-Verify the selected LLM CLI is installed. **CRITICAL: Never silently fall
-back** — always request a driver decision. The detection bash, diagnostic
-block, and four-option decision (**Retry** / **Debug / Install instructions** /
-**Use agent-based review** / **Abort**) live in
-`${CLAUDE_PLUGIN_ROOT}/lib/ship/prerequisites.md`.
+Verify the selected LLM CLI is installed. Read
+`${CLAUDE_PLUGIN_ROOT}/lib/ship/prerequisites.md` for the evidence-based
+fallback ordering. A driver may replace an unpinned default and must state the
+rationale. Replacing an explicitly selected backend is a missing-intent gate.
 
-**On re-entry (Step 2):** Restore `USE_AGENT_REVIEW` from state. If `"true"`,
-set `CODEX_EXEC_FALLBACK=true` — do NOT re-ask. If `llm_check_failed=="true"`
-AND `use_agent_review!="true"`, re-present the driver decision.
+**On re-entry (Step 2):** Restore `USE_AGENT_REVIEW` and `LLM_EXPLICIT` from
+state. If `use_agent_review=="true"`, set `CODEX_EXEC_FALLBACK=true`. If
+`llm_check_failed=="true"` and no fallback is persisted, repeat the
+prerequisite evidence check and its deterministic recovery policy.
 
 ---
 
@@ -294,15 +309,17 @@ Discover review bots via the GraphQL query for `reviews + reviewThreads +
 comments` author logins; also check `gh pr checks` names for status-only bots
 (e.g., Greptile). Match against
 `${CLAUDE_PLUGIN_ROOT}/skills/address-review/bot-registry.md`. Persist
-`discovered_bots` (comma-separated). If none found and `BOT_REVIEW_BASELINE` is
-recent (<2 min), request a driver decision on whether to wait or proceed.
+`discovered_bots` (comma-separated). If none are found and
+`BOT_REVIEW_BASELINE` is recent (<2 min), follow the bounded automatic wait in
+`bot-watch.md`.
 
 For polling, Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/watch-loop.md`
 Steps 12a–12d:
 
 - All bots approved → Step 13
 - New comments / `CHANGES_REQUESTED` → Step 12
-- Timeout (5 min) → request a driver decision
+- Timeout (5 min) → apply the deterministic re-trigger or incomplete outcome
+  in `watch-loop.md`
 
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/bot-watch.md` for the full GraphQL query
 and the bot-not-detected-yet retry policy.
@@ -389,7 +406,10 @@ verification instead.
 
 Output `<done>SHIPPED</done>` ONLY when ALL of these are true:
 
-1. LLM review passes completed (clean or max passes reached)
+1. Local LLM review passes completed (clean or max passes reached), or a
+   session-local review is durably recorded as `void`/`skipped` with reason
+   `session-boundary`/`headless-worker` and the exact current head passes CI.
+   An unrecorded timeout, error, or early exit never satisfies this criterion.
 2. Coverage verified for changed source files (or not applicable because the
    diff is source-free / all changed Go files are `package main`)
 3. E2E smoke tests passed for UI-visible diffs (or skipped only because the
@@ -400,9 +420,8 @@ Output `<done>SHIPPED</done>` ONLY when ALL of these are true:
 7. Bot approvals received (or no bots configured) — with output shown above
 8. PR merged (or `--no-merge` specified) — with output shown above
 
-**Safety note:** If you've iterated 15+ times without completion, document
-what's blocking, request driver guidance, and stop without claiming
-completion until guidance arrives.
+**Safety note:** If you've iterated 15+ times without completion, document the
+blocking evidence and stop incomplete. Do not bypass a completion criterion.
 
 ## Cancel
 

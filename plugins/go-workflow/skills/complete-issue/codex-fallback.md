@@ -1,52 +1,47 @@
 # Complete Issue — Codex Fallback Flows
 
 Loaded by `SKILL.md` Phase 2 when codex is unavailable or fails at runtime.
-The user chooses how to proceed — never fall back silently.
+Never skip review or replace an explicitly required backend silently.
 
 ## Codex NOT Available
 
-Request a driver decision:
+Display: `npm install -g @openai/codex`, then run `codex login` for ChatGPT sign-in or API-key authentication.
+Re-run availability detection once.
 
-> **"Codex CLI is not available for self-review. How would you like to proceed?"**
+If Codex remains unavailable and the user did not explicitly require it,
+resolve a **driver-resolvable gate**: use a synchronous fresh-context Fable
+review with the same prompt and structured schema when native delegation is
+available. State `Decision`, `Evidence`, and `Rationale`. Never use `claude -p`
+because it bills metered API usage rather than the subscription.
 
-| Option | Description |
-|--------|-------------|
-| **Retry** | Check again (after you install codex) |
-| **Install instructions** | Show how to install: `npm install -g @openai/codex` |
-| **Use Fable subagent review** | Claude subagent with the same prompt + structured JSON schema — no CLI, no extra cost |
-| **Skip review** | Proceed to Phase 3 without review (with warning) |
-
-Handle the user's choice:
-
-- **Retry** → Re-run the availability check from `SKILL.md` Phase 2.
-- **Install instructions** → Display: `npm install -g @openai/codex`, then run `codex login` for ChatGPT sign-in or API-key authentication. Then re-check.
-- **Use Fable subagent review** → Delegate a fresh-context review synchronously through the active surface, wait for its final response in the current session, and parse it through the same structured path (see the Fable section in go-workflow `lib/ship/local-review.md`). Never use `claude -p` — it bills metered API usage, not the subscription. If it cannot complete before a headless session ends, treat the review as skipped and proceed to Phase 3; never resume or replace it in a successor session.
-- **Skip review** → Warn "Self-review skipped — proceeding to E2E verification without code review." and go directly to Phase 3.
+If Codex was explicitly required, follow the shared **missing-intent gate**
+before replacing it. If neither backend can complete in the current session,
+persist `WORKFLOW_RESULT=INCOMPLETE` and
+`WORKFLOW_REASON=review-backend-unavailable`, then stop before Phase 3.
 
 ## Codex Exec Fails at Runtime
 
-If `codex exec` exits non-zero or produces no output, do NOT silently fall
-back. Display the exit code and stderr first, then request a driver decision.
+If `codex exec` exits non-zero or produces no output, display the exit code,
+stderr, and partial output, then apply the recovery order below.
 
 ### Exit Code 124 (Timeout)
 
-| Option | Description |
-|--------|-------------|
-| Retry with longer timeout | Re-run with `CODEX_TIMEOUT` doubled (capped at 1800s) |
-| Fable subagent review | Same prompt + schema via a Claude subagent — no timeout, no extra cost |
-| Use `codex review --base` | Swap to a base-diff invocation instead of `codex exec` |
-| Drop `--output-schema` | Some structured-output schemas cause hangs; try without |
-| Skip review | Warn and go to Phase 3 |
+1. Retry once with `CODEX_TIMEOUT` doubled and capped at 1800 seconds.
+2. If structured schema processing is implicated, retry without
+   `--output-schema`.
+3. Use `codex review --base` only when the coverage plan can preserve complete
+   review across its units.
+4. If Codex was not explicitly required, use synchronous Fable review when
+   available and state the rationale.
+5. Otherwise follow the shared missing-intent gate before replacing Codex, or
+   stop incomplete when no review path remains.
 
 ### Other Exit Codes
 
-| Option | Description |
-|--------|-------------|
-| Retry | Run codex once more with the same parameters |
-| Debug | Print the exit code, last 50 lines of stderr, and the command that ran; let the user diagnose |
-| Fable subagent review | Same prompt + schema via a Claude subagent — no CLI, no extra cost |
-| Skip review | Warn and go to Phase 3 |
-
-The user must choose. Do not pick a fallback automatically — the
-"Skip review" option exists precisely so the user gets to make that call,
-not the agent.
+Inspect the exit code, last 50 lines of stderr, command, authentication, and
+network state. Retry once for a transient or locally correctable failure. Then
+apply the same explicit-backend rule: an unpinned run may use synchronous Fable
+with a stated rationale; an explicitly required Codex backend needs missing
+intent before replacement. If no complete review path remains, stop incomplete
+with `WORKFLOW_REASON=review-backend-failed`. Never continue to Phase 3 without
+the review required by the top-level completion criteria.
