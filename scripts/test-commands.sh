@@ -208,6 +208,8 @@ elif [ -n "$MISSING_DRIVER_BINDING" ]; then
   ERRORS=$((ERRORS + 1))
 elif ! file_contains 'native structured-input capability' "$DRIVER_INTERACTION" ||
      ! file_contains 'ask the concise question in the final' "$DRIVER_INTERACTION" ||
+     ! file_contains 'pause_loop_for_driver' "$DRIVER_INTERACTION" ||
+     ! file_contains 'resume_loop_after_driver' "$DRIVER_INTERACTION" ||
      ! file_contains 'Do not advance the phase' "$DRIVER_INTERACTION" ||
      ! file_contains 'emit a completion' "$DRIVER_INTERACTION"; then
   echo "FAIL (driver interaction rules do not preserve incomplete stop semantics)"

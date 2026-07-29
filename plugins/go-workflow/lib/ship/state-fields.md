@@ -61,3 +61,5 @@ routing and subsequent steps depend on these exact names.
 | `llm_check_failed` | string | Step 4b | `"true"` after diagnostic; cleared on Retry success |
 | `use_agent_review` | string | Step 4b | `"true"` when user chose agent-based review fallback |
 | `quick_mode` | string | Step 5b | `"true"` when user picked `codex review --base` after large-diff warning or timeout |
+| `awaiting_driver_input` | boolean | Driver interaction rules | `true` while the workflow is paused for missing intent |
+| `driver_input_reason` | string | Driver interaction rules | Missing intent recorded while the loop is paused |

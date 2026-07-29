@@ -16,8 +16,19 @@ When required intent cannot be inferred safely:
    when one is available.
 2. If structured input is unavailable, ask the concise question in the final
    response and stop the workflow.
-3. Before stopping, persist an incomplete result and reason when the workflow
-   has durable state.
+3. Before that final response, preserve the current phase of any active loop
+   state and pause it:
+
+   ```bash
+   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+   pause_loop_for_driver "$ACTIVE_LOOP_STATE_FILE" "<missing intent>"
+   ```
+
+   Use the active workflow's state-file variable in place of
+   `ACTIVE_LOOP_STATE_FILE`. When the driver answers, call
+   `resume_loop_after_driver` on the same file before continuing. If the
+   workflow has other durable state but no active loop, persist an incomplete
+   result and reason there.
 4. Do not advance the phase, perform dependent actions, emit a completion
    marker, or claim completion until the answer arrives.
 
