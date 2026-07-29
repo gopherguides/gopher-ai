@@ -97,6 +97,11 @@ if ! [[ "$ITERATION" =~ ^[0-9]+$ ]]; then
   exit 0
 fi
 
+if [ "$AWAITING_DRIVER_INPUT" = "true" ]; then
+  loop_log "stop-hook: allowing exit while waiting for driver input: $DRIVER_INPUT_REASON"
+  exit 0
+fi
+
 # Check if max iterations reached (if set)
 if [ -n "$MAX_ITERATIONS" ] && [[ "$MAX_ITERATIONS" =~ ^[0-9]+$ ]]; then
   if [ "$ITERATION" -ge "$MAX_ITERATIONS" ]; then

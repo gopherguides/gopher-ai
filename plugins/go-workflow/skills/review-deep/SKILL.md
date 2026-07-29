@@ -2,13 +2,16 @@
 name: review-deep
 description: "Deep-review a PR or branch with issue and repo context, then fix and commit actionable findings; PR-backed runs push new review commits by default. Use for 'review my changes', 'check this PR', or post-implementation quality/spec review requests. SKIP existing human/bot review comments that need replies/thread resolution; use address-review."
 argument-hint: "[PR-number|--issue <N>] [--post] [--scope <hint>] [--no-fix] [--no-commit] [--push|--no-push]"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent"]
 ---
 
 # Deep Review: Full-Context Code Review + Fix
 
 Performs a thorough code review with full PR/issue context, then fixes all actionable findings.
 Combines the depth of spec review, quality review, and Go-specific analysis in a single pass.
+
+Before requesting decisions or delegating work, read
+`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+cross-platform capability-binding rules.
 
 ## Step 0: Parse Arguments
 
@@ -232,7 +235,7 @@ Read `fix-and-verify.md` and follow it end-to-end. Highlights:
 - Process findings in priority order (P0 → P3)
 - Auto-skip priority 3 AND confidence < 0.5 (nit noise)
 - Make minimal fixes; track which fixes are testable
-- Parallel-dispatch Agent subagents when 3+ findings target different files
+- Delegate fresh-context reviewers in parallel when 3+ findings target different files
 - Generate tests for testable fixes; verify build/test/lint pass
 - Pass only review-owned files to the post-fix helper
 - Apply `COMMIT_CHANGES` and `PUSH_CHANGES` independently
@@ -266,7 +269,7 @@ fixes reached the remote.
 
 If `AUTO_POST` is `true` and a PR was detected, post immediately with `gh pr comment "$PR_NUM" --body ...` using the formatting from `output-format.md`.
 
-If `AUTO_POST` is `false` and a PR was detected, ask via `AskUserQuestion`:
+If `AUTO_POST` is `false` and a PR was detected, request a driver decision:
 
 | Option | Description |
 |--------|-------------|

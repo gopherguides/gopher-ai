@@ -2,11 +2,14 @@
 name: ship
 description: "Ship a PR end-to-end: verify locally, push, create/update the PR, watch CI, handle review feedback, and merge without admin override. Use for 'ship', 'ship it', or 'push and merge'. SKIP if the user only wants a PR opened; use `create-pr`."
 argument-hint: "[--llm codex|gemini|ollama|fable] [--passes <n>] [--no-merge] [--skip-coverage] [--coverage-threshold <n>] [--tier flex|standard|priority]"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "AskUserQuestion", "Agent", "mcp__chrome-devtools-mcp__navigate_page", "mcp__chrome-devtools-mcp__take_screenshot", "mcp__chrome-devtools-mcp__list_console_messages", "mcp__chrome-devtools-mcp__list_network_requests", "mcp__chrome-devtools-mcp__fill", "mcp__chrome-devtools-mcp__click", "mcp__chrome-devtools-mcp__new_page"]
 disable-model-invocation: true
 ---
 
 # Ship PR
+
+Before requesting decisions or delegating work, read
+`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+cross-platform capability-binding rules.
 
 ## GraphQL Budget Discipline (read first)
 
@@ -185,22 +188,23 @@ fi
 `WORKFLOW_REASON=default-branch`, follow **Hard Invariant Failure**, and stop.
 Do not ship from the default branch.
 
-If `git status --porcelain` shows uncommitted changes, ask the user: "Commit
-them before shipping, or abort?"
+If `git status --porcelain` shows uncommitted changes, request the missing
+intent from the driver: "Commit them before shipping, or abort?" Follow the
+cross-platform stop rules while waiting for the answer.
 
 Persist `BASE_BRANCH` and `PR_NUM` (if found) in the state file.
 
 ## 4. Prerequisite Check
 
 Verify the selected LLM CLI is installed. **CRITICAL: Never silently fall
-back** — always use `AskUserQuestion`. The detection bash, diagnostic block,
-and four-option `AskUserQuestion` (**Retry** / **Debug / Install instructions**
-/ **Use agent-based review** / **Abort**) live in
+back** — always request a driver decision. The detection bash, diagnostic
+block, and four-option decision (**Retry** / **Debug / Install instructions** /
+**Use agent-based review** / **Abort**) live in
 `${CLAUDE_PLUGIN_ROOT}/lib/ship/prerequisites.md`.
 
 **On re-entry (Step 2):** Restore `USE_AGENT_REVIEW` from state. If `"true"`,
 set `CODEX_EXEC_FALLBACK=true` — do NOT re-ask. If `llm_check_failed=="true"`
-AND `use_agent_review!="true"`, re-present the `AskUserQuestion`.
+AND `use_agent_review!="true"`, re-present the driver decision.
 
 ---
 
@@ -209,7 +213,7 @@ AND `use_agent_review!="true"`, re-present the `AskUserQuestion`.
 LLM review → fix → verify → coverage gate (final pass) → E2E smoke (when
 applicable) → commit → loop decision.
 
-Agent-backed reviews are session-local: run them synchronously in the
+Delegated reviews are session-local: run them synchronously in the
 foreground and wait for their final response. In a headless worker context,
 skip an agent-backed review when it cannot finish within the current session;
 persist the skip reason and proceed through commit, push, and non-draft PR
@@ -291,14 +295,14 @@ comments` author logins; also check `gh pr checks` names for status-only bots
 (e.g., Greptile). Match against
 `${CLAUDE_PLUGIN_ROOT}/skills/address-review/bot-registry.md`. Persist
 `discovered_bots` (comma-separated). If none found and `BOT_REVIEW_BASELINE` is
-recent (<2 min), `AskUserQuestion` whether to wait or proceed.
+recent (<2 min), request a driver decision on whether to wait or proceed.
 
 For polling, Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/watch-loop.md`
 Steps 12a–12d:
 
 - All bots approved → Step 13
 - New comments / `CHANGES_REQUESTED` → Step 12
-- Timeout (5 min) → `AskUserQuestion`
+- Timeout (5 min) → request a driver decision
 
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/bot-watch.md` for the full GraphQL query
 and the bot-not-detected-yet retry policy.
@@ -397,7 +401,8 @@ Output `<done>SHIPPED</done>` ONLY when ALL of these are true:
 8. PR merged (or `--no-merge` specified) — with output shown above
 
 **Safety note:** If you've iterated 15+ times without completion, document
-what's blocking and ask the user.
+what's blocking, request driver guidance, and stop without claiming
+completion until guidance arrives.
 
 ## Cancel
 

@@ -2,11 +2,14 @@
 name: address-review
 description: "Address pull request review feedback from humans or bots. Use when existing comments, requested changes, unresolved review threads, or CodeRabbit/codex review findings need code fixes, verification, push updates, and thread resolution. SKIP fresh code-review requests with no existing feedback; use review-deep."
 argument-hint: "[PR-number] [--no-watch]"
-allowed-tools: ["Bash", "Read", "Glob", "Grep", "Edit", "Write", "Task", "AskUserQuestion", "Agent"]
 disable-model-invocation: true
 ---
 
 # Address PR Review Comments
+
+Before requesting decisions or delegating work, read
+`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+cross-platform capability-binding rules.
 
 ## Output Durability
 
@@ -28,7 +31,8 @@ If no PR found, display usage and ask:
 
 **Example:** `/address-review 123` or just `/address-review` on a PR branch. Add `--no-watch` to exit after one fix cycle instead of watching for bot re-reviews.
 
-Ask the user: "No PR found for current branch. What PR number would you like to address?"
+Request the missing PR number from the driver: "No PR found for current branch.
+What PR number would you like to address?" Stop until the answer arrives.
 
 ---
 
@@ -155,7 +159,8 @@ All above, PLUS all detected review bots signaled approval per `bot-registry.md`
 
 If the user exits or skips a bot before all detected bots approve, follow the **Incomplete Approval Outcome** procedure in `watch-loop.md`. Persist `approval_result` and `approval_reason`, then output `<done>INCOMPLETE</done>` instead. Never output the completion marker for this path.
 
-**Safety:** If 15+ iterations without success, document blockers and ask user.
+**Safety:** If 15+ iterations pass without success, document blockers, request
+driver guidance, and stop without claiming completion until guidance arrives.
 
 ## Supporting Files
 

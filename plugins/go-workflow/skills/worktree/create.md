@@ -26,8 +26,10 @@ SOURCE_DIR="$(pwd)"
 "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
 ```
 
-If the output starts with `ENV_FILES_FOUND=true`, ask the user: "Found
-environment files (may contain secrets). Copy them to the worktree?"
+If the output starts with `ENV_FILES_FOUND=true`, request the missing consent
+from the driver: "Found environment files (may contain secrets). Copy them to
+the worktree?" Stop before copying or creating the worktree until the answer
+arrives.
 
 ### Step 3: Create or Reuse Worktree
 

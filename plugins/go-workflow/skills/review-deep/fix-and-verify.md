@@ -79,7 +79,8 @@ Files in the same package must be in the same group to avoid write conflicts on 
 
 ### 3. Dispatch Subagents
 
-For each file group, dispatch an Agent subagent (sonnet) with:
+For each file group, delegate a fresh-context implementation worker through the
+active surface, selecting sonnet when the surface supports model choice, with:
 
 - "You are fixing review findings in `{FILE_PATH}`. Working directory: `{PROJECT_ROOT}`."
 - All findings for that file (title, body, line range, priority, category, confidence)

@@ -188,7 +188,7 @@ require_text "$CI_WATCH" 'phase "review-required"' \
   "CI head shifts must request one new review without marking it in flight"
 require_text "$SHIP_SKILL" "Never end a session with staged or committed-but-unpushed work" \
   "ship must make validated work durable before yielding"
-require_text "$LOCAL_REVIEW" "run_in_background=false" \
+require_text "$LOCAL_REVIEW" "Delegate synchronously" \
   "ship agent reviews must run synchronously"
 require_text "$LOCAL_REVIEW" 'review_result="skipped"' \
   "ship must record headless agent review skips"

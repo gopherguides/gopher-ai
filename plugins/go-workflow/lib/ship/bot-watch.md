@@ -58,7 +58,7 @@ Match both `BOT_AUTHORS` and `CHECK_BOTS` against the bot registry.
 
 ## No bots detected yet
 
-This may be because async bots haven't posted their first review. If `BOT_REVIEW_BASELINE` was captured less than 2 minutes ago, ask via `AskUserQuestion`:
+This may be because async bots haven't posted their first review. If `BOT_REVIEW_BASELINE` was captured less than 2 minutes ago, request a driver decision:
 
 > "No review bots detected yet. The push was recent — bots may still be starting. Wait for bots to respond, or proceed to merge without bot review?"
 
@@ -80,4 +80,4 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/watch-loop.md` and follow Step
 
 - **All bots approved** → proceed to Step 13 (merging)
 - **New comments / `CHANGES_REQUESTED`** → go to Step 12 (address feedback)
-- **Timeout (5 min)** → ask the user via `AskUserQuestion` what to do
+- **Timeout (5 min)** → request a driver decision

@@ -33,9 +33,13 @@ mkdir -p .local/state
 # Check for existing loop — preserve phase and bot_review_baseline if re-initializing
 EXISTING_PHASE=""
 EXISTING_BASELINE=""
+EXISTING_AWAITING_DRIVER_INPUT="false"
+EXISTING_DRIVER_INPUT_REASON=""
 if [ -f "$STATE_FILE" ]; then
   EXISTING_PHASE=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null || true)
   EXISTING_BASELINE=$(jq -r '.bot_review_baseline // empty' "$STATE_FILE" 2>/dev/null || true)
+  EXISTING_AWAITING_DRIVER_INPUT=$(jq -r '.awaiting_driver_input // false' "$STATE_FILE" 2>/dev/null || echo "false")
+  EXISTING_DRIVER_INPUT_REASON=$(jq -r '.driver_input_reason // empty' "$STATE_FILE" 2>/dev/null || true)
   echo "Warning: Loop '$LOOP_NAME' already active. Resetting (preserving phase: ${EXISTING_PHASE:-<none>}, baseline: ${EXISTING_BASELINE:-<none>})..."
 fi
 
@@ -78,6 +82,8 @@ jq -n \
   --arg completion_promise "$COMPLETION_PROMISE" \
   --arg phase "$PHASE" \
   --arg bot_review_baseline "${EXISTING_BASELINE:-}" \
+  --argjson awaiting_driver_input "$EXISTING_AWAITING_DRIVER_INPUT" \
+  --arg driver_input_reason "$EXISTING_DRIVER_INPUT_REASON" \
   --arg started_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
   --arg session_id "$SESSION_ID" \
   --argjson phase_messages "$PHASE_MSGS_JSON" \
@@ -90,6 +96,8 @@ jq -n \
     bot_review_baseline: $bot_review_baseline,
     started_at: $started_at,
     session_id: $session_id,
+    awaiting_driver_input: $awaiting_driver_input,
+    driver_input_reason: $driver_input_reason,
     phase_messages: $phase_messages
   }' > "$TMP_FILE" && mv "$TMP_FILE" "$STATE_FILE"
 

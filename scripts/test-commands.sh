@@ -169,6 +169,55 @@ else
   echo "OK"
 fi
 
+echo -n "Shared go-workflow skills bind native capabilities by intent... "
+GO_WORKFLOW_SKILLS="$ROOT_DIR/plugins/go-workflow/skills"
+GO_WORKFLOW_LIB="$ROOT_DIR/plugins/go-workflow/lib"
+DRIVER_INTERACTION="$GO_WORKFLOW_LIB/driver-interaction.md"
+shopt -s nullglob
+GO_WORKFLOW_MARKDOWN=(
+  "$GO_WORKFLOW_SKILLS"/*/*.md
+  "$GO_WORKFLOW_LIB"/*.md
+  "$GO_WORKFLOW_LIB"/*/*.md
+)
+PLATFORM_TOOL_NAMES=$(awk '
+  /(^|[^[:alnum:]_])(AskUserQuestion|EnterPlanMode|Agent|Task)([^[:alnum:]_]|$)/ {
+    print FILENAME ":" FNR ":" $0
+  }
+' "${GO_WORKFLOW_MARKDOWN[@]}")
+SHARED_ALLOWED_TOOLS=$(awk '
+  /^allowed-tools:/ { print FILENAME ":" FNR ":" $0 }
+' "$GO_WORKFLOW_SKILLS"/*/SKILL.md)
+MISSING_DRIVER_BINDING=""
+for skill_file in "$GO_WORKFLOW_SKILLS"/*/SKILL.md; do
+  if ! file_contains 'driver-interaction.md' "$skill_file"; then
+    MISSING_DRIVER_BINDING="${skill_file#"$ROOT_DIR"/}"
+    break
+  fi
+done
+
+if [ -n "$PLATFORM_TOOL_NAMES" ]; then
+  echo "FAIL (platform-specific tool names found)"
+  echo "$PLATFORM_TOOL_NAMES"
+  ERRORS=$((ERRORS + 1))
+elif [ -n "$SHARED_ALLOWED_TOOLS" ]; then
+  echo "FAIL (shared skill frontmatter still contains a platform tool allowlist)"
+  echo "$SHARED_ALLOWED_TOOLS"
+  ERRORS=$((ERRORS + 1))
+elif [ -n "$MISSING_DRIVER_BINDING" ]; then
+  echo "FAIL ($MISSING_DRIVER_BINDING does not load the driver interaction rules)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'native structured-input capability' "$DRIVER_INTERACTION" ||
+     ! file_contains 'ask the concise question in the final' "$DRIVER_INTERACTION" ||
+     ! file_contains 'pause_loop_for_driver' "$DRIVER_INTERACTION" ||
+     ! file_contains 'resume_loop_after_driver' "$DRIVER_INTERACTION" ||
+     ! file_contains 'Do not advance the phase' "$DRIVER_INTERACTION" ||
+     ! file_contains 'emit a completion' "$DRIVER_INTERACTION"; then
+  echo "FAIL (driver interaction rules do not preserve incomplete stop semantics)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Address-review stages only fix-cycle files... "
 ADDRESS_REVIEW_FIX_CYCLE="$ROOT_DIR/plugins/go-workflow/skills/address-review/fix-cycle.md"
 if file_contains 'git add -A' "$ADDRESS_REVIEW_FIX_CYCLE"; then

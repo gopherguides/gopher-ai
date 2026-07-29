@@ -26,6 +26,8 @@ read_loop_state() {
   LOOP_NAME=$(jq -r '.loop_name // empty' "$state_file")
   PHASE=$(jq -r '.phase // empty' "$state_file")
   ORIGINAL_PROMPT=$(jq -r '.original_prompt // empty' "$state_file")
+  AWAITING_DRIVER_INPUT=$(jq -r '.awaiting_driver_input // false' "$state_file")
+  DRIVER_INPUT_REASON=$(jq -r '.driver_input_reason // empty' "$state_file")
   loop_log "read_loop_state: file=$state_file loop=$LOOP_NAME iter=$ITERATION phase=$PHASE"
 }
 
@@ -60,6 +62,24 @@ set_loop_field() {
   local value="$3"
   local tmp_file="${state_file}.tmp"
   jq --arg f "$field" --arg v "$value" '.[$f] = $v' "$state_file" > "$tmp_file" && mv "$tmp_file" "$state_file"
+}
+
+pause_loop_for_driver() {
+  local state_file="$1"
+  local reason="$2"
+  local tmp_file="${state_file}.tmp"
+  jq --arg reason "$reason" \
+    '.awaiting_driver_input = true | .driver_input_reason = $reason' \
+    "$state_file" > "$tmp_file" && mv "$tmp_file" "$state_file"
+  loop_log "pause_loop_for_driver: file=$state_file reason=$reason"
+}
+
+resume_loop_after_driver() {
+  local state_file="$1"
+  local tmp_file="${state_file}.tmp"
+  jq '.awaiting_driver_input = false | .driver_input_reason = ""' \
+    "$state_file" > "$tmp_file" && mv "$tmp_file" "$state_file"
+  loop_log "resume_loop_after_driver: file=$state_file"
 }
 
 # Remove a loop state file (cleanup)

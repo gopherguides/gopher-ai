@@ -18,7 +18,7 @@ model policy.
 
 Defaults:
 
-| Agent prompt | Model policy | Purpose |
+| Delegated prompt | Model policy | Purpose |
 |--------------|--------------|---------|
 | `explore-prompt.md` | `haiku` | Read-only codebase exploration |
 | `implementer-prompt.md` | `inherit` | TDD implementation keeps the parent session's model |
@@ -37,8 +37,8 @@ If issue is a **bug**:
 gh issue list --state all --limit 50 --search "<key terms from title/body>"
 ```
 
-If potential duplicates found, present them and ask the user via
-`AskUserQuestion` how to proceed (Continue / Skip / Link).
+If potential duplicates are found, present them and request a driver decision
+on how to proceed (Continue / Skip / Link).
 
 ## Step 2: Create Branch (skip if worktree was created)
 
@@ -59,10 +59,10 @@ Read `${CLAUDE_PLUGIN_ROOT}/agents/explore-prompt.md` and fill in:
 - `{WORKTREE_PATH}` — absolute path to working directory
 - `{REPO_CONVENTIONS}` — from CLAUDE.md or AGENTS.md if present
 
-Dispatch:
+Delegate through the active surface using the Explore prompt:
 
 ```
-Agent(prompt=<filled template>, subagent_type=explore-prompt)
+<filled explore-prompt template>
 ```
 
 Store the results: `RELEVANT_FILES`, `PATTERNS`, `ROOT_CAUSE` (bugs) or `INTEGRATION_POINTS` (features), `PROPOSED_CHANGES`, `TASK_DECOMPOSITION`.
@@ -83,7 +83,7 @@ Using the Explore results, propose 2-3 approaches with concrete trade-offs:
 
 **For non-trivial features** (new package, API changes, data model changes): present approaches and recommend one. Use your judgment on whether to wait for an explicit reply — if the change is risky, irreversible, or you're genuinely uncertain which approach the user wants, ask. Otherwise, state the recommended plan and proceed unless the user objects.
 
-## Step 5: Task Decomposition
+## Step 5: Work Decomposition
 
 Using the Explore results and approved approach:
 
@@ -115,12 +115,12 @@ For each task, read `${CLAUDE_PLUGIN_ROOT}/agents/implementer-prompt.md` and fil
 
 - **Parallel** (independent tasks with disjoint files):
   ```
-  For each task: Agent(prompt=<filled>, subagent_type=implementer-prompt, run_in_background=true)
+  Delegate each task with the filled implementer-prompt in parallel.
   Wait for all to complete. Collect results.
   ```
 - **Sequential** (dependent tasks or overlapping files):
   ```
-  For each task in order: Agent(prompt=<filled>, subagent_type=implementer-prompt)
+  Delegate each task in order with the filled implementer-prompt.
   ```
 
 **Handle subagent status:**
@@ -130,7 +130,7 @@ For each task, read `${CLAUDE_PLUGIN_ROOT}/agents/implementer-prompt.md` and fil
 | DONE | Continue to next task or review phase |
 | DONE_WITH_CONCERNS | Evaluate concerns — fix correctness issues before proceeding |
 | NEEDS_CONTEXT | Supply the requested information, re-dispatch the implementer |
-| BLOCKED | Present blockers to user via `AskUserQuestion`, get guidance |
+| BLOCKED | Present blockers and request a driver decision |
 
 ## Step 7: Spec Compliance Review
 
@@ -149,7 +149,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/agents/spec-review-prompt.md` and fill in:
 - `{CHANGED_FILES}` — list of all files changed
 - `{DIFF}` — the full diff
 
-Dispatch: `Agent(prompt=<filled>, subagent_type=spec-review-prompt)`
+Delegate the filled spec-review prompt through the active surface.
 
 **If VERDICT = FAIL:** address missing requirements by re-dispatching implementer subagent(s) for the gaps. Re-run spec review (max 2 retry cycles).
 
@@ -159,7 +159,7 @@ Dispatch: `Agent(prompt=<filled>, subagent_type=spec-review-prompt)`
 
 Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md` and fill in `{WORKTREE_PATH}`, `{CHANGED_FILES}`, `{DIFF}`, `{PATTERNS}` (from Explore), `{REPO_CONVENTIONS}` (from CLAUDE.md/AGENTS.md).
 
-Dispatch: `Agent(prompt=<filled>, subagent_type=quality-review-prompt)`
+Delegate the filled quality-review prompt through the active surface.
 
 **If HAS_FINDINGS:**
 
@@ -213,7 +213,7 @@ Before submitting, scan for security issues in changed files:
 3. **Check for PR template** — look in these locations (in order):
    - `.github/pull_request_template.md`
    - `.github/PULL_REQUEST_TEMPLATE.md`
-   - `.github/PULL_REQUEST_TEMPLATE/` (directory with multiple templates — list and ask user which to use)
+   - `.github/PULL_REQUEST_TEMPLATE/` (directory with multiple templates — list and request a driver selection)
    - `docs/pull_request_template.md`
    - `docs/PULL_REQUEST_TEMPLATE/` (directory with multiple templates)
    - `pull_request_template.md` (repo root)
