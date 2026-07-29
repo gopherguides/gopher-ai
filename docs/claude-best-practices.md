@@ -318,6 +318,11 @@ The Chrome DevTools MCP server allows AI assistants to take screenshots of web p
 
 Example failure: Assistant takes a `fullPage: true` screenshot of a page that's 5000px tall at DPR 3. The resulting image is 15000px tall, exceeds the 8000px dimension limit, and the tool returns an error or a blank image. The assistant retries repeatedly, wasting time.
 
+MCP server behavior is versioned by both the server release and the protocol
+revision it implements. The 8000px limit below is a current
+`chrome-devtools-mcp` server constraint, not an MCP protocol limit; verify the
+server's behavior when changing versions.
+
 ### Snippet
 
 ```markdown
@@ -334,7 +339,7 @@ Example failure: Assistant takes a `fullPage: true` screenshot of a page that's 
 
 ### Customization Notes
 
-Only relevant for developers using the `chrome-devtools-mcp` server. If the developer doesn't use browser automation in their Claude Code sessions, skip this section. The 8000px limit is a current constraint of the tool and may change in future versions.
+Only relevant for developers using the `chrome-devtools-mcp` server. If the developer doesn't use browser automation in their Claude Code sessions, skip this section. The 8000px limit is server-specific and may change independently of the MCP protocol in future versions.
 
 ---
 

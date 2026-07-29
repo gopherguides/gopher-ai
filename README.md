@@ -344,7 +344,18 @@ Extensions are installed per-module. Each extension includes:
 
 ## MCP Servers
 
-The **tailwind** module includes an MCP (Model Context Protocol) server for Tailwind CSS documentation lookups. This is configured automatically in both Claude Code and Codex plugin installs.
+All Gopher AI modules work without MCP servers. MCP integrations are optional,
+supplementary tooling rather than a requirement; the **tailwind** module is
+currently the only module that includes one. Its server provides Tailwind CSS
+documentation lookups and is configured automatically in Claude Code and Codex
+plugin installs and generated Gemini extensions.
+
+New or updated integrations should target MCP `2026-07-28`. That revision
+removes protocol sessions and the `initialize`/`notifications/initialized`
+handshake: requests carry their protocol version and client capabilities in
+`_meta`, and servers implement `server/discover` for capability and version
+discovery. See the [MCP `2026-07-28` changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog)
+and [release announcement](https://blog.modelcontextprotocol.io/posts/2026-07-28/).
 
 ### tailwindcss-mcp-server
 
@@ -362,7 +373,8 @@ The **tailwind** module includes an MCP (Model Context Protocol) server for Tail
 ```
 
 **Dependencies:**
-- Node.js 16+ (`node` and `npx` must be on your PATH)
+- Node.js 20.18.1+ (`node` and `npx` must be on your PATH; this minimum comes
+  from the package's current dependency graph)
 - Internet access on first run (to download the package)
 
 Version `0.1.1` implements legacy MCP `2024-11-05`, not MCP `2026-07-28`.
@@ -388,8 +400,21 @@ They use the official documentation URLs in
 `plugins/tailwind/skills/tailwind-best-practices/docs-urls.md`; the MCP tools
 provide supplementary lookups only.
 
+### Deprecated MCP features
+
+MCP `2026-07-28` gives deprecated features a minimum twelve-month compatibility
+window, but contributors should not use them in new integrations:
+
+- Replace **Roots** with tool parameters, resource URIs, or server
+  configuration.
+- Replace **Sampling** with direct LLM provider API integration.
+- Replace **Logging** with `stderr` for STDIO servers or OpenTelemetry.
+- Replace the legacy **HTTP+SSE transport** with Streamable HTTP.
+- Replace OAuth **Dynamic Client Registration** with Client ID Metadata
+  Documents.
+
 **Troubleshooting:**
-- **"npx: command not found"** — Install Node.js 16+ (`brew install node` or [nodejs.org](https://nodejs.org))
+- **"npx: command not found"** — Install Node.js 20.18.1+ (`brew install node` or [nodejs.org](https://nodejs.org))
 - **MCP tools not appearing** — Ensure you installed the `tailwind` plugin module; run `/plugin install tailwind@gopher-ai`
 - **Timeout on first run** — The first `npx -y tailwindcss-mcp-server@0.1.1` invocation downloads the package; subsequent runs are cached
 
@@ -425,7 +450,7 @@ Works with Claude Code, Codex, Cursor, and any LLM-powered coding assistant.
 **Optional:**
 - `ollama` for local model support (`brew install ollama`)
 - `jq` for JSON manipulation (`brew install jq`)
-- Node.js 16+ for Tailwind MCP server
+- Node.js 20.18.1+ for the Tailwind MCP server's current dependency graph
 
 ## Configuration
 
