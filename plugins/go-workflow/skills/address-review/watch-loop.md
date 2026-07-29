@@ -140,7 +140,10 @@ If a bot's quiet period ended with no new comments but it still hasn't approved:
    gh pr comment "$PR_NUM" --body "<trigger command>"
    ```
 3. **Max 3 re-trigger attempts per bot.** Track the count.
-4. If 3 attempts are exhausted, state `Decision`, `Evidence`, and `Rationale`,
-   set `APPROVAL_REASON="bot-approval-exhausted"`, follow **Incomplete Approval
-   Outcome**, and stop. A local timeout cannot waive top-level bot approval.
+4. After the third unsuccessful re-review trigger:
+   - Report the `Decision`, `Evidence`, and `Rationale`.
+   - Record `bot-approval-exhausted` as the approval reason.
+   - Follow **Incomplete Approval Outcome** and stop.
+
+   Bot approval remains a caller-owned completion condition.
 5. After re-triggering, return to 12b to wait again.

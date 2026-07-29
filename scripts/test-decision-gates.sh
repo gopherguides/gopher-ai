@@ -133,9 +133,9 @@ assert_contains "$bot_timeout" "bot-approval-timeout" "untriggerable bot timeout
 assert_not_contains "$bot_timeout" "keep waiting" "bot timeout still presents an unbounded wait menu"
 
 bot_exhaustion=$(section_text "$ADDRESS_WATCH" "### 12d." "__END__")
-assert_contains "$bot_exhaustion" "3 attempts are exhausted" "bot re-trigger lacks a bounded limit"
+assert_contains "$bot_exhaustion" "third unsuccessful re-review trigger" "bot re-trigger lacks a bounded limit"
 assert_contains "$bot_exhaustion" "bot-approval-exhausted" "bot exhaustion lacks incomplete reason"
-assert_contains "$bot_exhaustion" "follow **Incomplete" "bot exhaustion can claim completion"
+assert_contains "$bot_exhaustion" "**Incomplete Approval Outcome**" "bot exhaustion can claim completion"
 
 bot_success=$(section_text "$ADDRESS_WATCH" "### 12a." "### 12b.")
 assert_contains "$bot_success" "return control to ship Step 13" "nested bot watch can terminate ship early"
