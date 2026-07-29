@@ -19,10 +19,12 @@ Skipping is allowed only when there is genuinely nothing to verify. If there
 - No web-facing files were changed in the diff (both `WEB_CHANGES` and `HANDLER_CHANGES` empty), AND
 - The issue/PR body contains no layout-sensitive keywords (see §5a.1).
 
-**Fail** (set `E2E_RESULT="fail"` with the listed reason and stop E2E) when the
-diff IS UI-visible (see §5a.1) and:
+**Fail** (set `E2E_RESULT="missing-browser-tooling"` and stop E2E) when the diff
+IS UI-visible (see §5a.1) and:
 
-- Chrome DevTools MCP tools are NOT available (`mcp__chrome-devtools-mcp__navigate_page` not in the available tools list) → reason `missing-browser-tooling`.
+- Chrome DevTools MCP tools are NOT available
+  (neither `mcp__chrome-devtools__navigate_page` nor
+  `mcp__chrome-devtools-mcp__navigate_page` is in the available tools list).
 
 In every fail case, still proceed to Step 6 to post the failure comment so the
 gate in `SKILL.md` Step 7 can stop the workflow.
@@ -60,6 +62,21 @@ Both this step and `SKILL.md` §7 use the same definition. The diff is
 
 A UI-visible diff requires `E2E_RESULT=pass` to pass the Step 7 gate. A
 non-UI-visible diff is allowed to set `E2E_RESULT=skipped`.
+
+## 5a.2 MCP connection and callability
+
+The official Chrome DevTools Claude plugin exposes
+`mcp__chrome-devtools__*`; existing user configurations may expose
+`mcp__chrome-devtools-mcp__*`. Resolve the available namespace once and use it
+consistently. The examples below show the latter namespace.
+
+Tool discovery is not proof that the browser is usable. The server connects
+successfully but the first browser tool call fails, or a later call may fail
+after some routes were inspected. In either case, set
+`E2E_RESULT='missing-browser-tooling'`, preserve the actual `PAGES_TESTED`
+count, stop the E2E run, and proceed only to Step 6 so the failure is posted.
+Do not report `partial` or `skipped`, and do not continue after an MCP
+reconnection because the selected page and browser state are no longer proven.
 
 ## 5b. Load the Spec (REQUIRED — do this BEFORE any browser testing)
 
@@ -185,64 +202,90 @@ Detect if the app requires authentication:
 
 ## 5g. Visual Stabilization Protocol
 
-**Before every screenshot**, execute this stabilization sequence to ensure deterministic, accurate captures. Use `mcp__chrome-devtools-mcp__evaluate_script` to run the JavaScript snippets below. If `evaluate_script` is not available, at minimum use `wait_for` with a reasonable timeout before capturing.
+**Before every screenshot**, use
+`mcp__chrome-devtools-mcp__evaluate_script` once with the self-contained
+function below. One call avoids relying on JavaScript state created by earlier
+tool calls. If `evaluate_script` is unavailable, use `wait_for` with a
+reasonable timeout before capturing.
 
-1. **Wait for network idle** — inject and execute:
-   ```javascript
-   // Poll-based: wait until no new resource entries appear for 500ms
-   // This catches both existing in-flight and new requests
-   await new Promise(resolve => {
-     let lastCount = performance.getEntriesByType('resource').length;
-     let stableChecks = 0;
-     const interval = setInterval(() => {
-       const currentCount = performance.getEntriesByType('resource').length;
-       if (currentCount === lastCount) {
-         stableChecks++;
-         if (stableChecks >= 5) { // 5 × 100ms = 500ms stable
-           clearInterval(interval);
-           resolve();
-         }
-       } else {
-         lastCount = currentCount;
-         stableChecks = 0;
-       }
-     }, 100);
-     // Fallback: resolve after 5s regardless
-     setTimeout(() => { clearInterval(interval); resolve(); }, 5000);
-   });
-   ```
+After `new_page`, `navigate_page`, or `resize_page`, compare the returned
+`url` with the route being tested. Allow an expected canonical or authentication redirect when the application behavior or login flow explains it, and continue
+against the redirected route. For an unexpected URL after a successful tool
+call, navigate to the intended route once more. If the tool still succeeds but
+returns an unexpected URL, record a route failure with `E2E_RESULT='fail'`;
+that is application behavior, not missing tooling.
 
-2. **Wait for fonts and images** — inject and execute:
-   ```javascript
-   await document.fonts.ready;
-   await Promise.all(
-     Array.from(document.images)
-       .filter(img => !img.complete)
-       .map(img => new Promise(resolve => {
-         // Use addEventListener to avoid clobbering app handlers
-         img.addEventListener('load', resolve, { once: true });
-         img.addEventListener('error', resolve, { once: true });
-       }))
-   );
-   ```
+If a page-scoped tool schema exposes an explicit page identifier, pass the
+same identifier to every page-scoped call. Otherwise, the current server's
+selected page is connection state: never assume it survives a tool error or
+MCP reconnect. A tool error or a lost selected-page target uses the
+`missing-browser-tooling` failure path in §5a.2.
 
-3. **Disable animations** — inject CSS to freeze all motion:
-   ```javascript
-   const style = document.createElement('style');
-   style.textContent = '*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; }';
-   document.head.appendChild(style);
-   ```
+Remove the `document.activeElement?.blur()` statement when testing a
+focus-dependent state such as validation, keyboard navigation, or an active
+input.
 
-4. **Conditionally blur active element** — only blur if you are NOT testing a focus-dependent state (e.g., form validation errors, keyboard navigation, active input fields). If the current test is verifying a focused state, skip this step:
-   ```javascript
-   // Skip this if you're testing focus/validation states
-   document.activeElement?.blur();
-   ```
+```javascript
+async () => {
+  await new Promise(resolve => {
+    let lastCount = performance.getEntriesByType('resource').length;
+    let stableChecks = 0;
+    const finish = () => {
+      clearInterval(interval);
+      clearTimeout(deadline);
+      resolve();
+    };
+    const interval = setInterval(() => {
+      const currentCount = performance.getEntriesByType('resource').length;
+      if (currentCount === lastCount) {
+        stableChecks++;
+        if (stableChecks >= 5) {
+          finish();
+        }
+      } else {
+        lastCount = currentCount;
+        stableChecks = 0;
+      }
+    }, 100);
+    const deadline = setTimeout(finish, 5000);
+  });
 
-5. **Brief settle** — allow a final paint:
-   ```javascript
-   await new Promise(resolve => setTimeout(resolve, 300));
-   ```
+  if (document.fonts?.ready) {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise(resolve => setTimeout(resolve, 5000))
+    ]);
+  }
+
+  await Promise.race([
+    Promise.all(
+      Array.from(document.images)
+        .filter(image => !image.complete)
+        .map(image => new Promise(resolve => {
+          image.addEventListener('load', resolve, { once: true });
+          image.addEventListener('error', resolve, { once: true });
+        }))
+    ),
+    new Promise(resolve => setTimeout(resolve, 5000))
+  ]);
+
+  let style = document.getElementById('gopher-ai-e2e-stabilization');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'gopher-ai-e2e-stabilization';
+    style.textContent = '*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; }';
+    document.head.appendChild(style);
+  }
+
+  document.activeElement?.blur();
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  return {
+    url: location.href,
+    readyState: document.readyState
+  };
+}
+```
 
 ## 5h. Route Testing (the core of E2E)
 
@@ -367,8 +410,9 @@ Collect results:
   `E2E_RESULT='fail'`.
 - Console JavaScript errors → record in findings. Not load-bearing on their
   own, but combined with a visual defect they reinforce the fail.
-- MCP tool call fails mid-test → `E2E_RESULT='fail'` with reason
-  `missing-browser-tooling`. The browser cannot inspect what it cannot reach.
+- MCP tool call fails on the first call or mid-test →
+  `E2E_RESULT='missing-browser-tooling'`. Preserve `PAGES_TESTED`; the browser
+  cannot inspect what it cannot reach.
 - Any route where a screenshot was taken but not read → contributes to
   `E2E_RESULT='uninspected-screenshots'` (also a fail).
 

@@ -96,7 +96,8 @@ The Verification Outcome section is **required for every comment**, regardless
 of mode. It makes the gate visible to humans reading the PR.
 
 **Conditional sections:**
-- If E2E was skipped (MCP unavailable or no web components): replace the E2E Visual Verification Results section with: `*E2E tests skipped: $SKIP_REASON*`
+- If E2E was skipped because there are no web components: replace the E2E Visual Verification Results section with: `*E2E tests skipped: $SKIP_REASON*`
+- If E2E was blocked by unavailable or failed MCP tooling: replace the E2E Visual Verification Results section with: `*E2E tests blocked: missing browser tooling. Pages tested: $PAGES_TESTED.*`
 - If build failed: add a prominent warning at the top: `> **Build failed — E2E tests were not run.**`
 - If investigate mode: add an "Investigation Findings" section with gap analysis
 

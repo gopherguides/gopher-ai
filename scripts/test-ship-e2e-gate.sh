@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 LOCAL_REVIEW="$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
+E2E_EXECUTION="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/e2e-test-execution.md"
 SHIP_SKILL="$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
 MERGE_DOC="$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"
 STATE_FIELDS="$ROOT_DIR/plugins/go-workflow/lib/ship/state-fields.md"
@@ -65,6 +66,62 @@ reject_text "$SHIP_SKILL" "skip coverage \\+ e2e phases entirely" \
   "ship skill still says --skip-coverage skips E2E entirely"
 reject_text "$SHIP_SKILL" "E2E smoke tests passed \\(or skipped .*[Mm]CP unavailable" \
   "ship completion criteria still allows MCP-unavailable E2E skip"
+require_text "$LOCAL_REVIEW" "browser-tool-call-failed" \
+  "ship local review must distinguish runtime browser failures from absent tooling"
+require_text "$E2E_EXECUTION" "server connects" \
+  "e2e verification must distinguish connection from callability"
+require_text "$E2E_EXECUTION" "first browser tool call fails" \
+  "e2e verification must cover a connected server that fails on first use"
+require_text "$E2E_EXECUTION" "E2E_RESULT='missing-browser-tooling'" \
+  "e2e verification must map runtime browser failures to a blocking result"
+require_text "$E2E_EXECUTION" "expected canonical or authentication redirect" \
+  "e2e verification must allow expected navigation redirects"
+reject_text "$E2E_EXECUTION" "A mismatch or call error" \
+  "e2e verification must not classify every URL mismatch as missing tooling"
+
+BROWSER_FAILURE_BLOCK=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-browser-failure-XXXXXX")
+BROWSER_FAILURE_TMP=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-browser-failure-fixture-XXXXXX")
+awk '
+  /^### Record browser tool-call failure$/ { section=1 }
+  section && /^```bash$/ { block=1; next }
+  block && /^```$/ { exit }
+  block { print }
+' "$LOCAL_REVIEW" > "$BROWSER_FAILURE_BLOCK"
+
+mkdir -p "$BROWSER_FAILURE_TMP/.local/state"
+printf '%s\n' \
+  '{"e2e_required":"true","e2e_attempted":"false","e2e_result":"passed","e2e_skip_reason":"","e2e_pages_tested":5}' \
+  > "$BROWSER_FAILURE_TMP/.local/state/ship.loop.local.json"
+
+BROWSER_FAILURE_STATE=$(cd "$BROWSER_FAILURE_TMP" && \
+  PAGES_TESTED=0 bash -c 'source "$1"' _ "$BROWSER_FAILURE_BLOCK" >/dev/null && \
+  jq -c '{
+    required: .e2e_required,
+    attempted: .e2e_attempted,
+    result: .e2e_result,
+    reason: .e2e_skip_reason,
+    pages: .e2e_pages_tested
+  }' .local/state/ship.loop.local.json)
+
+if [ "$BROWSER_FAILURE_STATE" != '{"required":"true","attempted":"true","result":"blocked","reason":"browser-tool-call-failed","pages":0}' ]; then
+  fail "connected server first-call failure must persist blocked attempted state"
+fi
+
+printf '%s\n' \
+  '{"e2e_required":"true","e2e_attempted":"true","e2e_result":"passed","e2e_skip_reason":"","e2e_pages_tested":2}' \
+  > "$BROWSER_FAILURE_TMP/.local/state/ship.loop.local.json"
+
+PARTIAL_BROWSER_FAILURE_STATE=$(cd "$BROWSER_FAILURE_TMP" && \
+  PAGES_TESTED=2 bash -c 'source "$1"' _ "$BROWSER_FAILURE_BLOCK" >/dev/null && \
+  jq -c '{result: .e2e_result, reason: .e2e_skip_reason, pages: .e2e_pages_tested}' \
+    .local/state/ship.loop.local.json)
+
+if [ "$PARTIAL_BROWSER_FAILURE_STATE" != '{"result":"blocked","reason":"browser-tool-call-failed","pages":2}' ]; then
+  fail "mid-run browser failure must remain blocked and preserve inspected pages"
+fi
+
+rm -f "$BROWSER_FAILURE_BLOCK"
+rm -rf "$BROWSER_FAILURE_TMP"
 
 require_text "$SHIP_SKILL" "SHIP_MERGE_STRATEGY.*--squash.*--rebase.*--merge" \
   "ship skill must document explicit strategy before squash-first fallback"
@@ -82,9 +139,9 @@ require_text "$MERGE_DOC" "Configured merge strategy.*is not allowed" \
 require_text "$MERGE_DOC" "gh pr merge \"\\\$PR_NUM\" --delete-branch" \
   "ship merge queues must omit the merge-strategy flag"
 
-MERGE_STRATEGY_BLOCK=$(mktemp /tmp/gopher-ai-merge-strategy-XXXXXX)
-MERGE_FIXTURE_PLUGIN_ROOT=$(mktemp -d /tmp/gopher-ai-merge-fixture-XXXXXX)
-MERGE_FIXTURE_WORKTREE=$(mktemp -d /tmp/gopher-ai-merge-worktree-XXXXXX)
+MERGE_STRATEGY_BLOCK=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-merge-strategy-XXXXXX")
+MERGE_FIXTURE_PLUGIN_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-merge-fixture-XXXXXX")
+MERGE_FIXTURE_WORKTREE=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-merge-worktree-XXXXXX")
 mkdir -p "$MERGE_FIXTURE_PLUGIN_ROOT/scripts"
 cp "$ROOT_DIR/plugins/go-workflow/scripts/cleanup-loop.sh" "$MERGE_FIXTURE_PLUGIN_ROOT/scripts/cleanup-loop.sh"
 awk '
@@ -263,7 +320,7 @@ fi
 rm -f "$CI_SHIFT_BLOCK"
 rm -rf "$DIRTY_HEAD_SHIFT_TMP"
 
-HEADLESS_TMP=$(mktemp -d /tmp/ship-headless-e2e-XXXXXX)
+HEADLESS_TMP=$(mktemp -d "${TMPDIR:-/tmp}/ship-headless-e2e-XXXXXX")
 mkdir -p "$HEADLESS_TMP/.local/state" "$HEADLESS_TMP/hooks" "$HEADLESS_TMP/lib"
 cp "$STOP_HOOK" "$HEADLESS_TMP/hooks/stop-hook.sh"
 cp "$LOOP_LIB" "$HEADLESS_TMP/lib/loop-state.sh"

@@ -46,9 +46,9 @@ routing and subsequent steps depend on these exact names.
 | `coverage_skip_reason` | string | Step E.3 of coverage-verification.md | Empty when computed; `"all-main"` when every changed file was `package main` |
 | `coverage_tests_generated` | int | Step F of coverage-verification.md | Count of new tests created |
 | `e2e_required` | string | Step 7.6 | `"true"` when the diff is UI-visible and browser E2E is required |
-| `e2e_attempted` | string | Step 7.6e | `"true"` when E2E ran |
+| `e2e_attempted` | string | Step 7.6e | `"true"` after the first browser tool call is issued, even when that call fails |
 | `e2e_result` | string | Step 7.6e | `"passed"` / `"blocked"` / `"skipped"`; `blocked` means required E2E did not pass and merge must stop |
-| `e2e_skip_reason` | string | Step 7.6e | Empty on pass; otherwise machine-readable reason such as `"no-ui-visible-changes"`, `"missing-browser-tooling"`, or `"dev-server-unavailable"` |
+| `e2e_skip_reason` | string | Step 7.6e | Empty on pass; otherwise machine-readable reason such as `"no-ui-visible-changes"`, `"missing-browser-tooling"`, `"browser-tool-call-failed"`, or `"dev-server-unavailable"` |
 | `e2e_pages_tested` | int | Step 7.6e | Number of routes tested |
 | `review_clean` | string | Step 5c | `"true"` when LLM returned no findings — fast-path past Step 6 on re-entry |
 | `review_result` | string | Step 2 recovery, Step 5 | `"void"` when a prior session's review expired or `"skipped"` when a headless worker cannot run it synchronously |
