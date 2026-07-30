@@ -33,9 +33,9 @@ Use the current Detent state as the source of truth for which section applies.
 
 1. Move the issue to `In Progress`.
 2. Initialize the Workpad with the plan, acceptance criteria, validation plan, and `in_progress` status.
-3. Fetch `origin/main`, confirm the Detent worktree base, resolve dependencies, then follow `$go-workflow:start-issue <number>`.
+3. Fetch `origin/main`, confirm the Detent worktree base, resolve dependencies, then follow `$go-workflow:start-issue <number>` through PR creation and current-head CI.
 4. Run focused checks and the configured validation gate.
-5. Follow `$go-workflow:commit`, `$go-workflow:create-pr`, and `$go-workflow:address-review`.
+5. Follow `$go-workflow:address-review` for any PR feedback.
 6. Leave the issue in `In Progress`. Set Workpad `status: complete` with no blockers or human action only when the PR is non-draft, references the issue, validation and current-head CI are green, and no actionable review remains. Detent auto-promotes directly to `Merging`; never use `Human Review`.
 
 ### For In Progress
