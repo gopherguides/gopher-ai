@@ -103,6 +103,16 @@ assert_contains "$template_gate" "template whose name and required" "template ga
 assert_contains "$template_gate" "first lexical template" "template gate lacks deterministic tie-break"
 assert_contains "$template_gate" "do not request input" "template gate still defers a technical choice"
 
+pr_submission=$(section_text "$CREATE_PR" "### Step 8:" "### Step 9:")
+assert_contains "$pr_submission" "gh pr view" "create-pr does not detect an existing pull request"
+assert_contains "$pr_submission" "headRefName" "create-pr does not verify the existing pull request head"
+assert_contains "$pr_submission" "baseRefName" "create-pr does not verify the existing pull request base"
+assert_contains "$pr_submission" "if [ -n \"\$EXISTING_PR\" ]" "create-pr does not branch on an existing pull request"
+assert_contains "$pr_submission" "Reusing pull request" "create-pr does not report a reused pull request"
+assert_contains "$pr_submission" "WORKFLOW_REASON=existing-pr-mismatch" "create-pr can reuse a mismatched pull request"
+assert_contains "$pr_submission" "else" "create-pr lacks a new pull request path"
+assert_contains "$pr_submission" "gh pr create" "create-pr no longer creates a pull request when none exists"
+
 review_capacity=$(section_text "$REVIEW_PLAN" "Follow the displayed plan" "__END__")
 assert_contains "$review_capacity" "further partitioning" "review planning cannot recover from capacity limits"
 assert_contains "$review_capacity" "higher-capacity backend" "review planning cannot use backend evidence"
