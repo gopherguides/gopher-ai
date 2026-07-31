@@ -928,17 +928,19 @@ for skill_dir in "$ROOT_DIR"/plugins/*/skills/*/; do
   ' "$ROOT_DIR/scripts/legacy-skill-hashes.txt")
   [ -n "$HISTORICAL_HASH" ] || continue
   # Find a blob with this hash from git history and reconstruct it as a stale install.
-  # The inner subshell exits as soon as a match is printed; no `head -1` needed.
+  # Drain git rev-list after finding the first match to avoid SIGPIPE under pipefail.
   STALE_BLOB=$(cd "$ROOT_DIR" && git rev-list --objects HEAD 2>/dev/null \
     | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
     | (
+        found_blob=""
         while read -r blob path; do
+          [ -z "$found_blob" ] || continue
           h=$(git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
           if [ "$h" = "$HISTORICAL_HASH" ] && [ "$(basename "$(dirname "$path")")" = "$skill_name" ]; then
-            echo "$blob"
-            exit 0
+            found_blob="$blob"
           fi
         done
+        [ -z "$found_blob" ] || echo "$found_blob"
       ))
   if [ -n "$STALE_BLOB" ]; then
     SEEDED_OWNED="$skill_name"
