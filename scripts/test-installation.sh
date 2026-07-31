@@ -137,6 +137,7 @@ else
 fi
 
 ARCHIVE_TEMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+ARCHIVE_TEMP_BASE="${ARCHIVE_TEMP_BASE%/}"
 ARCHIVE_TEMP_TEST_ROOT=$(mktemp -d "$ARCHIVE_TEMP_BASE/gopher-ai-universal-archive.XXXXXX")
 ARCHIVE_TEMP_DIR="$ARCHIVE_TEMP_TEST_ROOT/configured"
 ARCHIVE_MKTEMP_BIN="$ARCHIVE_TEMP_TEST_ROOT/bin"
@@ -176,7 +177,7 @@ if ! (
   PATH="$ARCHIVE_MKTEMP_BIN:$PATH" \
     GOPHER_AI_MKTEMP_LOG="$ARCHIVE_MKTEMP_LOG" \
     GOPHER_AI_REAL_MKTEMP="$ARCHIVE_REAL_MKTEMP" \
-    TMPDIR="configured" \
+    TMPDIR="configured/" \
     TMP="$ARCHIVE_TEMP_TEST_ROOT/unused-tmp" \
     TEMP="$ARCHIVE_TEMP_TEST_ROOT/unused-temp" \
     "$ROOT_DIR/scripts/build-universal.sh" >"$ARCHIVE_TEMP_TEST_ROOT/build.log" 2>&1
