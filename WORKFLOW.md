@@ -58,3 +58,38 @@ Re-read all human, CI, and bot feedback, move the issue to `In Progress`, and fo
    - issue remains in `Merging` with an external blocker recorded in the
      `detent-status` block and Workpad.
 3. Move the issue to `Done` only after the pull request is merged.
+
+## Admission Criteria
+
+Used by the scheduled admission pass to decide which `Backlog` issues to
+admit to `Todo`. Each subsection is a scoring dimension; a proposal must
+quote the rule it relied on, verbatim, and an issue satisfying no
+dimension is not proposed.
+
+### Alignment
+
+Admit, in this order of preference:
+
+1. **Toolchain defects agents actually hit.** A reproducible failure in
+   a skill, command, hook, or gate script that blocks an agent run,
+   fails the e2e gate, or produces rework — including flaky tests in
+   `scripts/` that intermittently fail the completion gate.
+2. **Work that removes a standing human step.** Anything that turns a
+   recurring manual intervention in the plugin workflow into something
+   the tooling does itself.
+
+Do not admit: umbrella or epic issues (decompose first), or speculative
+new skills and commands with no named consumer.
+
+### Readiness
+
+A precise symptom plus expected behavior satisfies this; a wish with no
+checkable end state fails it. An issue whose `Depends on:` reference is
+not merged into `origin/main` is not ready; leave it in `Backlog` and
+say what is missing.
+
+### Size
+
+Admit only what can plausibly be finished and validated in a single
+agent run against the full completion gate. Decompose oversized work
+and admit the pieces.
