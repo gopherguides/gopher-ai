@@ -101,10 +101,30 @@ Include `Fixes #<number>` or `Closes #<number>` in the PR body.
 - Keep under 70 characters
 - Derive from the commits and changes
 
-### Step 8: Create PR
+### Step 8: Reuse or Create PR
+
+Check for an open pull request associated with the current branch before
+attempting to create one:
 
 ```bash
-gh pr create --title "<title>" --body "<body>"
+EXISTING_PR=$(gh pr view \
+  --json number,url,state,headRefName,baseRefName \
+  --jq 'select(.state == "OPEN") | [.number, .url, .headRefName, .baseRefName] | @tsv' \
+  2>/dev/null || true)
+
+if [ -n "$EXISTING_PR" ]; then
+  IFS=$'\t' read -r PR_NUMBER PR_URL PR_HEAD PR_BASE <<< "$EXISTING_PR"
+
+  if [ "$PR_HEAD" != "$CURRENT_BRANCH" ] || [ "$PR_BASE" != "$DEFAULT_BRANCH" ]; then
+    echo "WORKFLOW_RESULT=INCOMPLETE"
+    echo "WORKFLOW_REASON=existing-pr-mismatch"
+    exit 1
+  fi
+
+  echo "Reusing pull request #$PR_NUMBER: $PR_URL"
+else
+  gh pr create --title "<title>" --body "<body>"
+fi
 ```
 
 ### Step 9: Report

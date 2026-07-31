@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 275
+# Total entries: 276
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0232ae1141f76c0ba40045649179a566080de9fc717c6cb08c3961b827fe3e88 create-pr
 0322d4a7ddc204a9bf5addfec4e512edaea92ab8f4ebdd0541ca099330a09408 worktree
@@ -178,6 +178,7 @@ a164e2b1f11394ae1ed9483327be26cabf4f6312ce041058a88e971be5806a6f e2e-verify
 a1a6f04b281f1bcfbe8fde80103929966af8f70bda1c911778aac492046cf46f start-issue
 a1be43f108a567703d37bded1f2afedfdfffac7b1091f0eca4a73324db6a2d7e go-profiling-optimization
 a2a3050b172bc402ab7145d100ece2970d0c1c1ab5b8ca031a8467def04147be go-best-practices
+a2cd098b5ee6d66ec2dacdbe37f51b8f752e5bb1361c3ce77fb77ea71cc880cf create-pr
 a3d00fdd9a8c311b4f5eb4fa3103b590728c9aae4ba6a4114550a0d95899dfe2 start-issue
 a540a70728ccdf333607568344421a1cac01ec3ba8154b497eff803c4944c1ec second-opinion
 a551fb3560982ad79be6d30d55acd31a7346cd890b9a79491a8b6e4c1c7944f6 templui
