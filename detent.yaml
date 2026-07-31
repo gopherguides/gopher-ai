@@ -175,3 +175,24 @@ budget:
     pricing_path: priv/pricing/models.yaml
 hooks:
     timeout_ms: 60000
+# Scheduled admission (mirrors the detent project's setup, 2026-07-31). A
+# read-only agent scores Backlog issues against the "Admission Criteria"
+# section of WORKFLOW.md; auto_admit moves high-confidence ones to Todo and
+# writes a recommended detent-agent effort onto the issue on admit. Schedule
+# inherits the shipped default (*/15). Enabled after gopher-ai#295 sat in
+# Backlog with nothing watching it while detent auto-gated for two days.
+backlog_admission:
+    enabled: true
+    sources:
+        states:
+            - Backlog
+    target_state: Todo
+    criteria_section: Admission Criteria
+    authors:
+        allow:
+            - corylanou
+            - loganlanou
+            - michaelhvisser
+            - jarvislanou
+    auto_admit: true
+    auto_admit_min_confidence: 0.9
