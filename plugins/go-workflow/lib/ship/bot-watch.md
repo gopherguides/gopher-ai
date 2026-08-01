@@ -106,8 +106,7 @@ Store as a comma-separated list:
 
 ```bash
 # e.g., discovered_bots: chatgpt-codex-connector[bot],coderabbitai[bot]
-TMP="$STATE_FILE.tmp"
-jq --arg bots "$DISCOVERED_BOTS_CSV" '.discovered_bots = $bots' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "discovered_bots" "$DISCOVERED_BOTS_CSV" "$WORKFLOW_STATE_PATH"
 ```
 
 ## 11b. Poll for bot approval

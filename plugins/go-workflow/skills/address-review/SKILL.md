@@ -92,6 +92,48 @@ PR_NUM="$RESOLVED_PR"
 echo "Resolved PR: $RESOLVED_PR"
 ```
 
+## Embedded Workflow Contract
+
+Address-review is embedded only when both caller variables are explicitly set.
+Never infer composition from a generic inherited `STATE_FILE`:
+
+```bash
+EMBEDDED_WORKFLOW=false
+source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+RESOLVED_ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')
+if [ -z "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ "${RESOLVED_ORIGINAL_REPO_ROOT#/}" = "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ ! -d "$RESOLVED_ORIGINAL_REPO_ROOT" ]; then
+  echo "Error: Could not resolve the absolute primary worktree root."
+  exit 1
+fi
+if [ -n "${CALLER_LOOP_STATE_FILE:-}" ] && [ -n "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
+  EMBEDDED_WORKFLOW=true
+  STATE_FILE="$CALLER_LOOP_STATE_FILE"
+  WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "address_review")
+  initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+  ORIGINAL_REPO_ROOT=$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')
+  WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
+  REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
+elif [ -n "${CALLER_LOOP_STATE_FILE:-}" ] || [ -n "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
+  echo "Error: Embedded address-review requires both caller state variables."
+  exit 1
+else
+  ORIGINAL_REPO_ROOT="$RESOLVED_ORIGINAL_REPO_ROOT"
+  WORKTREE_PATH="$CURRENT_CHECKOUT_ROOT"
+  REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
+  STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/address-review-${RESOLVED_PR:-auto}.loop.local.json"
+  mkdir -p "$(dirname "$STATE_FILE")"
+  STATE_FILE=$(cd "$(dirname "$STATE_FILE")" && pwd)/$(basename "$STATE_FILE")
+  WORKFLOW_STATE_PATH='[]'
+fi
+
+LOOP_STATE_FILE="$STATE_FILE"
+```
+
+When embedded, every phase and field operation uses `STATE_FILE` plus
+`WORKFLOW_STATE_PATH`. Address-review never changes the root completion promise
+or terminal allowlist, never initializes another loop, and returns only through
+`set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" RESULT REASON PHASE`.
+
 ## Loop Initialization & Re-entry
 
 Read `loop-management.md` for loop setup and phase re-entry logic. Key behavior:
@@ -111,16 +153,19 @@ if [ -z "$INVARIANT_STATE_FILE" ] || [ ! -f "$INVARIANT_STATE_FILE" ]; then
   exit 1
 fi
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_field "$INVARIANT_STATE_FILE" "workflow_result" "incomplete"
-set_loop_field "$INVARIANT_STATE_FILE" "workflow_reason" "$WORKFLOW_REASON"
-set_loop_phase "$INVARIANT_STATE_FILE" "incomplete"
-set_loop_field "$INVARIANT_STATE_FILE" "completion_promise" "INCOMPLETE"
+if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+  set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$WORKFLOW_REASON" "incomplete"
+  echo "ADDRESS_REVIEW_RESULT=incomplete"
+  echo "ADDRESS_REVIEW_REASON=$WORKFLOW_REASON"
+else
+  set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"
+  echo "<done>INCOMPLETE</done>"
+fi
 ```
 
-An embedded run with `STATE_FILE` set returns the structured incomplete state
-to its top-level caller and emits no terminal marker. A standalone run outputs
-`<done>INCOMPLETE</done>` and stops. Never fetch feedback, edit files, push, or
-output `<done>COMPLETE</done>` from an invariant-failure path.
+Stop after this block. Never fetch feedback, edit files, push, or claim
+completion from an invariant-failure path. The embedded branch returns the
+structured incomplete state and emits no terminal marker.
 
 ## Context & Bot Discovery
 
@@ -256,9 +301,23 @@ only those feedback-specific actions.
 ### Default (watch mode):
 All above, PLUS all detected review bots signaled approval per `bot-registry.md`.
 
-**When ALL criteria are met, output exactly:** `<done>COMPLETE</done>`
+When all criteria are met:
 
-If the user exits or skips a bot before all detected bots approve, follow the **Incomplete Approval Outcome** procedure in `watch-loop.md`. Persist `approval_result` and `approval_reason`, then output `<done>INCOMPLETE</done>` instead. Never output the completion marker for this path.
+```bash
+if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+  set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "complete" "" "completed"
+  echo "ADDRESS_REVIEW_RESULT=complete"
+else
+  set_loop_terminal_result "$STATE_FILE" "complete" "" "completed" "COMPLETE"
+  echo "<done>COMPLETE</done>"
+fi
+```
+
+If the user exits or skips a bot before all detected bots approve, follow the
+**Incomplete Approval Outcome** procedure in `watch-loop.md`. Persist
+`approval_result` and `approval_reason`; standalone address-review emits its
+allowlisted `INCOMPLETE` marker while embedded address-review returns its
+structured failure without a marker.
 
 **Safety:** If 15+ iterations complete without success, document the blocking
 evidence and stop incomplete. Do not bypass review or approval criteria.

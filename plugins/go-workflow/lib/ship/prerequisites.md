@@ -50,8 +50,7 @@ echo "========================="
 ## Persist failure flag
 
 ```bash
-TMP="$STATE_FILE.tmp"
-jq '.llm_check_failed = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "llm_check_failed" "true" "$WORKFLOW_STATE_PATH"
 ```
 
 ## Recovery policy
@@ -59,8 +58,7 @@ jq '.llm_check_failed = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE
 First re-run detection once after printing diagnostics. On success:
 
 ```bash
-TMP="$STATE_FILE.tmp"
-jq 'del(.llm_check_failed)' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+delete_loop_field "$STATE_FILE" "llm_check_failed" "$WORKFLOW_STATE_PATH"
 ```
 
 Set `LLM_AVAILABLE=true` and continue to Step 5.
@@ -90,8 +88,7 @@ When the selected path is agent-based review, set `USE_AGENT_REVIEW=true` and
 `CODEX_EXEC_FALLBACK=true`, then persist:
 
 ```bash
-TMP="$STATE_FILE.tmp"
-jq '.use_agent_review = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "use_agent_review" "true" "$WORKFLOW_STATE_PATH"
 ```
 
 Continue to Step 5 — Phase 1 will route through the agent-based review

@@ -118,13 +118,12 @@ that explains why the gate did not run, so callers can render a sensible
 summary line without producing `N/A%`-style output.
 
 ```bash
-TMP="${STATE_FILE}.tmp"
 if [ "$ALL_MAIN" = "true" ]; then
-  jq --arg reason "all-main" '.coverage_result = "" | .coverage_skip_reason = $reason' \
-    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  set_loop_field "$STATE_FILE" "coverage_result" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "coverage_skip_reason" "all-main" "$WORKFLOW_STATE_PATH"
 else
-  jq --arg cr "$AGGREGATE_COVERAGE" '.coverage_result = $cr | .coverage_skip_reason = ""' \
-    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  set_loop_field "$STATE_FILE" "coverage_result" "$AGGREGATE_COVERAGE" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "coverage_skip_reason" "" "$WORKFLOW_STATE_PATH"
 fi
 ```
 
@@ -139,12 +138,12 @@ reason (e.g. `skipped — all changed files are package main`) instead of
 Set `WORKFLOW_REASON` to the branch-specific reason before running:
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --arg reason "$WORKFLOW_REASON" \
-  '.workflow_result = "incomplete" | .workflow_reason = $reason | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' \
-  "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+WORKFLOW_RESULT=INCOMPLETE
+WORKFLOW_REASON="${WORKFLOW_REASON:?workflow reason is required}"
+set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$WORKFLOW_REASON" "incomplete"
 ```
 
-Report `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=$WORKFLOW_REASON`,
-output `<done>INCOMPLETE</done>`, and stop. Never emit the calling workflow's
-success marker on this path.
+Return `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=$WORKFLOW_REASON` to
+the calling workflow, which owns terminal-promise selection and marker output.
+Stop coverage processing and never emit any completion marker from this shared
+component.

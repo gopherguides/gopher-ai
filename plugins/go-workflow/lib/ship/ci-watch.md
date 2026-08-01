@@ -22,7 +22,7 @@ Step 10b determines whether checks registered or an active workflow applies.
 Read `head_sha` from state file (set during push in Step 9c, after CI failure recovery in Step 10e, or after Step 12c):
 
 ```bash
-HEAD_SHA=$(jq -r '.head_sha // empty' "$STATE_FILE")
+HEAD_SHA=$(get_loop_field "$STATE_FILE" "head_sha" "$WORKFLOW_STATE_PATH")
 if [ -z "$HEAD_SHA" ]; then
   HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
 fi
@@ -114,6 +114,11 @@ callers, and changed paths, stop incomplete with
 Persist `has_ci` and `ci_skip_reason` only after applying the Step 10b outcome.
 The successful snapshot is the fresh CI evidence for this session.
 
+```bash
+set_loop_field "$STATE_FILE" "has_ci" "$HAS_CI" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "ci_skip_reason" "$CI_SKIP_REASON" "$WORKFLOW_STATE_PATH"
+```
+
 ## 10d. Post-watch SHA validation
 
 When the helper reports `GITHUB_CHECKS_HEAD_SHIFT`, or when explicitly
@@ -139,10 +144,10 @@ if [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   git -C "$WORKTREE_PATH" fetch "$BRANCH_REMOTE" "$PR_HEAD_BRANCH"
   git -C "$WORKTREE_PATH" checkout "$PR_HEAD_BRANCH"
   git -C "$WORKTREE_PATH" reset --hard "$BRANCH_REMOTE/$PR_HEAD_BRANCH"
-  TMP="${STATE_FILE}.tmp"
-  jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "review-required" \
-    '.head_sha = $sha | .pass = $pass | .review_clean = $rc | .phase = $phase' \
-    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  set_loop_field "$STATE_FILE" "head_sha" "$HEAD_SHA" "$WORKFLOW_STATE_PATH"
+  set_loop_json_field "$STATE_FILE" "pass" 0 "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "review_clean" "" "$WORKFLOW_STATE_PATH"
+  set_loop_phase "$STATE_FILE" "review-required" "$WORKFLOW_STATE_PATH"
 fi
 ```
 
@@ -176,3 +181,10 @@ If CI fails:
 5. Capture HEAD SHA: `HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)`; persist `head_sha`
 6. Re-capture `BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)`; persist
 7. Re-watch CI — go back to 10b for the NEW SHA
+
+Persist Steps 5–6 through the resolved ship workflow object:
+
+```bash
+set_loop_field "$STATE_FILE" "head_sha" "$HEAD_SHA" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "bot_review_baseline" "$BOT_REVIEW_BASELINE" "$WORKFLOW_STATE_PATH"
+```

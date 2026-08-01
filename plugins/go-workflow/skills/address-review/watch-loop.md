@@ -9,7 +9,7 @@ SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9
 LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-  set_loop_phase "$LOOP_STATE_FILE" "watching"
+  set_loop_phase "$LOOP_STATE_FILE" "watching" "$WORKFLOW_STATE_PATH"
   echo "Phase set to: watching"
 fi
 ```
@@ -25,7 +25,7 @@ if [ -z "${BOT_REVIEW_BASELINE:-}" ]; then
 fi
 
 if [ -f "$LOOP_STATE_FILE" ]; then
-  set_loop_field "$LOOP_STATE_FILE" "bot_review_baseline" "$BOT_REVIEW_BASELINE"
+  set_loop_field "$LOOP_STATE_FILE" "bot_review_baseline" "$BOT_REVIEW_BASELINE" "$WORKFLOW_STATE_PATH"
   echo "Bot review baseline persisted: $BOT_REVIEW_BASELINE"
 fi
 ```
@@ -38,21 +38,29 @@ the decision branch, then persist the incomplete outcome:
 
 ```bash
 APPROVAL_REASON="${APPROVAL_REASON:?approval reason is required}"
-APPROVAL_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-}}"
-if [ -z "$APPROVAL_STATE_FILE" ] || [ ! -f "$APPROVAL_STATE_FILE" ]; then
+if [ -z "${STATE_FILE:-}" ] || [ ! -f "$STATE_FILE" ]; then
   echo "Error: Cannot persist incomplete approval outcome without loop state."
   exit 1
 fi
 
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_field "$APPROVAL_STATE_FILE" "approval_result" "incomplete"
-set_loop_field "$APPROVAL_STATE_FILE" "approval_reason" "$APPROVAL_REASON"
-set_loop_phase "$APPROVAL_STATE_FILE" "approval-incomplete"
-set_loop_field "$APPROVAL_STATE_FILE" "completion_promise" "INCOMPLETE"
+set_loop_field "$STATE_FILE" "approval_result" "incomplete" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "approval_reason" "$APPROVAL_REASON" "$WORKFLOW_STATE_PATH"
 echo "Address-review stopped without required bot approvals: $APPROVAL_REASON"
+if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+  set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$APPROVAL_REASON" "approval-incomplete"
+  echo "ADDRESS_REVIEW_RESULT=incomplete"
+  echo "ADDRESS_REVIEW_REASON=$APPROVAL_REASON"
+else
+  set_loop_terminal_result "$STATE_FILE" "incomplete" "$APPROVAL_REASON" "approval-incomplete" "INCOMPLETE"
+  echo "<done>INCOMPLETE</done>"
+fi
 ```
 
-`STATE_FILE` is the caller-owned state used when ship consumes Steps 12a-12d; standalone address-review falls back to `LOOP_STATE_FILE`. After the state update succeeds, output `<done>INCOMPLETE</done>` and stop. The changed completion promise lets the active caller's stop hook accept the distinct terminal marker, while `approval_result` and `approval_reason` give callers a machine-readable outcome before loop cleanup.
+After the state update succeeds, stop. Standalone address-review changes its
+active promise to the allowlisted `INCOMPLETE` marker. Embedded address-review
+returns the structured result without changing or emitting its caller's
+terminal promise.
 
 ---
 
@@ -153,9 +161,10 @@ Failure** and cannot count as bot approval.
 
 **If ALL detected bots are done:**
 
-- When ship loaded this watch loop, return control to ship Step 13 without
-  emitting a completion marker.
-- In standalone address-review, output `<done>COMPLETE</done>` and stop.
+- When ship loaded this watch loop, follow the address-review success result
+  contract and return control to ship Step 13 without emitting a marker.
+- In standalone address-review, follow the same result contract and emit its
+  own `COMPLETE` marker.
 
 The calling workflow's top-level completion criteria own its completion marker.
 
@@ -197,7 +206,7 @@ SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9
 LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-  set_loop_phase "$LOOP_STATE_FILE" "fixing"
+  set_loop_phase "$LOOP_STATE_FILE" "fixing" "$WORKFLOW_STATE_PATH"
   echo "Phase reset to: fixing (new bot feedback detected)"
 fi
 ```

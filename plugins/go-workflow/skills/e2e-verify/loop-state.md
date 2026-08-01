@@ -4,10 +4,16 @@ Loaded by `SKILL.md` "Loop Initialization & Re-entry", Steps 1-2, and Step 5
 when the agent needs to bootstrap the loop, persist field updates, or
 re-enter mid-flow.
 
-The state file path is always absolute beneath `ORIGINAL_REPO_ROOT`, never
-relative to an ambient directory. Field names listed
-here are part of the contract with `pr-results-comment.md` and
+Standalone E2E uses the normalized absolute
+`.local/state/e2e-verify-${PR_NUM}.loop.local.json` path resolved by SKILL.md.
+Embedded E2E uses its caller's physical state file and component path. Field
+names listed here are part of the contract with `pr-results-comment.md` and
 `mode-finish.md` — do not rename them.
+
+An unversioned E2E state in `ship`/`fix-and-ship` mode or the `shipping` phase
+cannot identify its former separate ship loop. Re-entry fails closed without
+mutation and directs the user to cancel and restart E2E verification. Other
+single-workflow legacy E2E states migrate additively.
 
 ## Bootstrap Block
 
@@ -15,39 +21,53 @@ Run during "Loop Initialization & Re-entry". Detects re-entry and skips
 `setup-loop.sh` when a phase already exists; otherwise creates the state file.
 
 ```bash
-STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/e2e-verify-${PR_NUM}.loop.local.json"
-if [ -f "$STATE_FILE" ]; then
-  EXISTING_PHASE=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null || true)
+if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+  EXISTING_PHASE=$(get_loop_field "$STATE_FILE" "phase" "$WORKFLOW_STATE_PATH")
+  echo "Embedded E2E state phase: ${EXISTING_PHASE:-<none>}"
+elif [ -f "$STATE_FILE" ]; then
+  read_loop_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+  EXISTING_PHASE="$PHASE"
   if [ -n "$EXISTING_PHASE" ]; then
-    PERSISTED_ORIGINAL_REPO_ROOT=$(jq -r '.original_repo_root // empty' "$STATE_FILE" 2>/dev/null || true)
-    PERSISTED_WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$STATE_FILE" 2>/dev/null || true)
-    PERSISTED_REPO_SLUG=$(jq -r '.repo_slug // empty' "$STATE_FILE" 2>/dev/null || true)
-    REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print}')
-    if [ "$PERSISTED_ORIGINAL_REPO_ROOT" != "$ORIGINAL_REPO_ROOT" ] ||
-       [ -z "$PERSISTED_WORKTREE_PATH" ] ||
-       [ "${PERSISTED_WORKTREE_PATH#/}" = "$PERSISTED_WORKTREE_PATH" ] ||
-       [ ! -d "$PERSISTED_WORKTREE_PATH" ] ||
-       ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v path="$PERSISTED_WORKTREE_PATH" '$0 == path { found = 1 } END { exit !found }' ||
-       [ "$PERSISTED_REPO_SLUG" != "$CURRENT_REPO_SLUG" ]; then
-      TMP="${STATE_FILE}.tmp"
-      jq '.workflow_result = "incomplete" | .workflow_reason = "e2e-worktree-path-invalid" | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-      echo "WORKFLOW_RESULT=INCOMPLETE"
-      echo "WORKFLOW_REASON=e2e-worktree-path-invalid"
-      echo "<done>INCOMPLETE</done>"
-      exit 1
-    fi
-    WORKTREE_PATH="$PERSISTED_WORKTREE_PATH"
-    REPO_SLUG="$PERSISTED_REPO_SLUG"
     echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop to preserve state."
   fi
 fi
 
-if [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
+if [ "$EMBEDDED_WORKFLOW" = "true" ] || [ -n "${EXISTING_PHASE:-}" ]; then
+  PERSISTED_ORIGINAL_REPO_ROOT=$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')
+  PERSISTED_WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
+  PERSISTED_REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
+  REGISTERED_WORKTREES=$(git -C "$RESOLVED_ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print }')
+  if [ "$PERSISTED_ORIGINAL_REPO_ROOT" != "$RESOLVED_ORIGINAL_REPO_ROOT" ] ||
+     [ -z "$PERSISTED_WORKTREE_PATH" ] ||
+     [ "${PERSISTED_WORKTREE_PATH#/}" = "$PERSISTED_WORKTREE_PATH" ] ||
+     [ ! -d "$PERSISTED_WORKTREE_PATH" ] ||
+     ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v path="$PERSISTED_WORKTREE_PATH" '$0 == path { found = 1 } END { exit found ? 0 : 1 }' ||
+     [ -z "$PERSISTED_REPO_SLUG" ] ||
+     [ "$PERSISTED_REPO_SLUG" != "$CURRENT_REPO_SLUG" ]; then
+    WORKFLOW_REASON=e2e-worktree-path-invalid
+    if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+      set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$WORKFLOW_REASON" "incomplete"
+      echo "E2E_VERIFY_RESULT=incomplete"
+      echo "E2E_VERIFY_REASON=$WORKFLOW_REASON"
+    else
+      set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"
+      echo "<done>INCOMPLETE</done>"
+    fi
+    exit 1
+  fi
+  ORIGINAL_REPO_ROOT="$PERSISTED_ORIGINAL_REPO_ROOT"
+  WORKTREE_PATH="$PERSISTED_WORKTREE_PATH"
+  REPO_SLUG="$PERSISTED_REPO_SLUG"
+fi
+
+if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+  echo "Embedded E2E is using the caller-owned loop state."
+elif [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
   echo "Re-entry detected — skipping setup-loop."
 else
   "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "e2e-verify-${PR_NUM}" "VERIFIED" 30 "" \
-    '{"rebasing":"Resume rebase onto base branch.","building":"Resume build verification.","addressing":"Resume address-review fixes.","investigating":"Resume investigation.","e2e-testing":"Resume E2E tests. Restart dev server if needed.","posting":"Resume posting results to PR.","shipping":"Resume ship workflow."}' \
-    "$STATE_FILE"
+    '{"rebasing":"Resume rebase onto base branch.","building":"Resume build verification.","addressing":"Resume address-review fixes from its component phase.","investigating":"Resume investigation.","e2e-testing":"Resume E2E tests. Restart dev server if needed.","posting":"Resume posting results to PR.","shipping":"Resume ship workflow from its component phase.","e2e-failed":"Report the persisted failure reason and stop."}' \
+    "$STATE_FILE" '["VERIFIED","E2E_FAIL","INCOMPLETE"]'
 fi
 ```
 
@@ -57,17 +77,37 @@ Runs immediately after bootstrap so subsequent re-entries see the original
 mode and PR number.
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --arg mode "$MODE" --arg pr_number "$PR_NUM" --arg build_result "" \
-   --arg e2e_result "" --argjson pages_tested 0 --arg base_branch "" \
-   --arg workflow_result "" --arg workflow_reason "" --arg original_repo_root "$ORIGINAL_REPO_ROOT" \
-   --arg worktree_path "$WORKTREE_PATH" --arg repo_slug "$REPO_SLUG" \
-   --arg generation_target "" --argjson generation_snapshot '[]' \
-   --arg generated_commit_status "" --arg generated_commit_parent "" \
-   --arg generated_commit_sha "" \
-   --argjson generated_files '[]' \
-   '. + {mode: $mode, pr_number: $pr_number, build_result: $build_result, e2e_result: $e2e_result, pages_tested: $pages_tested, base_branch: $base_branch, workflow_result: $workflow_result, workflow_reason: $workflow_reason, original_repo_root: (if (.original_repo_root // "") == "" then $original_repo_root else .original_repo_root end), worktree_path: (if (.worktree_path // "") == "" then $worktree_path else .worktree_path end), repo_slug: (if (.repo_slug // "") == "" then $repo_slug else .repo_slug end), generation_target: (.generation_target // $generation_target), generation_snapshot: (.generation_snapshot // $generation_snapshot), generated_files: (.generated_files // $generated_files), generated_commit_status: (.generated_commit_status // $generated_commit_status), generated_commit_parent: (.generated_commit_parent // $generated_commit_parent), generated_commit_sha: (.generated_commit_sha // $generated_commit_sha)}' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+if [ -z "$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')" ]; then
+  set_loop_field "$STATE_FILE" "original_repo_root" "$ORIGINAL_REPO_ROOT" '[]'
+fi
+if [ -z "$(get_loop_field "$STATE_FILE" "worktree_path" '[]')" ]; then
+  set_loop_field "$STATE_FILE" "worktree_path" "$WORKTREE_PATH" '[]'
+fi
+if [ -z "$(get_loop_field "$STATE_FILE" "repo_slug" '[]')" ]; then
+  set_loop_field "$STATE_FILE" "repo_slug" "$REPO_SLUG" '[]'
+fi
+set_loop_field "$STATE_FILE" "mode" "$MODE" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "pr_number" "$PR_NUM" "$WORKFLOW_STATE_PATH"
+if [ -z "$(get_loop_field "$STATE_FILE" "build_result" "$WORKFLOW_STATE_PATH")" ]; then
+  set_loop_field "$STATE_FILE" "build_result" "" "$WORKFLOW_STATE_PATH"
+fi
+if [ -z "$(get_loop_field "$STATE_FILE" "e2e_result" "$WORKFLOW_STATE_PATH")" ]; then
+  set_loop_field "$STATE_FILE" "e2e_result" "" "$WORKFLOW_STATE_PATH"
+fi
+if [ -z "$(get_loop_field "$STATE_FILE" "pages_tested" "$WORKFLOW_STATE_PATH")" ]; then
+  set_loop_json_field "$STATE_FILE" "pages_tested" 0 "$WORKFLOW_STATE_PATH"
+fi
+for INITIAL_FIELD in build_result e2e_result base_branch workflow_result workflow_reason generation_target generated_commit_status generated_commit_parent generated_commit_sha; do
+  if [ -z "$(get_loop_field "$STATE_FILE" "$INITIAL_FIELD" "$WORKFLOW_STATE_PATH")" ]; then
+    set_loop_field "$STATE_FILE" "$INITIAL_FIELD" "" "$WORKFLOW_STATE_PATH"
+  fi
+done
+for INITIAL_JSON_FIELD in generation_snapshot generated_files; do
+  if [ -z "$(get_loop_field "$STATE_FILE" "$INITIAL_JSON_FIELD" "$WORKFLOW_STATE_PATH")" ]; then
+    set_loop_json_field "$STATE_FILE" "$INITIAL_JSON_FIELD" '[]' "$WORKFLOW_STATE_PATH"
+  fi
+done
 ```
 
 ## Re-entry Check
@@ -75,8 +115,8 @@ jq --arg mode "$MODE" --arg pr_number "$PR_NUM" --arg build_result "" \
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
 if [ -f "$STATE_FILE" ]; then
-  read_loop_state "$STATE_FILE"
-  E2E_STATE_JSON=$(cat "$STATE_FILE")
+  read_loop_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+  E2E_STATE_JSON=$(jq -c --argjson path "$WORKFLOW_STATE_PATH" 'getpath($path)' "$STATE_FILE")
   GEN_TARGET=$(jq -r '.generation_target // empty' <<< "$E2E_STATE_JSON")
   GEN_SNAPSHOT_FILES=()
   while IFS= read -r -d '' SNAPSHOT_FILE; do
@@ -102,9 +142,12 @@ transaction before invoking address-review:
 if [ "${PHASE:-}" = "incomplete" ] &&
    { [ "${GENERATED_COMMIT_STATUS:-}" = "committing" ] ||
      [ "${GENERATED_COMMIT_STATUS:-}" = "push-pending" ]; }; then
-  TMP="${STATE_FILE}.tmp"
-  jq '.workflow_result = "" | .workflow_reason = "" | .completion_promise = "VERIFIED" | .phase = "addressing"' \
-    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  set_loop_field "$STATE_FILE" "workflow_result" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "workflow_reason" "" "$WORKFLOW_STATE_PATH"
+  if [ "$EMBEDDED_WORKFLOW" != "true" ]; then
+    set_loop_completion_promise "$STATE_FILE" "VERIFIED"
+  fi
+  set_loop_phase "$STATE_FILE" "addressing" "$WORKFLOW_STATE_PATH"
   PHASE=addressing
 fi
 ```
@@ -115,10 +158,29 @@ the `addressing` phase, and skip to the corresponding phase listed in the
 SKILL.md phase routing table. If `PHASE` is empty, this is a fresh start —
 continue to Step 1.
 
+## Terminal Re-entry
+
+Run immediately after the re-entry check. A terminal E2E failure reports its
+persisted reason, re-emits only its terminal promise, and stops:
+
+```bash
+if [ "$PHASE" = "e2e-failed" ]; then
+  WORKFLOW_REASON=$(get_loop_field "$STATE_FILE" "reason" "$WORKFLOW_STATE_PATH")
+  echo "E2E verification failed: $WORKFLOW_REASON"
+  if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+    echo "E2E_VERIFY_RESULT=e2e-fail"
+    echo "E2E_VERIFY_REASON=$WORKFLOW_REASON"
+  else
+    echo "<done>E2E_FAIL</done>"
+  fi
+  exit 0
+fi
+```
+
 ## Persist Build Result (Steps 1-2)
 
 ```bash
-set_loop_phase "$STATE_FILE" "building"
+set_loop_phase "$STATE_FILE" "building" "$WORKFLOW_STATE_PATH"
 if [ "${GEN_NEW_FILES[0]+set}" = "set" ]; then
   GENERATED_FILES_JSON=$(jq -cn '$ARGS.positional' --args "${GEN_NEW_FILES[@]}")
 else
@@ -129,20 +191,16 @@ if [ "${GEN_SNAPSHOT_FILES[0]+set}" = "set" ]; then
 else
   GENERATION_SNAPSHOT_JSON='[]'
 fi
-TMP="${STATE_FILE}.tmp"
-jq --arg build_result "$BUILD_RESULT" --arg base_branch "$BASE_BRANCH" \
-   --arg generation_target "${GEN_TARGET:-}" \
-   --argjson generation_snapshot "$GENERATION_SNAPSHOT_JSON" \
-   --argjson generated_files "$GENERATED_FILES_JSON" \
-   '.build_result = $build_result | .base_branch = $base_branch | .generation_target = $generation_target | .generation_snapshot = $generation_snapshot | .generated_files = $generated_files' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "build_result" "$BUILD_RESULT" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "base_branch" "$BASE_BRANCH" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "generation_target" "${GEN_TARGET:-}" "$WORKFLOW_STATE_PATH"
+set_loop_json_field "$STATE_FILE" "generation_snapshot" "$GENERATION_SNAPSHOT_JSON" "$WORKFLOW_STATE_PATH"
+set_loop_json_field "$STATE_FILE" "generated_files" "$GENERATED_FILES_JSON" "$WORKFLOW_STATE_PATH"
 ```
 
 ## Persist E2E Result (Step 5)
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --arg e2e_result "$E2E_RESULT" --argjson pages_tested "$PAGES_TESTED" \
-   '.e2e_result = $e2e_result | .pages_tested = $pages_tested' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "e2e_result" "$E2E_RESULT" "$WORKFLOW_STATE_PATH"
+set_loop_json_field "$STATE_FILE" "pages_tested" "$PAGES_TESTED" "$WORKFLOW_STATE_PATH"
 ```

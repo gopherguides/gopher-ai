@@ -21,7 +21,7 @@ SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9
 REVIEW_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}}"
 if [ -n "$REVIEW_STATE_FILE" ] && [ -f "$REVIEW_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-  set_loop_field "$REVIEW_STATE_FILE" "review_clean" "true"
+  set_loop_field "$REVIEW_STATE_FILE" "review_clean" "true" "$WORKFLOW_STATE_PATH"
   echo "Persisted review_clean=true to $REVIEW_STATE_FILE"
 fi
 ```
@@ -37,14 +37,14 @@ After Step 11 succeeds, a standalone address-review run with
 active state to `watching` before entering Step 12:
 
 ```bash
-if [ -z "${STATE_FILE:-}" ] &&
+if [ "${EMBEDDED_WORKFLOW:-false}" != "true" ] &&
    [ "${CURRENT_PHASE:-}" = "fixing" ] &&
    [ "${WATCH_MODE:-false}" = "true" ] &&
    [ -n "${DETECTED_BOTS:-}" ] &&
    [ -n "${REVIEW_STATE_FILE:-}" ] &&
    [ -f "$REVIEW_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-  set_loop_phase "$REVIEW_STATE_FILE" "watching"
+  set_loop_phase "$REVIEW_STATE_FILE" "watching" "$WORKFLOW_STATE_PATH"
   echo "Phase set to: watching (post-fix-cycle path)"
 fi
 ```
@@ -67,7 +67,7 @@ SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9
 LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-  set_loop_phase "$LOOP_STATE_FILE" "fixing"
+  set_loop_phase "$LOOP_STATE_FILE" "fixing" "$WORKFLOW_STATE_PATH"
 fi
 ```
 

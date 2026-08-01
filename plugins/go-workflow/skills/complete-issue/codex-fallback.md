@@ -11,13 +11,8 @@ outcome atomically:
 
 ```bash
 WORKFLOW_REASON="${WORKFLOW_REASON:?review failure reason is required}"
-STATE_TMP="${STATE_FILE}.tmp"
-jq --arg reason "$WORKFLOW_REASON" \
-  '.workflow_result = "incomplete"
-   | .workflow_reason = $reason
-   | .phase = "incomplete"
-   | .completion_promise = "INCOMPLETE"' \
-  "$STATE_FILE" > "$STATE_TMP" && mv "$STATE_TMP" "$STATE_FILE"
+set_loop_terminal_result \
+  "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"
 ```
 
 Output `<done>INCOMPLETE</done>` and stop. Do not enter Phase 3 or claim the

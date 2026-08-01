@@ -238,10 +238,8 @@ if [ -f "$WORKTREE_PATH/Makefile" ]; then
         GENERATION_SNAPSHOT_JSON='[]'
       fi
       if [ -n "${STATE_FILE:-}" ] && [ -f "$STATE_FILE" ]; then
-        TMP="${STATE_FILE}.tmp"
-        jq --arg generation_target "$GEN_TARGET" --argjson generation_snapshot "$GENERATION_SNAPSHOT_JSON" \
-          '.generation_target = $generation_target | .generation_snapshot = $generation_snapshot' \
-          "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+        set_loop_field "$STATE_FILE" "generation_target" "$GEN_TARGET" "$WORKFLOW_STATE_PATH"
+        set_loop_json_field "$STATE_FILE" "generation_snapshot" "$GENERATION_SNAPSHOT_JSON" "$WORKFLOW_STATE_PATH"
       fi
     fi
   fi
@@ -322,16 +320,14 @@ if [ -n "$GEN_TARGET" ] && [ -z "${WORKFLOW_REASON:-}" ]; then
     else
       GENERATED_FILES_JSON='[]'
     fi
-    TMP="${STATE_FILE}.tmp"
     if [ "${GEN_SNAPSHOT_FILES[0]+set}" = "set" ]; then
       GENERATION_SNAPSHOT_JSON=$(jq -cn '$ARGS.positional' --args "${GEN_SNAPSHOT_FILES[@]}")
     else
       GENERATION_SNAPSHOT_JSON='[]'
     fi
-    jq --arg generation_target "$GEN_TARGET" --argjson generation_snapshot "$GENERATION_SNAPSHOT_JSON" \
-      --argjson generated_files "$GENERATED_FILES_JSON" \
-      '.generation_target = $generation_target | .generation_snapshot = $generation_snapshot | .generated_files = $generated_files' \
-      "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+    set_loop_field "$STATE_FILE" "generation_target" "$GEN_TARGET" "$WORKFLOW_STATE_PATH"
+    set_loop_json_field "$STATE_FILE" "generation_snapshot" "$GENERATION_SNAPSHOT_JSON" "$WORKFLOW_STATE_PATH"
+    set_loop_json_field "$STATE_FILE" "generated_files" "$GENERATED_FILES_JSON" "$WORKFLOW_STATE_PATH"
   fi
 fi
 ```

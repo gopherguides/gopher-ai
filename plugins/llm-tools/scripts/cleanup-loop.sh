@@ -8,11 +8,14 @@
 set -euo pipefail
 
 LOOP_NAME="${1:-}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/loop-state.sh"
+STATE_DIR=$(loop_state_directory)
 
 if [ -n "$LOOP_NAME" ]; then
   # Clean up specific loop
   SAFE_LOOP_NAME=$(echo "$LOOP_NAME" | sed 's/[^a-zA-Z0-9_-]/-/g')
-  STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
+  STATE_FILE="$STATE_DIR/${SAFE_LOOP_NAME}.loop.local.json"
 
   if [ -f "$STATE_FILE" ]; then
     rm -f "$STATE_FILE"
@@ -22,7 +25,7 @@ if [ -n "$LOOP_NAME" ]; then
   fi
 else
   # Clean up all loops
-  LOOP_FILES=$(find .local/state -name "*.loop.local.json" 2>/dev/null || true)
+  LOOP_FILES=$(find_active_loops "$STATE_DIR")
 
   if [ -z "$LOOP_FILES" ]; then
     echo "No active loops found."

@@ -169,7 +169,7 @@ assert_contains "$clean_review" "Step 5" "clean review skips local verification"
 assert_contains "$clean_review" "Step 7" "clean review skips CI verification"
 assert_contains "$clean_review" "Step 11" "clean review skips completion verification"
 assert_contains "$clean_review" "After Step 11 succeeds" "clean review can transition before completion verification"
-assert_contains "$clean_review" '[ -z "${STATE_FILE:-}" ]' "embedded clean review can mutate its caller phase"
+assert_contains "$clean_review" '[ "${EMBEDDED_WORKFLOW:-false}" != "true" ]' "embedded clean review can mutate its caller phase"
 assert_contains "$clean_review" '[ "${CURRENT_PHASE:-}" = "fixing" ]' "clean review transition ignores the current phase"
 assert_contains "$clean_review" '[ "${WATCH_MODE:-false}" = "true" ]' "clean review transition ignores watch mode"
 assert_contains "$clean_review" '[ -n "${DETECTED_BOTS:-}" ]' "clean review transition ignores detected bots"
@@ -245,10 +245,8 @@ assert_contains "$backend_gate" "review-backend-unavailable" "ship lacks no-back
 assert_contains "$(file_text "$COMPLETE_FALLBACK")" "Never continue to Phase 3 without" "complete-issue can bypass review after fallback failure"
 
 terminal_review=$(section_text "$COMPLETE_FALLBACK" "## Terminal Review Failure" "## Codex NOT Available")
-assert_contains "$terminal_review" '.workflow_result = "incomplete"' "complete-issue fallback does not persist its result"
-assert_contains "$terminal_review" '.workflow_reason = $reason' "complete-issue fallback does not persist its reason"
-assert_contains "$terminal_review" '.phase = "incomplete"' "complete-issue fallback can re-enter Phase 3"
-assert_contains "$terminal_review" '.completion_promise = "INCOMPLETE"' "complete-issue fallback cannot terminate its loop"
+assert_contains "$terminal_review" 'set_loop_terminal_result' "complete-issue fallback does not persist a terminal result atomically"
+assert_contains "$terminal_review" '"incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"' "complete-issue fallback lacks the complete terminal state transition"
 assert_contains "$terminal_review" "<done>INCOMPLETE</done>" "complete-issue fallback lacks a terminal marker"
 
 complete_routing=$(section_text "$COMPLETE" "Phase → step routing:" "---")
