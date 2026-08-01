@@ -44,7 +44,7 @@ for file in $COMMAND_FILES; do
 
   # Extract frontmatter and check for description field
   FRONTMATTER=$(sed -n "2,$((CLOSING_LINE - 1))p" "$file")
-  if ! rg -q 'description:' <<< "$FRONTMATTER"; then
+  if ! grep -q 'description:' <<< "$FRONTMATTER"; then
     INVALID="$INVALID\n  $REL_PATH (missing description field)"
     ERRORS=$((ERRORS + 1))
     continue
@@ -246,8 +246,12 @@ COMPLETE_ISSUE_SKILL_INDEX_GUARDS=$(awk \
 COMPLETE_ISSUE_PHASE_INDEX_GUARDS=$(awk \
   '/^[[:space:]]*if ! git diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
   "$COMPLETE_ISSUE_PHASES")
-LIVE_BROAD_STAGING=$(rg -n '^[[:space:]]*git add -A([[:space:]]|$)' \
-  "$GO_WORKFLOW_SKILLS" "$GO_WORKFLOW_LIB" || true)
+GO_WORKFLOW_AUDIT_FILES=()
+while IFS= read -r workflow_file; do
+  GO_WORKFLOW_AUDIT_FILES+=("$workflow_file")
+done < <(find "$GO_WORKFLOW_SKILLS" "$GO_WORKFLOW_LIB" -type f -print)
+LIVE_BROAD_STAGING=$(grep -nE '^[[:space:]]*git add -A([[:space:]]|$)' \
+  "${GO_WORKFLOW_AUDIT_FILES[@]}" || true)
 if [ -n "$LIVE_BROAD_STAGING" ]; then
   echo "FAIL (live broad staging commands found)"
   echo "$LIVE_BROAD_STAGING"
