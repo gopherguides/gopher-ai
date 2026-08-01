@@ -150,6 +150,8 @@ For Codex, "global" means installing plugins through the public Codex plugin CLI
 
 `--user` registers or upgrades the gopher-ai marketplace and runs `codex plugin add` for each Codex-capable plugin. Codex owns config updates and versioned cache publication.
 
+Install and refresh refuse to run while any Codex process is active because running sessions retain absolute hook and skill paths into their original versioned roots.
+
 After all Codex sessions have exited, stale version roots can be removed explicitly:
 
 ```bash
