@@ -6,8 +6,9 @@ Loaded by `skills/ship/SKILL.md` Phase 1. Owns the full review/fix/verify/covera
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_phase "$STATE_FILE" "reviewing"
-PASS=$(jq -r '.pass // 0' "$STATE_FILE")
+set_loop_phase "$STATE_FILE" "reviewing" "$WORKFLOW_STATE_PATH"
+PASS=$(get_loop_field "$STATE_FILE" "pass" "$WORKFLOW_STATE_PATH")
+PASS="${PASS:-0}"
 ```
 
 The pass counter is incremented in Step 8 (after commit), not here. This prevents burning a pass number if the session exits mid-review.
@@ -205,8 +206,7 @@ fi
 Capture output as free-text `FINDINGS`. Set `CODEX_EXEC_FALLBACK=true`. Persist `quick_mode=true`:
 
 ```bash
-TMP="$STATE_FILE.tmp"
-jq '.quick_mode = "true"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "quick_mode" "true" "$WORKFLOW_STATE_PATH"
 ```
 
 ### Fable — Claude Subagent (`LLM_CHOICE=fable`)
@@ -283,7 +283,7 @@ Resolve the model once per ship run. On re-entry, restore `OLLAMA_MODEL` from
 the state file before resolving so every review pass uses the same model.
 
 ```bash
-OLLAMA_MODEL=${OLLAMA_MODEL:-$(jq -r '.ollama_model // empty' "$STATE_FILE")}
+OLLAMA_MODEL=${OLLAMA_MODEL:-$(get_loop_field "$STATE_FILE" "ollama_model" "$WORKFLOW_STATE_PATH")}
 if [ -z "$OLLAMA_MODEL" ]; then
   set +e
   OLLAMA_MODEL=$(cd "$WORKTREE_PATH" && "${CLAUDE_PLUGIN_ROOT}/scripts/select-ollama-model.sh" 2>"/tmp/ollama-select-stderr-$$")
@@ -304,8 +304,7 @@ model or continue to `ollama run` until selection succeeds.
 After successful selection, persist the model:
 
 ```bash
-TMP="$STATE_FILE.tmp"
-jq --arg model "$OLLAMA_MODEL" '.ollama_model = $model' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "ollama_model" "$OLLAMA_MODEL" "$WORKFLOW_STATE_PATH"
 
 echo "Using installed Ollama model: $OLLAMA_MODEL"
 (cd "$WORKTREE_PATH" && ollama run "$OLLAMA_MODEL" <<EOF
@@ -380,7 +379,7 @@ unpinned backend or the user explicitly authorized replacing a pinned backend.
 ## Step 6: Fix Phase
 
 ```bash
-set_loop_phase "$STATE_FILE" "fixing"
+set_loop_phase "$STATE_FILE" "fixing" "$WORKFLOW_STATE_PATH"
 ```
 
 For each finding from Step 5c:
@@ -397,7 +396,7 @@ only paths modified while addressing findings or generating their tests.
 ## Step 7: Verify Phase
 
 ```bash
-set_loop_phase "$STATE_FILE" "verifying"
+set_loop_phase "$STATE_FILE" "verifying" "$WORKFLOW_STATE_PATH"
 ```
 
 ### Codegen drift check (Go projects)
@@ -467,7 +466,7 @@ coverage, commit, push, or completion.
 ## Step 7.5: Coverage Verification (Final pass only)
 
 ```bash
-set_loop_phase "$STATE_FILE" "coverage-check"
+set_loop_phase "$STATE_FILE" "coverage-check" "$WORKFLOW_STATE_PATH"
 ```
 
 **Skip when:** `PASS < MAX_PASSES - 1` AND findings were not clean. Proceed to Step 7.6.
@@ -477,8 +476,9 @@ Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow St
 | Variable | Value |
 |----------|-------|
 | `BASE_BRANCH` | `origin/${BASE_BRANCH}` |
-| `STATE_FILE` | `$ORIGINAL_REPO_ROOT/.local/state/ship.loop.local.json` |
 | `WORKTREE_PATH` | absolute persisted worktree path |
+| `STATE_FILE` | resolved caller-owned or standalone absolute state path |
+| `WORKFLOW_STATE_PATH` | resolved ship object path in `STATE_FILE` |
 | `SKIP_COVERAGE` | from parsed args |
 | `COVERAGE_THRESHOLD` | from parsed args (default 60) |
 
@@ -527,10 +527,11 @@ UI_VISIBLE_CHANGES=$(printf '%s\n%s\n%s\n' "$WEB_CHANGES" "$JS_CHANGES" "$HANDLE
 If `UI_VISIBLE_CHANGES` is empty, persist:
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --arg required "false" --arg attempted "false" --arg result "skipped" --arg reason "no-ui-visible-changes" --argjson pages 0 \
-   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "e2e_required" "false" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_attempted" "false" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_result" "skipped" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_skip_reason" "no-ui-visible-changes" "$WORKFLOW_STATE_PATH"
+set_loop_json_field "$STATE_FILE" "e2e_pages_tested" 0 "$WORKFLOW_STATE_PATH"
 ```
 
 Then skip to Step 8.
@@ -543,10 +544,11 @@ show the latter, but invoke the namespace that is actually available. If
 browser tools, persist:
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --arg required "true" --arg attempted "false" --arg result "blocked" --arg reason "missing-browser-tooling" --argjson pages 0 \
-   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "e2e_required" "true" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_attempted" "false" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_result" "blocked" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_skip_reason" "missing-browser-tooling" "$WORKFLOW_STATE_PATH"
+set_loop_json_field "$STATE_FILE" "e2e_pages_tested" 0 "$WORKFLOW_STATE_PATH"
 ```
 
 Display:
@@ -561,7 +563,7 @@ Stop the workflow. Do not continue to push, CI watch, or merge.
 ### Set phase, detect dev server
 
 ```bash
-set_loop_phase "$STATE_FILE" "e2e-testing"
+set_loop_phase "$STATE_FILE" "e2e-testing" "$WORKFLOW_STATE_PATH"
 ```
 
 Detect command beneath `$WORKTREE_PATH` and store the raw executable command in
@@ -602,10 +604,11 @@ If the server is still unreachable after 30 seconds, or no start was attempted
 because project guidance requires the user to run it, persist a blocked result:
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --arg required "true" --arg attempted "false" --arg result "blocked" --arg reason "dev-server-unavailable" --argjson pages 0 \
-   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "e2e_required" "true" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_attempted" "false" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_result" "blocked" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_skip_reason" "dev-server-unavailable" "$WORKFLOW_STATE_PATH"
+set_loop_json_field "$STATE_FILE" "e2e_pages_tested" 0 "$WORKFLOW_STATE_PATH"
 ```
 
 Display:
@@ -632,10 +635,11 @@ inspected. Never downgrade either case to skipped or passed.
 ### Record browser tool-call failure
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --arg required "true" --arg attempted "true" --arg result "blocked" --arg reason "browser-tool-call-failed" --argjson pages "${PAGES_TESTED:-0}" \
-   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "e2e_required" "true" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_attempted" "true" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_result" "blocked" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_skip_reason" "browser-tool-call-failed" "$WORKFLOW_STATE_PATH"
+set_loop_json_field "$STATE_FILE" "e2e_pages_tested" "${PAGES_TESTED:-0}" "$WORKFLOW_STATE_PATH"
 ```
 
 Display the failed tool, route, and returned error, clean up a server started
@@ -669,10 +673,11 @@ if [ "${SERVER_ALREADY_RUNNING:-false}" != "true" ]; then
   fi
 fi
 
-TMP="${STATE_FILE}.tmp"
-jq --arg required "true" --arg attempted "true" --arg result "$E2E_RESULT" --arg reason "${E2E_SKIP_REASON:-}" --argjson pages "$PAGES_TESTED" \
-   '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_field "$STATE_FILE" "e2e_required" "true" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_attempted" "true" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_result" "$E2E_RESULT" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "e2e_skip_reason" "${E2E_SKIP_REASON:-}" "$WORKFLOW_STATE_PATH"
+set_loop_json_field "$STATE_FILE" "e2e_pages_tested" "$PAGES_TESTED" "$WORKFLOW_STATE_PATH"
 
 rm -f "$WORKTREE_PATH/.local/state/coverage.out" "$WORKTREE_PATH/.local/state/coverage.json" 2>/dev/null || true
 ```
@@ -707,17 +712,18 @@ fi
 Increment pass counter:
 
 ```bash
-CURRENT_PASS=$(jq -r '.pass // 0' "$STATE_FILE")
+CURRENT_PASS=$(get_loop_field "$STATE_FILE" "pass" "$WORKFLOW_STATE_PATH")
+CURRENT_PASS="${CURRENT_PASS:-0}"
 NEW_PASS=$((CURRENT_PASS + 1))
-TMP="${STATE_FILE}.tmp"
-jq --argjson p "$NEW_PASS" '.pass = $p' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_json_field "$STATE_FILE" "pass" "$NEW_PASS" "$WORKFLOW_STATE_PATH"
 PASS=$NEW_PASS
 ```
 
 Commit only if there are staged changes:
 
 ```bash
-TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' "$STATE_FILE")
+TESTS_GEN=$(get_loop_field "$STATE_FILE" "coverage_tests_generated" "$WORKFLOW_STATE_PATH")
+TESTS_GEN="${TESTS_GEN:-0}"
 if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
   if [ "$TESTS_GEN" -gt 0 ] 2>/dev/null; then
     git -C "$WORKTREE_PATH" commit -m "$(cat <<EOF

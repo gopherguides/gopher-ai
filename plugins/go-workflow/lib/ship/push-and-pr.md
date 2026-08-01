@@ -70,8 +70,12 @@ PR_NUM=$(jq -er '.number' <<< "$PR_JSON")
 ```
 
 If the created PR cannot be read, follow **Hard Invariant Failure** with
-`WORKFLOW_REASON=created-pr-lookup-failed`. Persist `pr_number` in the state
-file after a successful lookup.
+`WORKFLOW_REASON=created-pr-lookup-failed`. Persist `pr_number` in the resolved
+ship workflow object after a successful lookup:
+
+```bash
+set_loop_field "$STATE_FILE" "pr_number" "$PR_NUM" "$WORKFLOW_STATE_PATH"
+```
 
 ## Step 9c — Capture HEAD SHA and bot review baseline
 
@@ -83,6 +87,12 @@ BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "Bot review baseline captured: $BOT_REVIEW_BASELINE"
 ```
 
-Persist both `head_sha` and `bot_review_baseline` in the state file. The
-baseline is captured here (before bots can post) so Step 11's bot-watch
+Persist both values in the resolved ship workflow object:
+
+```bash
+set_loop_field "$STATE_FILE" "head_sha" "$HEAD_SHA" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "bot_review_baseline" "$BOT_REVIEW_BASELINE" "$WORKFLOW_STATE_PATH"
+```
+
+The baseline is captured here before bots can post so Step 11's bot-watch
 window starts at the right moment.

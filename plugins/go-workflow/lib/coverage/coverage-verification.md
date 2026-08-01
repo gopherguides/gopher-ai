@@ -13,7 +13,8 @@ The calling command MUST set these variables before invoking this workflow:
 |----------|-------------|---------|
 | `BASE_BRANCH` | Branch to diff against | `origin/main` |
 | `WORKTREE_PATH` | Absolute checkout path for every repository command | `/path/to/worktree` |
-| `STATE_FILE` | **Absolute path** to the loop state JSON file | `/path/to/.local/state/ship.loop.local.json` |
+| `STATE_FILE` | **Absolute path** to the loop state JSON file | `/path/to/.local/state/owner.loop.local.json` |
+| `WORKFLOW_STATE_PATH` | JSON array path for the calling workflow object | `[]` or `["components","ship"]` |
 | `SKIP_COVERAGE` | Compatibility flag; may skip only source-free changes | `true` or `false` |
 | `COVERAGE_THRESHOLD` | Minimum coverage percentage for changed files | `60` |
 
@@ -23,8 +24,8 @@ coverage command targets `WORKTREE_PATH` explicitly.
 
 ## State-file fields written
 
-After this workflow returns, the state file holds these keys (callers read them
-to render summary lines):
+After this workflow returns, the resolved workflow object holds these keys
+(callers read them to render summary lines):
 
 | Field | Type | Set by | Meaning |
 |-------|------|--------|---------|

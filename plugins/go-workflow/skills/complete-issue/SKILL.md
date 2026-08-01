@@ -70,22 +70,40 @@ final response and stop before loop initialization or a completion claim.
 
 ## Loop Initialization & Re-entry
 
-Read `loop-state.md` and run the **bootstrap block** + **re-entry check**. If `PHASE` is set, recover state and skip to the corresponding phase below; otherwise continue to Phase 1.
+Read `loop-state.md` and run the **bootstrap block**, **persist arguments
+block**, and **re-entry check**. If `PHASE` is set, recover the owner phase and
+the corresponding component phase before routing below; otherwise continue to
+Phase 1.
 
 Phase → step routing:
 
-- `implementing` → Phase 1
+- `implementing` → Phase 1, using `.components.start_issue.phase`
 - `reviewing` → Phase 3; the earlier in-session review is void and must not be restarted
-- `verifying` → Phase 3
-- `incomplete` → display the persisted `workflow_reason`, output
+- `verifying` → Phase 3, using `.components.e2e_verify.phase` and its nested
+  active component
+- `incomplete` → display the persisted component-aware `reason`, output
   `<done>INCOMPLETE</done>`, and stop without entering Phase 3
+
+Resolve child phases without replacing the owner phase used by this routing
+table:
+
+```bash
+OWNER_PHASE="$PHASE"
+START_ISSUE_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "start_issue")
+E2E_VERIFY_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "e2e_verify")
+START_ISSUE_PHASE=$(get_loop_field "$STATE_FILE" "phase" "$START_ISSUE_STATE_PATH")
+E2E_VERIFY_PHASE=$(get_loop_field "$STATE_FILE" "phase" "$E2E_VERIFY_STATE_PATH")
+PHASE="$OWNER_PHASE"
+```
 
 ---
 
 ## Phase 1: Implement (`$go-workflow:start-issue`)
 
 ```bash
-set_loop_phase "$STATE_FILE" "implementing"
+set_loop_phase "$STATE_FILE" "implementing" "$WORKFLOW_STATE_PATH"
+START_ISSUE_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "start_issue")
+initialize_workflow_state "$STATE_FILE" "$START_ISSUE_STATE_PATH"
 ```
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/start-issue/SKILL.md` and execute its workflow
@@ -94,26 +112,45 @@ Skill tool. Read `phases.md` for the full sub-step list (fetch issue, create
 worktree, detect type, explore, design, TDD, verify, coverage, security review,
 commit/push/PR, watch CI).
 
-After `$go-workflow:start-issue` completes, consume its persisted worktree
-output. Never infer it from the ambient directory. Validate the output before
-review, then resolve the PR from the persisted repository and exact head:
+Before executing the loaded workflow, set its explicit caller contract:
 
 ```bash
-START_ISSUE_STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/start-issue-${ISSUE_NUM}.loop.local.json"
-WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$START_ISSUE_STATE_FILE" 2>/dev/null || true)
-START_ORIGINAL_REPO_ROOT=$(jq -r '.original_repo_root // empty' "$START_ISSUE_STATE_FILE" 2>/dev/null || true)
-REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print}')
+CALLER_LOOP_STATE_FILE="$STATE_FILE"
+CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"
+```
 
+After it returns, clear both caller variables and route its structured result:
+
+```bash
+WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"
+unset CALLER_LOOP_STATE_FILE CALLER_WORKFLOW_STATE_PATH
+START_ISSUE_RESULT=$(get_loop_field "$STATE_FILE" "result" "$START_ISSUE_STATE_PATH")
+START_ISSUE_REASON=$(get_loop_field "$STATE_FILE" "reason" "$START_ISSUE_STATE_PATH")
+if [ "$START_ISSUE_RESULT" != "complete" ]; then
+  START_ISSUE_REASON="${START_ISSUE_REASON:-start-issue-incomplete}"
+  set_loop_terminal_result "$STATE_FILE" "incomplete" "$START_ISSUE_REASON" "incomplete" "INCOMPLETE"
+  echo "Complete-issue stopped during implementation: $START_ISSUE_REASON"
+  echo "<done>INCOMPLETE</done>"
+  exit 0
+fi
+```
+
+After `$go-workflow:start-issue` completes, detect the PR number and worktree
+context while retaining the already-normalized caller state path, then persist:
+
+```bash
+WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
+REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
+START_ORIGINAL_REPO_ROOT=$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')
+REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print }')
 if [ "$START_ORIGINAL_REPO_ROOT" != "$ORIGINAL_REPO_ROOT" ] ||
    [ -z "$WORKTREE_PATH" ] ||
    [ "${WORKTREE_PATH#/}" = "$WORKTREE_PATH" ] ||
    [ ! -d "$WORKTREE_PATH" ] ||
-   ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v expected="$WORKTREE_PATH" '$0 == expected {found=1} END {exit found ? 0 : 1}'; then
+   ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v expected="$WORKTREE_PATH" '$0 == expected { found = 1 } END { exit found ? 0 : 1 }' ||
+   [ -z "$REPO_SLUG" ]; then
   WORKFLOW_REASON=start-issue-worktree-path-invalid
-  TMP="${STATE_FILE}.tmp"
-  jq --arg reason "$WORKFLOW_REASON" \
-    '.workflow_result = "incomplete" | .workflow_reason = $reason | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' \
-    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"
   echo "WORKFLOW_RESULT=INCOMPLETE"
   echo "WORKFLOW_REASON=$WORKFLOW_REASON"
   echo "<done>INCOMPLETE</done>"
@@ -128,10 +165,14 @@ PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr "$PR_HEAD_BRANCH" "$HEAD_SHA"
 }
 PR_NUM=$(jq -er '.number' <<< "$PR_JSON")
 
-TMP="$STATE_FILE.tmp"
-jq --arg pr_number "$PR_NUM" --arg worktree_path "$WORKTREE_PATH" \
-   '.pr_number = $pr_number | .worktree_path = $worktree_path' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+GIT_DIR_ABS=$(cd "$WORKTREE_PATH" && cd "$(git rev-parse --git-dir 2>/dev/null)" && pwd)
+GIT_COMMON_ABS=$(cd "$WORKTREE_PATH" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd)
+if [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
+  echo "Running in worktree: $WORKTREE_PATH"
+fi
+
+set_loop_field "$STATE_FILE" "pr_number" "$PR_NUM" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "worktree_path" "${WORKTREE_PATH:-}" '[]'
 echo "PR #$PR_NUM created"
 ```
 
@@ -140,15 +181,15 @@ echo "PR #$PR_NUM created"
 > `go -C "$WORKTREE_PATH"`, and `gh ... --repo "$REPO_SLUG"`; use an explicit
 > worktree-scoped group only when no per-command option exists. Use
 > `$WORKTREE_PATH` as the base for all file tools. `STATE_FILE` remains the one
-> absolute path established before Phase 1. Do not assume a pre-tool-use hook
-> will correct or reject an ambient-directory command.
+> normalized caller-owned path established before Phase 1. Do not assume a
+> pre-tool-use hook will correct or reject an ambient-directory command.
 
 ---
 
 ## Phase 2: Self-Review (Codex)
 
 ```bash
-set_loop_phase "$STATE_FILE" "reviewing"
+set_loop_phase "$STATE_FILE" "reviewing" "$WORKFLOW_STATE_PATH"
 ```
 
 Run an LLM review to catch issues before E2E verification. Never silently skip
@@ -178,9 +219,11 @@ fi
 Address findings: for each valid finding, make the fix. Skip false positives or
 cosmetic-only items. Maintain `REVIEW_FILES` as the exact list of files modified
 in this review phase, including generated or updated tests. Before modifying an
-existing path, confirm `git -C "$WORKTREE_PATH" status --porcelain -- "$TARGET_FILE"` is empty so
-pre-existing changes cannot enter the review-fix commit. Commit fixes if any
-changes were made:
+existing path, confirm
+`git -C "$WORKTREE_PATH" status --porcelain -- "$TARGET_FILE"` is empty so
+pre-existing changes cannot enter the review-fix commit. Every GitHub and Git
+operation in this phase runs against the persisted `WORKTREE_PATH` and
+`REPO_SLUG`. Commit fixes if any changes were made:
 
 ```bash
 if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
@@ -206,7 +249,9 @@ fi
 ## Phase 3: E2E Verify and Ship
 
 ```bash
-set_loop_phase "$STATE_FILE" "verifying"
+set_loop_phase "$STATE_FILE" "verifying" "$WORKFLOW_STATE_PATH"
+E2E_VERIFY_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "e2e_verify")
+initialize_workflow_state "$STATE_FILE" "$E2E_VERIFY_STATE_PATH"
 ```
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/e2e-verify/SKILL.md` and execute its workflow
@@ -214,6 +259,30 @@ directly, treating `$PR_NUM fix-and-ship` as its `$ARGUMENTS`. Do not call the
 Skill tool. This runs the full workflow in `fix-and-ship` mode (rebase, build,
 address review, E2E browser tests, post results, add the `run-full-ci` label,
 watch CI, and execute the ship workflow).
+
+Before executing the loaded workflow, set its explicit caller contract:
+
+```bash
+CALLER_LOOP_STATE_FILE="$STATE_FILE"
+CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"
+```
+
+After it returns, clear both caller variables and translate its structured
+result into complete-issue's own terminal contract:
+
+```bash
+WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"
+unset CALLER_LOOP_STATE_FILE CALLER_WORKFLOW_STATE_PATH
+E2E_VERIFY_RESULT=$(get_loop_field "$STATE_FILE" "result" "$E2E_VERIFY_STATE_PATH")
+E2E_VERIFY_REASON=$(get_loop_field "$STATE_FILE" "reason" "$E2E_VERIFY_STATE_PATH")
+if [ "$E2E_VERIFY_RESULT" != "verified" ]; then
+  E2E_VERIFY_REASON="${E2E_VERIFY_REASON:-e2e-verify-incomplete}"
+  set_loop_terminal_result "$STATE_FILE" "incomplete" "$E2E_VERIFY_REASON" "incomplete" "INCOMPLETE"
+  echo "Complete-issue stopped during verification: $E2E_VERIFY_REASON"
+  echo "<done>INCOMPLETE</done>"
+  exit 0
+fi
+```
 
 ---
 
@@ -231,7 +300,12 @@ Output `<done>COMPLETE</done>` when ALL of these are true:
 6. CI passes
 7. PR merged (via the ship workflow)
 
-**When ALL criteria are met, output exactly:** `<done>COMPLETE</done>`
+When all criteria are met:
+
+```bash
+set_loop_terminal_result "$STATE_FILE" "complete" "" "completed" "COMPLETE"
+echo "<done>COMPLETE</done>"
+```
 
 **Safety:** If 15+ iterations complete without success, document the blocking
 evidence and stop incomplete. Do not bypass a completion criterion.

@@ -1,26 +1,49 @@
 # Ship — State File Fields
 
 Loaded by `skills/ship/SKILL.md` Step 1 when persisting initial arguments.
-Owns the full `jq` invocation and field-name reference.
+Owns initialization of the resolved ship workflow object and its field-name
+reference. Standalone ship uses the root path `[]`; embedded ship uses its
+caller-owned child path.
 
 ## Step 1 Initial Persist
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --arg llm_explicit "$LLM_EXPLICIT" --argjson pass 0 \
-   --arg no_merge "$NO_MERGE" --arg pr_number "" --arg base_branch "" \
-   --arg bot_review_baseline "" --arg discovered_bots "" --arg has_ci "" \
-   --arg ci_skip_reason "" \
-   --arg skip_coverage "$SKIP_COVERAGE" --arg coverage_threshold "$COVERAGE_THRESHOLD" \
-   --arg coverage_result "" --argjson coverage_tests_generated 0 \
-   --arg e2e_required "" --arg e2e_attempted "" --arg e2e_result "" \
-   --arg e2e_skip_reason "" --argjson e2e_pages_tested 0 \
-   --arg review_clean "" --arg review_result "" --arg review_skip_reason "" \
-   --arg head_sha "" --arg gemini_tier "$GEMINI_TIER" \
-   --arg ollama_model "" --arg workflow_result "" --arg workflow_reason "" \
-   --arg original_repo_root "$ORIGINAL_REPO_ROOT" --arg worktree_path "$WORKTREE_PATH" --arg repo_slug "$REPO_SLUG" \
-   '. + {args: $args, llm: $llm, llm_explicit: $llm_explicit, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, ci_skip_reason: $ci_skip_reason, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_required: $e2e_required, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_skip_reason: $e2e_skip_reason, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, review_result: $review_result, review_skip_reason: $review_skip_reason, head_sha: $head_sha, gemini_tier: $gemini_tier, ollama_model: $ollama_model, workflow_result: $workflow_result, workflow_reason: $workflow_reason, original_repo_root: $original_repo_root, worktree_path: $worktree_path, repo_slug: $repo_slug}' \
-   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+
+if [ -z "$(get_loop_field "$STATE_FILE" "pass" "$WORKFLOW_STATE_PATH")" ]; then
+  set_loop_field "$STATE_FILE" "args" "$ARGUMENTS" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "llm" "$LLM_CHOICE" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "llm_explicit" "$LLM_EXPLICIT" "$WORKFLOW_STATE_PATH"
+  set_loop_json_field "$STATE_FILE" "pass" 0 "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "no_merge" "$NO_MERGE" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "pr_number" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "base_branch" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "bot_review_baseline" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "discovered_bots" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "has_ci" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "ci_skip_reason" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "skip_coverage" "$SKIP_COVERAGE" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "coverage_threshold" "$COVERAGE_THRESHOLD" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "coverage_result" "" "$WORKFLOW_STATE_PATH"
+  set_loop_json_field "$STATE_FILE" "coverage_tests_generated" 0 "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "e2e_required" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "e2e_attempted" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "e2e_result" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "e2e_skip_reason" "" "$WORKFLOW_STATE_PATH"
+  set_loop_json_field "$STATE_FILE" "e2e_pages_tested" 0 "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "review_clean" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "review_result" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "review_skip_reason" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "head_sha" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "gemini_tier" "$GEMINI_TIER" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "ollama_model" "" "$WORKFLOW_STATE_PATH"
+fi
+
+if [ "$SHIP_EMBEDDED" != "true" ]; then
+  set_loop_field "$STATE_FILE" "original_repo_root" "$ORIGINAL_REPO_ROOT" '[]'
+  set_loop_field "$STATE_FILE" "worktree_path" "$WORKTREE_PATH" '[]'
+  set_loop_field "$STATE_FILE" "repo_slug" "$REPO_SLUG" '[]'
+fi
 ```
 
 ## Field Reference

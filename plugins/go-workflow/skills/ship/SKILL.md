@@ -46,61 +46,147 @@ the same shared helper and follow this discipline.
 
 ## 0. State File Bootstrap
 
-Before calling setup-loop, check if a state file already exists with a non-empty
-phase (re-entry). If so, **skip** setup-loop to preserve custom fields (`args`,
-`pass`, `pr_number`, `base_branch`, `no_merge`, `llm`, `discovered_bots`).
+Ship has exactly one state owner. A caller embeds ship by supplying both
+`CALLER_LOOP_STATE_FILE` and `CALLER_WORKFLOW_STATE_PATH`; ship creates a child
+object in that physical file and never initializes another loop. Without both
+values, ship is standalone and always resolves the released canonical state
+file under the original repository root. A valid legacy standalone file is
+migrated in place by `read_loop_state`, preserving its root field names and
+phase routing.
+
+Released ship versions could write that standalone file under a linked
+worktree. When the canonical primary-root file is absent, ship enumerates the
+linked worktree's loop-state files and relocates the candidate only when exactly
+one exists and it is valid ship state. It then migrates the schema and fills
+only missing root locator fields from the current registered worktree. Multiple
+linked candidates, invalid JSON, or state owned by another loop stop without
+mutation and name every ambiguous path. An existing canonical state always
+wins; linked-worktree strays are ignored in that case.
 
 ```bash
-CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
-ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print; exit}')
-WORKTREE_PATH="${WORKTREE_PATH:-$CURRENT_CHECKOUT_ROOT}"
-if [ -z "$ORIGINAL_REPO_ROOT" ] || [ "${ORIGINAL_REPO_ROOT#/}" = "$ORIGINAL_REPO_ROOT" ] ||
-   [ -z "$WORKTREE_PATH" ] || [ "${WORKTREE_PATH#/}" = "$WORKTREE_PATH" ] || [ ! -d "$WORKTREE_PATH" ]; then
-  echo "ERROR: Could not resolve absolute repository paths."
-  exit 1
-fi
-STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/ship.loop.local.json"
-CURRENT_REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
-EXISTING_PHASE=""
-if [ -f "$STATE_FILE" ]; then
-  EXISTING_PHASE=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null || true)
-fi
-if [ -n "$EXISTING_PHASE" ]; then
-  PERSISTED_ORIGINAL_REPO_ROOT=$(jq -r '.original_repo_root // empty' "$STATE_FILE" 2>/dev/null || true)
-  PERSISTED_WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$STATE_FILE" 2>/dev/null || true)
-  PERSISTED_REPO_SLUG=$(jq -r '.repo_slug // empty' "$STATE_FILE" 2>/dev/null || true)
-  REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print}')
-  if [ "$PERSISTED_ORIGINAL_REPO_ROOT" != "$ORIGINAL_REPO_ROOT" ] ||
-     [ -z "$PERSISTED_WORKTREE_PATH" ] ||
-     [ "${PERSISTED_WORKTREE_PATH#/}" = "$PERSISTED_WORKTREE_PATH" ] ||
-     [ ! -d "$PERSISTED_WORKTREE_PATH" ] ||
-     ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v path="$PERSISTED_WORKTREE_PATH" '$0 == path { found = 1 } END { exit !found }' ||
-     [ "$PERSISTED_REPO_SLUG" != "$CURRENT_REPO_SLUG" ]; then
-    TMP="${STATE_FILE}.tmp"
-    jq '.workflow_result = "incomplete" | .workflow_reason = "ship-worktree-path-invalid" | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
-    echo "WORKFLOW_RESULT=INCOMPLETE"
-    echo "WORKFLOW_REASON=ship-worktree-path-invalid"
-    echo "<done>INCOMPLETE</done>"
+source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+
+SHIP_EMBEDDED=false
+WORKFLOW_STATE_PATH='[]'
+
+if [ -n "${CALLER_LOOP_STATE_FILE:-}" ] || [ -n "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
+  if [ -z "${CALLER_LOOP_STATE_FILE:-}" ] || [ -z "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
+    echo "ERROR: Embedded ship requires both caller state file and workflow path."
     exit 1
   fi
-  WORKTREE_PATH="$PERSISTED_WORKTREE_PATH"
-  REPO_SLUG="$PERSISTED_REPO_SLUG"
-  echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop to preserve state."
-else
-  REPO_SLUG="${REPO_SLUG:-$CURRENT_REPO_SLUG}"
-fi
-```
+  case "$CALLER_LOOP_STATE_FILE" in
+    /*) ;;
+    *) echo "ERROR: Embedded ship caller state file must be absolute."; exit 1 ;;
+  esac
+  if [ ! -f "$CALLER_LOOP_STATE_FILE" ] ||
+     ! jq -e '.schema_version == 2' "$CALLER_LOOP_STATE_FILE" >/dev/null 2>&1; then
+    echo "ERROR: Embedded ship requires an existing v2 caller state file."
+    exit 1
+  fi
 
-Only call setup-loop on fresh starts (no state file or empty phase):
-
-```bash
-if [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
-  echo "Re-entry detected — skipping setup-loop."
-elif [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then
-  echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."
-  exit 1
+  STATE_FILE="$CALLER_LOOP_STATE_FILE"
+  WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "ship")
+  initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+  SHIP_EMBEDDED=true
+  ORIGINAL_REPO_ROOT=$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')
+  WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
+  REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
 else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" "$(jq -c . "${CLAUDE_PLUGIN_ROOT}/lib/ship/resume-messages.json")" "$STATE_FILE"
+  CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
+  ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print; exit}')
+  WORKTREE_PATH="${WORKTREE_PATH:-$CURRENT_CHECKOUT_ROOT}"
+  if [ -z "$ORIGINAL_REPO_ROOT" ] || [ "${ORIGINAL_REPO_ROOT#/}" = "$ORIGINAL_REPO_ROOT" ] ||
+     [ -z "$WORKTREE_PATH" ] || [ "${WORKTREE_PATH#/}" = "$WORKTREE_PATH" ] || [ ! -d "$WORKTREE_PATH" ]; then
+    echo "ERROR: Could not resolve absolute repository paths."
+    exit 1
+  fi
+
+  CANONICAL_STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/ship.loop.local.json"
+  STATE_FILE="$CANONICAL_STATE_FILE"
+  CURRENT_REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
+  MIGRATED_LINKED_STATE=false
+
+  if [ ! -f "$CANONICAL_STATE_FILE" ] &&
+     [ "$CURRENT_CHECKOUT_ROOT" != "$ORIGINAL_REPO_ROOT" ]; then
+    LINKED_STATE_CANDIDATES=()
+    for LINKED_STATE_CANDIDATE in "$CURRENT_CHECKOUT_ROOT/.local/state/"*.loop.local.json; do
+      [ -f "$LINKED_STATE_CANDIDATE" ] || continue
+      LINKED_STATE_CANDIDATES+=("$LINKED_STATE_CANDIDATE")
+    done
+    if [ "${#LINKED_STATE_CANDIDATES[@]}" -gt 1 ]; then
+      echo "ERROR: Ambiguous linked-worktree loop state candidates while canonical ship state '$CANONICAL_STATE_FILE' is absent; refusing migration:"
+      printf ' - %s\n' "${LINKED_STATE_CANDIDATES[@]}"
+      exit 1
+    elif [ "${#LINKED_STATE_CANDIDATES[@]}" -eq 1 ]; then
+      LEGACY_STATE_FILE="${LINKED_STATE_CANDIDATES[0]}"
+      if ! jq -e '
+        type == "object" and
+        (.schema_version == null) and
+        .loop_name == "ship" and
+        (.completion_promise == "SHIPPED" or .completion_promise == "INCOMPLETE")
+      ' "$LEGACY_STATE_FILE" >/dev/null 2>&1; then
+        echo "ERROR: Invalid linked-worktree legacy ship state '$LEGACY_STATE_FILE': expected released unversioned ship JSON with a SHIPPED or INCOMPLETE promise; refusing migration to '$CANONICAL_STATE_FILE'."
+        exit 1
+      fi
+      mkdir -p "$(dirname "$CANONICAL_STATE_FILE")"
+      mv "$LEGACY_STATE_FILE" "$CANONICAL_STATE_FILE"
+      MIGRATED_LINKED_STATE=true
+      echo "Migrated linked-worktree ship state from '$LEGACY_STATE_FILE' to '$CANONICAL_STATE_FILE'."
+    fi
+  fi
+
+  EXISTING_PHASE=""
+  if [ -f "$STATE_FILE" ]; then
+    read_loop_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+    if [ "$MIGRATED_LINKED_STATE" = "true" ]; then
+      if [ -z "$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')" ]; then
+        set_loop_field "$STATE_FILE" "original_repo_root" "$ORIGINAL_REPO_ROOT" '[]'
+      fi
+      if [ -z "$(get_loop_field "$STATE_FILE" "worktree_path" '[]')" ]; then
+        set_loop_field "$STATE_FILE" "worktree_path" "$CURRENT_CHECKOUT_ROOT" '[]'
+      fi
+      if [ -z "$(get_loop_field "$STATE_FILE" "repo_slug" '[]')" ]; then
+        set_loop_field "$STATE_FILE" "repo_slug" "$CURRENT_REPO_SLUG" '[]'
+      fi
+      read_loop_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+    fi
+    EXISTING_PHASE="$PHASE"
+  fi
+
+  if [ -n "$EXISTING_PHASE" ]; then
+    PERSISTED_ORIGINAL_REPO_ROOT=$(get_loop_field "$STATE_FILE" "original_repo_root" "$WORKFLOW_STATE_PATH")
+    PERSISTED_WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" "$WORKFLOW_STATE_PATH")
+    PERSISTED_REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" "$WORKFLOW_STATE_PATH")
+    REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print}')
+    if [ "$PERSISTED_ORIGINAL_REPO_ROOT" != "$ORIGINAL_REPO_ROOT" ] ||
+       [ -z "$PERSISTED_WORKTREE_PATH" ] ||
+       [ "${PERSISTED_WORKTREE_PATH#/}" = "$PERSISTED_WORKTREE_PATH" ] ||
+       [ ! -d "$PERSISTED_WORKTREE_PATH" ] ||
+       ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v path="$PERSISTED_WORKTREE_PATH" '$0 == path { found = 1 } END { exit !found }' ||
+       [ "$PERSISTED_REPO_SLUG" != "$CURRENT_REPO_SLUG" ]; then
+      set_loop_terminal_result "$STATE_FILE" "incomplete" "ship-worktree-path-invalid" "incomplete" "INCOMPLETE"
+      echo "WORKFLOW_RESULT=INCOMPLETE"
+      echo "WORKFLOW_REASON=ship-worktree-path-invalid"
+      echo "<done>INCOMPLETE</done>"
+      exit 1
+    fi
+    WORKTREE_PATH="$PERSISTED_WORKTREE_PATH"
+    REPO_SLUG="$PERSISTED_REPO_SLUG"
+    echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop to preserve state."
+  else
+    REPO_SLUG="${REPO_SLUG:-$CURRENT_REPO_SLUG}"
+  fi
+
+  if [ -z "$EXISTING_PHASE" ]; then
+    if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then
+      echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."
+      exit 1
+    fi
+    "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" \
+      "$(jq -c . "${CLAUDE_PLUGIN_ROOT}/lib/ship/resume-messages.json")" \
+      "$STATE_FILE" "[\"SHIPPED\",\"INCOMPLETE\"]"
+  fi
+  initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
 fi
 ```
 
@@ -122,8 +208,8 @@ Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`,
 `LLM_EXPLICIT=true` only when `$ARGUMENTS` contains `--llm`; otherwise it is
 `false`.
 
-Persist arguments to `$STATE_FILE` via `jq` so the
-stop-hook can recover all fields on re-entry. The full jq invocation lives in
+Persist arguments to the resolved workflow object so the
+stop-hook can recover all fields on re-entry. The path-aware initialization lives in
 `${CLAUDE_PLUGIN_ROOT}/lib/ship/state-fields.md` — fields written: `args`,
 `llm`, `pass`, `no_merge`, `pr_number`, `base_branch`,
 `bot_review_baseline`, `discovered_bots`, `has_ci`, `ci_skip_reason`, `skip_coverage`,
@@ -140,29 +226,37 @@ When this skill or a supporting file says to stop incomplete, set the supplied
 reason code as `WORKFLOW_REASON`, then persist the machine-readable outcome:
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --arg reason "$WORKFLOW_REASON" \
-  '.workflow_result = "incomplete" | .workflow_reason = $reason | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' \
-  "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+WORKFLOW_REASON="${WORKFLOW_REASON:?workflow reason is required}"
+if [ "$SHIP_EMBEDDED" = "true" ]; then
+  set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$WORKFLOW_REASON" "incomplete"
+  echo "WORKFLOW_RESULT=INCOMPLETE"
+  echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+else
+  set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"
+  echo "WORKFLOW_RESULT=INCOMPLETE"
+  echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+  echo "<done>INCOMPLETE</done>"
+fi
 ```
 
-Report `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=$WORKFLOW_REASON`,
-output `<done>INCOMPLETE</done>`, and stop. Never ask for permission to bypass
-the invariant and never output `<done>SHIPPED</done>` on this path.
+Stop the ship workflow after this block. Embedded ship returns the structured
+result to its caller without changing caller-owned terminal fields or emitting
+a marker. Standalone ship emits its allowlisted `INCOMPLETE` marker. Never ask
+for permission to bypass the invariant and never output `SHIPPED` on this path.
 
 ## 2. Re-entry Check
 
 ```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-[ -f "$STATE_FILE" ] && read_loop_state "$STATE_FILE"
-WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$STATE_FILE")
-REPO_SLUG=$(jq -r '.repo_slug // empty' "$STATE_FILE")
+[ -f "$STATE_FILE" ] && read_loop_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
+REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
 ```
 
-If `PHASE` is set (non-empty), this is a stop-hook re-entry. Restore all fields
-listed in Step 1 from state file via `jq -r '.<field> // empty'`. If
-`review_clean == "true"`, set `REVIEW_CLEAN=true` to preserve the clean-review
-fast path.
+If `PHASE` is set (non-empty), this is a stop-hook re-entry. Restore every Step
+1 field through `get_loop_field "$STATE_FILE" "<field>"
+"$WORKFLOW_STATE_PATH"`. If `review_clean == "true"`, set
+`REVIEW_CLEAN=true` to preserve the clean-review fast path. Never read the
+physical root directly because embedded ship owns only its child object.
 
 An in-session review is never resumable. If `PHASE == "reviewing"` on
 re-entry, the reviewer from the earlier session no longer exists. Do not wait
@@ -254,7 +348,12 @@ and workflow-owned file list:
 State `Decision`, `Evidence`, and `Rationale`; do not request input for this
 technical ownership decision.
 
-Persist `BASE_BRANCH` and `PR_NUM` (if found) in the state file.
+Persist the detected context in the resolved ship workflow object:
+
+```bash
+set_loop_field "$STATE_FILE" "base_branch" "$BASE_BRANCH" "$WORKFLOW_STATE_PATH"
+set_loop_field "$STATE_FILE" "pr_number" "$PR_NUM" "$WORKFLOW_STATE_PATH"
+```
 
 ## 4. Prerequisite Check
 
@@ -303,7 +402,7 @@ staged-commit + pass-counter increment.
 ## Phase 2: Push and PR Creation (Step 9)
 
 ```bash
-set_loop_phase "$STATE_FILE" "pushing"
+set_loop_phase "$STATE_FILE" "pushing" "$WORKFLOW_STATE_PATH"
 ```
 
 Push to remote (use the configured tracking remote and PR `headRefName`), ensure
@@ -319,7 +418,7 @@ creation logic, template detection, and the post-push capture block.
 ## Phase 3: CI Watch (Step 10)
 
 ```bash
-set_loop_phase "$STATE_FILE" "ci-watch"
+set_loop_phase "$STATE_FILE" "ci-watch" "$WORKFLOW_STATE_PATH"
 ```
 
 **MANDATORY — NO EXCEPTIONS:** You MUST verify that CI checks correspond to the
@@ -350,7 +449,7 @@ from Step 5), and CI failure recovery.
 ## Phase 4: Bot Watch (Step 11)
 
 ```bash
-set_loop_phase "$STATE_FILE" "bot-watching"
+set_loop_phase "$STATE_FILE" "bot-watching" "$WORKFLOW_STATE_PATH"
 ```
 
 Discover review bots from REST formal reviews, REST top-level issue comments,
@@ -377,7 +476,7 @@ and the bot-not-detected-yet retry policy.
 ## Phase 5: Address Bot Feedback (Step 12)
 
 ```bash
-set_loop_phase "$STATE_FILE" "addressing"
+set_loop_phase "$STATE_FILE" "addressing" "$WORKFLOW_STATE_PATH"
 ```
 
 Fetch and rebase against base (`git -C "$WORKTREE_PATH" fetch origin "$BASE_BRANCH" && git -C "$WORKTREE_PATH" rebase
@@ -385,9 +484,10 @@ Fetch and rebase against base (`git -C "$WORKTREE_PATH" fetch origin "$BASE_BRAN
 set `WORKFLOW_REASON=rebase-conflict`, follow **Hard Invariant Failure**, and
 stop before applying or pushing fixes.
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and follow
-**Steps 2–11 only** (skip Step 1 / loop init — we're already managed; skip Step
-12 / bot-watch — we own that in Step 11).
+Execute address-review through the caller/component contract in
+`address-bots.md`, follow Steps 2–11 only, and require its structured
+`result=complete` before continuing. Skip Step 1 and Step 12 because ship owns
+checkout and bot watch.
 
 **CRITICAL:** Capture `BOT_REVIEW_BASELINE` BEFORE pushing (catches fast bot
 responses). Then push, capture `HEAD_SHA` after push. Persist both. Return to
@@ -401,7 +501,7 @@ handling and the baseline-then-push ordering.
 ## Phase 6: Merge (Step 13)
 
 ```bash
-set_loop_phase "$STATE_FILE" "merging"
+set_loop_phase "$STATE_FILE" "merging" "$WORKFLOW_STATE_PATH"
 ```
 
 **CRITICAL: NEVER use `--admin`. NEVER bypass branch protection.** If merge
@@ -414,7 +514,8 @@ merge-strategy selection (`SHIP_MERGE_STRATEGY`, then `--squash` > `--rebase` > 
 REST `mergeable_state` decision tree (`unknown`/`dirty`/`blocked`/`clean`/
 `has_hooks`/`behind`/`unstable`/other), merge-queue handling, and the
 summary-line rendering (uses `coverage_skip_reason` to avoid `N/A%`). Output
-`<done>SHIPPED</done>` after the merge succeeds.
+the Step 13g result after the merge succeeds. Embedded ship returns structured
+state without a marker; standalone ship outputs `<done>SHIPPED</done>`.
 
 ---
 
@@ -423,7 +524,7 @@ summary-line rendering (uses `coverage_skip_reason` to avoid `N/A%`). Output
 ```
 5–8 local-review → 9 pushing → 10 ci-watch → 11 bot-watch ⇄ 12 addressing
                                                 ↓
-                                            13 merging → <done>SHIPPED</done>
+                                            13 merging → structured result
 ```
 
 `[coverage-check]` runs on every final pass that changes source files.
@@ -434,7 +535,7 @@ or merge. Non-UI diffs may record `e2e_result=skipped`.
 
 ## Verification Gate (HARD — applies before ANY completion signal)
 
-Before outputting `<done>SHIPPED</done>`, every claim MUST have FRESH evidence
+Before returning a shipped result, every claim MUST have FRESH evidence
 from THIS session — actual command output, not narrative:
 
 - **"Tests pass"** → `go -C "$WORKTREE_PATH" test` output with "ok" lines, zero failures
@@ -455,7 +556,9 @@ verification instead.
 
 ## Completion Criteria
 
-Output `<done>SHIPPED</done>` ONLY when ALL of these are true:
+Return `result=shipped` ONLY when ALL of these are true. Embedded ship persists
+that result at its child path without a marker. Standalone ship additionally
+outputs `<done>SHIPPED</done>`:
 
 1. Local LLM review passes completed (clean or max passes reached), or a
    session-local review is durably recorded as `void`/`skipped` with reason

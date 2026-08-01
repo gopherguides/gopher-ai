@@ -52,11 +52,13 @@ If potential duplicates are found, resolve a **driver-resolvable gate**:
 State `Decision`, `Evidence`, and `Rationale`. Do not request input merely
 because search returned similar issues.
 
-For either terminal duplicate outcome, persist `workflow_result=incomplete`,
-the supplied `workflow_reason`, phase `incomplete`, and completion promise
-`INCOMPLETE` in the active start-issue loop state. Output
-`<done>INCOMPLETE</done>` and stop without an implementation or completion
-claim.
+For either terminal duplicate outcome, set `WORKFLOW_REASON` to the supplied
+reason and follow the start-issue **Workflow Result Contract**. Embedded
+start-issue persists `result=incomplete`, the reason, and phase `incomplete` in
+its component subtree and returns without changing or emitting the caller's
+completion promise. Standalone start-issue switches its active completion
+promise to allowlisted `INCOMPLETE` and emits `<done>INCOMPLETE</done>`. Stop
+without an implementation or completion claim.
 
 ## Step 2: Create Branch (skip if worktree was created)
 

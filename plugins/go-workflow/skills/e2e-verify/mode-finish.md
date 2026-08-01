@@ -15,8 +15,26 @@ finish action), maps `MODE` to the closing action, and contains the
     `missing-browser-tooling`, `uninspected-screenshots`) → **stop**. Do NOT
     add `run-full-ci`. Do NOT add `e2e-verified`. Do NOT invoke
     `$go-workflow:ship`. The Step 6 comment already records the failure with
-    findings. Output `<done>E2E_FAIL</done>` so the loop exits without a
-    verified state.
+    findings. Persist the terminal result before exiting:
+
+    ```bash
+    WORKFLOW_RESULT=e2e-fail
+    WORKFLOW_REASON="$E2E_RESULT"
+    if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+      set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "e2e-fail" "$WORKFLOW_REASON" "e2e-failed"
+    else
+      set_loop_terminal_result "$STATE_FILE" "e2e-fail" "$WORKFLOW_REASON" "e2e-failed" "E2E_FAIL"
+    fi
+    echo "WORKFLOW_RESULT=$WORKFLOW_RESULT"
+    echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+    if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+      echo "E2E_VERIFY_RESULT=e2e-fail"
+      echo "E2E_VERIFY_REASON=$WORKFLOW_REASON"
+    else
+      echo "<done>E2E_FAIL</done>"
+    fi
+    exit 0
+    ```
 - **Non-UI diff** (no web indicators, no UI-facing files changed):
   - `E2E_RESULT=skipped` → continue to the per-mode finish action below
     (treated as the success path).
@@ -27,10 +45,10 @@ finish action), maps `MODE` to the closing action, and contains the
 
 | Mode | Action |
 |------|--------|
-| `verify` | Report results. Output `<done>VERIFIED</done>` |
-| `fix-and-verify` | Add `run-full-ci` label. Report results. Output `<done>VERIFIED</done>` |
-| `investigate` | Report findings (no label). Output `<done>VERIFIED</done>` |
-| `ship-prep` | Add `run-full-ci` label. Report results. Output `<done>VERIFIED</done>` |
+| `verify` | Report results, then finish with a verified result |
+| `fix-and-verify` | Add `run-full-ci` label, report results, then finish with a verified result |
+| `investigate` | Report findings with no label, then finish with a verified result |
+| `ship-prep` | Add `run-full-ci` label, report results, then finish with a verified result |
 | `ship` | Set phase to `shipping`. Execute the ship workflow |
 | `fix-and-ship` | Add `run-full-ci` label. Set phase to `shipping`. Watch CI → execute the full ship workflow |
 
@@ -52,7 +70,7 @@ Run after the label add. The watcher waits for check registration, pins every
 poll to the exact PR head, and rejects API failures or a head shift.
 
 ```bash
-set_loop_phase "$STATE_FILE" "shipping"
+set_loop_phase "$STATE_FILE" "shipping" "$WORKFLOW_STATE_PATH"
 PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=ci-api-failed
@@ -96,3 +114,44 @@ directly.
   `$ARGUMENTS`. Ship must run its changed-source coverage gate; the earlier
   browser result may be reused only through ship's explicit verified-result
   path.
+
+For either ship mode, initialize ship under the current E2E workflow and set
+its explicit caller contract before executing the loaded skill:
+
+```bash
+SHIP_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "ship")
+initialize_workflow_state "$STATE_FILE" "$SHIP_STATE_PATH"
+CALLER_LOOP_STATE_FILE="$STATE_FILE"
+CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"
+```
+
+After ship returns, clear both caller variables and route its structured result:
+
+```bash
+WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"
+unset CALLER_LOOP_STATE_FILE CALLER_WORKFLOW_STATE_PATH
+SHIP_RESULT=$(get_loop_field "$STATE_FILE" "result" "$SHIP_STATE_PATH")
+SHIP_REASON=$(get_loop_field "$STATE_FILE" "reason" "$SHIP_STATE_PATH")
+if [ "$SHIP_RESULT" != "shipped" ]; then
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON="${SHIP_REASON:-ship-incomplete}"
+fi
+```
+
+Any non-shipped result follows the top-level **Hard Invariant Failure**
+procedure. A shipped result continues to the finish block below.
+
+## Finish Result
+
+After the selected mode action completes, persist E2E's result and either
+return it to the caller or emit the standalone promise:
+
+```bash
+if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+  set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "verified" "" "completed"
+  echo "E2E_VERIFY_RESULT=verified"
+else
+  set_loop_terminal_result "$STATE_FILE" "verified" "" "completed" "VERIFIED"
+  echo "<done>VERIFIED</done>"
+fi
+```

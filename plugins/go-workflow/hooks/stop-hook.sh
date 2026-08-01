@@ -31,6 +31,16 @@ source "$LIB_PATH"
 
 loop_log "stop-hook: entered, transcript=$TRANSCRIPT_PATH"
 
+block_stop() {
+  local reason="$1"
+  local message="$2"
+  if ! printf '%s' "$reason" | grep '[^[:space:]]' >/dev/null; then
+    reason="Loop execution is blocked by invalid state."
+  fi
+  jq -n --arg reason "$reason" --arg msg "$message" \
+    '{"decision": "block", "reason": $reason, "systemMessage": $msg}'
+}
+
 # Find any active loop state file
 STATE_FILES=$(find_active_loops)
 
@@ -39,24 +49,46 @@ if [ -z "$STATE_FILES" ]; then
   exit 0
 fi
 
-# Process the first active loop (should only be one at a time)
-STATE_FILE=$(echo "$STATE_FILES" | head -1)
+STATE_COUNT=$(printf '%s\n' "$STATE_FILES" | wc -l | tr -d ' ')
+if [ "$STATE_COUNT" -ne 1 ]; then
+  MULTIPLE_REASON=$(printf 'Multiple active loop states were found; ownership is ambiguous:\n%s' "$STATE_FILES")
+  loop_log "stop-hook: refusing ambiguous active loops: $STATE_FILES"
+  block_stop "$MULTIPLE_REASON" \
+    "$MULTIPLE_REASON Cancel the orphaned loop states or restore one caller-owned state before continuing."
+  exit 0
+fi
+
+STATE_FILE="$STATE_FILES"
 
 # Verify state file exists and is readable
 if [ ! -f "$STATE_FILE" ] || [ ! -r "$STATE_FILE" ]; then
   loop_log "stop-hook: state file not readable: $STATE_FILE"
+  block_stop "Loop state is not readable: $STATE_FILE" \
+    "The active loop state cannot be read. Repair or cancel it before continuing."
   exit 0
 fi
 
 # Validate JSON before proceeding
 if ! jq empty "$STATE_FILE" 2>/dev/null; then
-  loop_log "stop-hook: invalid JSON in state file, cleaning up: $STATE_FILE"
-  cleanup_loop "$STATE_FILE"
+  loop_log "stop-hook: invalid JSON in state file: $STATE_FILE"
+  block_stop "Loop state is invalid JSON: $STATE_FILE" \
+    "The active loop state is invalid. Repair or cancel it before continuing."
   exit 0
 fi
 
-# Read state from file
-read_loop_state "$STATE_FILE"
+if ! SCHEMA_ERROR=$(ensure_loop_state_schema "$STATE_FILE" 2>&1); then
+  loop_log "stop-hook: invalid state contract: $SCHEMA_ERROR"
+  block_stop "$SCHEMA_ERROR" \
+    "The active loop state contract is invalid. Repair or cancel it before continuing."
+  exit 0
+fi
+
+if ! read_loop_state "$STATE_FILE" '[]' 2>/dev/null; then
+  loop_log "stop-hook: unable to read state: $STATE_FILE"
+  block_stop "Unable to read active loop state: $STATE_FILE" \
+    "The active loop state cannot be resumed. Repair or cancel it before continuing."
+  exit 0
+fi
 
 # Check if loop is stale (from a previous session)
 # Primary: Compare session ID (portable, instant)
@@ -92,8 +124,9 @@ fi
 
 # Validate iteration is a number
 if ! [[ "$ITERATION" =~ ^[0-9]+$ ]]; then
-  loop_log "stop-hook: invalid iteration '$ITERATION', cleaning up"
-  cleanup_loop "$STATE_FILE"
+  loop_log "stop-hook: invalid iteration '$ITERATION'"
+  block_stop "Loop state has invalid iteration '$ITERATION': $STATE_FILE" \
+    "The active loop iteration is invalid. Repair or cancel it before continuing."
   exit 0
 fi
 
@@ -132,7 +165,16 @@ SYSTEM_MSG="Iteration $NEW_ITERATION of loop '$LOOP_NAME'."
 PHASE_MSG=""
 if [ "$LOOP_NAME" = "ship" ] && [ "$PHASE" = "reviewing" ]; then
   RECOVERY_TMP="${STATE_FILE}.tmp"
-  jq '.review_result = "void" | .review_skip_reason = "session-boundary" | .phase = "pushing"' \
+  jq '
+    .review_result = "void" |
+    .review_skip_reason = "session-boundary" |
+    .phase = "pushing" |
+    if (.components.ship? | type) == "object" then
+      .components.ship.review_result = "void" |
+      .components.ship.review_skip_reason = "session-boundary" |
+      .components.ship.phase = "pushing"
+    else . end
+  ' \
     "$STATE_FILE" > "$RECOVERY_TMP" && mv "$RECOVERY_TMP" "$STATE_FILE"
   PHASE="pushing"
   PHASE_MSG="The prior in-session review is void. Do not start another review. Commit the validated staged diff, push every local commit, and ensure a non-draft PR exists before yielding."
@@ -197,6 +239,10 @@ if [ "$NEW_ITERATION" -ge 15 ]; then
 fi
 
 SYSTEM_MSG="$SYSTEM_MSG Output <done>$COMPLETION_PROMISE</done> ONLY when ALL completion criteria are met."
+
+if ! printf '%s' "$REASON" | grep '[^[:space:]]' >/dev/null; then
+  REASON="Continue working on the task."
+fi
 
 loop_log "stop-hook: blocking exit, reason='$REASON'"
 

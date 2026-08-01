@@ -126,8 +126,7 @@ For each target function include:
 Track the number of tests generated and persist in the state file:
 
 ```bash
-TMP="${STATE_FILE}.tmp"
-jq --argjson n "$TESTS_GENERATED" '.coverage_tests_generated = $n' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+set_loop_json_field "$STATE_FILE" "coverage_tests_generated" "$TESTS_GENERATED" "$WORKFLOW_STATE_PATH"
 ```
 
 Generated test files will be staged and committed alongside other changes by

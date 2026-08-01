@@ -11,8 +11,8 @@ strategy detection, REST mergeability decision tree, and summary rendering.
    state file:
 
 ```bash
-HAS_CI=$(jq -r '.has_ci // empty' "$STATE_FILE")
-HEAD_SHA=$(jq -r '.head_sha // empty' "$STATE_FILE")
+HAS_CI=$(get_loop_field "$STATE_FILE" "has_ci" "$WORKFLOW_STATE_PATH")
+HEAD_SHA=$(get_loop_field "$STATE_FILE" "head_sha" "$WORKFLOW_STATE_PATH")
 if [ "$HAS_CI" = "true" ]; then
   if [ -z "$HEAD_SHA" ]; then
     WORKFLOW_REASON="ci-head-missing"
@@ -105,10 +105,13 @@ and stop. Review requirements cannot be waived by a driver.
    not complete browser E2E must stop here even if CI is green:
 
 ```bash
-E2E_REQUIRED=$(jq -r '.e2e_required // "false"' "$STATE_FILE")
-E2E_RESULT=$(jq -r '.e2e_result // "skipped"' "$STATE_FILE")
-E2E_SKIP_REASON=$(jq -r '.e2e_skip_reason // ""' "$STATE_FILE")
-E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' "$STATE_FILE")
+E2E_REQUIRED=$(get_loop_field "$STATE_FILE" "e2e_required" "$WORKFLOW_STATE_PATH")
+E2E_RESULT=$(get_loop_field "$STATE_FILE" "e2e_result" "$WORKFLOW_STATE_PATH")
+E2E_SKIP_REASON=$(get_loop_field "$STATE_FILE" "e2e_skip_reason" "$WORKFLOW_STATE_PATH")
+E2E_PAGES=$(get_loop_field "$STATE_FILE" "e2e_pages_tested" "$WORKFLOW_STATE_PATH")
+E2E_REQUIRED="${E2E_REQUIRED:-false}"
+E2E_RESULT="${E2E_RESULT:-skipped}"
+E2E_PAGES="${E2E_PAGES:-0}"
 
 if [ "$E2E_REQUIRED" = "true" ] && [ "$E2E_RESULT" != "passed" ]; then
   echo "E2E PREREQUISITE MISSING - UI-visible diff has no passing browser E2E result."
@@ -127,8 +130,8 @@ procedure and stop with `WORKFLOW_REASON=required-e2e-not-passed`.
 If `NO_MERGE=true`:
 
 - Display the summary (see 13f)
-- Output `<done>SHIPPED</done>`
-- Stop here
+- Continue to Step 13g so embedded ship returns a structured result and
+  standalone ship emits its terminal marker
 
 ## 13c. Auto-detect merge strategy
 
@@ -146,14 +149,28 @@ if [ -n "$MERGE_METHOD" ]; then
     merge|squash|rebase) ;;
     *)
       echo "Invalid SHIP_MERGE_STRATEGY '$MERGE_METHOD'. Expected merge, squash, or rebase."
-      (cd "$ORIGINAL_REPO_ROOT" && "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship")
+      if [ "${SHIP_EMBEDDED:-false}" = "true" ]; then
+        set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "invalid-merge-strategy" "incomplete"
+      else
+        set_loop_terminal_result "$STATE_FILE" "incomplete" "invalid-merge-strategy" "incomplete" "INCOMPLETE"
+        echo "WORKFLOW_RESULT=INCOMPLETE"
+        echo "WORKFLOW_REASON=invalid-merge-strategy"
+        echo "<done>INCOMPLETE</done>"
+      fi
       exit 1
       ;;
   esac
 
   if ! echo "$MERGE_SETTINGS" | jq -e --arg method "$MERGE_METHOD" '.[$method] == true' >/dev/null 2>&1; then
     echo "Configured merge strategy '$MERGE_METHOD' is not allowed by $OWNER/$REPO."
-    (cd "$ORIGINAL_REPO_ROOT" && "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship")
+    if [ "${SHIP_EMBEDDED:-false}" = "true" ]; then
+      set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "merge-strategy-not-allowed" "incomplete"
+    else
+      set_loop_terminal_result "$STATE_FILE" "incomplete" "merge-strategy-not-allowed" "incomplete" "INCOMPLETE"
+      echo "WORKFLOW_RESULT=INCOMPLETE"
+      echo "WORKFLOW_REASON=merge-strategy-not-allowed"
+      echo "<done>INCOMPLETE</done>"
+    fi
     exit 1
   fi
 elif echo "$MERGE_SETTINGS" | jq -e '.squash == true' >/dev/null 2>&1; then
@@ -164,7 +181,14 @@ elif echo "$MERGE_SETTINGS" | jq -e '.merge == true' >/dev/null 2>&1; then
   MERGE_METHOD="merge"
 else
   echo "No allowed merge strategy is configured for $OWNER/$REPO."
-  (cd "$ORIGINAL_REPO_ROOT" && "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship")
+  if [ "${SHIP_EMBEDDED:-false}" = "true" ]; then
+    set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "merge-strategy-unavailable" "incomplete"
+  else
+    set_loop_terminal_result "$STATE_FILE" "incomplete" "merge-strategy-unavailable" "incomplete" "INCOMPLETE"
+    echo "WORKFLOW_RESULT=INCOMPLETE"
+    echo "WORKFLOW_REASON=merge-strategy-unavailable"
+    echo "<done>INCOMPLETE</done>"
+  fi
   exit 1
 fi
 
@@ -278,15 +302,20 @@ If the merge command fails (non-zero exit code):
 Read coverage and e2e results. Coverage may have skipped (e.g., all changed files were `package main`); in that case `coverage_skip_reason` is set and `coverage_result` is empty. Render a textual reason instead of `<COV_RESULT>%`:
 
 ```bash
-COV_RESULT=$(jq -r '.coverage_result // ""' "$STATE_FILE")
-COV_SKIP_REASON=$(jq -r '.coverage_skip_reason // ""' "$STATE_FILE")
-COV_THRESHOLD=$(jq -r '.coverage_threshold // "60"' "$STATE_FILE")
-TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' "$STATE_FILE")
-E2E_ATTEMPTED=$(jq -r '.e2e_attempted // ""' "$STATE_FILE")
-E2E_RESULT=$(jq -r '.e2e_result // "skipped"' "$STATE_FILE")
-E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' "$STATE_FILE")
-E2E_REQUIRED=$(jq -r '.e2e_required // "false"' "$STATE_FILE")
-E2E_SKIP_REASON=$(jq -r '.e2e_skip_reason // ""' "$STATE_FILE")
+COV_RESULT=$(get_loop_field "$STATE_FILE" "coverage_result" "$WORKFLOW_STATE_PATH")
+COV_SKIP_REASON=$(get_loop_field "$STATE_FILE" "coverage_skip_reason" "$WORKFLOW_STATE_PATH")
+COV_THRESHOLD=$(get_loop_field "$STATE_FILE" "coverage_threshold" "$WORKFLOW_STATE_PATH")
+TESTS_GEN=$(get_loop_field "$STATE_FILE" "coverage_tests_generated" "$WORKFLOW_STATE_PATH")
+E2E_ATTEMPTED=$(get_loop_field "$STATE_FILE" "e2e_attempted" "$WORKFLOW_STATE_PATH")
+E2E_RESULT=$(get_loop_field "$STATE_FILE" "e2e_result" "$WORKFLOW_STATE_PATH")
+E2E_PAGES=$(get_loop_field "$STATE_FILE" "e2e_pages_tested" "$WORKFLOW_STATE_PATH")
+E2E_REQUIRED=$(get_loop_field "$STATE_FILE" "e2e_required" "$WORKFLOW_STATE_PATH")
+E2E_SKIP_REASON=$(get_loop_field "$STATE_FILE" "e2e_skip_reason" "$WORKFLOW_STATE_PATH")
+COV_THRESHOLD="${COV_THRESHOLD:-60}"
+TESTS_GEN="${TESTS_GEN:-0}"
+E2E_RESULT="${E2E_RESULT:-skipped}"
+E2E_PAGES="${E2E_PAGES:-0}"
+E2E_REQUIRED="${E2E_REQUIRED:-false}"
 
 # Coverage line: prefer skip_reason when present, then numeric value, else "skipped".
 if [ -n "$COV_SKIP_REASON" ]; then
@@ -338,4 +367,14 @@ fi
 <VERIFICATION_LINE>
 ```
 
-Output `<done>SHIPPED</done>`.
+## 13g. Return result
+
+Persist the result before returning. The caller owns the only terminal promise
+and marker during composition.
+
+```bash
+set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "shipped" "" "complete"
+if [ "$SHIP_EMBEDDED" != "true" ]; then
+  echo "<done>SHIPPED</done>"
+fi
+```

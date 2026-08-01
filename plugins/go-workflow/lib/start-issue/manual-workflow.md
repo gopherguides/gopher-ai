@@ -5,7 +5,8 @@ flow for simple issues where subagent overhead is not justified.
 
 ## Bug Fix (Manual)
 
-1. **Check for duplicates** (same as orchestrated Step 1)
+1. **Check for duplicates** (same as orchestrated Step 1, including its
+   standalone-or-embedded structured result contract)
 2. **Create branch** (skip if worktree): `git -C "$WORKTREE_PATH" checkout -b "fix/$ISSUE_NUM-<short-desc>"`
 3. **Explore root cause**: grep for error text, read max 3 files, form hypothesis
 4. **TDD Red — IRON LAW: No fix code before this test.** If you already wrote fix code, DELETE IT. Write a failing test. Run it. Verify it fails FOR THE RIGHT REASON. **Red flag: test passes immediately = wrong test.**
