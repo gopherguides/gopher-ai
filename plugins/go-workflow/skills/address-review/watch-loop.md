@@ -6,7 +6,7 @@ Before entering the watch loop, update the loop state phase so that any stop-hoo
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
+LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
   set_loop_phase "$LOOP_STATE_FILE" "watching"
@@ -79,7 +79,7 @@ Load each signal without adding formal review or issue-comment fields to the
 GraphQL query:
 
 ```bash
-WATCH_PR_JSON=$(github_pr "$PR_NUM") || {
+WATCH_PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
@@ -94,17 +94,17 @@ fi
 
 OWNER=$(jq -er '.base.repo.owner.login' <<< "$WATCH_PR_JSON")
 REPO=$(jq -er '.base.repo.name' <<< "$WATCH_PR_JSON")
-FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM") || {
+FORMAL_REVIEWS=$(cd "$WORKTREE_PATH" && github_pr_reviews "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=review-api-failure
 }
-ISSUE_COMMENT_PAGES=$(gh api --paginate --slurp "repos/{owner}/{repo}/issues/$PR_NUM/comments?per_page=100") || {
+ISSUE_COMMENT_PAGES=$(gh api --paginate --slurp "repos/$REPO_SLUG/issues/$PR_NUM/comments?per_page=100") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=issue-comment-api-failure
 }
 ISSUE_COMMENTS=$(jq -c '[.[][]]' <<< "$ISSUE_COMMENT_PAGES")
 
-THREAD_RESULT=$(gh api graphql -f query='
+THREAD_RESULT=$(cd "$WORKTREE_PATH" && gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
@@ -130,14 +130,14 @@ THREAD_RESULT=$(gh api graphql -f query='
   WORKFLOW_REASON=review-thread-api-failure
 }
 
-if printf '%s\n' "$BOT_AUTHORS" | rg -qx 'greptileai'; then
-  BOT_CHECKS=$(github_check_snapshot "$PR_HEAD_SHA") || {
+if printf '%s\n' "$BOT_AUTHORS" | grep -qx 'greptileai'; then
+  BOT_CHECKS=$(cd "$WORKTREE_PATH" && github_check_snapshot "$PR_HEAD_SHA") || {
     WORKFLOW_RESULT=INCOMPLETE
     WORKFLOW_REASON=checks-api-failure
   }
 fi
 
-VERIFIED_PR_HEAD_SHA=$(github_pr "$PR_NUM" | jq -er '.head.sha') || {
+VERIFIED_PR_HEAD_SHA=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM" | jq -er '.head.sha') || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
@@ -194,7 +194,7 @@ After the quiet period ends and new unresolved comments/threads exist:
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
+LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
   set_loop_phase "$LOOP_STATE_FILE" "fixing"
@@ -215,7 +215,7 @@ If a bot's quiet period ended with no new comments but it still hasn't approved:
 1. Look up the bot's re-review trigger command from the Bot Registry (`bot-registry.md`).
 2. If a trigger exists → post it:
    ```bash
-   gh pr comment "$PR_NUM" --body "<trigger command>"
+   gh pr comment "$PR_NUM" --repo "$REPO_SLUG" --body "<trigger command>"
    ```
 3. **Max 3 re-trigger attempts per bot.** Track the count.
 4. After the third unsuccessful re-review trigger:

@@ -6,7 +6,7 @@ Loaded by `skills/ship/SKILL.md` Phase 3. Owns SHA-anchored CI watching.
 
 ```bash
 HAS_WORKFLOWS=""
-for WORKFLOW_FILE in .github/workflows/*.yml .github/workflows/*.yaml; do
+for WORKFLOW_FILE in "$WORKTREE_PATH"/.github/workflows/*.yml "$WORKTREE_PATH"/.github/workflows/*.yaml; do
   if [ -f "$WORKFLOW_FILE" ]; then
     HAS_WORKFLOWS="$WORKFLOW_FILE"
     break
@@ -22,9 +22,9 @@ Step 10b determines whether checks registered or an active workflow applies.
 Read `head_sha` from state file (set during push in Step 9c, after CI failure recovery in Step 10e, or after Step 12c):
 
 ```bash
-HEAD_SHA=$(jq -r '.head_sha // empty' ".local/state/ship.loop.local.json")
+HEAD_SHA=$(jq -r '.head_sha // empty' "$STATE_FILE")
 if [ -z "$HEAD_SHA" ]; then
-  HEAD_SHA=$(git rev-parse HEAD)
+  HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
 fi
 echo "Watching CI for commit: $HEAD_SHA"
 ```
@@ -37,7 +37,7 @@ late registrations, aggregates every terminal failure, and verifies the PR
 head after watching.
 
 ```bash
-if CI_SNAPSHOT=$(github_watch_pr_checks "$PR_NUM" "$HEAD_SHA"); then
+if CI_SNAPSHOT=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$HEAD_SHA"); then
   CI_STATUS=0
 else
   CI_STATUS=$?
@@ -120,7 +120,7 @@ When the helper reports `GITHUB_CHECKS_HEAD_SHIFT`, or when explicitly
 revalidating after the watch, read the PR through the shared REST helper:
 
 ```bash
-if ! FINAL_PR=$(github_pr "$PR_NUM"); then
+if ! FINAL_PR=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM"); then
   WORKFLOW_REASON="ci-post-watch-api-error"
 fi
 FINAL_SHA=$(jq -er '.head.sha' <<< "$FINAL_PR")
@@ -128,21 +128,21 @@ if [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   echo "STOP: PR head shifted to SHA $FINAL_SHA during watch (expected $HEAD_SHA)."
   echo "A new commit landed on this PR that was NOT reviewed locally."
   echo "Restarting from review phase against the new HEAD."
-  if [ -n "$(git status --porcelain)" ]; then
+  if [ -n "$(git -C "$WORKTREE_PATH" status --porcelain)" ]; then
     echo "BLOCKED: PR head shifted, but the working tree has uncommitted changes."
     echo "Inspect ownership before synchronization; never overwrite unrelated work."
     exit 1
   fi
   HEAD_SHA="$FINAL_SHA"
-  BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote" 2>/dev/null || echo "origin")
+  BRANCH_REMOTE=$(git -C "$WORKTREE_PATH" config "branch.$(git -C "$WORKTREE_PATH" branch --show-current).remote" 2>/dev/null || echo "origin")
   PR_HEAD_BRANCH=$(jq -er '.head.ref' <<< "$FINAL_PR")
-  git fetch "$BRANCH_REMOTE" "$PR_HEAD_BRANCH"
-  git checkout "$PR_HEAD_BRANCH"
-  git reset --hard "$BRANCH_REMOTE/$PR_HEAD_BRANCH"
-  TMP=".local/state/ship.loop.local.json.tmp"
+  git -C "$WORKTREE_PATH" fetch "$BRANCH_REMOTE" "$PR_HEAD_BRANCH"
+  git -C "$WORKTREE_PATH" checkout "$PR_HEAD_BRANCH"
+  git -C "$WORKTREE_PATH" reset --hard "$BRANCH_REMOTE/$PR_HEAD_BRANCH"
+  TMP="${STATE_FILE}.tmp"
   jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "review-required" \
     '.head_sha = $sha | .pass = $pass | .review_clean = $rc | .phase = $phase' \
-    ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 fi
 ```
 
@@ -172,7 +172,7 @@ If CI fails:
    `jq '.items[] | select(.terminal and (.successful | not))' <<< "$CI_SNAPSHOT"`
 2. Fix the issue
 3. Commit
-4. Push: `git push`
-5. Capture HEAD SHA: `HEAD_SHA=$(git rev-parse HEAD)`; persist `head_sha`
+4. Push: `git -C "$WORKTREE_PATH" push`
+5. Capture HEAD SHA: `HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)`; persist `head_sha`
 6. Re-capture `BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)`; persist
 7. Re-watch CI — go back to 10b for the NEW SHA

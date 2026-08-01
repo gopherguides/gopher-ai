@@ -29,20 +29,20 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 Fetch the current list of unique authors who left reviews or thread comments on this PR:
 
 ```bash
-PR_JSON=$(github_pr "$PR_NUM") || {
+PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
 OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
 REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
 
-FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM") || {
+FORMAL_REVIEWS=$(cd "$WORKTREE_PATH" && github_pr_reviews "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=review-api-failure
 }
 FORMAL_REVIEWERS=$(jq -r '.[].user.login // empty' <<< "$FORMAL_REVIEWS")
 
-THREAD_RESULT=$(gh api graphql -f query='
+THREAD_RESULT=$(cd "$WORKTREE_PATH" && gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
@@ -84,8 +84,8 @@ If the reviewer list is empty (no reviewers left feedback), skip this entire ste
 ### 10b. Check for bot re-review opt-out
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
-if [ -f "$REPO_ROOT/CLAUDE.md" ] && rg -q "DISABLE_BOT_REREVIEW=true" "$REPO_ROOT/CLAUDE.md"; then
+REPO_ROOT=$(git -C "$WORKTREE_PATH" rev-parse --show-toplevel)
+if [ -f "$REPO_ROOT/CLAUDE.md" ] && grep -q "DISABLE_BOT_REREVIEW=true" "$REPO_ROOT/CLAUDE.md"; then
   echo "Bot re-review disabled by project settings"
 fi
 ```
@@ -101,7 +101,7 @@ fi
 1. Check if the login matches any entry in the Bot Registry table above
 2. If it matches AND has a re-review trigger command → post the trigger:
    ```bash
-   gh pr comment "$PR_NUM" --body "<trigger command from registry>"
+   gh pr comment "$PR_NUM" --repo "$REPO_SLUG" --body "<trigger command from registry>"
    ```
 3. If it matches but has no trigger command (e.g., `copilot-pull-request-review[bot]`) → skip, log: "Skipping <login>: no re-trigger mechanism available"
 4. If it's on the ignore list (`github-actions[bot]`, `dependabot[bot]`, etc.) → skip silently
@@ -115,7 +115,7 @@ For human reviewers from your Step 3 list who left CHANGES_REQUESTED:
 
 ```bash
 jq -cn --arg reviewer "REVIEWER_USERNAME" '{reviewers: [$reviewer]}' |
-  gh api --method POST "repos/{owner}/{repo}/pulls/$PR_NUM/requested_reviewers" --input -
+  gh api --method POST "repos/$REPO_SLUG/pulls/$PR_NUM/requested_reviewers" --input -
 ```
 
 ### 10e. Inform the user

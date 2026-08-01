@@ -34,7 +34,8 @@ entirely, pass `--no-agents`.
 If issue is a **bug**:
 
 ```bash
-gh issue list --state all --limit 50 --search "<key terms from title/body>"
+ISSUE_SEARCH_TERMS="$ISSUE_TITLE $ISSUE_BODY"
+gh issue list --repo "$REPO_SLUG" --state all --limit 50 --search "$ISSUE_SEARCH_TERMS"
 ```
 
 If potential duplicates are found, resolve a **driver-resolvable gate**:
@@ -61,10 +62,10 @@ claim.
 
 REQUIRED unless using a worktree. Never commit to main/master.
 
-For bugs: `git checkout -b "fix/$ISSUE_NUM-<short-desc>"`
-For features: `git checkout -b "feat/$ISSUE_NUM-<short-desc>"`
+For bugs: `git -C "$WORKTREE_PATH" checkout -b "fix/$ISSUE_NUM-<short-desc>"`
+For features: `git -C "$WORKTREE_PATH" checkout -b "feat/$ISSUE_NUM-<short-desc>"`
 
-Verify: `git branch --show-current`
+Verify: `git -C "$WORKTREE_PATH" branch --show-current`
 
 ## Step 3: Explore Phase
 
@@ -159,9 +160,9 @@ For each task, read `${CLAUDE_PLUGIN_ROOT}/agents/implementer-prompt.md` and fil
 After ALL implementation tasks complete:
 
 ```bash
-DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
-git fetch origin "$DEFAULT_BRANCH" 2>/dev/null || true
-git diff "origin/${DEFAULT_BRANCH}...HEAD"
+DEFAULT_BRANCH=$(git -C "$WORKTREE_PATH" remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
+git -C "$WORKTREE_PATH" fetch origin "$DEFAULT_BRANCH" 2>/dev/null || true
+git -C "$WORKTREE_PATH" diff "origin/${DEFAULT_BRANCH}...HEAD"
 ```
 
 Read `${CLAUDE_PLUGIN_ROOT}/agents/spec-review-prompt.md` and fill in:
@@ -194,9 +195,9 @@ Delegate the filled quality-review prompt through the active surface.
 
 Run the full verification checklist. **All must pass before proceeding:**
 
-- **Build**: `go build ./...`
-- **All tests**: `go test ./...`
-- **Lint**: `golangci-lint run` (if available)
+- **Build**: `go -C "$WORKTREE_PATH" build ./...`
+- **All tests**: `go -C "$WORKTREE_PATH" test ./...`
+- **Lint**: `(cd "$WORKTREE_PATH" && golangci-lint run)` (if available)
 - **Build logs**: if a dev server is running, check its log output for errors
 
 If any step fails, fix the issue and re-run until all green.
@@ -207,8 +208,9 @@ Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow St
 
 | Variable | Value |
 |----------|-------|
-| `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (compute if not already set: `git remote show origin 2>/dev/null \| grep 'HEAD branch' \| sed 's/.*: //' \|\| echo "main"`) |
-| `STATE_FILE` | Absolute path to `.local/state/start-issue-$ISSUE_NUM.loop.local.json` (in the original repo, not the worktree) |
+| `BASE_BRANCH` | `origin/${DEFAULT_BRANCH}` (compute if not already set: `git -C "$WORKTREE_PATH" remote show origin 2>/dev/null \| grep 'HEAD branch' \| sed 's/.*: //' \|\| echo "main"`) |
+| `STATE_FILE` | `$ORIGINAL_REPO_ROOT/.local/state/start-issue-$ISSUE_NUM.loop.local.json` |
+| `WORKTREE_PATH` | absolute path persisted by the start-issue trunk |
 | `SKIP_COVERAGE` | from parsed flags (default: `false`) |
 | `COVERAGE_THRESHOLD` | from parsed flags (default: `60`) |
 
@@ -219,7 +221,7 @@ the diff has no gated source files.
 
 Before submitting, scan for security issues in changed files:
 
-- **Dependency vulnerabilities**: `govulncheck ./...` (if available)
+- **Dependency vulnerabilities**: `(cd "$WORKTREE_PATH" && govulncheck ./...)` (if available)
 - **Scan changed files** for common Go security issues:
   - Hardcoded secrets or credentials
   - SQL injection (string concatenation in queries instead of parameterized)
@@ -231,7 +233,7 @@ Before submitting, scan for security issues in changed files:
 ## Step 11: Submit
 
 1. Stage and commit with a conventional commit message referencing the issue
-2. Push the branch: `git push -u origin <branch>`
+2. Push the branch: `git -C "$WORKTREE_PATH" push -u origin <branch>`
 3. **Check for PR template** — look in these locations (in order):
    - `.github/pull_request_template.md`
    - `.github/PULL_REQUEST_TEMPLATE.md`
@@ -253,10 +255,10 @@ Before submitting, scan for security issues in changed files:
    ```
 6. Create the PR with heredoc formatting:
    ```bash
-   gh pr create --title "<type>(<scope>): <subject>" --body "`cat <<'EOF'
+   gh pr create --repo "$REPO_SLUG" --head "$(git -C "$WORKTREE_PATH" branch --show-current)" --title "<type>(<scope>): <subject>" --body "$(cat <<'EOF'
    <filled-in template or default body>
    EOF
-   `"
+   )"
    ```
 
 When multiple templates exist, resolve a **driver-resolvable gate**. Prefer an
@@ -269,14 +271,14 @@ or the first lexical template when all candidates are equally general. State
 
 After creating the PR, watch CI and fix any failures:
 
-1. `gh pr checks --watch`
+1. `gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --watch`
 2. **If "no checks reported"**: wait 10 seconds and retry, up to 3 times:
    ```bash
-   for i in 1 2 3; do sleep 10 && gh pr checks --watch && break; done
+   for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --watch && break; done
    ```
    If still no checks after retries, verify CI workflow files exist.
 3. If checks fail:
-   - Get failure details: `gh pr checks --json name,state,description`
+   - Get failure details: `gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --json name,state,description`
    - Analyze and fix the failing check
    - Commit and push the fix
    - Return to step 1

@@ -13,7 +13,7 @@
 - **If `CURRENT_PHASE` is `fixing` AND `WATCH_MODE` is `true` AND bots detected:** Set phase to `watching`, skip to Step 12:
   ```bash
   SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-  LOOP_STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
+  LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
   if [ -f "$LOOP_STATE_FILE" ]; then
     source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
     set_loop_phase "$LOOP_STATE_FILE" "watching"
@@ -36,7 +36,7 @@ Address feedback, but note: "This PR has pending review feedback that cannot be 
 
 ```bash
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-LOOP_STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
+LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
 if [ -f "$LOOP_STATE_FILE" ]; then
   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
   set_loop_phase "$LOOP_STATE_FILE" "fixing"
@@ -49,7 +49,7 @@ Before the first edit to each unique source or test path in this fix cycle, veri
 
 ```bash
 TARGET_FILE="path/from-review-thread"
-if [ -n "$(git status --porcelain -- "$TARGET_FILE")" ]; then
+if [ -n "$(git -C "$WORKTREE_PATH" status --porcelain -- "$TARGET_FILE")" ]; then
   echo "Error: $TARGET_FILE already has changes that are not owned by this review-fix cycle."
   exit 1
 fi
@@ -109,9 +109,9 @@ Read `test-generation.md` for full test generation guidelines including testabil
 ## Step 5: Verify Fixes Locally
 
 **All must pass before proceeding:**
-- `go build ./...`
-- `go test ./...`
-- `golangci-lint run` (if available)
+- `go -C "$WORKTREE_PATH" build ./...`
+- `go -C "$WORKTREE_PATH" test ./...`
+- `(cd "$WORKTREE_PATH" && golangci-lint run)` (if available)
 - Check dev server logs for errors if applicable
 
 Fix any failures and re-run until all green.
@@ -120,10 +120,10 @@ Fix any failures and re-run until all green.
 
 ## Step 6: Commit and Push
 
-Stage only files modified during this fix cycle. Build `OWNED_FILES` from the paths tracked in Steps 4 and 4.5, inspect `git status --short`, and exclude every pre-existing or unrelated change. Start from an empty index so an earlier staged change cannot enter the review-fix commit.
+Stage only files modified during this fix cycle. Build `OWNED_FILES` from the paths tracked in Steps 4 and 4.5, inspect `git -C "$WORKTREE_PATH" status --short`, and exclude every pre-existing or unrelated change. Start from an empty index so an earlier staged change cannot enter the review-fix commit.
 
 ```bash
-PR_JSON=$(github_pr "$PR_NUM") || {
+PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
@@ -144,8 +144,8 @@ PR_HEAD_CLONE_URL=$(jq -er '.head.repo.clone_url' <<< "$PR_JSON") || {
   WORKFLOW_REASON=missing-pr-head-repository
 }
 PR_HEAD_PUSH_TARGET=""
-for remote in $(git remote); do
-  REMOTE_URL=$(git remote get-url "$remote")
+for remote in $(git -C "$WORKTREE_PATH" remote); do
+  REMOTE_URL=$(git -C "$WORKTREE_PATH" remote get-url "$remote")
   REMOTE_OWNER_REPO=$(printf '%s\n' "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
   if [ "$REMOTE_OWNER_REPO" = "$PR_HEAD_OWNER_REPO" ]; then
     PR_HEAD_PUSH_TARGET="$remote"
@@ -153,12 +153,12 @@ for remote in $(git remote); do
   fi
 done
 PR_HEAD_PUSH_TARGET="${PR_HEAD_PUSH_TARGET:-$PR_HEAD_CLONE_URL}"
-if [ "$(git rev-parse HEAD)" != "$EXPECTED_REMOTE_HEAD_SHA" ]; then
+if [ "$(git -C "$WORKTREE_PATH" rev-parse HEAD)" != "$EXPECTED_REMOTE_HEAD_SHA" ]; then
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-head-shift
 fi
 
-if ! git diff --cached --quiet; then
+if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
   echo "Error: Pre-existing staged changes must be committed or unstaged before address-review can commit."
   exit 1
 fi
@@ -167,19 +167,19 @@ OWNED_FILES=(
   "path/to/fixed-file.go"
   "path/to/generated_test.go"
 )
-git add -- "${OWNED_FILES[@]}"
+git -C "$WORKTREE_PATH" add -- "${OWNED_FILES[@]}"
 
-if ! git diff --cached --quiet; then
-  git commit -m "address review comments
+if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
+  git -C "$WORKTREE_PATH" commit -m "address review comments
 
 - [brief summary of each fix]
 - [tests added for testable fixes, if any]"
 else
   echo "No owned review-fix changes to commit."
 fi
-git push "$PR_HEAD_PUSH_TARGET" "HEAD:refs/heads/$PR_HEAD_BRANCH"
-PR_HEAD_SHA=$(git rev-parse HEAD)
-PUBLISHED_HEAD_SHA=$(github_pr "$PR_NUM" | jq -er '.head.sha') || {
+git -C "$WORKTREE_PATH" push "$PR_HEAD_PUSH_TARGET" "HEAD:refs/heads/$PR_HEAD_BRANCH"
+PR_HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
+PUBLISHED_HEAD_SHA=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM" | jq -er '.head.sha') || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
@@ -210,7 +210,7 @@ Store this value for all Step 12 bot checks. Do NOT recompute later.
 
 ```bash
 CHECK_STATUS=0
-CHECKS_JSON=$(github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
+CHECKS_JSON=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
 case "$CHECK_STATUS" in
   0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
   1) echo "CI failed. Analyze and fix every failing check, then commit, push, update PR_HEAD_SHA, and re-watch." ;;
@@ -232,7 +232,7 @@ head SHA, and re-watch. **Do not proceed until CI is green for
 ## Step 8: Reply to Each Comment
 
 ```bash
-gh pr comment "$PR_NUM" --body "Fixed in latest commit: [brief explanation]"
+gh pr comment "$PR_NUM" --repo "$REPO_SLUG" --body "Fixed in latest commit: [brief explanation]"
 ```
 
 Keep replies brief and professional.
@@ -244,13 +244,13 @@ Keep replies brief and professional.
 **Only resolve after CI passes and fixes are pushed.** Only for line-specific threads (Group A).
 
 ```bash
-gh api graphql -f query='
+(cd "$WORKTREE_PATH" && gh api graphql -f query='
   mutation($threadId: ID!) {
     resolveReviewThread(input: {threadId: $threadId}) {
       thread { isResolved }
     }
   }
-' -f threadId="THREAD_ID_HERE"
+' -f threadId="THREAD_ID_HERE")
 ```
 
 Repeat for each unresolved thread.

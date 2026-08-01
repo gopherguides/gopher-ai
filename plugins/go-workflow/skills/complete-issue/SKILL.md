@@ -94,33 +94,54 @@ Skill tool. Read `phases.md` for the full sub-step list (fetch issue, create
 worktree, detect type, explore, design, TDD, verify, coverage, security review,
 commit/push/PR, watch CI).
 
-After `$go-workflow:start-issue` completes, detect the PR number and worktree context, reassign `STATE_FILE` to an absolute path (because CWD may have changed if a worktree was created), and persist:
+After `$go-workflow:start-issue` completes, consume its persisted worktree
+output. Never infer it from the ambient directory. Validate the output before
+review, then resolve the PR from the persisted repository and exact head:
 
 ```bash
-PR_JSON=$(github_current_pr) || {
-  echo "Error: No open PR matches the current branch and HEAD after start-issue"
+START_ISSUE_STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/start-issue-${ISSUE_NUM}.loop.local.json"
+WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$START_ISSUE_STATE_FILE" 2>/dev/null || true)
+START_ORIGINAL_REPO_ROOT=$(jq -r '.original_repo_root // empty' "$START_ISSUE_STATE_FILE" 2>/dev/null || true)
+REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print}')
+
+if [ "$START_ORIGINAL_REPO_ROOT" != "$ORIGINAL_REPO_ROOT" ] ||
+   [ -z "$WORKTREE_PATH" ] ||
+   [ "${WORKTREE_PATH#/}" = "$WORKTREE_PATH" ] ||
+   [ ! -d "$WORKTREE_PATH" ] ||
+   ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v expected="$WORKTREE_PATH" '$0 == expected {found=1} END {exit found ? 0 : 1}'; then
+  WORKFLOW_REASON=start-issue-worktree-path-invalid
+  TMP="${STATE_FILE}.tmp"
+  jq --arg reason "$WORKFLOW_REASON" \
+    '.workflow_result = "incomplete" | .workflow_reason = $reason | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' \
+    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  echo "WORKFLOW_RESULT=INCOMPLETE"
+  echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+  echo "<done>INCOMPLETE</done>"
+  exit 1
+fi
+
+PR_HEAD_BRANCH=$(git -C "$WORKTREE_PATH" branch --show-current)
+HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
+PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr "$PR_HEAD_BRANCH" "$HEAD_SHA") || {
+  echo "Error: No open PR matches the persisted worktree branch and HEAD after start-issue"
   exit 1
 }
 PR_NUM=$(jq -er '.number' <<< "$PR_JSON")
 
-GIT_DIR_ABS=$(cd "$(git rev-parse --git-dir 2>/dev/null)" && pwd)
-GIT_COMMON_ABS=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd)
-if [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
-  WORKTREE_PATH=$(pwd)
-  echo "Running in worktree: $WORKTREE_PATH"
-fi
-
-STATE_FILE="$(pwd)/.local/state/complete-issue-${ISSUE_NUM}.loop.local.json"
-mkdir -p "$(dirname "$STATE_FILE")"
-
 TMP="$STATE_FILE.tmp"
-jq --arg pr_number "$PR_NUM" --arg worktree_path "${WORKTREE_PATH:-}" \
+jq --arg pr_number "$PR_NUM" --arg worktree_path "$WORKTREE_PATH" \
    '.pr_number = $pr_number | .worktree_path = $worktree_path' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 echo "PR #$PR_NUM created"
 ```
 
-> **Worktree-CWD invariant (decision-time, must stay in trunk):** If a worktree was created, all subsequent phases MUST operate from `$WORKTREE_PATH`. Prefix every Bash command with `cd "$WORKTREE_PATH" &&` and use `$WORKTREE_PATH` as the base for all Read/Edit/Write file paths. The pre-tool-use hook will block tool calls targeting the wrong directory. The `STATE_FILE` reassignment above ensures `set_loop_phase` calls resolve correctly regardless of CWD.
+> **Worktree invariant (decision-time, must stay in trunk):** All subsequent
+> phases MUST operate on `$WORKTREE_PATH`. Prefer `git -C "$WORKTREE_PATH"`,
+> `go -C "$WORKTREE_PATH"`, and `gh ... --repo "$REPO_SLUG"`; use an explicit
+> worktree-scoped group only when no per-command option exists. Use
+> `$WORKTREE_PATH` as the base for all file tools. `STATE_FILE` remains the one
+> absolute path established before Phase 1. Do not assume a pre-tool-use hook
+> will correct or reject an ambient-directory command.
 
 ---
 
@@ -157,12 +178,12 @@ fi
 Address findings: for each valid finding, make the fix. Skip false positives or
 cosmetic-only items. Maintain `REVIEW_FILES` as the exact list of files modified
 in this review phase, including generated or updated tests. Before modifying an
-existing path, confirm `git status --porcelain -- "$TARGET_FILE"` is empty so
+existing path, confirm `git -C "$WORKTREE_PATH" status --porcelain -- "$TARGET_FILE"` is empty so
 pre-existing changes cannot enter the review-fix commit. Commit fixes if any
 changes were made:
 
 ```bash
-if ! git diff --cached --quiet; then
+if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
   echo "Error: Pre-existing staged changes must be committed or unstaged before complete-issue can commit review fixes."
   exit 1
 fi
@@ -172,10 +193,10 @@ REVIEW_FILES=(
   "path/to/reviewed-file_test.go"
 )
 if [ "${#REVIEW_FILES[@]}" -gt 0 ]; then
-  git add -- "${REVIEW_FILES[@]}"
-  if ! git diff --cached --quiet; then
-    git commit -m "fix: address codex review findings"
-    git push
+  git -C "$WORKTREE_PATH" add -- "${REVIEW_FILES[@]}"
+  if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
+    git -C "$WORKTREE_PATH" commit -m "fix: address codex review findings"
+    git -C "$WORKTREE_PATH" push
   fi
 fi
 ```

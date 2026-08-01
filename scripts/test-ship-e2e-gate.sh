@@ -29,7 +29,7 @@ require_text() {
   local pattern="$2"
   local label="$3"
 
-  if ! grep -qE -- "$pattern" "$file"; then
+  if ! grep -qE -e "$pattern" "$file"; then
     fail "$label"
   fi
 }
@@ -39,7 +39,7 @@ reject_text() {
   local pattern="$2"
   local label="$3"
 
-  if grep -qE -- "$pattern" "$file"; then
+  if grep -qE -e "$pattern" "$file"; then
     fail "$label"
   fi
 }
@@ -94,6 +94,7 @@ printf '%s\n' \
   > "$BROWSER_FAILURE_TMP/.local/state/ship.loop.local.json"
 
 BROWSER_FAILURE_STATE=$(cd "$BROWSER_FAILURE_TMP" && \
+  STATE_FILE="$BROWSER_FAILURE_TMP/.local/state/ship.loop.local.json" \
   PAGES_TESTED=0 bash -c 'source "$1"' _ "$BROWSER_FAILURE_BLOCK" >/dev/null && \
   jq -c '{
     required: .e2e_required,
@@ -112,6 +113,7 @@ printf '%s\n' \
   > "$BROWSER_FAILURE_TMP/.local/state/ship.loop.local.json"
 
 PARTIAL_BROWSER_FAILURE_STATE=$(cd "$BROWSER_FAILURE_TMP" && \
+  STATE_FILE="$BROWSER_FAILURE_TMP/.local/state/ship.loop.local.json" \
   PAGES_TESTED=2 bash -c 'source "$1"' _ "$BROWSER_FAILURE_BLOCK" >/dev/null && \
   jq -c '{result: .e2e_result, reason: .e2e_skip_reason, pages: .e2e_pages_tested}' \
     .local/state/ship.loop.local.json)
@@ -136,9 +138,9 @@ require_text "$MERGE_DOC" "MERGE_METHOD=\"\\\${SHIP_MERGE_STRATEGY:-}\"" \
   "ship merge phase must honor explicit merge strategy configuration"
 require_text "$MERGE_DOC" "Configured merge strategy.*is not allowed" \
   "ship merge phase must fail when an explicit strategy is forbidden"
-require_text "$MERGE_DOC" "gh pr merge \"\\\$PR_NUM\" --delete-branch" \
+require_text "$MERGE_DOC" "gh pr merge \"\\\$PR_NUM\" --repo \"\\\$REPO_SLUG\" --delete-branch" \
   "ship merge queues must use the queue-only CLI exception"
-require_text "$MERGE_DOC" 'gh api --method PUT "repos/\{owner\}/\{repo\}/pulls/\$PR_NUM/merge"' \
+require_text "$MERGE_DOC" 'gh api --method PUT "repos/\$REPO_SLUG/pulls/\$PR_NUM/merge"' \
   "ship ordinary merges must use the REST pull merge endpoint"
 require_text "$MERGE_DOC" '-f sha="\$HEAD_SHA"' \
   "ship ordinary merges must pin the expected head SHA"
@@ -167,7 +169,7 @@ run_merge_strategy_fixture() {
   local status
 
   set +e
-  output=$(CLAUDE_PLUGIN_ROOT="$MERGE_FIXTURE_PLUGIN_ROOT" MERGE_FIXTURE_WORKTREE="$MERGE_FIXTURE_WORKTREE" MERGE_TEST_SETTINGS="$settings" SHIP_MERGE_STRATEGY="$configured_strategy" bash -c '
+  output=$(CLAUDE_PLUGIN_ROOT="$MERGE_FIXTURE_PLUGIN_ROOT" ORIGINAL_REPO_ROOT="$MERGE_FIXTURE_WORKTREE" WORKTREE_PATH="$MERGE_FIXTURE_WORKTREE" REPO_SLUG="example/project" MERGE_FIXTURE_WORKTREE="$MERGE_FIXTURE_WORKTREE" MERGE_TEST_SETTINGS="$settings" SHIP_MERGE_STRATEGY="$configured_strategy" bash -c '
     mkdir -p "$MERGE_FIXTURE_WORKTREE/.local/state"
     touch "$MERGE_FIXTURE_WORKTREE/.local/state/ship.loop.local.json"
     cd "$MERGE_FIXTURE_WORKTREE"
@@ -274,7 +276,10 @@ printf '%s\n' '{"phase":"ci-watch"}' > "$DIRTY_HEAD_SHIFT_TMP/.local/state/ship.
 
 set +e
 DIRTY_HEAD_SHIFT_OUTPUT=$(cd "$DIRTY_HEAD_SHIFT_TMP" && \
-  RESET_MARKER="$DIRTY_HEAD_SHIFT_TMP/reset-attempted" bash -c '
+  RESET_MARKER="$DIRTY_HEAD_SHIFT_TMP/reset-attempted" \
+  WORKTREE_PATH="$DIRTY_HEAD_SHIFT_TMP" \
+  REPO_SLUG="example/project" \
+  STATE_FILE="$DIRTY_HEAD_SHIFT_TMP/.local/state/ship.loop.local.json" bash -c '
     github_pr() {
       printf "%s\n" '\''{"head":{"sha":"new-sha","ref":"fixture"}}'\''
     }

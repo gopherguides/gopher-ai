@@ -1,6 +1,6 @@
 #!/bin/bash
 # Initialize a persistent loop for any command (JSON-based)
-# Usage: setup-loop.sh <loop-name> <completion-promise> [max-iterations] [initial-phase] [phase-messages-json]
+# Usage: setup-loop.sh <loop-name> <completion-promise> [max-iterations] [initial-phase] [phase-messages-json] [state-file]
 #
 # Example:
 #   setup-loop.sh "start-issue-123" "COMPLETE"
@@ -15,10 +15,11 @@ COMPLETION_PROMISE="${2:-COMPLETE}"
 MAX_ITERATIONS="${3:-}"  # Optional, defaults to null
 INITIAL_PHASE="${4:-}"   # Optional, defaults to empty
 PHASE_MESSAGES_JSON="${5:-}"  # Optional JSON object of phase->message mappings
+EXPLICIT_STATE_FILE="${6:-}"
 
 if [ -z "$LOOP_NAME" ]; then
   echo "Error: loop-name is required"
-  echo "Usage: setup-loop.sh <loop-name> <completion-promise> [max-iterations] [initial-phase] [phase-messages-json]"
+  echo "Usage: setup-loop.sh <loop-name> <completion-promise> [max-iterations] [initial-phase] [phase-messages-json] [state-file]"
   exit 1
 fi
 
@@ -26,9 +27,16 @@ fi
 SAFE_LOOP_NAME=$(echo "$LOOP_NAME" | sed 's/[^a-zA-Z0-9_-]/-/g')
 # Loop state lives outside .claude/ to avoid Claude Code's protected-path
 # guard (.claude, .git, .vscode still prompt even under bypassPermissions).
-STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
+if [ -n "$EXPLICIT_STATE_FILE" ]; then
+  case "$EXPLICIT_STATE_FILE" in
+    /*) STATE_FILE="$EXPLICIT_STATE_FILE" ;;
+    *) echo "Error: state-file path must be absolute" >&2; exit 1 ;;
+  esac
+else
+  STATE_FILE=".local/state/${SAFE_LOOP_NAME}.loop.local.json"
+fi
 
-mkdir -p .local/state
+mkdir -p "$(dirname "$STATE_FILE")"
 
 # Check for existing loop — preserve phase and bot_review_baseline if re-initializing
 EXISTING_PHASE=""

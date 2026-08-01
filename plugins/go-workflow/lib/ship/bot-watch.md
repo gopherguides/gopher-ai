@@ -11,24 +11,23 @@ endpoints. Review-thread comments remain the GraphQL exception because REST
 cannot discover review threads.
 
 ```bash
-if ! FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM"); then
+if ! FORMAL_REVIEWS=$(cd "$WORKTREE_PATH" && github_pr_reviews "$PR_NUM"); then
   WORKFLOW_REASON="bot-reviews-api-error"
 fi
 FORMAL_REVIEW_AUTHORS=$(jq -r '.[].user.login // empty' <<< "$FORMAL_REVIEWS")
 
-if ! ISSUE_COMMENT_PAGES=$(gh api --paginate --slurp \
-  "repos/{owner}/{repo}/issues/$PR_NUM/comments?per_page=100"); then
+if ! ISSUE_COMMENT_PAGES=$(gh api --paginate --slurp "repos/$REPO_SLUG/issues/$PR_NUM/comments?per_page=100"); then
   WORKFLOW_REASON="bot-comments-api-error"
 fi
 TOP_LEVEL_COMMENT_AUTHORS=$(jq -r '.[][]?.user.login // empty' <<< "$ISSUE_COMMENT_PAGES")
 
-if ! REPOSITORY=$(gh api "repos/{owner}/{repo}"); then
+if ! REPOSITORY=$(gh api "repos/$REPO_SLUG"); then
   WORKFLOW_REASON="repository-api-error"
 fi
 OWNER=$(jq -er '.owner.login' <<< "$REPOSITORY")
 REPO=$(jq -er '.name' <<< "$REPOSITORY")
 
-if ! THREAD_COMMENT_AUTHORS=$(gh api graphql -f query='
+if ! THREAD_COMMENT_AUTHORS=$(cd "$WORKTREE_PATH" && gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
@@ -68,10 +67,10 @@ Also inspect the exact pushed head for bots that signal only through a check run
 or commit status, such as Greptile:
 
 ```bash
-if ! CHECK_SNAPSHOT=$(github_check_snapshot "$HEAD_SHA"); then
+if ! CHECK_SNAPSHOT=$(cd "$WORKTREE_PATH" && github_check_snapshot "$HEAD_SHA"); then
   WORKFLOW_REASON="bot-checks-api-error"
 fi
-if ! PR_JSON=$(github_pr "$PR_NUM"); then
+if ! PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM"); then
   WORKFLOW_REASON="bot-pr-api-error"
 fi
 CURRENT_PR_HEAD=$(jq -er '.head.sha' <<< "$PR_JSON")

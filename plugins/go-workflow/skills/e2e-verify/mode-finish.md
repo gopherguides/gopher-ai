@@ -40,7 +40,7 @@ For all modes that include the label step:
 
 ```bash
 jq -cn '{labels: ["run-full-ci"]}' |
-  gh api --method POST "repos/{owner}/{repo}/issues/$PR_NUM/labels" --input -
+  gh api --method POST "repos/$REPO_SLUG/issues/$PR_NUM/labels" --input -
 ```
 
 The repo's CI is gated on this label so the full test matrix only runs once
@@ -53,14 +53,14 @@ poll to the exact PR head, and rejects API failures or a head shift.
 
 ```bash
 set_loop_phase "$STATE_FILE" "shipping"
-PR_JSON=$(github_pr "$PR_NUM") || {
+PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=ci-api-failed
 }
 if [ "${WORKFLOW_RESULT:-}" != "INCOMPLETE" ]; then
   HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON")
   CHECKS_STATUS=0
-  CHECKS_SNAPSHOT=$(github_watch_pr_checks "$PR_NUM" "$HEAD_SHA") || CHECKS_STATUS=$?
+  CHECKS_SNAPSHOT=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$HEAD_SHA") || CHECKS_STATUS=$?
   if [ "$CHECKS_STATUS" -ne 0 ]; then
     case "$CHECKS_STATUS" in
       "$GITHUB_CHECKS_FAILED") WORKFLOW_REASON=ci-checks-failed ;;

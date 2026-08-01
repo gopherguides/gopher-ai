@@ -33,12 +33,12 @@ file detection):
 
 ```bash
 # Combine committed + staged + unstaged diffs
-COMBINED_DIFF=$( (git diff "${BASE_BRANCH}...HEAD" -- $CHANGED_SRC 2>/dev/null; git diff HEAD -- $CHANGED_SRC 2>/dev/null; git diff --cached HEAD -- $CHANGED_SRC 2>/dev/null) )
+COMBINED_DIFF=$( (git -C "$WORKTREE_PATH" diff "${BASE_BRANCH}...HEAD" -- $CHANGED_SRC 2>/dev/null; git -C "$WORKTREE_PATH" diff HEAD -- $CHANGED_SRC 2>/dev/null; git -C "$WORKTREE_PATH" diff --cached HEAD -- $CHANGED_SRC 2>/dev/null) )
 # For untracked files: generate a synthetic diff so new functions are detected
-UNTRACKED_SRC=$(git ls-files --others --exclude-standard 2>/dev/null | grep '\.go$' | grep -v '_test\.go$' || true)
+UNTRACKED_SRC=$(git -C "$WORKTREE_PATH" ls-files --others --exclude-standard 2>/dev/null | grep '\.go$' | grep -v '_test\.go$' || true)
 for uf in $UNTRACKED_SRC; do
   COMBINED_DIFF="${COMBINED_DIFF}
-$(git diff --no-index /dev/null "$uf" 2>/dev/null || true)"
+$(git -C "$WORKTREE_PATH" diff --no-index /dev/null "$WORKTREE_PATH/$uf" 2>/dev/null || true)"
 done
 # Extract function names from diff hunk headers (@@...@@ func Name or func (r *T) Name)
 # These identify the enclosing function for ANY changed line, not just added declarations.
@@ -77,21 +77,21 @@ uncovered function:
 
 - Check for existing test files following patterns from `${CLAUDE_PLUGIN_ROOT}/skills/address-review/test-generation.md` Steps 4.5b-4.5c:
   ```bash
-  ls "${FILE%.*}_test.go" 2>/dev/null || ls "$(dirname "$FILE")"/*_test.go 2>/dev/null
+  ls "$WORKTREE_PATH/${FILE%.*}_test.go" 2>/dev/null || ls "$WORKTREE_PATH/$(dirname "$FILE")"/*_test.go 2>/dev/null
   ```
 - Detect: stdlib `testing` vs `testify`, table-driven patterns
   (`tests := []struct`), naming conventions
 - Generate table-driven tests with `t.Run()`, `t.Parallel()`, following
   `test-gen.md` patterns
-- Verify: `go test ./path/to/package/... -run "TestFunctionName" -v`
-- Re-run coverage: `go test -coverprofile=.local/state/coverage.out ./... 2>/dev/null || true`
+- Verify: `go -C "$WORKTREE_PATH" test ./path/to/package/... -run "TestFunctionName" -v`
+- Re-run coverage: `go -C "$WORKTREE_PATH" test -coverprofile=.local/state/coverage.out ./... 2>/dev/null || true`
 
 ### Node/TypeScript
 
 - Check for existing test files: `*.test.ts`, `*.spec.ts`, `__tests__/*.ts`
 - Detect: vitest vs jest vs mocha, describe/it patterns, assertion style
 - Generate tests following detected conventions (describe blocks, beforeEach setup)
-- Verify: `npx vitest run <test-file>` or `npx jest <test-file>`
+- Verify: `(cd "$WORKTREE_PATH" && npx vitest run <test-file>)` or `(cd "$WORKTREE_PATH" && npx jest <test-file>)`
 
 ### Rust
 
@@ -100,7 +100,7 @@ uncovered function:
 - Detect: built-in `#[test]` vs `rstest` vs `proptest`
 - Generate test functions with `#[test]` attribute, `assert_eq!` / `assert!`
   macros
-- Verify: `cargo test <test-name>`
+- Verify: `(cd "$WORKTREE_PATH" && cargo test <test-name>)`
 
 ### Python
 
@@ -108,7 +108,7 @@ uncovered function:
   `tests/` directory
 - Detect: pytest vs unittest, fixture patterns, parametrize decorators
 - Generate pytest functions with `@pytest.mark.parametrize` for multiple cases
-- Verify: `pytest <test-file> -v`
+- Verify: `(cd "$WORKTREE_PATH" && pytest <test-file> -v)`
 
 ## Test scenarios (all languages)
 

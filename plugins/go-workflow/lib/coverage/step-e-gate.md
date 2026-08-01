@@ -105,7 +105,8 @@ WORKFLOW_RESULT=INCOMPLETE
 WORKFLOW_REASON=coverage-tool-unavailable
 ```
 
-If `go test -coverprofile` produced a `coverage.out` file with content, or if
+If `go -C "$WORKTREE_PATH" test -coverprofile=.local/state/coverage.out`
+produced a `coverage.out` file with content, or if
 the JSON coverage file exists with data, the tool did NOT fail — proceed with
 coverage analysis even if coverage is 0%.
 

@@ -11,16 +11,16 @@ strategy detection, REST mergeability decision tree, and summary rendering.
    state file:
 
 ```bash
-HAS_CI=$(jq -r '.has_ci // empty' ".local/state/ship.loop.local.json")
-HEAD_SHA=$(jq -r '.head_sha // empty' ".local/state/ship.loop.local.json")
+HAS_CI=$(jq -r '.has_ci // empty' "$STATE_FILE")
+HEAD_SHA=$(jq -r '.head_sha // empty' "$STATE_FILE")
 if [ "$HAS_CI" = "true" ]; then
   if [ -z "$HEAD_SHA" ]; then
     WORKFLOW_REASON="ci-head-missing"
-  elif ! FINAL_PR=$(github_pr "$PR_NUM"); then
+  elif ! FINAL_PR=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM"); then
     WORKFLOW_REASON="ci-pr-api-error"
   elif [ "$(jq -er '.head.sha' <<< "$FINAL_PR")" != "$HEAD_SHA" ]; then
     WORKFLOW_REASON="ci-head-shift"
-  elif ! FINAL_CHECKS=$(github_check_snapshot "$HEAD_SHA"); then
+  elif ! FINAL_CHECKS=$(cd "$WORKTREE_PATH" && github_check_snapshot "$HEAD_SHA"); then
     WORKFLOW_REASON="ci-api-error"
   elif [ "$(jq '.items | length' <<< "$FINAL_CHECKS")" -eq 0 ]; then
     WORKFLOW_REASON="ci-checks-not-registered"
@@ -38,10 +38,10 @@ registration, API failure, and a shifted PR head never count as green CI.
 2. Check for unresolved review threads:
 
 ```bash
-REPOSITORY=$(gh api "repos/{owner}/{repo}")
+REPOSITORY=$(gh api "repos/$REPO_SLUG")
 OWNER=$(jq -er '.owner.login' <<< "$REPOSITORY")
 REPO=$(jq -er '.name' <<< "$REPOSITORY")
-UNRESOLVED=$(gh api graphql -f query='
+UNRESOLVED=$(cd "$WORKTREE_PATH" && gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
@@ -58,7 +58,7 @@ UNRESOLVED=$(gh api graphql -f query='
 review per human:
 
 ```bash
-if ! FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM"); then
+if ! FORMAL_REVIEWS=$(cd "$WORKTREE_PATH" && github_pr_reviews "$PR_NUM"); then
   WORKFLOW_REASON="reviews-api-error"
 fi
 BLOCKING_HUMANS=$(jq '
@@ -105,10 +105,10 @@ and stop. Review requirements cannot be waived by a driver.
    not complete browser E2E must stop here even if CI is green:
 
 ```bash
-E2E_REQUIRED=$(jq -r '.e2e_required // "false"' ".local/state/ship.loop.local.json")
-E2E_RESULT=$(jq -r '.e2e_result // "skipped"' ".local/state/ship.loop.local.json")
-E2E_SKIP_REASON=$(jq -r '.e2e_skip_reason // ""' ".local/state/ship.loop.local.json")
-E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
+E2E_REQUIRED=$(jq -r '.e2e_required // "false"' "$STATE_FILE")
+E2E_RESULT=$(jq -r '.e2e_result // "skipped"' "$STATE_FILE")
+E2E_SKIP_REASON=$(jq -r '.e2e_skip_reason // ""' "$STATE_FILE")
+E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' "$STATE_FILE")
 
 if [ "$E2E_REQUIRED" = "true" ] && [ "$E2E_RESULT" != "passed" ]; then
   echo "E2E PREREQUISITE MISSING - UI-visible diff has no passing browser E2E result."
@@ -133,7 +133,7 @@ If `NO_MERGE=true`:
 ## 13c. Auto-detect merge strategy
 
 ```bash
-if ! REPOSITORY=$(gh api "repos/{owner}/{repo}"); then
+if ! REPOSITORY=$(gh api "repos/$REPO_SLUG"); then
   WORKFLOW_REASON="repository-api-error"
 fi
 OWNER=$(jq -er '.owner.login' <<< "$REPOSITORY")
@@ -146,14 +146,14 @@ if [ -n "$MERGE_METHOD" ]; then
     merge|squash|rebase) ;;
     *)
       echo "Invalid SHIP_MERGE_STRATEGY '$MERGE_METHOD'. Expected merge, squash, or rebase."
-      "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
+      (cd "$ORIGINAL_REPO_ROOT" && "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship")
       exit 1
       ;;
   esac
 
   if ! echo "$MERGE_SETTINGS" | jq -e --arg method "$MERGE_METHOD" '.[$method] == true' >/dev/null 2>&1; then
     echo "Configured merge strategy '$MERGE_METHOD' is not allowed by $OWNER/$REPO."
-    "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
+    (cd "$ORIGINAL_REPO_ROOT" && "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship")
     exit 1
   fi
 elif echo "$MERGE_SETTINGS" | jq -e '.squash == true' >/dev/null 2>&1; then
@@ -164,7 +164,7 @@ elif echo "$MERGE_SETTINGS" | jq -e '.merge == true' >/dev/null 2>&1; then
   MERGE_METHOD="merge"
 else
   echo "No allowed merge strategy is configured for $OWNER/$REPO."
-  "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship"
+  (cd "$ORIGINAL_REPO_ROOT" && "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-loop.sh" "ship")
   exit 1
 fi
 
@@ -189,7 +189,7 @@ pin every read to `HEAD_SHA`:
 MERGEABLE="null"
 STATE_STATUS="unknown"
 for ATTEMPT in $(seq 1 6); do
-  if ! MERGE_STATE=$(github_pr "$PR_NUM"); then
+  if ! MERGE_STATE=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM"); then
     WORKFLOW_REASON="mergeability-api-error"
     break
   fi
@@ -212,7 +212,7 @@ if [ -z "${WORKFLOW_REASON:-}" ] && { [ "$MERGEABLE" = "null" ] || [ "$STATE_STA
 fi
 
 ENCODED_BRANCH=$(printf '%s' "$BASE_BRANCH" | jq -sRr @uri)
-if ! BRANCH_RULES=$(gh api "repos/$OWNER/$REPO/rules/branches/$ENCODED_BRANCH"); then
+if ! BRANCH_RULES=$(gh api "repos/$REPO_SLUG/rules/branches/$ENCODED_BRANCH"); then
   WORKFLOW_REASON="merge-queue-api-error"
 else
   HAS_MERGE_QUEUE=$(jq '[.[] | select(.type == "merge_queue")] | length > 0' <<< "$BRANCH_RULES")
@@ -253,9 +253,9 @@ validate its `.merged` result.
 
 ```bash
 if [ "$HAS_MERGE_QUEUE" = "true" ]; then
-  gh pr merge "$PR_NUM" --delete-branch
+  gh pr merge "$PR_NUM" --repo "$REPO_SLUG" --delete-branch
 else
-  if ! MERGE_RESULT=$(gh api --method PUT "repos/{owner}/{repo}/pulls/$PR_NUM/merge" \
+  if ! MERGE_RESULT=$(gh api --method PUT "repos/$REPO_SLUG/pulls/$PR_NUM/merge" \
     -f merge_method="$MERGE_METHOD" \
     -f sha="$HEAD_SHA"); then
     WORKFLOW_REASON="merge-command-failed"
@@ -278,15 +278,15 @@ If the merge command fails (non-zero exit code):
 Read coverage and e2e results. Coverage may have skipped (e.g., all changed files were `package main`); in that case `coverage_skip_reason` is set and `coverage_result` is empty. Render a textual reason instead of `<COV_RESULT>%`:
 
 ```bash
-COV_RESULT=$(jq -r '.coverage_result // ""' ".local/state/ship.loop.local.json")
-COV_SKIP_REASON=$(jq -r '.coverage_skip_reason // ""' ".local/state/ship.loop.local.json")
-COV_THRESHOLD=$(jq -r '.coverage_threshold // "60"' ".local/state/ship.loop.local.json")
-TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".local/state/ship.loop.local.json")
-E2E_ATTEMPTED=$(jq -r '.e2e_attempted // ""' ".local/state/ship.loop.local.json")
-E2E_RESULT=$(jq -r '.e2e_result // "skipped"' ".local/state/ship.loop.local.json")
-E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' ".local/state/ship.loop.local.json")
-E2E_REQUIRED=$(jq -r '.e2e_required // "false"' ".local/state/ship.loop.local.json")
-E2E_SKIP_REASON=$(jq -r '.e2e_skip_reason // ""' ".local/state/ship.loop.local.json")
+COV_RESULT=$(jq -r '.coverage_result // ""' "$STATE_FILE")
+COV_SKIP_REASON=$(jq -r '.coverage_skip_reason // ""' "$STATE_FILE")
+COV_THRESHOLD=$(jq -r '.coverage_threshold // "60"' "$STATE_FILE")
+TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' "$STATE_FILE")
+E2E_ATTEMPTED=$(jq -r '.e2e_attempted // ""' "$STATE_FILE")
+E2E_RESULT=$(jq -r '.e2e_result // "skipped"' "$STATE_FILE")
+E2E_PAGES=$(jq -r '.e2e_pages_tested // 0' "$STATE_FILE")
+E2E_REQUIRED=$(jq -r '.e2e_required // "false"' "$STATE_FILE")
+E2E_SKIP_REASON=$(jq -r '.e2e_skip_reason // ""' "$STATE_FILE")
 
 # Coverage line: prefer skip_reason when present, then numeric value, else "skipped".
 if [ -n "$COV_SKIP_REASON" ]; then

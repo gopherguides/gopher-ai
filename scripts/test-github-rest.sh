@@ -318,7 +318,7 @@ fi
 if ! tr '\n' ' ' < "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md" | grep -qE 'if \[ "\$HAS_MERGE_QUEUE" = "true" \]; then[[:space:]]+gh pr merge'; then
   fail "queue-only gh pr merge is not structurally guarded"
 fi
-if ! grep -qF 'gh api --method PUT "repos/{owner}/{repo}/pulls/$PR_NUM/merge"' "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"; then
+if ! grep -qF 'gh api --method PUT "repos/$REPO_SLUG/pulls/$PR_NUM/merge"' "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"; then
   fail "ordinary merge does not use the REST pull merge endpoint"
 fi
 if ! grep -qF -e '-f sha="$HEAD_SHA"' "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"; then
@@ -345,7 +345,7 @@ if ! grep -qF 'resolveReviewThread' "${WORKFLOW_FILES[@]}"; then
   fail "GraphQL review-thread resolution was removed"
 fi
 if ! tr '\n' ' ' < "$ROOT_DIR/plugins/go-workflow/skills/address-review/fix-cycle.md" \
-  | grep -qE 'PR_HEAD_PUSH_TARGET="".*PR_HEAD_PUSH_TARGET="\$\{PR_HEAD_PUSH_TARGET:-\$PR_HEAD_CLONE_URL\}".*git push "\$PR_HEAD_PUSH_TARGET"'; then
+  | grep -qE 'PR_HEAD_PUSH_TARGET="".*PR_HEAD_PUSH_TARGET="\$\{PR_HEAD_PUSH_TARGET:-\$PR_HEAD_CLONE_URL\}".*git -C "\$WORKTREE_PATH" push "\$PR_HEAD_PUSH_TARGET"'; then
   fail "address-review fix cycles do not re-derive the PR head push target"
 fi
 if ! tr '\n' ' ' < "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-build.md" \

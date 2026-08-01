@@ -38,11 +38,11 @@ gate in `SKILL.md` Step 7 can stop the workflow.
 
 ```bash
 if [ -z "$CHANGED_FILES" ]; then
-  CHANGED_FILES=$(git diff --name-only "${BASE_REMOTE}/${BASE_BRANCH}...HEAD")
+  CHANGED_FILES=$(git -C "$WORKTREE_PATH" diff --name-only "${BASE_REMOTE}/${BASE_BRANCH}...HEAD")
 fi
 WEB_CHANGES=$(echo "$CHANGED_FILES" | grep -E '\.(templ|html|tsx|vue|jsx)$' || true)
 HANDLER_CHANGES=$(echo "$CHANGED_FILES" | grep '\.go$' | while IFS= read -r f; do
-  grep -l -E 'http\.Handler|echo\.Context|gin\.Context|chi\.Router|http\.HandleFunc|http\.ServeMux' "$f" 2>/dev/null
+  grep -l -E 'http\.Handler|echo\.Context|gin\.Context|chi\.Router|http\.HandleFunc|http\.ServeMux' "$WORKTREE_PATH/$f" 2>/dev/null
 done || true)
 ```
 
@@ -83,7 +83,7 @@ reconnection because the selected page and browser state are no longer proven.
 Before touching the browser, understand what you're verifying against. Read the PR description and linked issue to build a mental model of expected visual state:
 
 ```bash
-PR_JSON=$(github_pr "$PR_NUM") || { echo "Error: Could not read PR #$PR_NUM"; exit 1; }
+PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || { echo "Error: Could not read PR #$PR_NUM"; exit 1; }
 jq -r '"\(.title)\n\n\(.body // \"\")"' <<< "$PR_JSON"
 ```
 
@@ -94,14 +94,14 @@ in this workflow because REST does not expose the PR's structured closing
 references. All fallback content comes from the REST PR metadata already read.
 
 ```bash
-ISSUE_NUMS=$(gh pr view "$PR_NUM" --json closingIssuesReferences --jq '.closingIssuesReferences[].number' 2>/dev/null)
+ISSUE_NUMS=$(gh pr view "$PR_NUM" --repo "$REPO_SLUG" --json closingIssuesReferences --jq '.closingIssuesReferences[].number' 2>/dev/null)
 
 if [ -z "$ISSUE_NUMS" ]; then
   ISSUE_NUMS=$(jq -r '.body // ""' <<< "$PR_JSON" | rg -io '(closes|fixes|resolves|close|fix|resolve)\s+([a-z0-9/_-]+)?#[0-9]+' | rg -o '[0-9]+$' || true)
 fi
 
 for ISSUE_NUM in $ISSUE_NUMS; do
-  ISSUE_JSON=$(gh api "repos/{owner}/{repo}/issues/$ISSUE_NUM" 2>/dev/null) || continue
+  ISSUE_JSON=$(gh api "repos/$REPO_SLUG/issues/$ISSUE_NUM" 2>/dev/null) || continue
   jq -r '"\(.title)\n\n\(.body // \"\")"' <<< "$ISSUE_JSON"
 done
 ```
@@ -133,12 +133,12 @@ Detect the server port:
 **Run migrations BEFORE starting the dev server.** Many apps require up-to-date schema to boot successfully.
 
 ```bash
-if [ -f Makefile ] && make -qp 2>/dev/null | grep -q '^migrate-up:'; then
-  make migrate-up
+if [ -f "$WORKTREE_PATH/Makefile" ] && (cd "$WORKTREE_PATH" && make -qp 2>/dev/null | grep -q '^migrate-up:'); then
+  (cd "$WORKTREE_PATH" && make migrate-up)
 elif command -v goose >/dev/null 2>&1; then
-  goose up
+  (cd "$WORKTREE_PATH" && goose up)
 elif command -v migrate >/dev/null 2>&1; then
-  migrate -path ./migrations -database "$DATABASE_URL" up
+  (cd "$WORKTREE_PATH" && migrate -path ./migrations -database "$DATABASE_URL" up)
 else
   echo "No migration tool detected — skipping migrations"
 fi
@@ -153,7 +153,7 @@ if curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null |
   echo "Server already running on port $PORT — reusing"
   SERVER_ALREADY_RUNNING=true
 else
-  $DEV_SERVER_CMD &
+  (cd "$WORKTREE_PATH" && $DEV_SERVER_CMD) &
   SERVER_PID=$!
   SERVER_ALREADY_RUNNING=false
 fi
@@ -191,8 +191,8 @@ Detect if the app requires authentication:
 1. Look for test credentials in environment files:
    ```bash
    for envfile in .envrc .env .env.local .env.test; do
-     if [ -f "$envfile" ]; then
-       grep -iE '(TEST_USER|TEST_EMAIL|ADMIN_EMAIL|TEST_PASSWORD|ADMIN_PASSWORD)' "$envfile" 2>/dev/null || true
+     if [ -f "$WORKTREE_PATH/$envfile" ]; then
+       grep -iE '(TEST_USER|TEST_EMAIL|ADMIN_EMAIL|TEST_PASSWORD|ADMIN_PASSWORD)' "$WORKTREE_PATH/$envfile" 2>/dev/null || true
      fi
    done
    ```

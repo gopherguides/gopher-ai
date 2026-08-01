@@ -7,16 +7,16 @@ Loaded by `skills/ship/SKILL.md` Phase 2.
 Detect the remote and branch from tracking config or PR metadata:
 
 ```bash
-CURRENT_BRANCH=$(git branch --show-current)
-BRANCH_REMOTE=$(git config "branch.$CURRENT_BRANCH.remote" 2>/dev/null || echo "origin")
+CURRENT_BRANCH=$(git -C "$WORKTREE_PATH" branch --show-current)
+BRANCH_REMOTE=$(git -C "$WORKTREE_PATH" config "branch.$CURRENT_BRANCH.remote" 2>/dev/null || echo "origin")
 PR_HEAD_BRANCH="$CURRENT_BRANCH"
 if [ -n "$PR_NUM" ]; then
-  if ! PR_JSON=$(github_pr "$PR_NUM"); then
+  if ! PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM"); then
     WORKFLOW_REASON="pr-metadata-api-error"
   fi
   PR_HEAD_BRANCH=$(jq -er '.head.ref' <<< "$PR_JSON")
 fi
-git push -u "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
+git -C "$WORKTREE_PATH" push -u "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
 ```
 
 If PR metadata cannot be read, follow **Hard Invariant Failure** with
@@ -27,9 +27,9 @@ If PR metadata cannot be read, follow **Hard Invariant Failure** with
 After pushing, use the exact pushed head to discover an existing PR:
 
 ```bash
-HEAD_SHA=$(git rev-parse HEAD)
+HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
 if [ -z "$PR_NUM" ]; then
-  if PR_JSON=$(github_current_pr "$PR_HEAD_BRANCH" "$HEAD_SHA"); then
+  if PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr "$PR_HEAD_BRANCH" "$HEAD_SHA"); then
     PR_NUM=$(jq -r '.number' <<< "$PR_JSON")
     BASE_BRANCH=$(jq -r '.base.ref' <<< "$PR_JSON")
   else
@@ -54,7 +54,7 @@ If `PR_NUM` remains empty:
 6. Create PR targeting the detected base branch:
 
 ```bash
-gh pr create --base "$BASE_BRANCH" --title "<title>" --body "$(cat <<'EOF'
+gh pr create --repo "$REPO_SLUG" --base "$BASE_BRANCH" --head "$PR_HEAD_BRANCH" --title "<title>" --body "$(cat <<'EOF'
 <filled-in template or default body>
 EOF
 )"
@@ -63,7 +63,7 @@ EOF
 After creation, capture the exact-head PR and persist its number:
 
 ```bash
-if ! PR_JSON=$(github_current_pr "$PR_HEAD_BRANCH" "$HEAD_SHA"); then
+if ! PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr "$PR_HEAD_BRANCH" "$HEAD_SHA"); then
   WORKFLOW_REASON="created-pr-lookup-failed"
 fi
 PR_NUM=$(jq -er '.number' <<< "$PR_JSON")

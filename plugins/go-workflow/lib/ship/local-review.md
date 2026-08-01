@@ -6,8 +6,8 @@ Loaded by `skills/ship/SKILL.md` Phase 1. Owns the full review/fix/verify/covera
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_phase ".local/state/ship.loop.local.json" "reviewing"
-PASS=$(jq -r '.pass // 0' ".local/state/ship.loop.local.json")
+set_loop_phase "$STATE_FILE" "reviewing"
+PASS=$(jq -r '.pass // 0' "$STATE_FILE")
 ```
 
 The pass counter is incremented in Step 8 (after commit), not here. This prevents burning a pass number if the session exits mid-review.
@@ -43,8 +43,8 @@ download or execute a package during re-entry detection.
 ### 5a. Generate Diff and Coverage Plan
 
 ```bash
-git fetch origin "$BASE_BRANCH" 2>/dev/null || true
-DIFF=$(git diff "origin/${BASE_BRANCH}...HEAD")
+git -C "$WORKTREE_PATH" fetch origin "$BASE_BRANCH" 2>/dev/null || true
+DIFF=$(git -C "$WORKTREE_PATH" diff "origin/${BASE_BRANCH}...HEAD")
 ```
 
 If the diff is empty, skip the review loop entirely — proceed to Phase 2 (Step 9).
@@ -110,12 +110,12 @@ fi
 
 set +e
 if [ -n "$TIMEOUT_CMD" ]; then
-  REVIEW_JSON=$($TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec "${CODEX_MODEL_ARGS[@]}" -s read-only \
+  REVIEW_JSON=$(cd "$WORKTREE_PATH" && $TIMEOUT_CMD "${CODEX_TIMEOUT}" $CODEX_CMD exec "${CODEX_MODEL_ARGS[@]}" -s read-only \
     -c model_reasoning_effort="high" \
     --output-schema "$SCHEMA_FILE" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
 else
-  REVIEW_JSON=$($CODEX_CMD exec "${CODEX_MODEL_ARGS[@]}" -s read-only \
+  REVIEW_JSON=$(cd "$WORKTREE_PATH" && $CODEX_CMD exec "${CODEX_MODEL_ARGS[@]}" -s read-only \
     -c model_reasoning_effort="high" \
     --output-schema "$SCHEMA_FILE" \
     - < "$PROMPT_FILE" 2>"/tmp/codex-review-stderr-$$")
@@ -128,7 +128,7 @@ set -e
 # Strip codex exec headers (version/config info printed before JSON)
 REVIEW_JSON=$(printf '%s\n' "$REVIEW_JSON" | awk '/^\{/{found=1} found{print}')
 if [ -z "$REVIEW_JSON" ] && [ "$CODEX_EXIT_CODE" -eq 0 ]; then
-  echo "WARNING: $CODEX_CMD exec produced no JSON output after header stripping"
+  echo "WARNING: Codex review produced no JSON output after header stripping"
   REVIEW_JSON='{"error":"no JSON output"}'
 fi
 rm -f "$PROMPT_FILE" "$SCHEMA_FILE"
@@ -199,7 +199,7 @@ if [ -n "${MODEL:-}" ]; then
   CODEX_REVIEW_MODEL_ARGS=(-c "review_model=$MODEL")
 fi
 
-$CODEX_CMD review --base "$BASE_BRANCH" "${CODEX_REVIEW_MODEL_ARGS[@]}" -c model_reasoning_effort="high"
+(cd "$WORKTREE_PATH" && $CODEX_CMD review --base "$BASE_BRANCH" "${CODEX_REVIEW_MODEL_ARGS[@]}" -c model_reasoning_effort="high")
 ```
 
 Capture output as free-text `FINDINGS`. Set `CODEX_EXEC_FALLBACK=true`. Persist `quick_mode=true`:
@@ -264,7 +264,7 @@ If `GEMINI_TIER` is set, display:
 > **Note:** `--tier $GEMINI_TIER` was specified but the Gemini CLI does not support service tiers. The tier setting will be ignored for this review pass. Track [gemini-cli](https://github.com/google-gemini/gemini-cli) for updates.
 
 ```bash
-gemini <<EOF
+(cd "$WORKTREE_PATH" && gemini <<EOF
 Review the following code changes for bugs, security issues, performance problems, and best practice violations.
 
 Report each finding with: file path, line number, severity (error/warning/suggestion), and description.
@@ -274,6 +274,7 @@ If there are no issues, respond with exactly: NO_ISSUES_FOUND
 $DIFF
 \`\`\`
 EOF
+)
 ```
 
 ### Ollama
@@ -285,7 +286,7 @@ the state file before resolving so every review pass uses the same model.
 OLLAMA_MODEL=${OLLAMA_MODEL:-$(jq -r '.ollama_model // empty' "$STATE_FILE")}
 if [ -z "$OLLAMA_MODEL" ]; then
   set +e
-  OLLAMA_MODEL=$("${CLAUDE_PLUGIN_ROOT}/scripts/select-ollama-model.sh" 2>"/tmp/ollama-select-stderr-$$")
+  OLLAMA_MODEL=$(cd "$WORKTREE_PATH" && "${CLAUDE_PLUGIN_ROOT}/scripts/select-ollama-model.sh" 2>"/tmp/ollama-select-stderr-$$")
   OLLAMA_SELECT_EXIT_CODE=$?
   OLLAMA_SELECT_STDERR=$(cat "/tmp/ollama-select-stderr-$$" 2>/dev/null)
   rm -f "/tmp/ollama-select-stderr-$$"
@@ -307,7 +308,7 @@ TMP="$STATE_FILE.tmp"
 jq --arg model "$OLLAMA_MODEL" '.ollama_model = $model' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 
 echo "Using installed Ollama model: $OLLAMA_MODEL"
-ollama run "$OLLAMA_MODEL" <<EOF
+(cd "$WORKTREE_PATH" && ollama run "$OLLAMA_MODEL" <<EOF
 Review the following code changes for bugs, security issues, performance problems, and best practice violations.
 
 Report each finding with: file path, line number, severity (error/warning/suggestion), and description.
@@ -317,6 +318,7 @@ If there are no issues, respond with exactly: NO_ISSUES_FOUND
 $DIFF
 \`\`\`
 EOF
+)
 ```
 
 ### Gemini/Ollama error handling
@@ -324,9 +326,9 @@ EOF
 ```bash
 set +e
 if [ "$LLM_CHOICE" = "gemini" ]; then
-  FINDINGS=$(gemini <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
+  FINDINGS=$(cd "$WORKTREE_PATH" && gemini <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
 elif [ "$LLM_CHOICE" = "ollama" ]; then
-  FINDINGS=$(ollama run "$OLLAMA_MODEL" <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
+  FINDINGS=$(cd "$WORKTREE_PATH" && ollama run "$OLLAMA_MODEL" <<< "$REVIEW_PROMPT" 2>"/tmp/llm-review-stderr-$$")
 fi
 LLM_EXIT_CODE=$?
 LLM_STDERR=$(cat "/tmp/llm-review-stderr-$$" 2>/dev/null)
@@ -378,7 +380,7 @@ unpinned backend or the user explicitly authorized replacing a pinned backend.
 ## Step 6: Fix Phase
 
 ```bash
-set_loop_phase ".local/state/ship.loop.local.json" "fixing"
+set_loop_phase "$STATE_FILE" "fixing"
 ```
 
 For each finding from Step 5c:
@@ -389,32 +391,33 @@ For each finding from Step 5c:
 4. Apply minimal fix or record skip reason
 5. For testable fixes (changes observable behavior): generate a test (`_test.go`/`_test.ts`/`test_*.py`; add table-driven case if existing pattern)
 
-Track `FIXED`, `SKIPPED` (with reasons).
+Track `FIXED`, `SKIPPED` (with reasons), and `REVIEW_FILES`, an array containing
+only paths modified while addressing findings or generating their tests.
 
 ## Step 7: Verify Phase
 
 ```bash
-set_loop_phase ".local/state/ship.loop.local.json" "verifying"
+set_loop_phase "$STATE_FILE" "verifying"
 ```
 
 ### Codegen drift check (Go projects)
 
 ```bash
-if [ -f Makefile ]; then
-  GEN_TARGET=$(make -qp 2>/dev/null | awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' \
+if [ -f "$WORKTREE_PATH/Makefile" ]; then
+  GEN_TARGET=$(cd "$WORKTREE_PATH" && make -qp 2>/dev/null | awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' \
     | grep -E '^(generate|gen|codegen|sqlc|proto|templ)$' | head -1 || true)
   if [ -n "$GEN_TARGET" ]; then
-    GEN_SNAPSHOT=$(printf '%s\n%s' "$(git diff --name-only)" "$(git ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
+    GEN_SNAPSHOT=$(printf '%s\n%s' "$(git -C "$WORKTREE_PATH" diff --name-only)" "$(git -C "$WORKTREE_PATH" ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
     echo "Running make $GEN_TARGET..."
-    if ! make "$GEN_TARGET" 2>&1; then
+    if ! (cd "$WORKTREE_PATH" && make "$GEN_TARGET" 2>&1); then
       WORKFLOW_REASON="generation-failed"
     fi
   fi
 fi
 
 if [ -n "$GEN_TARGET" ] && [ -z "${WORKFLOW_REASON:-}" ]; then
-  GEN_MODIFIED=$(git diff --name-only)
-  GEN_UNTRACKED=$(git ls-files --others --exclude-standard)
+  GEN_MODIFIED=$(git -C "$WORKTREE_PATH" diff --name-only)
+  GEN_UNTRACKED=$(git -C "$WORKTREE_PATH" ls-files --others --exclude-standard)
   GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
   if [ -n "$GEN_SNAPSHOT" ]; then
     GEN_NEW=$(comm -13 <(echo "$GEN_SNAPSHOT" | sort) <(echo "$GEN_ALL" | sort))
@@ -425,7 +428,7 @@ if [ -n "$GEN_TARGET" ] && [ -z "${WORKFLOW_REASON:-}" ]; then
     echo "Generated code is stale. The following files changed after running generation:"
     echo "$GEN_NEW"
     echo "Staging regenerated files..."
-    echo "$GEN_NEW" | xargs git add
+    printf '%s\n' "$GEN_NEW" | xargs git -C "$WORKTREE_PATH" add --
   fi
 fi
 ```
@@ -444,10 +447,10 @@ verification or commit.
 
 | Language | Build / Test / Lint |
 |---|---|
-| **Go** (`go.mod`) | `go build ./... && go test ./...`; run `golangci-lint run` when installed |
-| **Node/TS** (`package.json`) | `npm run build && npm test && npm run lint --if-present` |
-| **Rust** (`Cargo.toml`) | `cargo build && cargo test`; run `cargo clippy` when `cargo clippy --version` succeeds or the repository explicitly configures Clippy |
-| **Python** (`pyproject.toml`/`setup.py`) | `pytest` or `python -m pytest`; run installed `ruff check .` or `flake8 .` |
+| **Go** (`go.mod`) | `go -C "$WORKTREE_PATH" build ./... && go -C "$WORKTREE_PATH" test ./...`; run `(cd "$WORKTREE_PATH" && golangci-lint run)` when installed |
+| **Node/TS** (`package.json`) | `(cd "$WORKTREE_PATH" && npm run build && npm test && npm run lint --if-present)` |
+| **Rust** (`Cargo.toml`) | `(cd "$WORKTREE_PATH" && cargo build && cargo test)`; run `(cd "$WORKTREE_PATH" && cargo clippy)` when `(cd "$WORKTREE_PATH" && cargo clippy --version)` succeeds or the repository explicitly configures Clippy |
+| **Python** (`pyproject.toml`/`setup.py`) | `(cd "$WORKTREE_PATH" && pytest)` or `(cd "$WORKTREE_PATH" && python -m pytest)`; run installed linters from the same worktree-scoped group |
 
 If any verification fails: analyze, fix, and rerun until all pass. If a
 generation, build, test, or configured lint failure cannot be fixed in this
@@ -464,7 +467,7 @@ coverage, commit, push, or completion.
 ## Step 7.5: Coverage Verification (Final pass only)
 
 ```bash
-set_loop_phase ".local/state/ship.loop.local.json" "coverage-check"
+set_loop_phase "$STATE_FILE" "coverage-check"
 ```
 
 **Skip when:** `PASS < MAX_PASSES - 1` AND findings were not clean. Proceed to Step 7.6.
@@ -474,7 +477,8 @@ Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow St
 | Variable | Value |
 |----------|-------|
 | `BASE_BRANCH` | `origin/${BASE_BRANCH}` |
-| `STATE_FILE` | `.local/state/ship.loop.local.json` |
+| `STATE_FILE` | `$ORIGINAL_REPO_ROOT/.local/state/ship.loop.local.json` |
+| `WORKTREE_PATH` | absolute persisted worktree path |
 | `SKIP_COVERAGE` | from parsed args |
 | `COVERAGE_THRESHOLD` | from parsed args (default 60) |
 
@@ -510,12 +514,12 @@ Block the workflow when the diff is UI-visible and E2E cannot run or fails:
 
 ```bash
 if [ -z "$CHANGED_FILES" ]; then
-  CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...HEAD")
+  CHANGED_FILES=$(git -C "$WORKTREE_PATH" diff --name-only "origin/${BASE_BRANCH}...HEAD")
 fi
 WEB_CHANGES=$(echo "$CHANGED_FILES" | grep -E '\.(templ|html|css|tsx|vue|jsx)$' || true)
 JS_CHANGES=$(echo "$CHANGED_FILES" | grep -E '(^|/)(cmd|web|ui|assets|static|templates)/.*\.js$' || true)
 HANDLER_CHANGES=$(echo "$CHANGED_FILES" | grep '\.go$' | while IFS= read -r f; do
-  grep -l -E 'http\.Handler|echo\.Context|gin\.Context|chi\.Router|http\.HandleFunc|http\.ServeMux' "$f" 2>/dev/null
+  grep -l -E 'http\.Handler|echo\.Context|gin\.Context|chi\.Router|http\.HandleFunc|http\.ServeMux' "$WORKTREE_PATH/$f" 2>/dev/null
 done || true)
 UI_VISIBLE_CHANGES=$(printf '%s\n%s\n%s\n' "$WEB_CHANGES" "$JS_CHANGES" "$HANDLER_CHANGES" | sed '/^$/d')
 ```
@@ -523,10 +527,10 @@ UI_VISIBLE_CHANGES=$(printf '%s\n%s\n%s\n' "$WEB_CHANGES" "$JS_CHANGES" "$HANDLE
 If `UI_VISIBLE_CHANGES` is empty, persist:
 
 ```bash
-TMP=".local/state/ship.loop.local.json.tmp"
+TMP="${STATE_FILE}.tmp"
 jq --arg required "false" --arg attempted "false" --arg result "skipped" --arg reason "no-ui-visible-changes" --argjson pages 0 \
    '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
 Then skip to Step 8.
@@ -539,10 +543,10 @@ show the latter, but invoke the namespace that is actually available. If
 browser tools, persist:
 
 ```bash
-TMP=".local/state/ship.loop.local.json.tmp"
+TMP="${STATE_FILE}.tmp"
 jq --arg required "true" --arg attempted "false" --arg result "blocked" --arg reason "missing-browser-tooling" --argjson pages 0 \
    '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
 Display:
@@ -557,10 +561,13 @@ Stop the workflow. Do not continue to push, CI watch, or merge.
 ### Set phase, detect dev server
 
 ```bash
-set_loop_phase ".local/state/ship.loop.local.json" "e2e-testing"
+set_loop_phase "$STATE_FILE" "e2e-testing"
 ```
 
-Detect command: Air (`.air.toml`) → `air`; Makefile target `run`/`serve`/`dev` → `make <target>`; `package.json` script `dev`/`start` → `npm run dev` / `npm start`; Go fallback → `go run ./cmd/*/main.go` or `go run .`.
+Detect command beneath `$WORKTREE_PATH` and store the raw executable command in
+`DEV_SERVER_CMD`: Air (`.air.toml`) → `air`; Makefile target
+`run`/`serve`/`dev` → `make <target>`; `package.json` script `dev`/`start` →
+`npm run dev` / `npm start`; Go fallback → `go run ./cmd/*/main.go` or `go run .`.
 
 Detect port: Air config, `PORT` env var, `.env`/`.env.local`, defaults `8080` (Go) / `3000` (Node) / `5173` (Vite).
 
@@ -577,7 +584,7 @@ if curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null |
 elif [ -n "${DEV_SERVER_CMD:-}" ]; then
   # If AGENTS.md, CLAUDE.md, or project docs say the user runs the dev server,
   # leave DEV_SERVER_CMD unset and block below instead of starting it.
-  $DEV_SERVER_CMD &
+  (cd "$WORKTREE_PATH" && $DEV_SERVER_CMD) &
   SERVER_PID=$!
   SERVER_ALREADY_RUNNING=false
 else
@@ -595,17 +602,17 @@ If the server is still unreachable after 30 seconds, or no start was attempted
 because project guidance requires the user to run it, persist a blocked result:
 
 ```bash
-TMP=".local/state/ship.loop.local.json.tmp"
+TMP="${STATE_FILE}.tmp"
 jq --arg required "true" --arg attempted "false" --arg result "blocked" --arg reason "dev-server-unavailable" --argjson pages 0 \
    '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
 Display:
 
 ```
 E2E PREREQUISITE MISSING - local dev server is not responding at http://localhost:$PORT.
-Start it (`make dev` or the project equivalent), then re-run `$go-workflow:ship`.
+Start it (`(cd "$WORKTREE_PATH" && make dev)` or the project equivalent), then re-run `$go-workflow:ship`.
 Pages tested: 0
 No merge.
 ```
@@ -625,10 +632,10 @@ inspected. Never downgrade either case to skipped or passed.
 ### Record browser tool-call failure
 
 ```bash
-TMP=".local/state/ship.loop.local.json.tmp"
+TMP="${STATE_FILE}.tmp"
 jq --arg required "true" --arg attempted "true" --arg result "blocked" --arg reason "browser-tool-call-failed" --argjson pages "${PAGES_TESTED:-0}" \
    '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
 Display the failed tool, route, and returned error, clean up a server started
@@ -662,12 +669,12 @@ if [ "${SERVER_ALREADY_RUNNING:-false}" != "true" ]; then
   fi
 fi
 
-TMP=".local/state/ship.loop.local.json.tmp"
+TMP="${STATE_FILE}.tmp"
 jq --arg required "true" --arg attempted "true" --arg result "$E2E_RESULT" --arg reason "${E2E_SKIP_REASON:-}" --argjson pages "$PAGES_TESTED" \
    '.e2e_required = $required | .e2e_attempted = $attempted | .e2e_result = $result | .e2e_skip_reason = $reason | .e2e_pages_tested = $pages' \
-   ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+   "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 
-rm -f .local/state/coverage.out .local/state/coverage.json 2>/dev/null || true
+rm -f "$WORKTREE_PATH/.local/state/coverage.out" "$WORKTREE_PATH/.local/state/coverage.json" 2>/dev/null || true
 ```
 
 Display:
@@ -692,34 +699,35 @@ verification complete.
 Stage only files modified in fix phase + tests from Step 7.5f (do NOT use `git add -A`):
 
 ```bash
-git add <list of files modified during fix phase>
-git add <list of test files generated in Step 7.5f, if any>
+if [ "${#REVIEW_FILES[@]}" -gt 0 ]; then
+  git -C "$WORKTREE_PATH" add -- "${REVIEW_FILES[@]}"
+fi
 ```
 
 Increment pass counter:
 
 ```bash
-CURRENT_PASS=$(jq -r '.pass // 0' ".local/state/ship.loop.local.json")
+CURRENT_PASS=$(jq -r '.pass // 0' "$STATE_FILE")
 NEW_PASS=$((CURRENT_PASS + 1))
-TMP=".local/state/ship.loop.local.json.tmp"
-jq --argjson p "$NEW_PASS" '.pass = $p' ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+TMP="${STATE_FILE}.tmp"
+jq --argjson p "$NEW_PASS" '.pass = $p' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 PASS=$NEW_PASS
 ```
 
 Commit only if there are staged changes:
 
 ```bash
-TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' ".local/state/ship.loop.local.json")
-if ! git diff --cached --quiet; then
+TESTS_GEN=$(jq -r '.coverage_tests_generated // 0' "$STATE_FILE")
+if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
   if [ "$TESTS_GEN" -gt 0 ] 2>/dev/null; then
-    git commit -m "$(cat <<EOF
+    git -C "$WORKTREE_PATH" commit -m "$(cat <<EOF
 fix: address $LLM_CHOICE review findings (pass $PASS)
 
 - Generated tests for $TESTS_GEN uncovered functions
 EOF
 )"
   else
-    git commit -m "fix: address $LLM_CHOICE review findings (pass $PASS)"
+    git -C "$WORKTREE_PATH" commit -m "fix: address $LLM_CHOICE review findings (pass $PASS)"
   fi
 fi
 ```

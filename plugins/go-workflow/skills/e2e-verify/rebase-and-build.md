@@ -8,27 +8,27 @@ Ensure we are on the correct PR branch before rebasing. This handles the case wh
 
 ```bash
 if [ -z "${PR_NUM:-}" ]; then
-  PR_JSON=$(github_current_pr) || {
+  PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr) || {
     echo "Error: No open PR matches the current branch and HEAD"
     exit 1
   }
   PR_NUM=$(jq -er '.number' <<< "$PR_JSON")
 else
-  PR_JSON=$(github_pr "$PR_NUM") || {
+  PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
     echo "Error: Could not read PR #$PR_NUM"
     exit 1
   }
 fi
 
-CURRENT_BRANCH=$(git branch --show-current)
+CURRENT_BRANCH=$(git -C "$WORKTREE_PATH" branch --show-current)
 PR_HEAD_BRANCH=$(jq -er '.head.ref' <<< "$PR_JSON")
 PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON")
 EXPECTED_REMOTE_HEAD_SHA="$PR_HEAD_SHA"
 PR_HEAD_OWNER_REPO=$(jq -er '.head.repo.full_name' <<< "$PR_JSON")
 PR_HEAD_CLONE_URL=$(jq -er '.head.repo.clone_url' <<< "$PR_JSON")
-LOCAL_HEAD_SHA=$(git rev-parse HEAD)
+LOCAL_HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
 if [ "$CURRENT_BRANCH" != "$PR_HEAD_BRANCH" ] || [ "$LOCAL_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
-  if [ -n "$(git status --porcelain)" ]; then
+  if [ -n "$(git -C "$WORKTREE_PATH" status --porcelain)" ]; then
     WORKFLOW_RESULT=INCOMPLETE
     WORKFLOW_REASON=dirty-worktree
     echo "WORKFLOW_RESULT=$WORKFLOW_RESULT"
@@ -37,8 +37,8 @@ if [ "$CURRENT_BRANCH" != "$PR_HEAD_BRANCH" ] || [ "$LOCAL_HEAD_SHA" != "$PR_HEA
   fi
 
   PR_HEAD_REMOTE=""
-  for remote in $(git remote); do
-    REMOTE_URL=$(git remote get-url "$remote")
+  for remote in $(git -C "$WORKTREE_PATH" remote); do
+    REMOTE_URL=$(git -C "$WORKTREE_PATH" remote get-url "$remote")
     REMOTE_OWNER_REPO=$(echo "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
     if [ "$REMOTE_OWNER_REPO" = "$PR_HEAD_OWNER_REPO" ]; then
       PR_HEAD_REMOTE="$remote"
@@ -53,8 +53,8 @@ if [ "$CURRENT_BRANCH" != "$PR_HEAD_BRANCH" ] || [ "$LOCAL_HEAD_SHA" != "$PR_HEA
     PR_HEAD_FETCH_SOURCE="$PR_HEAD_CLONE_URL"
   fi
   PR_HEAD_FETCH_REF="refs/e2e-verify/$PR_NUM/head"
-  git fetch "$PR_HEAD_FETCH_SOURCE" "+refs/heads/${PR_HEAD_BRANCH}:${PR_HEAD_FETCH_REF}"
-  FETCHED_HEAD_SHA=$(git rev-parse "$PR_HEAD_FETCH_REF")
+  git -C "$WORKTREE_PATH" fetch "$PR_HEAD_FETCH_SOURCE" "+refs/heads/${PR_HEAD_BRANCH}:${PR_HEAD_FETCH_REF}"
+  FETCHED_HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse "$PR_HEAD_FETCH_REF")
   if [ "$FETCHED_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
     WORKFLOW_RESULT=INCOMPLETE
     WORKFLOW_REASON=pr-head-shift
@@ -64,14 +64,14 @@ if [ "$CURRENT_BRANCH" != "$PR_HEAD_BRANCH" ] || [ "$LOCAL_HEAD_SHA" != "$PR_HEA
   fi
 
   LOCAL_PR_BRANCH="$PR_HEAD_BRANCH"
-  if git show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
-    LOCAL_BRANCH_SHA=$(git rev-parse "refs/heads/$LOCAL_PR_BRANCH")
+  if git -C "$WORKTREE_PATH" show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
+    LOCAL_BRANCH_SHA=$(git -C "$WORKTREE_PATH" rev-parse "refs/heads/$LOCAL_PR_BRANCH")
     if [ "$LOCAL_BRANCH_SHA" != "$PR_HEAD_SHA" ]; then
       LOCAL_PR_BRANCH="e2e-verify-pr-$PR_NUM"
     fi
   fi
-  if git show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
-    LOCAL_BRANCH_SHA=$(git rev-parse "refs/heads/$LOCAL_PR_BRANCH")
+  if git -C "$WORKTREE_PATH" show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
+    LOCAL_BRANCH_SHA=$(git -C "$WORKTREE_PATH" rev-parse "refs/heads/$LOCAL_PR_BRANCH")
     if [ "$LOCAL_BRANCH_SHA" != "$PR_HEAD_SHA" ]; then
       WORKFLOW_RESULT=INCOMPLETE
       WORKFLOW_REASON=local-pr-branch-diverged
@@ -79,9 +79,9 @@ if [ "$CURRENT_BRANCH" != "$PR_HEAD_BRANCH" ] || [ "$LOCAL_HEAD_SHA" != "$PR_HEA
       echo "WORKFLOW_REASON=$WORKFLOW_REASON"
       exit 1
     fi
-    git checkout "$LOCAL_PR_BRANCH"
+    git -C "$WORKTREE_PATH" checkout "$LOCAL_PR_BRANCH"
   else
-    git checkout -b "$LOCAL_PR_BRANCH" "$PR_HEAD_FETCH_REF"
+    git -C "$WORKTREE_PATH" checkout -b "$LOCAL_PR_BRANCH" "$PR_HEAD_FETCH_REF"
   fi
 fi
 ```
@@ -97,8 +97,8 @@ BASE_BRANCH=$(jq -er '.base.ref' <<< "$PR_JSON")
 BASE_OWNER_REPO=$(jq -er '.base.repo.full_name' <<< "$PR_JSON")
 
 BASE_REMOTE=""
-for remote in $(git remote); do
-  REMOTE_URL=$(git remote get-url "$remote")
+for remote in $(git -C "$WORKTREE_PATH" remote); do
+  REMOTE_URL=$(git -C "$WORKTREE_PATH" remote get-url "$remote")
   REMOTE_OWNER_REPO=$(echo "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
   if [ "$REMOTE_OWNER_REPO" = "$BASE_OWNER_REPO" ]; then
     BASE_REMOTE="$remote"
@@ -117,25 +117,25 @@ echo "PR #$PR_NUM targets $BASE_REMOTE/$BASE_BRANCH"
 ### 1c. Fetch and Rebase
 
 ```bash
-git fetch "$BASE_REMOTE" "$BASE_BRANCH"
-BEHIND=$(git rev-list --count "HEAD..${BASE_REMOTE}/${BASE_BRANCH}")
+git -C "$WORKTREE_PATH" fetch "$BASE_REMOTE" "$BASE_BRANCH"
+BEHIND=$(git -C "$WORKTREE_PATH" rev-list --count "HEAD..${BASE_REMOTE}/${BASE_BRANCH}")
 echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
 ```
 
 **If `$BEHIND` is 0:** Skip rebase, proceed to Step 2.
 
 **If `$BEHIND` > 0:**
-1. Check `git status --porcelain`. If dirty, report
+1. Check `git -C "$WORKTREE_PATH" status --porcelain`. If dirty, report
    `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=dirty-worktree`, follow the
    top-level **Hard Invariant Failure** procedure, and stop.
-2. Run `git rebase "${BASE_REMOTE}/${BASE_BRANCH}"`. Resolve conflicts only
+2. Run `git -C "$WORKTREE_PATH" rebase "${BASE_REMOTE}/${BASE_BRANCH}"`. Resolve conflicts only
    when the correct resolution is evident and every conflict is cleared. If
-   any conflict remains, run `git rebase --abort`, report
+   any conflict remains, run `git -C "$WORKTREE_PATH" rebase --abort`, report
    `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=rebase-conflict`, then
    follow the top-level **Hard Invariant Failure** procedure and stop.
 3. Force-push:
    ```bash
-   PR_JSON=$(github_pr "$PR_NUM") || {
+   PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
      echo "Error: Could not refresh PR #$PR_NUM before push"
      exit 1
    }
@@ -151,8 +151,8 @@ echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
    PR_HEAD_OWNER_REPO=$(jq -er '.head.repo.full_name' <<< "$PR_JSON")
    PR_HEAD_CLONE_URL=$(jq -er '.head.repo.clone_url' <<< "$PR_JSON")
    PR_HEAD_TARGET=""
-   for remote in $(git remote); do
-     REMOTE_URL=$(git remote get-url "$remote")
+   for remote in $(git -C "$WORKTREE_PATH" remote); do
+     REMOTE_URL=$(git -C "$WORKTREE_PATH" remote get-url "$remote")
      REMOTE_OWNER_REPO=$(echo "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
      if [ "$REMOTE_OWNER_REPO" = "$PR_HEAD_OWNER_REPO" ]; then
        PR_HEAD_TARGET="$remote"
@@ -160,13 +160,13 @@ echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
      fi
    done
    PR_HEAD_TARGET="${PR_HEAD_TARGET:-$PR_HEAD_CLONE_URL}"
-   git push --force-with-lease="refs/heads/$PR_HEAD_BRANCH:$EXPECTED_REMOTE_HEAD_SHA" "$PR_HEAD_TARGET" "HEAD:refs/heads/$PR_HEAD_BRANCH"
-   PUBLISHED_PR_JSON=$(github_pr "$PR_NUM") || {
+   git -C "$WORKTREE_PATH" push --force-with-lease="refs/heads/$PR_HEAD_BRANCH:$EXPECTED_REMOTE_HEAD_SHA" "$PR_HEAD_TARGET" "HEAD:refs/heads/$PR_HEAD_BRANCH"
+   PUBLISHED_PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
      echo "Error: Could not verify PR #$PR_NUM after push"
      exit 1
    }
    PUBLISHED_HEAD_SHA=$(jq -er '.head.sha' <<< "$PUBLISHED_PR_JSON")
-   LOCAL_REBASED_HEAD_SHA=$(git rev-parse HEAD)
+   LOCAL_REBASED_HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
    if [ "$PUBLISHED_HEAD_SHA" != "$LOCAL_REBASED_HEAD_SHA" ]; then
      WORKFLOW_RESULT=INCOMPLETE
      WORKFLOW_REASON=pr-head-shift
@@ -179,9 +179,9 @@ echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
 ### 1d. Wait for CI After Rebase (only if rebased)
 
 ```bash
-HEAD_SHA=$(git rev-parse HEAD)
+HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
 CHECKS_STATUS=0
-CHECKS_SNAPSHOT=$(github_watch_pr_checks "$PR_NUM" "$HEAD_SHA") || CHECKS_STATUS=$?
+CHECKS_SNAPSHOT=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$HEAD_SHA") || CHECKS_STATUS=$?
 if [ "$CHECKS_STATUS" -ne 0 ]; then
   case "$CHECKS_STATUS" in
     "$GITHUB_CHECKS_FAILED") WORKFLOW_REASON=ci-checks-failed ;;
@@ -209,13 +209,13 @@ and stop before build or E2E testing.
 ### 2a. Code Generation (if applicable)
 
 ```bash
-if [ -f Makefile ]; then
-  GEN_TARGET=$(make -qp 2>/dev/null | awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' \
+if [ -f "$WORKTREE_PATH/Makefile" ]; then
+  GEN_TARGET=$( (cd "$WORKTREE_PATH" && make -qp 2>/dev/null) | awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' \
     | grep -E '^(generate|gen|codegen|sqlc|proto|templ)$' | head -1 || true)
   if [ -n "$GEN_TARGET" ]; then
-    GEN_SNAPSHOT=$(printf '%s\n%s' "$(git diff --name-only)" "$(git ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
+    GEN_SNAPSHOT=$(printf '%s\n%s' "$(git -C "$WORKTREE_PATH" diff --name-only)" "$(git -C "$WORKTREE_PATH" ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
     echo "Running make $GEN_TARGET..."
-    if ! make "$GEN_TARGET" 2>&1; then
+    if ! (cd "$WORKTREE_PATH" && make "$GEN_TARGET") 2>&1; then
       BUILD_RESULT="fail"
       WORKFLOW_REASON="generation-failed"
     fi
@@ -237,8 +237,8 @@ Check for generated file drift:
 
 ```bash
 if [ -n "$GEN_TARGET" ] && [ -z "${WORKFLOW_REASON:-}" ]; then
-  GEN_MODIFIED=$(git diff --name-only)
-  GEN_UNTRACKED=$(git ls-files --others --exclude-standard)
+  GEN_MODIFIED=$(git -C "$WORKTREE_PATH" diff --name-only)
+  GEN_UNTRACKED=$(git -C "$WORKTREE_PATH" ls-files --others --exclude-standard)
   GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
   if [ -n "$GEN_SNAPSHOT" ]; then
     GEN_NEW=$(comm -13 <(echo "$GEN_SNAPSHOT" | sort) <(echo "$GEN_ALL" | sort))
@@ -249,7 +249,7 @@ if [ -n "$GEN_TARGET" ] && [ -z "${WORKFLOW_REASON:-}" ]; then
     echo "Generated code is stale. Files changed after generation:"
     echo "$GEN_NEW"
     echo "Staging regenerated files..."
-    echo "$GEN_NEW" | xargs git add
+    echo "$GEN_NEW" | xargs git -C "$WORKTREE_PATH" add --
   fi
 fi
 ```
@@ -258,11 +258,11 @@ fi
 
 ```bash
 BUILD_RESULT=pass
-if ! go build ./...; then
+if ! go -C "$WORKTREE_PATH" build ./...; then
   BUILD_RESULT=fail
-elif ! go test ./...; then
+elif ! go -C "$WORKTREE_PATH" test ./...; then
   BUILD_RESULT=fail
-elif command -v golangci-lint >/dev/null 2>&1 && ! golangci-lint run; then
+elif command -v golangci-lint >/dev/null 2>&1 && ! (cd "$WORKTREE_PATH" && golangci-lint run); then
   BUILD_RESULT=fail
 fi
 ```
@@ -283,15 +283,15 @@ lint.
 If Air or another dev server is running, check `tmp/logs/api.log` or similar for build errors:
 
 ```bash
-if [ -f tmp/logs/api.log ]; then
-  tail -20 tmp/logs/api.log | grep -iE 'error|fatal|panic' || echo "No errors in dev server logs"
+if [ -f "$WORKTREE_PATH/tmp/logs/api.log" ]; then
+  tail -20 "$WORKTREE_PATH/tmp/logs/api.log" | grep -iE 'error|fatal|panic' || echo "No errors in dev server logs"
 fi
 ```
 
 ### 2d. Check for Unexpected Diffs
 
 ```bash
-git diff --stat
+git -C "$WORKTREE_PATH" diff --stat
 ```
 
 If unexpected changes appear after generation, investigate before proceeding.

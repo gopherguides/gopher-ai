@@ -7,7 +7,7 @@ current-PR lookup:
 
 ```bash
 PR_NUM="$RESOLVED_PR"
-PR_JSON=$(github_pr "$PR_NUM") || {
+PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
@@ -23,7 +23,7 @@ jq '{
   baseRefName: .base.ref,
   baseRepository: .base.repo.full_name
 }' <<< "$PR_JSON"
-echo "Current branch: $(git branch --show-current 2>/dev/null || echo unknown)"
+echo "Current branch: $(git -C "$WORKTREE_PATH" branch --show-current 2>/dev/null || echo unknown)"
 echo "Default branch: $(jq -r '.base.ref' <<< "$PR_JSON")"
 echo "PR number: $PR_NUM"
 ```
@@ -45,13 +45,13 @@ If `WATCH_MODE` is `false`: `⏩ No-watch mode — will fix comments once and ex
 OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
 REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
 
-FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM") || {
+FORMAL_REVIEWS=$(cd "$WORKTREE_PATH" && github_pr_reviews "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=review-api-failure
 }
 FORMAL_REVIEW_AUTHORS=$(jq -r '.[].user.login // empty' <<< "$FORMAL_REVIEWS")
 
-THREAD_RESULT=$(gh api graphql -f query='
+THREAD_RESULT=$(cd "$WORKTREE_PATH" && gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {

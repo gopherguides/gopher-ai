@@ -6,8 +6,7 @@ Owns the full `jq` invocation and field-name reference.
 ## Step 1 Initial Persist
 
 ```bash
-STATE_FILE=".local/state/ship.loop.local.json"
-TMP="$STATE_FILE.tmp"
+TMP="${STATE_FILE}.tmp"
 jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --arg llm_explicit "$LLM_EXPLICIT" --argjson pass 0 \
    --arg no_merge "$NO_MERGE" --arg pr_number "" --arg base_branch "" \
    --arg bot_review_baseline "" --arg discovered_bots "" --arg has_ci "" \
@@ -19,7 +18,8 @@ jq --arg args "$ARGUMENTS" --arg llm "$LLM_CHOICE" --arg llm_explicit "$LLM_EXPL
    --arg review_clean "" --arg review_result "" --arg review_skip_reason "" \
    --arg head_sha "" --arg gemini_tier "$GEMINI_TIER" \
    --arg ollama_model "" --arg workflow_result "" --arg workflow_reason "" \
-   '. + {args: $args, llm: $llm, llm_explicit: $llm_explicit, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, ci_skip_reason: $ci_skip_reason, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_required: $e2e_required, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_skip_reason: $e2e_skip_reason, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, review_result: $review_result, review_skip_reason: $review_skip_reason, head_sha: $head_sha, gemini_tier: $gemini_tier, ollama_model: $ollama_model, workflow_result: $workflow_result, workflow_reason: $workflow_reason}' \
+   --arg original_repo_root "$ORIGINAL_REPO_ROOT" --arg worktree_path "$WORKTREE_PATH" --arg repo_slug "$REPO_SLUG" \
+   '. + {args: $args, llm: $llm, llm_explicit: $llm_explicit, pass: $pass, no_merge: $no_merge, pr_number: $pr_number, base_branch: $base_branch, bot_review_baseline: $bot_review_baseline, discovered_bots: $discovered_bots, has_ci: $has_ci, ci_skip_reason: $ci_skip_reason, skip_coverage: $skip_coverage, coverage_threshold: $coverage_threshold, coverage_result: $coverage_result, coverage_tests_generated: $coverage_tests_generated, e2e_required: $e2e_required, e2e_attempted: $e2e_attempted, e2e_result: $e2e_result, e2e_skip_reason: $e2e_skip_reason, e2e_pages_tested: $e2e_pages_tested, review_clean: $review_clean, review_result: $review_result, review_skip_reason: $review_skip_reason, head_sha: $head_sha, gemini_tier: $gemini_tier, ollama_model: $ollama_model, workflow_result: $workflow_result, workflow_reason: $workflow_reason, original_repo_root: $original_repo_root, worktree_path: $worktree_path, repo_slug: $repo_slug}' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 

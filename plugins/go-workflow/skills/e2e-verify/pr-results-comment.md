@@ -109,7 +109,7 @@ of mode. It makes the gate visible to humans reading the PR.
 ## 6b. Post Comment
 
 ```bash
-gh pr comment "$PR_NUM" --body "$(cat <<'EOF'
+gh pr comment "$PR_NUM" --repo "$REPO_SLUG" --body "$(cat <<'EOF'
 <constructed comment body>
 EOF
 )"
@@ -150,7 +150,7 @@ When the gate has passed, for modes that add the `run-full-ci` label
 
 ```bash
 jq -cn '{labels: ["run-full-ci"]}' |
-  gh api --method POST "repos/{owner}/{repo}/issues/$PR_NUM/labels" --input -
+  gh api --method POST "repos/$REPO_SLUG/issues/$PR_NUM/labels" --input -
 ```
 
 When the gate has passed, also add the `e2e-verified` label to mark the PR as
@@ -158,7 +158,7 @@ E2E-clean:
 
 ```bash
 jq -cn '{labels: ["e2e-verified"]}' |
-  gh api --method POST "repos/{owner}/{repo}/issues/$PR_NUM/labels" --input -
+  gh api --method POST "repos/$REPO_SLUG/issues/$PR_NUM/labels" --input -
 ```
 
 Both labels must already exist in the repository. A failed REST label request
