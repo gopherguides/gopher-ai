@@ -83,6 +83,74 @@ check_git_state() {
   fi
 }
 
+resolve_symlink_path() {
+  local input_path="$1"
+  local candidate link_target link_pending part pending_path resolved_path
+  local symlink_count=0
+  case "$input_path" in
+    /*)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  pending_path="${input_path#/}"
+  resolved_path="/"
+  while [ -n "$pending_path" ]; do
+    case "$pending_path" in
+      */*)
+        part="${pending_path%%/*}"
+        pending_path="${pending_path#*/}"
+        ;;
+      *)
+        part="$pending_path"
+        pending_path=""
+        ;;
+    esac
+
+    case "$part" in
+      ""|.)
+        continue
+        ;;
+      ..)
+        if [ "$resolved_path" != "/" ]; then
+          resolved_path="${resolved_path%/*}"
+          resolved_path="${resolved_path:-/}"
+        fi
+        continue
+        ;;
+    esac
+
+    candidate="${resolved_path%/}/${part}"
+    if [ ! -L "$candidate" ]; then
+      resolved_path="$candidate"
+      continue
+    fi
+
+    symlink_count=$((symlink_count + 1))
+    [ "$symlink_count" -le 40 ] || return 1
+    command -v readlink >/dev/null 2>&1 || return 1
+    link_target=$(readlink "$candidate") || return 1
+    case "$link_target" in
+      /*)
+        resolved_path="/"
+        link_pending="${link_target#/}"
+        ;;
+      *)
+        link_pending="$link_target"
+        ;;
+    esac
+    if [ -n "$pending_path" ]; then
+      pending_path="${link_pending%/}/${pending_path}"
+    else
+      pending_path="$link_pending"
+    fi
+  done
+
+  printf '%s\n' "$resolved_path"
+}
+
 check_worktree_path() {
   local state_file="${HOME}/.claude/worktree-state.json"
   [ -f "$state_file" ] || return 0
@@ -91,6 +159,8 @@ check_worktree_path() {
   worktree_path=$(jq -r '.worktree_path // empty' "$state_file" 2>/dev/null)
   original_path=$(jq -r '.original_path // empty' "$state_file" 2>/dev/null)
   [ -z "$worktree_path" ] || [ -z "$original_path" ] && return 0
+  worktree_path=$(resolve_symlink_path "$worktree_path") || return 0
+  original_path=$(resolve_symlink_path "$original_path") || return 0
 
   # Only enforce if current repo matches the saved original_path or worktree_path
   # original_path is now always the repo root (from git rev-parse --show-toplevel)
@@ -104,6 +174,47 @@ check_worktree_path() {
       ;;
     Glob|Grep)
       target_path=$(echo "$TOOL_INPUT" | jq -r '.path // empty' 2>/dev/null)
+      ;;
+    apply_patch)
+      local patch_command hook_cwd patch_line patch_target
+      patch_command=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
+      hook_cwd=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+      [ -z "$patch_command" ] || [ -z "$hook_cwd" ] && return 0
+
+      while IFS= read -r patch_line || [ -n "$patch_line" ]; do
+        case "$patch_line" in
+          '*** Add File: '*|'*** Update File: '*|'*** Delete File: '*|'*** Move to: '*)
+            patch_target=${patch_line#*: }
+            ;;
+          *)
+            continue
+            ;;
+        esac
+
+        [ -z "$patch_target" ] && continue
+        case "$patch_target" in
+          /*)
+            ;;
+          *)
+            patch_target="${hook_cwd}/${patch_target}"
+            ;;
+        esac
+        if ! patch_target=$(resolve_symlink_path "$patch_target"); then
+          printf '{"decision":"block","reason":"WRONG DIRECTORY: Unable to resolve patch target safely."}\n'
+          exit 0
+        fi
+
+        case "$patch_target" in
+          "${worktree_path}"|"${worktree_path}"/*)
+            ;;
+          "${original_path}"|"${original_path}"/*)
+            printf '{"decision":"block","reason":"WRONG DIRECTORY: You are targeting the original repo (%s) instead of the worktree (%s). Use path: %s%s"}\n' \
+              "$original_path" "$worktree_path" "$worktree_path" "${patch_target#"$original_path"}"
+            exit 0
+            ;;
+        esac
+      done <<< "$patch_command"
+      return 0
       ;;
     Bash|bash)
       local cmd_text

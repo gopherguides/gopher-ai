@@ -173,12 +173,15 @@ run_codex() {
 }
 
 run_installer() {
-    env \
-        HOME="$TEST_HOME" \
-        CODEX_HOME="$CODEX_HOME" \
-        GOPHER_AI_REPO="$MARKETPLACE_URL" \
-        GOPHER_AI_REF=main \
-        bash "$ROOT_DIR/scripts/install-codex.sh" --user
+    (
+        cd "$TEST_ROOT"
+        env \
+            HOME="$TEST_HOME" \
+            CODEX_HOME="$CODEX_HOME" \
+            GOPHER_AI_REPO="$MARKETPLACE_URL" \
+            GOPHER_AI_REF=main \
+            bash "$ROOT_DIR/scripts/install-codex.sh" --user
+    )
 }
 
 if ! run_installer > "$LOG_DIR/installer-first.stdout" 2> "$LOG_DIR/installer-first.stderr"; then
@@ -268,8 +271,25 @@ git -C "$FIXTURE_WORK" commit -qm "$SECOND_VERSION"
 git -C "$FIXTURE_WORK" push -q origin main
 git --git-dir="$SERVER_ROOT/fixture.git" update-server-info
 
+set +e
+run_installer > "$LOG_DIR/installer-active.stdout" 2> "$LOG_DIR/installer-active.stderr"
+ACTIVE_INSTALL_STATUS=$?
+set -e
+[[ "$ACTIVE_INSTALL_STATUS" -ne 0 ]] \
+    || fail "updated plugin install proceeded while a Codex session was active"
+grep -q 'Codex processes are running' "$LOG_DIR/installer-active.stderr" \
+    || fail "active-session refusal did not explain how to recover"
+[[ -x "$FIRST_ROOT/hooks/codex-cleanup-on-start.sh" ]] \
+    || fail "active SessionStart hook path disappeared during refused update"
+[[ -x "$FIRST_ROOT/hooks/stop-hook.sh" ]] \
+    || fail "active Stop hook path disappeared during refused update"
+
+: > "$SERVER_STATE/1.release"
+finish_session "$FIRST_SESSION_PID" first
+assert_session first "$FIRST_WORKSPACE" "$FIRST_VERSION"
+
 if ! run_installer > "$LOG_DIR/installer-second.stdout" 2> "$LOG_DIR/installer-second.stderr"; then
-    fail "real Codex updated plugin install failed"
+    fail "real Codex updated plugin install failed after the active session exited"
 fi
 
 SECOND_ROOT="$CODEX_HOME/plugins/cache/gopher-ai/go-workflow/$SECOND_VERSION"
@@ -282,10 +302,6 @@ printf 'second=%s\n' "$SECOND_ROOT" >> "$LOG_DIR/roots.log"
     || fail "active SessionStart hook path disappeared during update: $FIRST_ROOT/hooks/codex-cleanup-on-start.sh"
 [[ -x "$FIRST_ROOT/hooks/stop-hook.sh" ]] \
     || fail "active Stop hook path disappeared during update: $FIRST_ROOT/hooks/stop-hook.sh"
-
-: > "$SERVER_STATE/1.release"
-finish_session "$FIRST_SESSION_PID" first
-assert_session first "$FIRST_WORKSPACE" "$FIRST_VERSION"
 
 start_session second "$SECOND_WORKSPACE"
 SECOND_SESSION_PID=$SESSION_PID

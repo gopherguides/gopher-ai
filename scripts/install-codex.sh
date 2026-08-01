@@ -26,6 +26,7 @@ gopher-ai for Codex can be installed in two ways:
                 they load in EVERY Codex session, regardless of the working
                 directory. Codex publishes versioned roots before activation.
                 Previously published roots are retained for active sessions.
+                Refuses to refresh while any Codex process is running.
                 Also removes legacy ~/.codex/skills/ entries left over from
                 older installs (with --yes semantics — assumes the user wants
                 the migration).
@@ -88,6 +89,41 @@ require_cmd() {
     if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "error: required command not found: $cmd" >&2
         exit 1
+    fi
+}
+
+codex_processes_running() {
+    local current_uid process_list
+    if ! current_uid="$(id -u 2>/dev/null)" \
+        || ! process_list="$(ps -Ao uid=,pid=,comm= 2>/dev/null)"; then
+        echo "error: unable to inspect running processes; refusing to mutate Codex plugin roots." >&2
+        return 0
+    fi
+
+    awk -v current_uid="$current_uid" '
+        {
+            if ($1 != current_uid) {
+                next
+            }
+            $1 = ""
+            $2 = ""
+            sub(/^[[:space:]]+/, "", $0)
+            name = $0
+            sub(/^.*\//, "", name)
+            if (name == "codex" || name ~ /^codex-/) {
+                found = 1
+                exit
+            }
+        }
+        END { exit (found ? 0 : 1) }
+    ' <<<"$process_list"
+}
+
+require_stopped_codex_sessions() {
+    if codex_processes_running; then
+        echo "error: Codex processes are running; refusing to mutate versioned plugin roots." >&2
+        echo "       close all Codex sessions, then run the command again." >&2
+        return 1
     fi
 }
 
@@ -568,6 +604,7 @@ install_user_plugins() {
         return 1
     fi
 
+    require_stopped_codex_sessions
     prepare_legacy_user_marketplace_migration
 
     local marketplaces
@@ -657,6 +694,8 @@ install_user_plugins() {
 prune_user_plugin_cache() {
     local assume_yes="${1:-false}"
     local cache_root="$HOME/.codex/plugins/cache/gopher-ai"
+
+    require_stopped_codex_sessions
 
     if [[ ! -d "$cache_root" ]]; then
         echo "no Gopher AI Codex cache found — nothing to prune"

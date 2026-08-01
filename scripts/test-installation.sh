@@ -1230,9 +1230,57 @@ else
   echo "OK"
 fi
 
+echo -n "Plugin refresh retains superseded version roots... "
+REFRESH_HOME=$(mktemp -d)
+REFRESH_MARKETPLACE="$REFRESH_HOME/.claude/plugins/marketplaces/gopher-ai"
+REFRESH_REMOTE="$REFRESH_HOME/gopher-ai.git"
+REFRESH_CACHE="$REFRESH_HOME/.claude/plugins/cache/gopher-ai/go-workflow"
+REFRESH_VERSION=$(jq -r '.version' "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json")
+mkdir -p \
+  "$REFRESH_MARKETPLACE/plugins" \
+  "$REFRESH_CACHE/1.7.5" \
+  "$REFRESH_CACHE/$REFRESH_VERSION"
+cp -R "$ROOT_DIR/plugins/go-workflow" "$REFRESH_MARKETPLACE/plugins/"
+printf '%s\n' 'active session' > "$REFRESH_CACHE/1.7.5/ACTIVE_SESSION"
+printf '%s\n' 'current session' > "$REFRESH_CACHE/$REFRESH_VERSION/ACTIVE_SESSION"
+git -C "$REFRESH_MARKETPLACE" init -q -b main
+git -C "$REFRESH_MARKETPLACE" config user.name "Refresh Tests"
+git -C "$REFRESH_MARKETPLACE" config user.email "refresh@example.com"
+git -C "$REFRESH_MARKETPLACE" add .
+git -C "$REFRESH_MARKETPLACE" commit -qm "test: initialize refresh fixture"
+git init -q --bare "$REFRESH_REMOTE"
+git -C "$REFRESH_MARKETPLACE" remote add origin "$REFRESH_REMOTE"
+git -C "$REFRESH_MARKETPLACE" push -q -u origin main
+if ! HOME="$REFRESH_HOME" bash "$ROOT_DIR/scripts/refresh-plugins.sh" \
+  >/tmp/gopher-ai-refresh-retention.log 2>&1; then
+  echo "FAIL (refresh exited non-zero)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$REFRESH_CACHE/1.7.5/ACTIVE_SESSION" ]; then
+  echo "FAIL (superseded root used by an active session was removed)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$REFRESH_CACHE/$REFRESH_VERSION/ACTIVE_SESSION" ]; then
+  echo "FAIL (current root was replaced instead of updated in place)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -x "$REFRESH_CACHE/$REFRESH_VERSION/hooks/pre-tool-use.sh" ]; then
+  echo "FAIL (current root was not refreshed)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$REFRESH_HOME"
+
 build_stub_path() {
   local stub_dir
   stub_dir="$(mktemp -d)"
+  cat > "$stub_dir/ps" <<'STUB'
+#!/bin/sh
+set -eu
+if [ "${CODEX_STUB_ACTIVE_PROCESS:-false}" = "true" ]; then
+  printf '%s %s\n' "$(id -u)" '4242 /Applications/Codex App/codex'
+else
+  printf '%s %s\n' "$(id -u)" '4242 bash'
+fi
+STUB
   cat > "$stub_dir/codex" <<'STUB'
 #!/bin/sh
 set -eu
@@ -1292,7 +1340,7 @@ if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
 fi
 exit 0
 STUB
-  chmod +x "$stub_dir/codex"
+  chmod +x "$stub_dir/codex" "$stub_dir/ps"
   for cmd in bash sh awk sed grep find mkdir rm cp mv cmp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test; do
     cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
     [ -n "$cmd_path" ] && ln -s "$cmd_path" "$stub_dir/$cmd"
@@ -1359,6 +1407,30 @@ elif grep -q '^plugin marketplace add ' "$STUB_LOG"; then
 else
   echo "OK"
 fi
+
+echo -n "Codex --user refuses to mutate plugin roots while Codex is running... "
+: > "$STUB_LOG"
+ACTIVE_CODEX_LOG=$(mktemp)
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  CODEX_STUB_ACTIVE_PROCESS=true bash "$ROOT_DIR/scripts/install-codex.sh" --user \
+  >"$ACTIVE_CODEX_LOG" 2>&1
+ACTIVE_CODEX_EXIT=$?
+set -e
+if [ "$ACTIVE_CODEX_EXIT" -eq 0 ]; then
+  echo "FAIL (--user unexpectedly refreshed with an active Codex process)"
+  ERRORS=$((ERRORS + 1))
+elif grep -Eq '^plugin marketplace (add|upgrade) |^plugin add [^ ]+@gopher-ai$' "$STUB_LOG"; then
+  echo "FAIL (Codex plugin state changed before the active-session refusal)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q 'Codex processes are running' "$ACTIVE_CODEX_LOG"; then
+  echo "FAIL (refusal did not explain how to recover)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$ACTIVE_CODEX_LOG"
 
 echo -n "Codex --user migrates the owned legacy user marketplace... "
 LEGACY_MARKETPLACE="$TMP_HOME/.agents/plugins/marketplace.json"
@@ -1634,6 +1706,28 @@ else
   echo "OK"
 fi
 rm -f "$PRUNE_NOCONFIRM_LOG"
+
+echo -n "Codex --prune-cache refuses while Codex is running... "
+ACTIVE_PRUNE_LOG=$(mktemp)
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_ACTIVE_PROCESS=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --prune-cache --yes \
+  >"$ACTIVE_PRUNE_LOG" 2>&1
+ACTIVE_PRUNE_EXIT=$?
+set -e
+if [ "$ACTIVE_PRUNE_EXIT" -eq 0 ]; then
+  echo "FAIL (--prune-cache unexpectedly ran with an active Codex process)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -d "$OLD_ROOT" ]; then
+  echo "FAIL (superseded root was removed before the active-session refusal)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q 'Codex processes are running' "$ACTIVE_PRUNE_LOG"; then
+  echo "FAIL (refusal did not explain how to recover)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$ACTIVE_PRUNE_LOG"
 
 echo -n "Codex --prune-cache retains prior roots until the current root is complete... "
 CURRENT_WORKFLOW_ROOT="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-workflow/$CURRENT_VERSION"

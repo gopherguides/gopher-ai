@@ -2,6 +2,7 @@
   "hooks": {
     "SessionStart": [
       {
+        "matcher": "startup|resume",
         "hooks": [
           {
             "type": "command",
@@ -13,6 +14,7 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Bash|Read|Edit|Write|Glob|Grep|apply_patch",
         "hooks": [
           {
             "type": "command",
@@ -23,6 +25,7 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Bash|WebFetch|WebSearch",
         "hooks": [
           {
             "type": "command",

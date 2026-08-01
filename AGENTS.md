@@ -71,7 +71,7 @@ For Codex, "global" means installing plugins through the Codex marketplace cache
 ./scripts/install-codex.sh --user
 ```
 
-`--user` registers or upgrades the marketplace and runs `codex plugin add` for each Codex-capable plugin. Codex owns config updates and publishes immutable versioned roots, retaining prior versions for active sessions.
+`--user` registers or upgrades the marketplace and runs `codex plugin add` for each Codex-capable plugin. Codex owns config updates and publishes immutable versioned roots. The installer refuses to refresh while any Codex process is active and retains prior roots until explicit pruning.
 
 The universal installer handles every detected platform in one step:
 
