@@ -14,6 +14,7 @@ echo "=== Command File Tests ==="
 "$ROOT_DIR/scripts/test-ship-ollama-model.sh"
 "$ROOT_DIR/scripts/test-review-deep-actions.sh"
 "$ROOT_DIR/scripts/test-decision-gates.sh"
+bash "$ROOT_DIR/scripts/test-github-rest.sh"
 
 # Find all command .md files
 COMMAND_FILES=$(find "$ROOT_DIR/plugins" "$ROOT_DIR/shared" -path "*/commands/*.md" -type f 2>/dev/null | sort)
@@ -43,7 +44,7 @@ for file in $COMMAND_FILES; do
 
   # Extract frontmatter and check for description field
   FRONTMATTER=$(sed -n "2,$((CLOSING_LINE - 1))p" "$file")
-  if ! echo "$FRONTMATTER" | grep -q 'description:'; then
+  if ! grep -q 'description:' <<< "$FRONTMATTER"; then
     INVALID="$INVALID\n  $REL_PATH (missing description field)"
     ERRORS=$((ERRORS + 1))
     continue
@@ -245,8 +246,12 @@ COMPLETE_ISSUE_SKILL_INDEX_GUARDS=$(awk \
 COMPLETE_ISSUE_PHASE_INDEX_GUARDS=$(awk \
   '/^[[:space:]]*if ! git diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
   "$COMPLETE_ISSUE_PHASES")
-LIVE_BROAD_STAGING=$(rg -n '^[[:space:]]*git add -A([[:space:]]|$)' \
-  "$GO_WORKFLOW_SKILLS" "$GO_WORKFLOW_LIB" || true)
+GO_WORKFLOW_AUDIT_FILES=()
+while IFS= read -r workflow_file; do
+  GO_WORKFLOW_AUDIT_FILES+=("$workflow_file")
+done < <(find "$GO_WORKFLOW_SKILLS" "$GO_WORKFLOW_LIB" -type f -print)
+LIVE_BROAD_STAGING=$(grep -nE '^[[:space:]]*git add -A([[:space:]]|$)' \
+  "${GO_WORKFLOW_AUDIT_FILES[@]}" || true)
 if [ -n "$LIVE_BROAD_STAGING" ]; then
   echo "FAIL (live broad staging commands found)"
   echo "$LIVE_BROAD_STAGING"
@@ -389,8 +394,8 @@ elif [[ "$SHIP_FINAL_CHECKS" != *"WORKFLOW_REASON=unresolved-review-threads"* ]]
      [[ "$SHIP_FINAL_CHECKS" == *"ask how to proceed"* ]]; then
   INVARIANT_FAILURE="ship final review checks do not stop unconditionally"
 elif [[ "$SHIP_MERGEABILITY" == *"AskUserQuestion"* ]] ||
-     [[ "$SHIP_MERGEABILITY" != *"WORKFLOW_REASON=mergeability-unknown"* ]] ||
-     [[ "$SHIP_MERGEABILITY" != *'| `MERGEABLE` | `UNSTABLE` | **STOP.'* ]]; then
+     [[ "$SHIP_MERGEABILITY" != *'WORKFLOW_REASON="mergeability-unknown"'* ]] ||
+     [[ "$SHIP_MERGEABILITY" != *'| `true` | `unstable` | **STOP.'* ]]; then
   INVARIANT_FAILURE="ship mergeability states still permit an invalid merge"
 elif file_contains "commit to main anyway" "$COMMIT_SKILL" ||
      file_contains "default branch. Inform the user and ask how to proceed" "$SHIP_SKILL"; then

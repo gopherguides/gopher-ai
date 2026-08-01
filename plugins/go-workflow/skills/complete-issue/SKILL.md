@@ -16,6 +16,10 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
 choice.
 
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
+```
+
 Chains the `start-issue` workflow, Codex review, and the `e2e-verify`
 `fix-and-ship` workflow.
 
@@ -93,7 +97,11 @@ commit/push/PR, watch CI).
 After `$go-workflow:start-issue` completes, detect the PR number and worktree context, reassign `STATE_FILE` to an absolute path (because CWD may have changed if a worktree was created), and persist:
 
 ```bash
-PR_NUM=$(gh pr view --json number --jq '.number' 2>/dev/null)
+PR_JSON=$(github_current_pr) || {
+  echo "Error: No open PR matches the current branch and HEAD after start-issue"
+  exit 1
+}
+PR_NUM=$(jq -er '.number' <<< "$PR_JSON")
 
 GIT_DIR_ABS=$(cd "$(git rev-parse --git-dir 2>/dev/null)" && pwd)
 GIT_COMMON_ABS=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd)

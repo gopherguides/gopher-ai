@@ -7,20 +7,94 @@
 Ensure we are on the correct PR branch before rebasing. This handles the case where `$go-workflow:e2e-verify 42` is run from a different branch:
 
 ```bash
-PR_NUM="${PR_NUM:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"
+if [ -z "${PR_NUM:-}" ]; then
+  PR_JSON=$(github_current_pr) || {
+    echo "Error: No open PR matches the current branch and HEAD"
+    exit 1
+  }
+  PR_NUM=$(jq -er '.number' <<< "$PR_JSON")
+else
+  PR_JSON=$(github_pr "$PR_NUM") || {
+    echo "Error: Could not read PR #$PR_NUM"
+    exit 1
+  }
+fi
+
 CURRENT_BRANCH=$(git branch --show-current)
-PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName' 2>/dev/null)
-if [ "$CURRENT_BRANCH" != "$PR_HEAD_BRANCH" ]; then
+PR_HEAD_BRANCH=$(jq -er '.head.ref' <<< "$PR_JSON")
+PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON")
+EXPECTED_REMOTE_HEAD_SHA="$PR_HEAD_SHA"
+PR_HEAD_OWNER_REPO=$(jq -er '.head.repo.full_name' <<< "$PR_JSON")
+PR_HEAD_CLONE_URL=$(jq -er '.head.repo.clone_url' <<< "$PR_JSON")
+LOCAL_HEAD_SHA=$(git rev-parse HEAD)
+if [ "$CURRENT_BRANCH" != "$PR_HEAD_BRANCH" ] || [ "$LOCAL_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
+  if [ -n "$(git status --porcelain)" ]; then
+    WORKFLOW_RESULT=INCOMPLETE
+    WORKFLOW_REASON=dirty-worktree
+    echo "WORKFLOW_RESULT=$WORKFLOW_RESULT"
+    echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+    exit 1
+  fi
+
+  PR_HEAD_REMOTE=""
+  for remote in $(git remote); do
+    REMOTE_URL=$(git remote get-url "$remote")
+    REMOTE_OWNER_REPO=$(echo "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
+    if [ "$REMOTE_OWNER_REPO" = "$PR_HEAD_OWNER_REPO" ]; then
+      PR_HEAD_REMOTE="$remote"
+      break
+    fi
+  done
+
   echo "Not on PR branch ($PR_HEAD_BRANCH) — checking out..."
-  gh pr checkout "$PR_NUM"
+  if [ -n "$PR_HEAD_REMOTE" ]; then
+    PR_HEAD_FETCH_SOURCE="$PR_HEAD_REMOTE"
+  else
+    PR_HEAD_FETCH_SOURCE="$PR_HEAD_CLONE_URL"
+  fi
+  PR_HEAD_FETCH_REF="refs/e2e-verify/$PR_NUM/head"
+  git fetch "$PR_HEAD_FETCH_SOURCE" "+refs/heads/${PR_HEAD_BRANCH}:${PR_HEAD_FETCH_REF}"
+  FETCHED_HEAD_SHA=$(git rev-parse "$PR_HEAD_FETCH_REF")
+  if [ "$FETCHED_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
+    WORKFLOW_RESULT=INCOMPLETE
+    WORKFLOW_REASON=pr-head-shift
+    echo "WORKFLOW_RESULT=$WORKFLOW_RESULT"
+    echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+    exit 1
+  fi
+
+  LOCAL_PR_BRANCH="$PR_HEAD_BRANCH"
+  if git show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
+    LOCAL_BRANCH_SHA=$(git rev-parse "refs/heads/$LOCAL_PR_BRANCH")
+    if [ "$LOCAL_BRANCH_SHA" != "$PR_HEAD_SHA" ]; then
+      LOCAL_PR_BRANCH="e2e-verify-pr-$PR_NUM"
+    fi
+  fi
+  if git show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
+    LOCAL_BRANCH_SHA=$(git rev-parse "refs/heads/$LOCAL_PR_BRANCH")
+    if [ "$LOCAL_BRANCH_SHA" != "$PR_HEAD_SHA" ]; then
+      WORKFLOW_RESULT=INCOMPLETE
+      WORKFLOW_REASON=local-pr-branch-diverged
+      echo "WORKFLOW_RESULT=$WORKFLOW_RESULT"
+      echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+      exit 1
+    fi
+    git checkout "$LOCAL_PR_BRANCH"
+  else
+    git checkout -b "$LOCAL_PR_BRANCH" "$PR_HEAD_FETCH_REF"
+  fi
 fi
 ```
+
+A divergent local branch is preserved. The workflow uses a dedicated local PR
+branch only when it points to the exact REST-declared head; otherwise it stops
+without moving either existing branch.
 
 ### 1b. Detect Base Branch
 
 ```bash
-BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
-BASE_OWNER_REPO=$(gh repo view --json owner,name --jq '"\(.owner.login)/\(.name)"')
+BASE_BRANCH=$(jq -er '.base.ref' <<< "$PR_JSON")
+BASE_OWNER_REPO=$(jq -er '.base.repo.full_name' <<< "$PR_JSON")
 
 BASE_REMOTE=""
 for remote in $(git remote); do
@@ -61,18 +135,72 @@ echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
    follow the top-level **Hard Invariant Failure** procedure and stop.
 3. Force-push:
    ```bash
-   PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
-   BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote")
-   git push --force-with-lease "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
+   PR_JSON=$(github_pr "$PR_NUM") || {
+     echo "Error: Could not refresh PR #$PR_NUM before push"
+     exit 1
+   }
+   PR_HEAD_BRANCH=$(jq -er '.head.ref' <<< "$PR_JSON")
+   PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON")
+   if [ "$PR_HEAD_SHA" != "$EXPECTED_REMOTE_HEAD_SHA" ]; then
+     WORKFLOW_RESULT=INCOMPLETE
+     WORKFLOW_REASON=pr-head-shift
+     echo "WORKFLOW_RESULT=$WORKFLOW_RESULT"
+     echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+     exit 1
+   fi
+   PR_HEAD_OWNER_REPO=$(jq -er '.head.repo.full_name' <<< "$PR_JSON")
+   PR_HEAD_CLONE_URL=$(jq -er '.head.repo.clone_url' <<< "$PR_JSON")
+   PR_HEAD_TARGET=""
+   for remote in $(git remote); do
+     REMOTE_URL=$(git remote get-url "$remote")
+     REMOTE_OWNER_REPO=$(echo "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
+     if [ "$REMOTE_OWNER_REPO" = "$PR_HEAD_OWNER_REPO" ]; then
+       PR_HEAD_TARGET="$remote"
+       break
+     fi
+   done
+   PR_HEAD_TARGET="${PR_HEAD_TARGET:-$PR_HEAD_CLONE_URL}"
+   git push --force-with-lease="refs/heads/$PR_HEAD_BRANCH:$EXPECTED_REMOTE_HEAD_SHA" "$PR_HEAD_TARGET" "HEAD:refs/heads/$PR_HEAD_BRANCH"
+   PUBLISHED_PR_JSON=$(github_pr "$PR_NUM") || {
+     echo "Error: Could not verify PR #$PR_NUM after push"
+     exit 1
+   }
+   PUBLISHED_HEAD_SHA=$(jq -er '.head.sha' <<< "$PUBLISHED_PR_JSON")
+   LOCAL_REBASED_HEAD_SHA=$(git rev-parse HEAD)
+   if [ "$PUBLISHED_HEAD_SHA" != "$LOCAL_REBASED_HEAD_SHA" ]; then
+     WORKFLOW_RESULT=INCOMPLETE
+     WORKFLOW_REASON=pr-head-shift
+     echo "WORKFLOW_RESULT=$WORKFLOW_RESULT"
+     echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+     exit 1
+   fi
    ```
 
 ### 1d. Wait for CI After Rebase (only if rebased)
 
 ```bash
-for i in 1 2 3 4 5; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
+HEAD_SHA=$(git rev-parse HEAD)
+CHECKS_STATUS=0
+CHECKS_SNAPSHOT=$(github_watch_pr_checks "$PR_NUM" "$HEAD_SHA") || CHECKS_STATUS=$?
+if [ "$CHECKS_STATUS" -ne 0 ]; then
+  case "$CHECKS_STATUS" in
+    "$GITHUB_CHECKS_FAILED") WORKFLOW_REASON=ci-checks-failed ;;
+    "$GITHUB_CHECKS_REGISTRATION_TIMEOUT") WORKFLOW_REASON=ci-registration-timeout ;;
+    "$GITHUB_CHECKS_API_ERROR") WORKFLOW_REASON=ci-api-failed ;;
+    "$GITHUB_CHECKS_HEAD_SHIFT") WORKFLOW_REASON=pr-head-shift ;;
+    *) WORKFLOW_REASON=ci-watch-failed ;;
+  esac
+  WORKFLOW_RESULT=INCOMPLETE
+  echo "WORKFLOW_RESULT=$WORKFLOW_RESULT"
+  echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+  exit 1
+fi
+jq -r '.items[] | "\(.name): \(.state)"' <<< "$CHECKS_SNAPSHOT"
 ```
 
-Verify with `gh pr checks "$PR_NUM"`. Fix any failures before proceeding.
+Registration timeout, API failure, check failure, or a PR head shift is a
+non-success result. Follow the top-level **Hard Invariant Failure** procedure
+and stop before build or E2E testing.
 
 ---
 

@@ -2,64 +2,176 @@
 
 **Do NOT skip ahead to fetching review comments.**
 
-## 1a. Checkout
+## 1a. Load and validate PR head/base metadata
 
 ```bash
-PR_NUM="${PR_ARG:-$(gh pr view --json number --jq '.number')}"
-echo "Working on PR #$PR_NUM"
-gh pr checkout "$PR_NUM"
+PR_JSON=$(github_pr "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-metadata-api-failure
+}
+PR_HEAD_BRANCH=$(jq -er '.head.ref' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=invalid-pr-head-metadata
+}
+PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=invalid-pr-head-metadata
+}
+PR_HEAD_OWNER_REPO=$(jq -er '.head.repo.full_name' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=missing-pr-head-repository
+}
+PR_HEAD_CLONE_URL=$(jq -er '.head.repo.clone_url' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=missing-pr-head-repository
+}
+PR_BASE_BRANCH=$(jq -er '.base.ref' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=invalid-pr-base-metadata
+}
+PR_BASE_OWNER_REPO=$(jq -er '.base.repo.full_name' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=invalid-pr-base-metadata
+}
+PR_BASE_CLONE_URL=$(jq -er '.base.repo.clone_url' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=invalid-pr-base-metadata
+}
 ```
 
-Idempotent — handles same-repo PRs, fork PRs, and branch tracking.
+Any metadata failure is a top-level **Hard Invariant Failure**. Stop before
+fetching, checkout, rebase, or push.
 
-## 1b. Check if behind base branch and rebase
+Protect all existing work before changing the checked-out branch:
 
 ```bash
-BASE_BRANCH=$(gh pr view "$PR_NUM" --json baseRefName --jq '.baseRefName')
-BASE_OWNER_REPO=$(gh repo view --json owner,name --jq '"\(.owner.login)/\(.name)"')
+if [ -n "$(git status --porcelain)" ]; then
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=dirty-worktree
+fi
+```
 
-BASE_REMOTE=""
+If dirty, follow the top-level **Hard Invariant Failure** procedure. Do not
+stash, discard, carry, or overwrite the existing changes.
+
+## 1b. Resolve remotes, fetch the exact PR head, and checkout safely
+
+```bash
+PR_HEAD_REMOTE=""
+PR_BASE_REMOTE=""
 for remote in $(git remote); do
   REMOTE_URL=$(git remote get-url "$remote")
-  REMOTE_OWNER_REPO=$(echo "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
-  if [ "$REMOTE_OWNER_REPO" = "$BASE_OWNER_REPO" ]; then
-    BASE_REMOTE="$remote"
-    break
+  REMOTE_OWNER_REPO=$(printf '%s\n' "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
+  if [ "$REMOTE_OWNER_REPO" = "$PR_HEAD_OWNER_REPO" ] && [ -z "$PR_HEAD_REMOTE" ]; then
+    PR_HEAD_REMOTE="$remote"
+  fi
+  if [ "$REMOTE_OWNER_REPO" = "$PR_BASE_OWNER_REPO" ] && [ -z "$PR_BASE_REMOTE" ]; then
+    PR_BASE_REMOTE="$remote"
   fi
 done
 
-if [ -z "$BASE_REMOTE" ]; then
-  echo "Error: No remote found pointing to base repository ($BASE_OWNER_REPO)"
-  exit 1
+PR_HEAD_FETCH_SOURCE="${PR_HEAD_REMOTE:-$PR_HEAD_CLONE_URL}"
+PR_HEAD_PUSH_TARGET="${PR_HEAD_REMOTE:-$PR_HEAD_CLONE_URL}"
+PR_BASE_FETCH_SOURCE="${PR_BASE_REMOTE:-$PR_BASE_CLONE_URL}"
+PR_HEAD_FETCH_REF="refs/address-review/$PR_NUM/head"
+PR_BASE_FETCH_REF="refs/address-review/$PR_NUM/base"
+
+git fetch "$PR_HEAD_FETCH_SOURCE" "+refs/heads/${PR_HEAD_BRANCH}:${PR_HEAD_FETCH_REF}"
+FETCHED_HEAD_SHA=$(git rev-parse "$PR_HEAD_FETCH_REF")
+if [ "$FETCHED_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-head-shift
+fi
+```
+
+If the fetched SHA differs from REST metadata, follow the top-level **Hard
+Invariant Failure** procedure and restart discovery. Never checkout stale PR
+metadata.
+
+```bash
+LOCAL_PR_BRANCH="$PR_HEAD_BRANCH"
+if git show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
+  LOCAL_BRANCH_SHA=$(git rev-parse "refs/heads/$LOCAL_PR_BRANCH")
+  if [ "$LOCAL_BRANCH_SHA" != "$PR_HEAD_SHA" ]; then
+    LOCAL_PR_BRANCH="address-review-pr-$PR_NUM"
+  fi
 fi
 
-git fetch "$BASE_REMOTE" "$BASE_BRANCH"
-BEHIND=$(git rev-list --count "HEAD..${BASE_REMOTE}/${BASE_BRANCH}")
-echo "Commits behind ${BASE_REMOTE}/${BASE_BRANCH}: $BEHIND"
+if git show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
+  LOCAL_BRANCH_SHA=$(git rev-parse "refs/heads/$LOCAL_PR_BRANCH")
+  if [ "$LOCAL_BRANCH_SHA" != "$PR_HEAD_SHA" ]; then
+    WORKFLOW_RESULT=INCOMPLETE
+    WORKFLOW_REASON=local-pr-branch-diverged
+  else
+    git checkout "$LOCAL_PR_BRANCH"
+  fi
+else
+  git checkout -b "$LOCAL_PR_BRANCH" "$PR_HEAD_FETCH_REF"
+fi
+```
+
+A divergent local head branch is preserved by using the dedicated PR branch.
+If that dedicated branch also diverged, follow the top-level **Hard Invariant
+Failure** procedure instead of resetting either branch.
+
+## 1c. Check if behind base branch and rebase
+
+```bash
+git fetch "$PR_BASE_FETCH_SOURCE" "+refs/heads/${PR_BASE_BRANCH}:${PR_BASE_FETCH_REF}"
+BEHIND=$(git rev-list --count "HEAD..${PR_BASE_FETCH_REF}")
+echo "PR #$PR_NUM is $BEHIND commit(s) behind $PR_BASE_OWNER_REPO/$PR_BASE_BRANCH"
 ```
 
 **If `$BEHIND` is 0:** Proceed to Step 2.
 
 **If `$BEHIND` > 0:**
-1. Check `git status --porcelain`. If dirty, report
+
+1. Re-check `git status --porcelain`. If dirty, report
    `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=dirty-worktree`, follow the
    top-level **Hard Invariant Failure** procedure, and stop.
-2. Run `git rebase "${BASE_REMOTE}/${BASE_BRANCH}"`. Resolve conflicts only
-   when the correct resolution is evident and every conflict is cleared. If
-   any conflict remains, run `git rebase --abort`, report
+2. Run `git rebase "$PR_BASE_FETCH_REF"`. Resolve conflicts only when the
+   correct resolution is evident and every conflict is cleared. If any
+   conflict remains, run `git rebase --abort`, report
    `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=rebase-conflict`, then
    follow the top-level **Hard Invariant Failure** procedure and stop.
-3. Force-push:
+3. Force-push only to the REST-declared fork/head branch and pin the lease to
+   the pre-rebase PR head:
+
    ```bash
-   PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
-   BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote")
-   git push --force-with-lease "$BRANCH_REMOTE" "HEAD:$PR_HEAD_BRANCH"
+   EXPECTED_REMOTE_HEAD_SHA="$PR_HEAD_SHA"
+   PR_HEAD_SHA=$(git rev-parse HEAD)
+   git push --force-with-lease="refs/heads/${PR_HEAD_BRANCH}:${EXPECTED_REMOTE_HEAD_SHA}" \
+     "$PR_HEAD_PUSH_TARGET" "HEAD:refs/heads/$PR_HEAD_BRANCH"
+   PUBLISHED_HEAD_SHA=$(github_pr "$PR_NUM" | jq -er '.head.sha') || {
+     WORKFLOW_RESULT=INCOMPLETE
+     WORKFLOW_REASON=pr-metadata-api-failure
+   }
+   if [ "$PUBLISHED_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
+     WORKFLOW_RESULT=INCOMPLETE
+     WORKFLOW_REASON=pr-head-shift
+   fi
    ```
 
-## 1c. Wait for CI after rebase (only if rebased)
+If push verification fails, follow the top-level **Hard Invariant Failure**
+procedure.
+
+## 1d. Wait for CI after rebase
+
+Only after a rebase, watch checks pinned to the exact pushed head:
 
 ```bash
-for i in 1 2 3 4 5; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
+CHECK_STATUS=0
+CHECKS_JSON=$(github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
+case "$CHECK_STATUS" in
+  0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
+  1) echo "CI failed after rebase. Analyze and fix every failure before proceeding." ;;
+  2) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-registration-timeout ;;
+  3) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-api-failure ;;
+  4) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=pr-head-shift ;;
+  *) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-unknown-failure ;;
+esac
 ```
 
-Verify with `gh pr checks "$PR_NUM"`. Fix any failures before proceeding.
+For statuses 2-4 or an unknown status, follow the top-level **Hard Invariant
+Failure** procedure. Registration timeout, API failure, and head shift are
+non-success outcomes. Do not proceed until CI passes for `PR_HEAD_SHA`.

@@ -149,14 +149,17 @@ When the gate has passed, for modes that add the `run-full-ci` label
 (`fix-and-verify`, `ship-prep`, `fix-and-ship`):
 
 ```bash
-gh pr edit "$PR_NUM" --add-label "run-full-ci"
+jq -cn '{labels: ["run-full-ci"]}' |
+  gh api --method POST "repos/{owner}/{repo}/issues/$PR_NUM/labels" --input -
 ```
 
 When the gate has passed, also add the `e2e-verified` label to mark the PR as
 E2E-clean:
 
 ```bash
-gh pr edit "$PR_NUM" --add-label "e2e-verified"
+jq -cn '{labels: ["e2e-verified"]}' |
+  gh api --method POST "repos/{owner}/{repo}/issues/$PR_NUM/labels" --input -
 ```
 
-**Note:** If labels don't exist in the repo, the `gh pr edit --add-label` command will create them automatically.
+Both labels must already exist in the repository. A failed REST label request
+is a non-success result; do not report the corresponding label as added.

@@ -123,6 +123,41 @@ Fix any failures and re-run until all green.
 Stage only files modified during this fix cycle. Build `OWNED_FILES` from the paths tracked in Steps 4 and 4.5, inspect `git status --short`, and exclude every pre-existing or unrelated change. Start from an empty index so an earlier staged change cannot enter the review-fix commit.
 
 ```bash
+PR_JSON=$(github_pr "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-metadata-api-failure
+}
+EXPECTED_REMOTE_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=invalid-pr-head-metadata
+}
+PR_HEAD_BRANCH=$(jq -er '.head.ref' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=invalid-pr-head-metadata
+}
+PR_HEAD_OWNER_REPO=$(jq -er '.head.repo.full_name' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=missing-pr-head-repository
+}
+PR_HEAD_CLONE_URL=$(jq -er '.head.repo.clone_url' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=missing-pr-head-repository
+}
+PR_HEAD_PUSH_TARGET=""
+for remote in $(git remote); do
+  REMOTE_URL=$(git remote get-url "$remote")
+  REMOTE_OWNER_REPO=$(printf '%s\n' "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
+  if [ "$REMOTE_OWNER_REPO" = "$PR_HEAD_OWNER_REPO" ]; then
+    PR_HEAD_PUSH_TARGET="$remote"
+    break
+  fi
+done
+PR_HEAD_PUSH_TARGET="${PR_HEAD_PUSH_TARGET:-$PR_HEAD_CLONE_URL}"
+if [ "$(git rev-parse HEAD)" != "$EXPECTED_REMOTE_HEAD_SHA" ]; then
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-head-shift
+fi
+
 if ! git diff --cached --quiet; then
   echo "Error: Pre-existing staged changes must be committed or unstaged before address-review can commit."
   exit 1
@@ -142,8 +177,23 @@ if ! git diff --cached --quiet; then
 else
   echo "No owned review-fix changes to commit."
 fi
-git push
+git push "$PR_HEAD_PUSH_TARGET" "HEAD:refs/heads/$PR_HEAD_BRANCH"
+PR_HEAD_SHA=$(git rev-parse HEAD)
+PUBLISHED_HEAD_SHA=$(github_pr "$PR_NUM" | jq -er '.head.sha') || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-metadata-api-failure
+}
+if [ "$PUBLISHED_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-head-shift
+fi
 ```
+
+Any PR metadata failure or head shift is a top-level **Hard Invariant
+Failure**. Stop without pushing when the local parent no longer matches the PR
+head, and stop without claiming success when the published head cannot be
+verified. The push target is re-derived here so nested callers and watch-mode
+re-entry do not depend on checkout-phase shell state.
 
 **CRITICAL: Capture bot review baseline IMMEDIATELY after pushing:**
 
@@ -159,15 +209,23 @@ Store this value for all Step 12 bot checks. Do NOT recompute later.
 ## Step 7: Watch CI
 
 ```bash
-gh pr checks "$PR_NUM" --watch
+CHECK_STATUS=0
+CHECKS_JSON=$(github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
+case "$CHECK_STATUS" in
+  0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
+  1) echo "CI failed. Analyze and fix every failing check, then commit, push, update PR_HEAD_SHA, and re-watch." ;;
+  2) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-registration-timeout ;;
+  3) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-api-failure ;;
+  4) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=pr-head-shift ;;
+  *) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-unknown-failure ;;
+esac
 ```
 
-If "no checks reported" — retry up to 3 times with 10s delays:
-```bash
-for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
-```
-
-If still no checks after retries, verify CI workflow files exist (`find .github/workflows -name '*.yml' -o -name '*.yaml'`). If no workflow files exist, proceed — repo has no CI. If CI fails: analyze, fix, commit, push, re-watch. **Do not proceed until CI is green (or confirmed no CI configured).**
+For statuses 2-4 or an unknown status, follow the top-level **Hard Invariant
+Failure** procedure. Registration timeout, API failure, and head shift are
+non-success outcomes. If CI fails, analyze, fix, commit, push, update the exact
+head SHA, and re-watch. **Do not proceed until CI is green for
+`PR_HEAD_SHA`.**
 
 ---
 

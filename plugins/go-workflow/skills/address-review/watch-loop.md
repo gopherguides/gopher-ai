@@ -68,12 +68,88 @@ echo "Address-review stopped without required bot approvals: $APPROVAL_REASON"
 
 For each bot from your Bot Discovery results, use the approval detection logic from the Bot Registry (`bot-registry.md`) to determine if it has approved. The detection approaches by bot type:
 
-- Bots with formal review states (e.g., CodeRabbit): Query latest review state
-- Bots with issue comment signals: Check latest issue comment body
-- Bots with status checks (e.g., Greptile): Check `gh pr checks`
+- Bots with formal review states (e.g., CodeRabbit): Use `github_pr_reviews` and query the newest review state for that bot
+- Bots with issue comment signals: Read REST issue comments and check the newest body for that bot
+- Bots with status checks (e.g., Greptile): Use `github_check_snapshot` pinned to `PR_HEAD_SHA`
 - Bots with timestamp-based detection (e.g., Copilot, Claude): Compare against BOT_REVIEW_BASELINE
 
 **Do NOT run checks for bots that were not in your Bot Discovery results.**
+
+Load each signal without adding formal review or issue-comment fields to the
+GraphQL query:
+
+```bash
+WATCH_PR_JSON=$(github_pr "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-metadata-api-failure
+}
+CURRENT_PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$WATCH_PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=invalid-pr-head-metadata
+}
+if [ "$CURRENT_PR_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-head-shift
+fi
+
+OWNER=$(jq -er '.base.repo.owner.login' <<< "$WATCH_PR_JSON")
+REPO=$(jq -er '.base.repo.name' <<< "$WATCH_PR_JSON")
+FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=review-api-failure
+}
+ISSUE_COMMENT_PAGES=$(gh api --paginate --slurp "repos/{owner}/{repo}/issues/$PR_NUM/comments?per_page=100") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=issue-comment-api-failure
+}
+ISSUE_COMMENTS=$(jq -c '[.[][]]' <<< "$ISSUE_COMMENT_PAGES")
+
+THREAD_RESULT=$(gh api graphql -f query='
+  query($owner: String!, $repo: String!, $pr: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviewThreads(first: 100) {
+          nodes {
+            id
+            isResolved
+            comments(first: 50) {
+              nodes {
+                id
+                body
+                createdAt
+                author { login }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=review-thread-api-failure
+}
+
+if printf '%s\n' "$BOT_AUTHORS" | rg -qx 'greptileai'; then
+  BOT_CHECKS=$(github_check_snapshot "$PR_HEAD_SHA") || {
+    WORKFLOW_RESULT=INCOMPLETE
+    WORKFLOW_REASON=checks-api-failure
+  }
+fi
+
+VERIFIED_PR_HEAD_SHA=$(github_pr "$PR_NUM" | jq -er '.head.sha') || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-metadata-api-failure
+}
+if [ "$VERIFIED_PR_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-head-shift
+fi
+```
+
+Any registration-independent status snapshot failure, REST API failure,
+GraphQL review-thread failure, or head shift is a top-level **Hard Invariant
+Failure** and cannot count as bot approval.
 
 **If ALL detected bots are done:**
 
@@ -87,13 +163,15 @@ The calling workflow's top-level completion criteria own its completion marker.
 
 If any bot hasn't approved yet:
 
-1. **Record baseline:** Get the current count of reviews + thread comments per pending bot.
+1. **Record baseline:** Count REST formal reviews, REST issue comments, and
+   GraphQL review-thread comments per pending bot from the signal data above.
 
 2. **Poll every 15 seconds:**
    ```bash
    sleep 15
    ```
-   Then re-query review/comment counts via the same GraphQL queries.
+   Then refresh the same REST review, REST issue-comment, GraphQL
+   review-thread, and exact-head status data.
 
 3. **Quiet period detection:**
    - If counts changed since last poll → reset quiet timer, bot is still posting. Keep polling.

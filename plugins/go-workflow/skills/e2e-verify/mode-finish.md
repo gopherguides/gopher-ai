@@ -39,7 +39,8 @@ finish action), maps `MODE` to the closing action, and contains the
 For all modes that include the label step:
 
 ```bash
-gh pr edit "$PR_NUM" --add-label "run-full-ci"
+jq -cn '{labels: ["run-full-ci"]}' |
+  gh api --method POST "repos/{owner}/{repo}/issues/$PR_NUM/labels" --input -
 ```
 
 The repo's CI is gated on this label so the full test matrix only runs once
@@ -47,14 +48,41 @@ the verifier has signed off — don't add it earlier in the flow.
 
 ## `fix-and-ship` CI Watch Loop
 
-Run after the label add. Three retries with a short backoff handle the case
-where `gh pr checks --watch` exits before the new CI run is registered.
+Run after the label add. The watcher waits for check registration, pins every
+poll to the exact PR head, and rejects API failures or a head shift.
 
 ```bash
 set_loop_phase "$STATE_FILE" "shipping"
-gh pr edit "$PR_NUM" --add-label "run-full-ci"
-for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --watch && break; done
+PR_JSON=$(github_pr "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=ci-api-failed
+}
+if [ "${WORKFLOW_RESULT:-}" != "INCOMPLETE" ]; then
+  HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON")
+  CHECKS_STATUS=0
+  CHECKS_SNAPSHOT=$(github_watch_pr_checks "$PR_NUM" "$HEAD_SHA") || CHECKS_STATUS=$?
+  if [ "$CHECKS_STATUS" -ne 0 ]; then
+    case "$CHECKS_STATUS" in
+      "$GITHUB_CHECKS_FAILED") WORKFLOW_REASON=ci-checks-failed ;;
+      "$GITHUB_CHECKS_REGISTRATION_TIMEOUT") WORKFLOW_REASON=ci-registration-timeout ;;
+      "$GITHUB_CHECKS_API_ERROR") WORKFLOW_REASON=ci-api-failed ;;
+      "$GITHUB_CHECKS_HEAD_SHIFT") WORKFLOW_REASON=pr-head-shift ;;
+      *) WORKFLOW_REASON=ci-watch-failed ;;
+    esac
+    WORKFLOW_RESULT=INCOMPLETE
+  fi
+fi
+
+if [ "${WORKFLOW_RESULT:-}" = "INCOMPLETE" ]; then
+  echo "WORKFLOW_RESULT=$WORKFLOW_RESULT"
+  echo "WORKFLOW_REASON=$WORKFLOW_REASON"
+  exit 1
+fi
+jq -r '.items[] | "\(.name): \(.state)"' <<< "$CHECKS_SNAPSHOT"
 ```
+
+Every non-success watcher result follows the top-level **Hard Invariant
+Failure** procedure. Do not continue to the ship workflow.
 
 ## Ship Workflow Handoff
 

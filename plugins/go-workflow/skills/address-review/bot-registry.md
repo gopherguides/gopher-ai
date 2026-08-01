@@ -13,10 +13,10 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 
 ## Bot Detection Logic
 
-- **CodeRabbit**: Only bot that uses formal GitHub review states. Query latest review from `coderabbitai[bot]` — if `state == "APPROVED"` → done. This is the most reliable signal.
-- **Greptile**: Uses a **status check** (not review states). Check `gh pr checks` for a Greptile check — if it passes and no new inline comments were posted, Greptile is satisfied.
-- **Copilot**: Always posts `COMMENTED` reviews (never `APPROVED` or `CHANGES_REQUESTED`). If its review body says it "did not comment on any files" or has no inline comments → no issues found. Cannot be re-triggered via comment — must use the re-request review button in the GitHub PR sidebar.
-- **Claude**: Posts `COMMENTED` reviews. If no inline comments above confidence threshold → "No issues found" or no review posted at all. Re-trigger via `@claude` mention.
+- **CodeRabbit**: Only bot that uses formal GitHub review states. Use `github_pr_reviews "$PR_NUM"`, select the newest `coderabbitai[bot]` review by `submitted_at`, and treat `APPROVED` as done.
+- **Greptile**: Uses a **status check** (not review states). Use `github_check_snapshot "$PR_HEAD_SHA"`; a successful Greptile item plus no new inline comments means Greptile is satisfied.
+- **Copilot**: Always posts `COMMENTED` formal reviews (never `APPROVED` or `CHANGES_REQUESTED`). Inspect its REST formal reviews. If its newest body says it "did not comment on any files" or has no inline comments, it found no issues. It cannot be re-triggered via comment; use the re-request review button in the GitHub PR sidebar.
+- **Claude**: Posts `COMMENTED` formal reviews or REST issue comments. If no inline comments above confidence threshold, its signal is "No issues found" or no review. Re-trigger via `@claude` mention.
 
 **Ignore list:** `github-actions[bot]`, `dependabot[bot]`, `renovate[bot]`, `netlify[bot]`, `vercel[bot]` — these are CI/deploy bots, not reviewers.
 
@@ -29,19 +29,23 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 Fetch the current list of unique authors who left reviews or thread comments on this PR:
 
 ```bash
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
+PR_JSON=$(github_pr "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-metadata-api-failure
+}
+OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
+REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
 
-ACTUAL_REVIEWERS=$(gh api graphql -f query='
+FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=review-api-failure
+}
+FORMAL_REVIEWERS=$(jq -r '.[].user.login // empty' <<< "$FORMAL_REVIEWS")
+
+THREAD_RESULT=$(gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
-        reviews(first: 100) {
-          nodes {
-            author { login }
-            state
-          }
-        }
         reviewThreads(first: 100) {
           nodes {
             comments(first: 50) {
@@ -54,15 +58,24 @@ ACTUAL_REVIEWERS=$(gh api graphql -f query='
       }
     }
   }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq -r '
-  [
-    .data.repository.pullRequest.reviews.nodes[].author.login,
-    .data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].author.login
-  ] | unique | .[]
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=review-thread-api-failure
+}
+THREAD_REVIEWERS=$(jq -r '
+  .data.repository.pullRequest.reviewThreads.nodes[]?.comments.nodes[]?.author.login // empty
+' <<< "$THREAD_RESULT")
+
+ACTUAL_REVIEWERS=$(printf '%s\n%s\n' "$FORMAL_REVIEWERS" "$THREAD_REVIEWERS" | jq -Rsc '
+  split("\n") | map(select(length > 0)) | unique | .[]
 ')
 
 echo "Actual reviewers on PR: $ACTUAL_REVIEWERS"
 ```
+
+If PR metadata, formal reviews, or review threads cannot be loaded, follow the
+top-level **Hard Invariant Failure** procedure. An API failure must not produce
+an empty reviewer set.
 
 Cross-reference this list with the Step 3 reviewer list. Only proceed with reviewers that appear in BOTH.
 
@@ -72,7 +85,7 @@ If the reviewer list is empty (no reviewers left feedback), skip this entire ste
 
 ```bash
 REPO_ROOT=$(git rev-parse --show-toplevel)
-if [ -f "$REPO_ROOT/CLAUDE.md" ] && grep -q "DISABLE_BOT_REREVIEW=true" "$REPO_ROOT/CLAUDE.md"; then
+if [ -f "$REPO_ROOT/CLAUDE.md" ] && rg -q "DISABLE_BOT_REREVIEW=true" "$REPO_ROOT/CLAUDE.md"; then
   echo "Bot re-review disabled by project settings"
 fi
 ```
@@ -101,7 +114,8 @@ fi
 For human reviewers from your Step 3 list who left CHANGES_REQUESTED:
 
 ```bash
-gh pr edit "$PR_NUM" --add-reviewer "REVIEWER_USERNAME"
+jq -cn --arg reviewer "REVIEWER_USERNAME" '{reviewers: [$reviewer]}' |
+  gh api --method POST "repos/{owner}/{repo}/pulls/$PR_NUM/requested_reviewers" --input -
 ```
 
 ### 10e. Inform the user
