@@ -209,11 +209,43 @@ and stop before build or E2E testing.
 ### 2a. Code Generation (if applicable)
 
 ```bash
+if ! declare -p GEN_NEW_FILES >/dev/null 2>&1; then
+  GEN_NEW_FILES=()
+fi
 if [ -f "$WORKTREE_PATH/Makefile" ]; then
-  GEN_TARGET=$( (cd "$WORKTREE_PATH" && make -qp 2>/dev/null) | awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' \
-    | grep -E '^(generate|gen|codegen|sqlc|proto|templ)$' | head -1 || true)
+  if [ -z "${GEN_TARGET:-}" ]; then
+    GEN_TARGET=$( (cd "$WORKTREE_PATH" && make -qp 2>/dev/null) | awk -F: '/^[a-zA-Z0-9_-]+:/ {print $1}' \
+      | grep -E '^(generate|gen|codegen|sqlc|proto|templ)$' | head -1 || true)
+    if [ -n "$GEN_TARGET" ]; then
+      GEN_SNAPSHOT_FILES=()
+      while IFS= read -r -d '' SNAPSHOT_FILE; do
+        SNAPSHOT_ALREADY_PRESENT=false
+        if [ "${GEN_SNAPSHOT_FILES[0]+set}" = "set" ]; then
+          for EXISTING_SNAPSHOT_FILE in "${GEN_SNAPSHOT_FILES[@]}"; do
+            if [ "$EXISTING_SNAPSHOT_FILE" = "$SNAPSHOT_FILE" ]; then
+              SNAPSHOT_ALREADY_PRESENT=true
+              break
+            fi
+          done
+        fi
+        if [ "$SNAPSHOT_ALREADY_PRESENT" = "false" ]; then
+          GEN_SNAPSHOT_FILES+=("$SNAPSHOT_FILE")
+        fi
+      done < <(git -C "$WORKTREE_PATH" diff --name-only -z; git -C "$WORKTREE_PATH" ls-files --others --exclude-standard -z)
+      if [ "${GEN_SNAPSHOT_FILES[0]+set}" = "set" ]; then
+        GENERATION_SNAPSHOT_JSON=$(jq -cn '$ARGS.positional' --args "${GEN_SNAPSHOT_FILES[@]}")
+      else
+        GENERATION_SNAPSHOT_JSON='[]'
+      fi
+      if [ -n "${STATE_FILE:-}" ] && [ -f "$STATE_FILE" ]; then
+        TMP="${STATE_FILE}.tmp"
+        jq --arg generation_target "$GEN_TARGET" --argjson generation_snapshot "$GENERATION_SNAPSHOT_JSON" \
+          '.generation_target = $generation_target | .generation_snapshot = $generation_snapshot' \
+          "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+      fi
+    fi
+  fi
   if [ -n "$GEN_TARGET" ]; then
-    GEN_SNAPSHOT=$(printf '%s\n%s' "$(git -C "$WORKTREE_PATH" diff --name-only)" "$(git -C "$WORKTREE_PATH" ls-files --others --exclude-standard)" | sed '/^$/d' | sort -u)
     echo "Running make $GEN_TARGET..."
     if ! (cd "$WORKTREE_PATH" && make "$GEN_TARGET") 2>&1; then
       BUILD_RESULT="fail"
@@ -237,19 +269,69 @@ Check for generated file drift:
 
 ```bash
 if [ -n "$GEN_TARGET" ] && [ -z "${WORKFLOW_REASON:-}" ]; then
-  GEN_MODIFIED=$(git -C "$WORKTREE_PATH" diff --name-only)
-  GEN_UNTRACKED=$(git -C "$WORKTREE_PATH" ls-files --others --exclude-standard)
-  GEN_ALL=$(printf '%s\n%s' "$GEN_MODIFIED" "$GEN_UNTRACKED" | sed '/^$/d' | sort -u)
-  if [ -n "$GEN_SNAPSHOT" ]; then
-    GEN_NEW=$(comm -13 <(echo "$GEN_SNAPSHOT" | sort) <(echo "$GEN_ALL" | sort))
-  else
-    GEN_NEW="$GEN_ALL"
+  GEN_ALL_FILES=()
+  while IFS= read -r -d '' GENERATED_FILE; do
+    GENERATED_ALREADY_PRESENT=false
+    if [ "${GEN_ALL_FILES[0]+set}" = "set" ]; then
+      for EXISTING_GENERATED_FILE in "${GEN_ALL_FILES[@]}"; do
+        if [ "$EXISTING_GENERATED_FILE" = "$GENERATED_FILE" ]; then
+          GENERATED_ALREADY_PRESENT=true
+          break
+        fi
+      done
+    fi
+    if [ "$GENERATED_ALREADY_PRESENT" = "false" ]; then
+      GEN_ALL_FILES+=("$GENERATED_FILE")
+    fi
+  done < <(git -C "$WORKTREE_PATH" diff --name-only -z; git -C "$WORKTREE_PATH" ls-files --others --exclude-standard -z)
+  if [ "${GEN_ALL_FILES[0]+set}" = "set" ]; then
+    for GENERATED_FILE in "${GEN_ALL_FILES[@]}"; do
+      GENERATED_IN_SNAPSHOT=false
+      if [ "${GEN_SNAPSHOT_FILES[0]+set}" = "set" ]; then
+        for SNAPSHOT_FILE in "${GEN_SNAPSHOT_FILES[@]}"; do
+          if [ "$SNAPSHOT_FILE" = "$GENERATED_FILE" ]; then
+            GENERATED_IN_SNAPSHOT=true
+            break
+          fi
+        done
+      fi
+      if [ "$GENERATED_IN_SNAPSHOT" = "false" ]; then
+        GENERATED_ALREADY_OWNED=false
+        if [ "${GEN_NEW_FILES[0]+set}" = "set" ]; then
+          for OWNED_GENERATED_FILE in "${GEN_NEW_FILES[@]}"; do
+            if [ "$OWNED_GENERATED_FILE" = "$GENERATED_FILE" ]; then
+              GENERATED_ALREADY_OWNED=true
+              break
+            fi
+          done
+        fi
+        if [ "$GENERATED_ALREADY_OWNED" = "false" ]; then
+          GEN_NEW_FILES+=("$GENERATED_FILE")
+        fi
+      fi
+    done
   fi
-  if [ -n "$GEN_NEW" ]; then
-    echo "Generated code is stale. Files changed after generation:"
-    echo "$GEN_NEW"
-    echo "Staging regenerated files..."
-    echo "$GEN_NEW" | xargs git -C "$WORKTREE_PATH" add --
+  if [ "${GEN_NEW_FILES[0]+set}" = "set" ]; then
+    echo "Generated code is stale. E2E-owned paths:"
+    printf '%s\n' "${GEN_NEW_FILES[@]}"
+    echo "Keep the generated paths unstaged until the E2E-owned commit."
+  fi
+  if [ -n "${STATE_FILE:-}" ] && [ -f "$STATE_FILE" ]; then
+    if [ "${GEN_NEW_FILES[0]+set}" = "set" ]; then
+      GENERATED_FILES_JSON=$(jq -cn '$ARGS.positional' --args "${GEN_NEW_FILES[@]}")
+    else
+      GENERATED_FILES_JSON='[]'
+    fi
+    TMP="${STATE_FILE}.tmp"
+    if [ "${GEN_SNAPSHOT_FILES[0]+set}" = "set" ]; then
+      GENERATION_SNAPSHOT_JSON=$(jq -cn '$ARGS.positional' --args "${GEN_SNAPSHOT_FILES[@]}")
+    else
+      GENERATION_SNAPSHOT_JSON='[]'
+    fi
+    jq --arg generation_target "$GEN_TARGET" --argjson generation_snapshot "$GENERATION_SNAPSHOT_JSON" \
+      --argjson generated_files "$GENERATED_FILES_JSON" \
+      '.generation_target = $generation_target | .generation_snapshot = $generation_snapshot | .generated_files = $generated_files' \
+      "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
   fi
 fi
 ```

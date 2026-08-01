@@ -10,19 +10,47 @@
 
 ### If no feedback found:
 
-- **If `CURRENT_PHASE` is `fixing` AND `WATCH_MODE` is `true` AND bots detected:** Set phase to `watching`, skip to Step 12:
-  ```bash
-  SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
-  LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
-  if [ -f "$LOOP_STATE_FILE" ]; then
-    source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-    set_loop_phase "$LOOP_STATE_FILE" "watching"
-    echo "Phase set to: watching (post-fix-cycle path)"
-  fi
-  ```
-- **If fresh run (no phase set):** PR already clean → `<done>COMPLETE</done>`.
-- **If `WATCH_MODE` is `true` AND no bots:** → `<done>COMPLETE</done>`.
-- **If `WATCH_MODE` is `false`:** → `<done>COMPLETE</done>`.
+Return structured clean-review state and persist it to the active caller-owned
+state file when one is available:
+
+```bash
+REVIEW_CLEAN=true
+echo "REVIEW_CLEAN=$REVIEW_CLEAN"
+
+SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
+REVIEW_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}}"
+if [ -n "$REVIEW_STATE_FILE" ] && [ -f "$REVIEW_STATE_FILE" ]; then
+  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  set_loop_field "$REVIEW_STATE_FILE" "review_clean" "true"
+  echo "Persisted review_clean=true to $REVIEW_STATE_FILE"
+fi
+```
+
+Skip Steps 4, 4.5, 6, 8, 9, and 10 because there are no edits, tests, commits,
+replies, threads, or re-review requests to process. Continue to Step 5 for
+local verification, then Step 7 for CI, then Step 11 for completion
+verification. Fresh runs, watch mode with no detected bots, and no-watch mode
+all follow these verification gates.
+
+After Step 11 succeeds, a standalone address-review run with
+`CURRENT_PHASE=fixing`, `WATCH_MODE=true`, and detected bots may transition its
+active state to `watching` before entering Step 12:
+
+```bash
+if [ -z "${STATE_FILE:-}" ] &&
+   [ "${CURRENT_PHASE:-}" = "fixing" ] &&
+   [ "${WATCH_MODE:-false}" = "true" ] &&
+   [ -n "${DETECTED_BOTS:-}" ] &&
+   [ -n "${REVIEW_STATE_FILE:-}" ] &&
+   [ -f "$REVIEW_STATE_FILE" ]; then
+  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  set_loop_phase "$REVIEW_STATE_FILE" "watching"
+  echo "Phase set to: watching (post-fix-cycle path)"
+fi
+```
+
+This supporting file never decides the successful terminal outcome. After the
+applicable gates pass, return `REVIEW_CLEAN=true` to the top-level owner.
 
 ### If only pending reviews (no threads):
 
@@ -209,23 +237,35 @@ Store this value for all Step 12 bot checks. Do NOT recompute later.
 ## Step 7: Watch CI
 
 ```bash
-CHECK_STATUS=0
-CHECKS_JSON=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
-case "$CHECK_STATUS" in
-  0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
-  1) echo "CI failed. Analyze and fix every failing check, then commit, push, update PR_HEAD_SHA, and re-watch." ;;
-  2) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-registration-timeout ;;
-  3) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-api-failure ;;
-  4) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=pr-head-shift ;;
-  *) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-unknown-failure ;;
-esac
+CI_PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-metadata-api-failure
+}
+if [ -z "${WORKFLOW_REASON:-}" ]; then
+  PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$CI_PR_JSON") || {
+    WORKFLOW_RESULT=INCOMPLETE
+    WORKFLOW_REASON=invalid-pr-head-metadata
+  }
+fi
+if [ -z "${WORKFLOW_REASON:-}" ]; then
+  CHECK_STATUS=0
+  CHECKS_JSON=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
+  case "$CHECK_STATUS" in
+    0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
+    1) echo "CI failed. Analyze and fix every failing check, then commit, push, update PR_HEAD_SHA, and re-watch." ;;
+    2) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-registration-timeout ;;
+    3) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-api-failure ;;
+    4) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=pr-head-shift ;;
+    *) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-unknown-failure ;;
+  esac
+fi
 ```
 
-For statuses 2-4 or an unknown status, follow the top-level **Hard Invariant
-Failure** procedure. Registration timeout, API failure, and head shift are
-non-success outcomes. If CI fails, analyze, fix, commit, push, update the exact
-head SHA, and re-watch. **Do not proceed until CI is green for
-`PR_HEAD_SHA`.**
+For PR metadata failures, statuses 2-4, or an unknown status, follow the
+top-level **Hard Invariant Failure** procedure. Registration timeout, API
+failure, and head shift are non-success outcomes. If CI fails, analyze, fix,
+commit, push, update the exact head SHA, and re-watch. **Do not proceed until
+CI is green for the freshly resolved `PR_HEAD_SHA`.**
 
 ---
 

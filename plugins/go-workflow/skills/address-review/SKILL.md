@@ -105,19 +105,28 @@ When this skill or a supporting file reports
 `WORKFLOW_RESULT=INCOMPLETE`, persist the supplied reason:
 
 ```bash
+INVARIANT_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-}}"
+if [ -z "$INVARIANT_STATE_FILE" ] || [ ! -f "$INVARIANT_STATE_FILE" ]; then
+  echo "Error: Cannot persist address-review invariant failure without loop state."
+  exit 1
+fi
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-set_loop_field "$LOOP_STATE_FILE" "workflow_result" "incomplete"
-set_loop_field "$LOOP_STATE_FILE" "workflow_reason" "$WORKFLOW_REASON"
-set_loop_phase "$LOOP_STATE_FILE" "incomplete"
-set_loop_field "$LOOP_STATE_FILE" "completion_promise" "INCOMPLETE"
+set_loop_field "$INVARIANT_STATE_FILE" "workflow_result" "incomplete"
+set_loop_field "$INVARIANT_STATE_FILE" "workflow_reason" "$WORKFLOW_REASON"
+set_loop_phase "$INVARIANT_STATE_FILE" "incomplete"
+set_loop_field "$INVARIANT_STATE_FILE" "completion_promise" "INCOMPLETE"
 ```
 
-Output `<done>INCOMPLETE</done>` and stop. Never fetch feedback, edit files,
-push, or output `<done>COMPLETE</done>` from an invariant-failure path.
+An embedded run with `STATE_FILE` set returns the structured incomplete state
+to its top-level caller and emits no terminal marker. A standalone run outputs
+`<done>INCOMPLETE</done>` and stops. Never fetch feedback, edit files, push, or
+output `<done>COMPLETE</done>` from an invariant-failure path.
 
 ## Context & Bot Discovery
 
 Read `setup-and-discovery.md` for REST PR context gathering, mode banner display, and bot discovery from REST formal reviews plus GraphQL review threads. Match discovered authors against `bot-registry.md`.
+Store the matched bot logins in `DETECTED_BOTS`; leave it empty when the
+registry match finds none.
 
 ---
 
@@ -133,6 +142,7 @@ Read `fetch-feedback.md` for GraphQL review threads (line-specific, auto-resolva
 
 Read `fix-cycle.md` for the complete fix cycle:
 - **Step 3:** Categorize comments into Group A (resolvable threads) and Group B (pending reviews)
+- **Clean-review path:** Set `REVIEW_CLEAN=true`, persist `review_clean=true` to the active state, skip inapplicable mutation work, and continue through local verification, CI, and Step 11
 - **Step 4:** Address each comment — parallel dispatch for 3+ comments on different files, sequential otherwise. Understand request, locate code, make minimal fix, validate against feedback
 - **Step 4.5:** Generate tests for testable fixes (read `test-generation.md`)
 - **Step 5:** Verify locally — `go -C "$WORKTREE_PATH" build`, `go -C "$WORKTREE_PATH" test`, and a worktree-scoped `golangci-lint`
@@ -154,45 +164,58 @@ PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
-OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
-REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
+if [ -z "${WORKFLOW_REASON:-}" ]; then
+  PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON") || {
+    WORKFLOW_RESULT=INCOMPLETE
+    WORKFLOW_REASON=invalid-pr-metadata
+  }
+fi
+if [ -z "${WORKFLOW_REASON:-}" ]; then
+  REVIEW_HEAD_EXPECTATION="${EXPECTED_REVIEW_HEAD:-$(git -C "$WORKTREE_PATH" rev-parse HEAD)}"
+fi
+if [ -z "${WORKFLOW_REASON:-}" ] &&
+   [ "$PR_HEAD_SHA" != "$REVIEW_HEAD_EXPECTATION" ]; then
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-head-shift
+fi
+if [ -z "${WORKFLOW_REASON:-}" ]; then
+  OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
+  REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
 
-(cd "$WORKTREE_PATH" && gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        reviewThreads(first: 100) {
-          nodes { isResolved }
+  (cd "$WORKTREE_PATH" && gh api graphql -f query='
+    query($owner: String!, $repo: String!, $pr: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $pr) {
+          reviewThreads(first: 100) {
+            nodes { isResolved }
+          }
         }
       }
     }
-  }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM") | jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved == false)) | length'
+  ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM") | jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved == false)) | length'
+fi
 ```
 
 Pin completion checks to the exact published PR head:
 
 ```bash
-PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON") || {
-  WORKFLOW_RESULT=INCOMPLETE
-  WORKFLOW_REASON=invalid-pr-metadata
-}
-
-CHECK_STATUS=0
-CHECKS_JSON=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
-case "$CHECK_STATUS" in
-  0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
-  1) echo "CI failed. Return to the fix cycle and do not claim completion." ;;
-  2) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-registration-timeout ;;
-  3) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-api-failure ;;
-  4) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=pr-head-shift ;;
-  *) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-unknown-failure ;;
-esac
+if [ -z "${WORKFLOW_REASON:-}" ]; then
+  CHECK_STATUS=0
+  CHECKS_JSON=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
+  case "$CHECK_STATUS" in
+    0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
+    1) echo "CI failed. Return to the fix cycle and do not claim completion." ;;
+    2) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-registration-timeout ;;
+    3) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-api-failure ;;
+    4) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=pr-head-shift ;;
+    *) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-unknown-failure ;;
+  esac
+fi
 ```
 
-For statuses 2-4 or an unknown status, follow **Hard Invariant Failure**. A
-registration timeout, API failure, or PR head shift is never a successful CI
-result.
+For metadata failures, an `EXPECTED_REVIEW_HEAD` mismatch, statuses 2-4, or an
+unknown status, follow **Hard Invariant Failure**. A registration timeout, API
+failure, or PR head shift is never a successful CI result.
 
 ## Step 12: Watch for Bot Re-review
 
@@ -202,10 +225,33 @@ Read `watch-loop.md` for Phase Transition logic, bot polling, quiet period detec
 
 ---
 
+## Embedded Consumer Contract
+
+When ship, e2e-verify, or another workflow executes Steps 2-11, return control
+to the caller after Step 11 and emit no terminal marker. The caller remains the
+top-level owner of its later verification, posting, merge, and completion
+gates.
+
+On the no-feedback path, return `REVIEW_CLEAN=true` and persist
+`review_clean=true` to the caller's `STATE_FILE` when available. Embedded
+consumers skip the inapplicable edit, commit, reply, resolution, and re-review
+steps, but still execute Step 5 local verification, Step 7 CI, and Step 11
+completion verification before regaining control.
+
+---
+
 ## Completion Criteria
 
+The standalone address-review owns its final marker only after Step 11 and all
+applicable completion criteria pass. Embedded consumers follow the contract
+above instead.
+
 ### With `--no-watch`:
-Output `<done>COMPLETE</done>` when: branch rebased, all feedback addressed, fixes validated, local verification passes, changes pushed, CI green, replies posted, threads resolved, re-review requested.
+Output `<done>COMPLETE</done>` when: branch rebased; local verification passes;
+CI is green; Step 11 confirms no unresolved threads; and, when feedback was
+found, all feedback is addressed, fixes are validated and pushed, replies are
+posted, threads are resolved, and re-review is requested. A clean review skips
+only those feedback-specific actions.
 
 ### Default (watch mode):
 All above, PLUS all detected review bots signaled approval per `bot-registry.md`.
