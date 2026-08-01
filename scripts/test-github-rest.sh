@@ -282,41 +282,46 @@ WORKFLOW_PATHS=(
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify"
   "$ROOT_DIR/plugins/go-workflow/skills/complete-issue"
 )
+WORKFLOW_FILES=()
+while IFS= read -r workflow_file; do
+  WORKFLOW_FILES+=("$workflow_file")
+done < <(find "${WORKFLOW_PATHS[@]}" -type f -name '*.md' -print)
 
-checks_calls=$(rg -n 'gh pr checks' "${WORKFLOW_PATHS[@]}" | rg -v 'Avoid|Forbidden|must not|Do not' || true)
+checks_calls=$(grep -nF 'gh pr checks' "${WORKFLOW_FILES[@]}" | grep -vE 'Avoid|Forbidden|must not|Do not' || true)
 if [ -n "$checks_calls" ]; then
   fail "routine gh pr checks calls remain"
 fi
 
-replaceable_views=$(rg -n 'gh pr view.*--json' "${WORKFLOW_PATHS[@]}" | rg -v 'closingIssuesReferences|Avoid|instead of|must not|Do not' || true)
+replaceable_views=$(grep -nE 'gh pr view.*--json' "${WORKFLOW_FILES[@]}" | grep -vE 'closingIssuesReferences|Avoid|instead of|must not|Do not' || true)
 if [ -n "$replaceable_views" ]; then
   fail "replaceable gh pr view --json calls remain"
 fi
 
-routine_cli_calls=$(rg -n 'gh repo view --json|gh pr (checkout|edit)' "${WORKFLOW_PATHS[@]}" || true)
+routine_cli_calls=$(grep -nE 'gh repo view --json|gh pr (checkout|edit)' "${WORKFLOW_FILES[@]}" || true)
 if [ -n "$routine_cli_calls" ]; then
   fail "REST-replaceable repository or PR CLI calls remain"
 fi
 
-review_queries=$(rg -n '(^|[[:space:]])(latestReviews|reviews)\(first:' "${WORKFLOW_PATHS[@]}" || true)
+review_queries=$(grep -nE '(^|[[:space:]])(latestReviews|reviews)\(first:' "${WORKFLOW_FILES[@]}" || true)
 if [ -n "$review_queries" ]; then
   fail "REST-replaceable GraphQL review lists remain"
 fi
 
-merge_calls=$(rg -n 'gh pr merge' "${WORKFLOW_PATHS[@]}" | rg -v 'required merge queue|merge-queue exception' || true)
-merge_command_count=$(printf '%s\n' "$merge_calls" | rg -c 'lib/ship/merge\.md:.*gh pr merge' || true)
+merge_calls=$(grep -nF 'gh pr merge' "${WORKFLOW_FILES[@]}" | grep -vE 'required merge queue|merge-queue exception' || true)
+merge_command_count=$(printf '%s\n' "$merge_calls" | grep -cE 'lib/ship/merge\.md:.*gh pr merge' || true)
 assert_equal "1" "$merge_command_count" "gh pr merge remains only as the queue command"
-if printf '%s\n' "$merge_calls" | rg -v 'lib/ship/merge\.md:.*gh pr merge' | rg -q '.'; then
+unexpected_merge_calls=$(printf '%s\n' "$merge_calls" | grep -vE 'lib/ship/merge\.md:.*gh pr merge' || true)
+if [ -n "$unexpected_merge_calls" ]; then
   fail "gh pr merge remains outside the queue implementation"
 fi
 
-if ! rg -Uq 'if \[ "\$HAS_MERGE_QUEUE" = "true" \]; then\n[[:space:]]+gh pr merge' "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"; then
+if ! tr '\n' ' ' < "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md" | grep -qE 'if \[ "\$HAS_MERGE_QUEUE" = "true" \]; then[[:space:]]+gh pr merge'; then
   fail "queue-only gh pr merge is not structurally guarded"
 fi
-if ! rg -q 'gh api --method PUT "repos/\{owner\}/\{repo\}/pulls/\$PR_NUM/merge"' "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"; then
+if ! grep -qF 'gh api --method PUT "repos/{owner}/{repo}/pulls/$PR_NUM/merge"' "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"; then
   fail "ordinary merge does not use the REST pull merge endpoint"
 fi
-if ! rg -q -- '-f sha="\$HEAD_SHA"' "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"; then
+if ! grep -qF -e '-f sha="$HEAD_SHA"' "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"; then
   fail "ordinary REST merge is not pinned to the expected head SHA"
 fi
 
@@ -325,28 +330,26 @@ for skill_file in \
   "$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md" \
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md" \
   "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"; do
-  if ! rg -q 'source "\$\{CLAUDE_PLUGIN_ROOT\}/lib/github-rest\.sh"' "$skill_file"; then
+  if ! grep -qF 'source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"' "$skill_file"; then
     fail "${skill_file#"$ROOT_DIR"/} does not load the shared REST helper"
   fi
 done
 
-closing_reference_calls=$(rg -n 'gh pr view.*--json closingIssuesReferences' "${WORKFLOW_PATHS[@]}" | wc -l | tr -d ' ')
+closing_reference_calls=$(awk '/gh pr view.*--json closingIssuesReferences/ { count++ } END { print count + 0 }' "${WORKFLOW_FILES[@]}")
 assert_equal "1" "$closing_reference_calls" "closingIssuesReferences is the only gh pr view GraphQL exception"
 
-if ! rg -q 'reviewThreads\(first:' \
-  "$ROOT_DIR/plugins/go-workflow/lib/ship" \
-  "$ROOT_DIR/plugins/go-workflow/skills/address-review"; then
+if ! grep -qE 'reviewThreads\(first:' "${WORKFLOW_FILES[@]}"; then
   fail "GraphQL review-thread discovery was removed"
 fi
-if ! rg -q 'resolveReviewThread' "$ROOT_DIR/plugins/go-workflow/skills/address-review"; then
+if ! grep -qF 'resolveReviewThread' "${WORKFLOW_FILES[@]}"; then
   fail "GraphQL review-thread resolution was removed"
 fi
-if ! rg -Uq 'PR_HEAD_PUSH_TARGET=""(.|\n)*PR_HEAD_PUSH_TARGET="\$\{PR_HEAD_PUSH_TARGET:-\$PR_HEAD_CLONE_URL\}"(.|\n)*git push "\$PR_HEAD_PUSH_TARGET"' \
-  "$ROOT_DIR/plugins/go-workflow/skills/address-review/fix-cycle.md"; then
+if ! tr '\n' ' ' < "$ROOT_DIR/plugins/go-workflow/skills/address-review/fix-cycle.md" \
+  | grep -qE 'PR_HEAD_PUSH_TARGET="".*PR_HEAD_PUSH_TARGET="\$\{PR_HEAD_PUSH_TARGET:-\$PR_HEAD_CLONE_URL\}".*git push "\$PR_HEAD_PUSH_TARGET"'; then
   fail "address-review fix cycles do not re-derive the PR head push target"
 fi
-if ! rg -Uq 'EXPECTED_REMOTE_HEAD_SHA="\$PR_HEAD_SHA"(.|\n)*if \[ "\$PR_HEAD_SHA" != "\$EXPECTED_REMOTE_HEAD_SHA" \](.|\n)*--force-with-lease="refs/heads/\$PR_HEAD_BRANCH:\$EXPECTED_REMOTE_HEAD_SHA"(.|\n)*PUBLISHED_HEAD_SHA' \
-  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-build.md"; then
+if ! tr '\n' ' ' < "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-build.md" \
+  | grep -qE 'EXPECTED_REMOTE_HEAD_SHA="\$PR_HEAD_SHA".*if \[ "\$PR_HEAD_SHA" != "\$EXPECTED_REMOTE_HEAD_SHA" \].*--force-with-lease="refs/heads/\$PR_HEAD_BRANCH:\$EXPECTED_REMOTE_HEAD_SHA".*PUBLISHED_HEAD_SHA'; then
   fail "e2e-verify rebase pushes do not preserve and verify the original PR head lease"
 fi
 
