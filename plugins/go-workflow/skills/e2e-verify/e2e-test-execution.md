@@ -117,6 +117,9 @@ This checklist is what you verify screenshots against. If you can't articulate w
 
 ## 5c. Detect Dev Server
 
+Detect the command beneath `$WORKTREE_PATH` and store the raw executable
+command in `DEV_SERVER_CMD`:
+
 1. Check for Air config: `.air.toml` or `air.toml` → command: `air`
 2. Check `Makefile` for targets: `run`, `serve`, `dev` → command: `make <target>`
 3. Check `package.json` scripts: `dev`, `start` → command: `npm run dev` or `npm start`

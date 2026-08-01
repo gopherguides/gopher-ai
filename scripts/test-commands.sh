@@ -42,9 +42,8 @@ for file in $COMMAND_FILES; do
     continue
   fi
 
-  # Extract frontmatter and check for description field
-  FRONTMATTER=$(sed -n "2,$((CLOSING_LINE - 1))p" "$file")
-  if ! grep -q 'description:' <<< "$FRONTMATTER"; then
+  # Check frontmatter for a description field
+  if ! awk 'NR > 1 && /^---$/ { exit } /^description:/ { found = 1 } END { exit found ? 0 : 1 }' "$file"; then
     INVALID="$INVALID\n  $REL_PATH (missing description field)"
     ERRORS=$((ERRORS + 1))
     continue
@@ -719,10 +718,10 @@ else
     block { print }
   ' "$GEMINI_IMAGE_DIR/request-builder.md" > "$BUILD_BLOCK"
 
-  DEFAULT_REQUEST=$(env -u GEMINI_MODEL -u GEMINI_SERVICE_TIER GEMINI_PROMPT=test bash "$BUILD_BLOCK")
-  UNSUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-3.1-flash-image GEMINI_SERVICE_TIER=priority GEMINI_PROMPT=test bash "$BUILD_BLOCK")
-  SUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=PRIORITY GEMINI_PROMPT=test bash "$BUILD_BLOCK")
-  INVALID_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=express GEMINI_IMAGE_SIZE=4K GEMINI_PROMPT=test bash "$BUILD_BLOCK")
+  DEFAULT_REQUEST=$(env -u GEMINI_MODEL -u GEMINI_SERVICE_TIER GEMINI_PROMPT=test "$BASH" "$BUILD_BLOCK")
+  UNSUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-3.1-flash-image GEMINI_SERVICE_TIER=priority GEMINI_PROMPT=test "$BASH" "$BUILD_BLOCK")
+  SUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=PRIORITY GEMINI_PROMPT=test "$BASH" "$BUILD_BLOCK")
+  INVALID_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=express GEMINI_IMAGE_SIZE=4K GEMINI_PROMPT=test "$BASH" "$BUILD_BLOCK")
 
   if ! grep -q 'os.environ.get("GEMINI_MODEL", "gemini-3\.1-flash-image")' "$GEMINI_IMAGE_DIR/request-builder.md"; then
     echo "FAIL (GA model is not the builder default)"
