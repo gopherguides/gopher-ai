@@ -5,8 +5,12 @@ GitHub has two types: **review threads** (line-specific, auto-resolvable) and **
 ## 2a. Fetch review threads
 
 ```bash
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
+PR_JSON=$(github_pr "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-metadata-api-failure
+}
+OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
+REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
 
 gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
@@ -33,8 +37,27 @@ gh api graphql -f query='
 ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM"
 ```
 
-## 2b. Fetch pending reviews
+## 2b. Fetch pending formal reviews
 
 ```bash
-gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES_REQUESTED")'
+FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=review-api-failure
+}
+
+jq '[
+  .[]
+  | select(.state == "CHANGES_REQUESTED")
+  | {
+      id,
+      body,
+      author: .user.login,
+      submittedAt: .submitted_at,
+      commitId: .commit_id
+    }
+]' <<< "$FORMAL_REVIEWS"
 ```
+
+If the REST review request fails, follow the top-level **Hard Invariant
+Failure** procedure. Missing review data is not equivalent to no pending
+feedback.

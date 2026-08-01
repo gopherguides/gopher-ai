@@ -14,6 +14,7 @@ echo "=== Command File Tests ==="
 "$ROOT_DIR/scripts/test-ship-ollama-model.sh"
 "$ROOT_DIR/scripts/test-review-deep-actions.sh"
 "$ROOT_DIR/scripts/test-decision-gates.sh"
+bash "$ROOT_DIR/scripts/test-github-rest.sh"
 
 # Find all command .md files
 COMMAND_FILES=$(find "$ROOT_DIR/plugins" "$ROOT_DIR/shared" -path "*/commands/*.md" -type f 2>/dev/null | sort)
@@ -43,7 +44,7 @@ for file in $COMMAND_FILES; do
 
   # Extract frontmatter and check for description field
   FRONTMATTER=$(sed -n "2,$((CLOSING_LINE - 1))p" "$file")
-  if ! echo "$FRONTMATTER" | grep -q 'description:'; then
+  if ! rg -q 'description:' <<< "$FRONTMATTER"; then
     INVALID="$INVALID\n  $REL_PATH (missing description field)"
     ERRORS=$((ERRORS + 1))
     continue
@@ -389,8 +390,8 @@ elif [[ "$SHIP_FINAL_CHECKS" != *"WORKFLOW_REASON=unresolved-review-threads"* ]]
      [[ "$SHIP_FINAL_CHECKS" == *"ask how to proceed"* ]]; then
   INVARIANT_FAILURE="ship final review checks do not stop unconditionally"
 elif [[ "$SHIP_MERGEABILITY" == *"AskUserQuestion"* ]] ||
-     [[ "$SHIP_MERGEABILITY" != *"WORKFLOW_REASON=mergeability-unknown"* ]] ||
-     [[ "$SHIP_MERGEABILITY" != *'| `MERGEABLE` | `UNSTABLE` | **STOP.'* ]]; then
+     [[ "$SHIP_MERGEABILITY" != *'WORKFLOW_REASON="mergeability-unknown"'* ]] ||
+     [[ "$SHIP_MERGEABILITY" != *'| `true` | `unstable` | **STOP.'* ]]; then
   INVARIANT_FAILURE="ship mergeability states still permit an invalid merge"
 elif file_contains "commit to main anyway" "$COMMIT_SKILL" ||
      file_contains "default branch. Inform the user and ask how to proceed" "$SHIP_SKILL"; then

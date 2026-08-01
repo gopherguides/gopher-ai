@@ -29,7 +29,7 @@ require_text() {
   local pattern="$2"
   local label="$3"
 
-  if ! grep -qE "$pattern" "$file"; then
+  if ! grep -qE -- "$pattern" "$file"; then
     fail "$label"
   fi
 }
@@ -39,7 +39,7 @@ reject_text() {
   local pattern="$2"
   local label="$3"
 
-  if grep -qE "$pattern" "$file"; then
+  if grep -qE -- "$pattern" "$file"; then
     fail "$label"
   fi
 }
@@ -137,7 +137,13 @@ require_text "$MERGE_DOC" "MERGE_METHOD=\"\\\${SHIP_MERGE_STRATEGY:-}\"" \
 require_text "$MERGE_DOC" "Configured merge strategy.*is not allowed" \
   "ship merge phase must fail when an explicit strategy is forbidden"
 require_text "$MERGE_DOC" "gh pr merge \"\\\$PR_NUM\" --delete-branch" \
-  "ship merge queues must omit the merge-strategy flag"
+  "ship merge queues must use the queue-only CLI exception"
+require_text "$MERGE_DOC" 'gh api --method PUT "repos/\{owner\}/\{repo\}/pulls/\$PR_NUM/merge"' \
+  "ship ordinary merges must use the REST pull merge endpoint"
+require_text "$MERGE_DOC" '-f sha="\$HEAD_SHA"' \
+  "ship ordinary merges must pin the expected head SHA"
+require_text "$MERGE_DOC" '\.merged == true' \
+  "ship ordinary merges must validate the REST merged result"
 
 MERGE_STRATEGY_BLOCK=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-merge-strategy-XXXXXX")
 MERGE_FIXTURE_PLUGIN_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-merge-fixture-XXXXXX")
@@ -166,15 +172,8 @@ run_merge_strategy_fixture() {
     touch "$MERGE_FIXTURE_WORKTREE/.local/state/ship.loop.local.json"
     cd "$MERGE_FIXTURE_WORKTREE"
     gh() {
-      if [ "$1" = "repo" ]; then
-        if [[ "$*" == *".owner.login"* ]]; then
-          echo "example"
-        else
-          echo "project"
-        fi
-      else
-        echo "$MERGE_TEST_SETTINGS"
-      fi
+      jq -cn --argjson settings "$MERGE_TEST_SETTINGS" \
+        "{owner:{login:\"example\"},name:\"project\",allow_merge_commit:\$settings.merge,allow_squash_merge:\$settings.squash,allow_rebase_merge:\$settings.rebase}"
     }
     source "$1"
     printf "%s" "$MERGE_METHOD"
@@ -276,12 +275,8 @@ printf '%s\n' '{"phase":"ci-watch"}' > "$DIRTY_HEAD_SHIFT_TMP/.local/state/ship.
 set +e
 DIRTY_HEAD_SHIFT_OUTPUT=$(cd "$DIRTY_HEAD_SHIFT_TMP" && \
   RESET_MARKER="$DIRTY_HEAD_SHIFT_TMP/reset-attempted" bash -c '
-    gh() {
-      if [[ "$*" == *"headRefOid"* ]]; then
-        printf "%s\n" "new-sha"
-      elif [[ "$*" == *"headRefName"* ]]; then
-        printf "%s\n" "fixture"
-      fi
+    github_pr() {
+      printf "%s\n" '\''{"head":{"sha":"new-sha","ref":"fixture"}}'\''
     }
     git() {
       if [ "$1" = "fetch" ] || [ "$1" = "checkout" ]; then

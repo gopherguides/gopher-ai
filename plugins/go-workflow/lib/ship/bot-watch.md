@@ -6,22 +6,32 @@ Loaded by `skills/ship/SKILL.md` Phase 4.
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/bot-registry.md` for the bot registry table.
 
-Query **all** author sources — formal reviews, review thread comments, AND top-level PR comments — since some bots (e.g., Claude) signal via ordinary PR comments:
+Query all author sources. Formal reviews and top-level PR comments have REST
+endpoints. Review-thread comments remain the GraphQL exception because REST
+cannot discover review threads.
 
 ```bash
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
+if ! FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM"); then
+  WORKFLOW_REASON="bot-reviews-api-error"
+fi
+FORMAL_REVIEW_AUTHORS=$(jq -r '.[].user.login // empty' <<< "$FORMAL_REVIEWS")
 
-BOT_AUTHORS=$(gh api graphql -f query='
+if ! ISSUE_COMMENT_PAGES=$(gh api --paginate --slurp \
+  "repos/{owner}/{repo}/issues/$PR_NUM/comments?per_page=100"); then
+  WORKFLOW_REASON="bot-comments-api-error"
+fi
+TOP_LEVEL_COMMENT_AUTHORS=$(jq -r '.[][]?.user.login // empty' <<< "$ISSUE_COMMENT_PAGES")
+
+if ! REPOSITORY=$(gh api "repos/{owner}/{repo}"); then
+  WORKFLOW_REASON="repository-api-error"
+fi
+OWNER=$(jq -er '.owner.login' <<< "$REPOSITORY")
+REPO=$(jq -er '.name' <<< "$REPOSITORY")
+
+if ! THREAD_COMMENT_AUTHORS=$(gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
-        reviews(first: 100) {
-          nodes {
-            author { login }
-            state
-          }
-        }
         reviewThreads(first: 100) {
           nodes {
             comments(first: 50) {
@@ -31,28 +41,50 @@ BOT_AUTHORS=$(gh api graphql -f query='
             }
           }
         }
-        comments(first: 100) {
-          nodes {
-            author { login }
-          }
-        }
       }
     }
   }
 ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq -r '
-  [
-    .data.repository.pullRequest.reviews.nodes[].author.login,
-    .data.repository.pullRequest.reviewThreads.nodes[].comments.nodes[].author.login,
-    .data.repository.pullRequest.comments.nodes[].author.login
-  ] | unique | .[]
-')
+  .data.repository.pullRequest.reviewThreads.nodes[]?.comments.nodes[]?.author.login // empty
+'); then
+  WORKFLOW_REASON="review-threads-api-error"
+fi
+
+BOT_AUTHORS=$(jq -rn \
+  --arg formal "$FORMAL_REVIEW_AUTHORS" \
+  --arg threads "$THREAD_COMMENT_AUTHORS" \
+  --arg top "$TOP_LEVEL_COMMENT_AUTHORS" '
+    [$formal, $threads, $top]
+    | map(split("\n")[])
+    | map(select(length > 0))
+    | unique[]
+  ')
 ```
 
-Also check PR status checks for bots that signal via commit statuses (e.g., Greptile):
+Each failed API call follows **Hard Invariant Failure** with its supplied
+`WORKFLOW_REASON`; do not interpret missing source data as no configured bot.
+
+Also inspect the exact pushed head for bots that signal only through a check run
+or commit status, such as Greptile:
 
 ```bash
-CHECK_BOTS=$(gh pr checks "$PR_NUM" --json name 2>/dev/null | jq -r '.[].name' 2>/dev/null || true)
+if ! CHECK_SNAPSHOT=$(github_check_snapshot "$HEAD_SHA"); then
+  WORKFLOW_REASON="bot-checks-api-error"
+fi
+if ! PR_JSON=$(github_pr "$PR_NUM"); then
+  WORKFLOW_REASON="bot-pr-api-error"
+fi
+CURRENT_PR_HEAD=$(jq -er '.head.sha' <<< "$PR_JSON")
+if [ "$CURRENT_PR_HEAD" != "$HEAD_SHA" ]; then
+  WORKFLOW_REASON="bot-watch-head-shift"
+fi
+CHECK_BOTS=$(jq -r '.items[].name' <<< "$CHECK_SNAPSHOT")
 ```
+
+An API failure follows **Hard Invariant Failure**. A head shift returns to Step
+10d recovery and never counts the old snapshot as approval. An empty snapshot
+does not satisfy bot approval; it contributes no status-only bot and continues
+through the bounded discovery policy below.
 
 Match both `BOT_AUTHORS` and `CHECK_BOTS` against the bot registry.
 

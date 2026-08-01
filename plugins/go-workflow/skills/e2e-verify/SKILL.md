@@ -14,6 +14,10 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving a missing
 target or other workflow choice.
 
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
+```
+
 ## Core Principle: Visual Verification is Non-Negotiable
 
 **Every screenshot you take MUST be read and visually inspected.** Taking a screenshot without reading it is useless. The entire point of E2E testing is to verify what the USER sees, not just what the DOM contains.
@@ -48,12 +52,23 @@ echo "MODE=$MODE PR_ARG=$PR_ARG"
 ## Resolve PR Number
 
 ```bash
-PR_NUM="${PR_ARG:-$(gh pr view --json number --jq '.number' 2>/dev/null)}"
+PR_JSON=""
+if [ -n "$PR_ARG" ]; then
+  PR_NUM="$PR_ARG"
+  if ! PR_JSON=$(github_pr "$PR_NUM" 2>/dev/null); then
+    echo "Error: PR #$PR_NUM does not exist"
+    exit 1
+  fi
+elif PR_JSON=$(github_current_pr 2>/dev/null); then
+  PR_NUM=$(jq -er '.number' <<< "$PR_JSON")
+else
+  PR_NUM=""
+fi
+
 if [ -z "$PR_NUM" ]; then
   echo "Claude Code: /go-workflow:e2e-verify [PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
   echo "Codex: \$go-workflow:e2e-verify [PR-number] [verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship]"
 else
-  gh pr view "$PR_NUM" --json number >/dev/null 2>&1 || { echo "Error: PR #$PR_NUM does not exist"; exit 1; }
   echo "Working on PR #$PR_NUM in mode: $MODE"
 fi
 ```
@@ -165,8 +180,8 @@ stop. Fix the failure before rerunning.
 set_loop_phase "$STATE_FILE" "investigating"
 ```
 
-1. Read the GitHub issue linked to the PR: `gh pr view "$PR_NUM" --json body,title,url`
-2. Review the implementation against requirements: `git diff "origin/${BASE_BRANCH}...HEAD"`
+1. Refresh the PR metadata with `PR_JSON=$(github_pr "$PR_NUM")`, then read its requirements with `jq -r '"\(.title)\n\n\(.body // \"\")\n\n\(.html_url)"' <<< "$PR_JSON"`.
+2. Review the implementation against requirements: `git diff "${BASE_REMOTE}/${BASE_BRANCH}...HEAD"`
 3. Identify gaps between issue requirements and implementation: missing acceptance criteria, untested edge cases, potential regressions, architectural concerns
 4. Record findings for the PR comment. **Do NOT fix anything — only report.**
 
@@ -181,7 +196,8 @@ set_loop_phase "$STATE_FILE" "e2e-testing"
 Read the PR/issue description first to understand what the change is supposed to look like:
 
 ```bash
-gh pr view "$PR_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"'
+PR_JSON=$(github_pr "$PR_NUM") || { echo "Error: Could not read PR #$PR_NUM"; exit 1; }
+jq -r '"\(.title)\n\n\(.body // \"\")"' <<< "$PR_JSON"
 ```
 
 Read `e2e-test-execution.md` for the full E2E test procedure: MCP availability check, dev-server detection/start, migrations, login flow, **per-route navigate → stabilize → screenshot → READ screenshot → compare to spec → document findings**, cleanup.

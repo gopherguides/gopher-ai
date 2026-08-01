@@ -38,7 +38,7 @@ gate in `SKILL.md` Step 7 can stop the workflow.
 
 ```bash
 if [ -z "$CHANGED_FILES" ]; then
-  CHANGED_FILES=$(git diff --name-only "origin/${BASE_BRANCH}...HEAD")
+  CHANGED_FILES=$(git diff --name-only "${BASE_REMOTE}/${BASE_BRANCH}...HEAD")
 fi
 WEB_CHANGES=$(echo "$CHANGED_FILES" | grep -E '\.(templ|html|tsx|vue|jsx)$' || true)
 HANDLER_CHANGES=$(echo "$CHANGED_FILES" | grep '\.go$' | while IFS= read -r f; do
@@ -83,22 +83,26 @@ reconnection because the selected page and browser state are no longer proven.
 Before touching the browser, understand what you're verifying against. Read the PR description and linked issue to build a mental model of expected visual state:
 
 ```bash
-gh pr view "$PR_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"'
+PR_JSON=$(github_pr "$PR_NUM") || { echo "Error: Could not read PR #$PR_NUM"; exit 1; }
+jq -r '"\(.title)\n\n\(.body // \"\")"' <<< "$PR_JSON"
 ```
 
 If the PR links to an issue, read those too. Use the GitHub API's structured closing references first (most reliable), then fall back to text parsing:
 
+The `closingIssuesReferences` lookup below is the sole GraphQL-only exception
+in this workflow because REST does not expose the PR's structured closing
+references. All fallback content comes from the REST PR metadata already read.
+
 ```bash
-# Strategy 1: GitHub's structured closing references (catches all linking methods)
 ISSUE_NUMS=$(gh pr view "$PR_NUM" --json closingIssuesReferences --jq '.closingIssuesReferences[].number' 2>/dev/null)
 
-# Strategy 2: Fallback to text parsing (case-insensitive, handles owner/repo#N format)
 if [ -z "$ISSUE_NUMS" ]; then
-  ISSUE_NUMS=$(gh pr view "$PR_NUM" --json body --jq '.body' | grep -ioE '(closes|fixes|resolves|close|fix|resolve)\s+([a-z0-9/_-]+)?#[0-9]+' | grep -oE '[0-9]+$')
+  ISSUE_NUMS=$(jq -r '.body // ""' <<< "$PR_JSON" | rg -io '(closes|fixes|resolves|close|fix|resolve)\s+([a-z0-9/_-]+)?#[0-9]+' | rg -o '[0-9]+$' || true)
 fi
 
 for ISSUE_NUM in $ISSUE_NUMS; do
-  gh issue view "$ISSUE_NUM" --json body,title --jq '"\(.title)\n\n\(.body)"' 2>/dev/null
+  ISSUE_JSON=$(gh api "repos/{owner}/{repo}/issues/$ISSUE_NUM" 2>/dev/null) || continue
+  jq -r '"\(.title)\n\n\(.body // \"\")"' <<< "$ISSUE_JSON"
 done
 ```
 

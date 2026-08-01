@@ -14,6 +14,12 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
 choice.
 
+Load the shared GitHub REST helpers before any GitHub workflow operation:
+
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
+```
+
 ## GraphQL Budget Discipline (read first)
 
 GitHub meters **two separate** hourly budgets: ~5,000 **GraphQL points/hr** and
@@ -21,22 +27,22 @@ GitHub meters **two separate** hourly budgets: ~5,000 **GraphQL points/hr** and
 Detent) already spend the GraphQL budget on ProjectV2 polling (Projects v2 is
 GraphQL-only). If this skill *also* leans on GraphQL for routine PR ops, the two
 collide and exhaust the shared pool — a CI-watch loop alone can burn hundreds of
-GraphQL points per PR. **Keep this skill's work on the REST budget:**
+GraphQL points per PR. Keep routine PR work on the REST budget through the
+shared helper:
 
-- **CI status / watch:** `gh api repos/<o>/<r>/commits/<sha>/check-runs` or
-  `gh run watch <run-id> --exit-status`. Avoid looping `gh pr checks --watch` /
-  `gh pr view` to poll CI (GraphQL-routed).
-- **PR / mergeability / state reads:** `gh api repos/<o>/<r>/pulls/<N>` (REST,
-  has `mergeable`/`mergeable_state`) instead of `gh pr view --json` or
-  `gh api graphql` mergeState queries.
-- **Merge:** `gh api --method PUT repos/<o>/<r>/pulls/<N>/merge -f merge_method=<m> -f sha=<sha>`
-  instead of `gh pr merge` (GraphQL).
-- **Reserve GraphQL** only for things with no REST equivalent (ProjectV2
-  fields). If a GraphQL call hits `rate limit exceeded`, the REST budget is
-  almost certainly fine — switch to REST, don't wait for the reset.
+- **CI status / watch:** use `github_watch_pr_checks` or
+  `github_check_snapshot`, always pinned to the expected PR head SHA.
+- **PR metadata:** use `github_current_pr` and `github_pr`.
+- **Formal reviews:** use `github_pr_reviews`.
+- **Mergeability:** read REST `.mergeable` and `.mergeable_state` through
+  `github_pr`.
+- **Ordinary merge:** use the REST pull merge endpoint with `merge_method` and
+  the expected head SHA.
 
-(The same discipline applies to the other go-workflow skills — `e2e-verify`,
-`address-review`, `complete-issue`.)
+The only GraphQL exceptions in these workflows are review-thread discovery and
+resolution, `closingIssuesReferences`, and required merge-queue enqueueing.
+The sibling `e2e-verify`, `address-review`, and `complete-issue` skills source
+the same shared helper and follow this discipline.
 
 ## 0. State File Bootstrap
 
@@ -176,18 +182,27 @@ and report them after the PR is open.
 
 ```bash
 CURRENT_BRANCH=$(git branch --show-current)
-PR_JSON=$(gh pr view --json number,baseRefName --jq '.' 2>/dev/null || echo "")
+LOCAL_HEAD_SHA=$(git rev-parse HEAD)
 
-if [ -n "$PR_JSON" ]; then
+if PR_JSON=$(github_current_pr "$CURRENT_BRANCH" "$LOCAL_HEAD_SHA"); then
   PR_NUM=$(echo "$PR_JSON" | jq -r '.number')
-  BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.baseRefName')
+  BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.base.ref')
   echo "PR #$PR_NUM targets: $BASE_BRANCH"
 else
-  BASE_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' | grep . || echo "main")
+  PR_LOOKUP_STATUS=$?
+  if [ "$PR_LOOKUP_STATUS" -ne 4 ]; then
+    WORKFLOW_REASON="current-pr-api-error"
+  fi
+  BASE_BRANCH=$(gh api "repos/{owner}/{repo}" --jq '.default_branch')
   PR_NUM=""
   echo "No PR found. Base: $BASE_BRANCH"
 fi
 ```
+
+An empty exact-head lookup returns status 4 and means no PR exists yet. Any
+other lookup failure sets `WORKFLOW_REASON=current-pr-api-error`; follow
+**Hard Invariant Failure** and stop rather than treating an API failure as no
+PR.
 
 **CRITICAL:** If `CURRENT_BRANCH == BASE_BRANCH`, set
 `WORKFLOW_REASON=default-branch`, follow **Hard Invariant Failure**, and stop.
@@ -280,7 +295,7 @@ latest pushed `HEAD_SHA` before considering CI as passed. You MUST NOT:
 
 - Assume passing checks from a prior commit apply to the current commit
 - Rationalize that "only a minor fix was pushed so old checks are still valid"
-- Skip SHA verification because `gh pr checks --watch` returned success
+- Skip the post-watch PR head verification
 - Treat "no checks yet" as "checks passed"
 
 The ENTIRE purpose of CI is to validate the EXACT code being merged. Stale check
@@ -293,7 +308,8 @@ active workflow applies to the current PR.
 
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/ci-watch.md` for: HEAD-SHA
 capture-and-verify, the 120s wait for checks to register against the SHA,
-`gh pr checks --watch`, post-watch SHA shift detection (concurrent push →
+combined check-run and commit-status aggregation, post-watch SHA shift
+detection (concurrent push →
 fetch+reset to new HEAD, reset pass counter, set phase to `reviewing`, restart
 from Step 5), and CI failure recovery.
 
@@ -305,9 +321,9 @@ from Step 5), and CI failure recovery.
 set_loop_phase ".local/state/ship.loop.local.json" "bot-watching"
 ```
 
-Discover review bots via the GraphQL query for `reviews + reviewThreads +
-comments` author logins; also check `gh pr checks` names for status-only bots
-(e.g., Greptile). Match against
+Discover review bots from REST formal reviews, REST top-level issue comments,
+and GraphQL review-thread comments; use an exact-head check snapshot for
+status-only bots such as Greptile. Match against
 `${CLAUDE_PLUGIN_ROOT}/skills/address-review/bot-registry.md`. Persist
 `discovered_bots` (comma-separated). If none are found and
 `BOT_REVIEW_BASELINE` is recent (<2 min), follow the bounded automatic wait in
@@ -363,8 +379,8 @@ privileges.
 → Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/merge.md` for: final-checks (CI green, no
 unresolved threads, no human `CHANGES_REQUESTED`), `--no-merge` early exit,
 merge-strategy selection (`SHIP_MERGE_STRATEGY`, then `--squash` > `--rebase` > `--merge`), the full
-`mergeStateStatus` decision tree (`UNKNOWN`/`CONFLICTING`/`BLOCKED`/`CLEAN`/
-`HAS_HOOKS`/`BEHIND`/`UNSTABLE`/other), merge-queue handling, and the
+REST `mergeable_state` decision tree (`unknown`/`dirty`/`blocked`/`clean`/
+`has_hooks`/`behind`/`unstable`/other), merge-queue handling, and the
 summary-line rendering (uses `coverage_skip_reason` to avoid `N/A%`). Output
 `<done>SHIPPED</done>` after the merge succeeds.
 
@@ -393,9 +409,12 @@ from THIS session — actual command output, not narrative:
 - **"Build succeeds"** → `go build ./...` exit 0
 - **"Generation is current"** → configured generation target exits 0 with generated changes included
 - **"Lint passes"** → configured lint command exits 0
-- **"CI passes"** → `gh pr checks` with all checks green
-- **"Bot approvals"** → `gh pr view --json reviews --jq '.reviews[] | {author: .author.login, state: .state}'` with APPROVED
-- **"PR merged"** → merge output or `gh pr view` showing MERGED
+- **"CI passes"** → an exact-head `github_check_snapshot` with all registered
+  items terminal and successful
+- **"Bot approvals"** → `github_pr_reviews` plus the review-thread evidence
+  used by the bot watch
+- **"PR merged"** → validated REST merge output or required merge-queue
+  enqueue output
 
 **Red-flag language check** — if you are about to write "should work" / "should
 be fine" / "probably" / "likely" / "I believe" / "I think" / "Done!" /
@@ -436,6 +455,6 @@ All sibling files live under `${CLAUDE_PLUGIN_ROOT}/lib/ship/`:
 - `local-review.md` — Phase 1 (Steps 5–8): review/fix/verify/coverage/e2e/commit
 - `push-and-pr.md` — Phase 2 (Step 9): push, PR creation, template detection, baseline capture
 - `ci-watch.md` — Phase 3 (Step 10): SHA-anchored CI watch, post-watch shift detection, failure recovery
-- `bot-watch.md` — Phase 4 (Step 11): GraphQL bot discovery, retry-on-empty policy
+- `bot-watch.md` — Phase 4 (Step 11): split REST/GraphQL bot discovery, retry-on-empty policy
 - `address-bots.md` — Phase 5 (Step 12): rebase, address-review delegation, baseline-then-push ordering
-- `merge.md` — Phase 6 (Step 13): final checks, merge strategy detection, mergeStateStatus tree, summary rendering
+- `merge.md` — Phase 6 (Step 13): final checks, merge strategy detection, REST mergeability tree, summary rendering

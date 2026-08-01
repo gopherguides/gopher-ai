@@ -1,22 +1,46 @@
 # Ship — Phase 6: Merge (Step 13)
 
 Loaded by `skills/ship/SKILL.md` Phase 6. Owns the final-checks block, merge
-strategy detection, mergeStateStatus decision tree, and summary rendering.
+strategy detection, REST mergeability decision tree, and summary rendering.
 
 **CRITICAL: NEVER use `--admin` flag. NEVER use any flag/method that bypasses branch protection.** If the merge fails due to protection, STOP and inform the user — do NOT retry with elevated privileges.
 
 ## 13a. Final checks
 
-1. Verify CI is green (skip if `has_ci=false` in state file):
-   `gh pr checks "$PR_NUM"`. If this command is non-zero, set
-   `WORKFLOW_REASON=ci-not-green`, follow the top-level **Hard Invariant
-   Failure** procedure, and stop.
+1. Verify CI is green for the exact expected head, unless `has_ci=false` in the
+   state file:
+
+```bash
+HAS_CI=$(jq -r '.has_ci // empty' ".local/state/ship.loop.local.json")
+HEAD_SHA=$(jq -r '.head_sha // empty' ".local/state/ship.loop.local.json")
+if [ "$HAS_CI" = "true" ]; then
+  if [ -z "$HEAD_SHA" ]; then
+    WORKFLOW_REASON="ci-head-missing"
+  elif ! FINAL_PR=$(github_pr "$PR_NUM"); then
+    WORKFLOW_REASON="ci-pr-api-error"
+  elif [ "$(jq -er '.head.sha' <<< "$FINAL_PR")" != "$HEAD_SHA" ]; then
+    WORKFLOW_REASON="ci-head-shift"
+  elif ! FINAL_CHECKS=$(github_check_snapshot "$HEAD_SHA"); then
+    WORKFLOW_REASON="ci-api-error"
+  elif [ "$(jq '.items | length' <<< "$FINAL_CHECKS")" -eq 0 ]; then
+    WORKFLOW_REASON="ci-checks-not-registered"
+  elif [ "$(jq '[.items[] | select(.terminal == false)] | length' <<< "$FINAL_CHECKS")" -gt 0 ]; then
+    WORKFLOW_REASON="ci-not-complete"
+  elif [ "$(jq '[.items[] | select(.terminal and (.successful | not))] | length' <<< "$FINAL_CHECKS")" -gt 0 ]; then
+    WORKFLOW_REASON="ci-not-green"
+  fi
+fi
+```
+
+Any reason set by this block follows **Hard Invariant Failure**. Missing check
+registration, API failure, and a shifted PR head never count as green CI.
 
 2. Check for unresolved review threads:
 
 ```bash
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
+REPOSITORY=$(gh api "repos/{owner}/{repo}")
+OWNER=$(jq -er '.owner.login' <<< "$REPOSITORY")
+REPO=$(jq -er '.name' <<< "$REPOSITORY")
 UNRESOLVED=$(gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
@@ -30,24 +54,35 @@ UNRESOLVED=$(gh api graphql -f query='
 ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')
 ```
 
-3. Check for **active** human `CHANGES_REQUESTED` (latest review per human, excluding bots):
+3. Check for **active** human `CHANGES_REQUESTED` by computing the latest REST
+review per human:
 
 ```bash
-BLOCKING_HUMANS=$(gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        latestReviews(first: 50) {
-          nodes {
-            author { login }
-            state
-          }
-        }
+if ! FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM"); then
+  WORKFLOW_REASON="reviews-api-error"
+fi
+BLOCKING_HUMANS=$(jq '
+  [
+    .[]
+    | select(.user.type == "User")
+    | select(.user.login | test("\\[bot\\]$"; "i") | not)
+    | {
+        login: .user.login,
+        state: .state,
+        submitted_at: (.submitted_at // ""),
+        id: .id
       }
-    }
-  }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '[.data.repository.pullRequest.latestReviews.nodes[] | select(.state == "CHANGES_REQUESTED") | select(.author.login | test("\\[bot\\]$") | not)] | length')
+  ]
+  | sort_by([.login, .submitted_at, .id])
+  | group_by(.login)
+  | map(last)
+  | [.[] | select(.state == "CHANGES_REQUESTED")]
+  | length
+' <<< "$FORMAL_REVIEWS")
 ```
+
+If the review list cannot be read, follow **Hard Invariant Failure** with
+`WORKFLOW_REASON=reviews-api-error`.
 
 If unresolved threads exist, do not merge:
 
@@ -98,9 +133,12 @@ If `NO_MERGE=true`:
 ## 13c. Auto-detect merge strategy
 
 ```bash
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
-MERGE_SETTINGS=$(gh api "repos/$OWNER/$REPO" --jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}' 2>/dev/null || echo '{}')
+if ! REPOSITORY=$(gh api "repos/{owner}/{repo}"); then
+  WORKFLOW_REASON="repository-api-error"
+fi
+OWNER=$(jq -er '.owner.login' <<< "$REPOSITORY")
+REPO=$(jq -er '.name' <<< "$REPOSITORY")
+MERGE_SETTINGS=$(jq '{merge: .allow_merge_commit, squash: .allow_squash_merge, rebase: .allow_rebase_merge}' <<< "$REPOSITORY")
 
 MERGE_METHOD="${SHIP_MERGE_STRATEGY:-}"
 if [ -n "$MERGE_METHOD" ]; then
@@ -133,6 +171,9 @@ fi
 MERGE_FLAG="--$MERGE_METHOD"
 ```
 
+If repository metadata cannot be read, follow **Hard Invariant Failure** with
+`WORKFLOW_REASON=repository-api-error` before selecting a merge strategy.
+
 `SHIP_MERGE_STRATEGY` is the explicit per-project policy and must be `merge`,
 `squash`, or `rebase`. Ship uses it exactly when the repository allows it and
 stops with an error otherwise. Without an explicit policy, prefer squash >
@@ -140,43 +181,59 @@ rebase > merge.
 
 ## 13d. Branch protection mergeability check
 
-Query GitHub's mergeability status:
+GitHub computes REST mergeability asynchronously. Retry a bounded number of
+times while `.mergeable` is null or `.mergeable_state` is missing/unknown, and
+pin every read to `HEAD_SHA`:
 
 ```bash
-MERGE_STATE=$(gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        mergeStateStatus
-        mergeable
-      }
-    }
-  }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" --jq '.data.repository.pullRequest')
+MERGEABLE="null"
+STATE_STATUS="unknown"
+for ATTEMPT in $(seq 1 6); do
+  if ! MERGE_STATE=$(github_pr "$PR_NUM"); then
+    WORKFLOW_REASON="mergeability-api-error"
+    break
+  fi
+  if [ "$(jq -er '.head.sha' <<< "$MERGE_STATE")" != "$HEAD_SHA" ]; then
+    WORKFLOW_REASON="merge-head-shift"
+    break
+  fi
+  MERGEABLE=$(jq -r 'if .mergeable == null then "null" else .mergeable end' <<< "$MERGE_STATE")
+  STATE_STATUS=$(jq -r '(.mergeable_state // "unknown") | ascii_downcase' <<< "$MERGE_STATE")
+  if [ "$MERGEABLE" != "null" ] && [ "$STATE_STATUS" != "unknown" ]; then
+    break
+  fi
+  if [ "$ATTEMPT" -lt 6 ]; then
+    sleep 5
+  fi
+done
 
-MERGEABLE=$(echo "$MERGE_STATE" | jq -r '.mergeable')
-STATE_STATUS=$(echo "$MERGE_STATE" | jq -r '.mergeStateStatus')
+if [ -z "${WORKFLOW_REASON:-}" ] && { [ "$MERGEABLE" = "null" ] || [ "$STATE_STATUS" = "unknown" ]; }; then
+  WORKFLOW_REASON="mergeability-unknown"
+fi
 
-# Check if repo uses a merge queue (URL-encode branch name for slash-containing branches)
 ENCODED_BRANCH=$(printf '%s' "$BASE_BRANCH" | jq -sRr @uri)
-HAS_MERGE_QUEUE=$(gh api "repos/$OWNER/$REPO/rules/branches/$ENCODED_BRANCH" 2>/dev/null | jq '[.[] | select(.type == "merge_queue")] | length > 0' 2>/dev/null || echo "false")
+if ! BRANCH_RULES=$(gh api "repos/$OWNER/$REPO/rules/branches/$ENCODED_BRANCH"); then
+  WORKFLOW_REASON="merge-queue-api-error"
+else
+  HAS_MERGE_QUEUE=$(jq '[.[] | select(.type == "merge_queue")] | length > 0' <<< "$BRANCH_RULES")
+fi
 ```
 
-GitHub computes mergeability asynchronously — `UNKNOWN` is a transient state after pushes or check completions.
+If this block sets `WORKFLOW_REASON`, follow **Hard Invariant Failure** before
+evaluating the table.
 
 ### Decision tree (strict — do not invent reasons to merge for unhandled states)
 
 | `MERGEABLE` | `STATE_STATUS` | Action |
 |-------------|----------------|--------|
-| any | `UNKNOWN` | Retry up to 6 times (5s apart). If still `UNKNOWN`, **STOP.** Set `WORKFLOW_REASON=mergeability-unknown`. |
-| `UNKNOWN` | any | Same bounded retry, then stop with `WORKFLOW_REASON=mergeability-unknown`. |
-| `CONFLICTING` | any | **STOP.** Set `WORKFLOW_REASON=merge-conflict`. |
-| any | `BLOCKED` (with `HAS_MERGE_QUEUE=true`) | Proceed — `gh pr merge` will enqueue. |
-| any | `BLOCKED` (no merge queue) | **STOP.** Set `WORKFLOW_REASON=branch-protection-blocked`. |
-| any | `CLEAN` or `HAS_HOOKS` | Proceed — all checks passed and requirements satisfied. |
-| `MERGEABLE` | `BEHIND` | Proceed. `BEHIND` only means base moved forward; GitHub still allows merging unless the repo requires up-to-date branches (caught by 13e on failure). |
-| `MERGEABLE` | `UNSTABLE` | **STOP.** Set `WORKFLOW_REASON=mergeability-unstable`; every reported check must be green. |
-| any | other (`DIRTY`, `DRAFT`, etc.) | **STOP.** Set `WORKFLOW_REASON=pr-not-ready`. |
+| `false` | any | **STOP.** Set `WORKFLOW_REASON=merge-conflict`. |
+| any | `dirty` | **STOP.** Set `WORKFLOW_REASON=merge-conflict`. |
+| any | `blocked` with `HAS_MERGE_QUEUE=true` | Proceed to required queue enqueueing. |
+| any | `blocked` without a merge queue | **STOP.** Set `WORKFLOW_REASON=branch-protection-blocked`. |
+| `true` | `clean` or `has_hooks` | Proceed. |
+| `true` | `behind` | Proceed; the SHA-pinned merge endpoint enforces current server policy. |
+| `true` | `unstable` | **STOP.** Set `WORKFLOW_REASON=mergeability-unstable`. |
+| any | other | **STOP.** Set `WORKFLOW_REASON=pr-not-ready`. |
 
 For every STOP row:
 
@@ -190,13 +247,22 @@ bypass and do not output `<done>SHIPPED</done>`.
 
 ## 13e. Merge the PR
 
-For merge-queue repos, omit the strategy flag — `gh pr merge` will enqueue automatically:
+The CLI call below is the required merge-queue exception because GitHub has no
+REST enqueue endpoint. Ordinary merges use the SHA-pinned REST endpoint and
+validate its `.merged` result.
 
 ```bash
 if [ "$HAS_MERGE_QUEUE" = "true" ]; then
   gh pr merge "$PR_NUM" --delete-branch
 else
-  gh pr merge "$PR_NUM" $MERGE_FLAG --delete-branch
+  if ! MERGE_RESULT=$(gh api --method PUT "repos/{owner}/{repo}/pulls/$PR_NUM/merge" \
+    -f merge_method="$MERGE_METHOD" \
+    -f sha="$HEAD_SHA"); then
+    WORKFLOW_REASON="merge-command-failed"
+  elif ! jq -e '.merged == true' <<< "$MERGE_RESULT" >/dev/null; then
+    jq -r '.message // "GitHub did not merge the pull request"' <<< "$MERGE_RESULT" >&2
+    WORKFLOW_REASON="merge-command-failed"
+  fi
 fi
 ```
 

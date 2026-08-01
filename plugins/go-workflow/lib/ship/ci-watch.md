@@ -5,7 +5,13 @@ Loaded by `skills/ship/SKILL.md` Phase 3. Owns SHA-anchored CI watching.
 ## 10a. Capture and verify HEAD SHA
 
 ```bash
-HAS_WORKFLOWS=$(find .github/workflows -maxdepth 1 -name '*.yml' -o -name '*.yaml' 2>/dev/null | head -1)
+HAS_WORKFLOWS=""
+for WORKFLOW_FILE in .github/workflows/*.yml .github/workflows/*.yaml; do
+  if [ -f "$WORKFLOW_FILE" ]; then
+    HAS_WORKFLOWS="$WORKFLOW_FILE"
+    break
+  fi
+done
 ```
 
 If no workflow files exist → persist `has_ci: false`,
@@ -23,29 +29,51 @@ fi
 echo "Watching CI for commit: $HEAD_SHA"
 ```
 
-## 10b. Wait for checks to register for the correct SHA
+## 10b. Watch every check source for the correct SHA
 
-Poll until GitHub reports checks for `HEAD_SHA` (up to 120s). `pull_request`-triggered checks run on a merge commit, not the PR head SHA — use the REST API which reliably reports check runs for a specific commit:
+Use the shared watcher. It provides the bounded registration window, combines
+check runs with legacy commit statuses, waits through a stability window for
+late registrations, aggregates every terminal failure, and verifies the PR
+head after watching.
 
 ```bash
-CI_READY=false
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
-for i in $(seq 1 12); do
-  CHECK_COUNT=$(gh api "repos/$OWNER/$REPO/commits/$HEAD_SHA/check-runs" \
-    --jq '.total_count' 2>/dev/null || echo "0")
-  if [ "$CHECK_COUNT" -gt 0 ]; then
-    CI_READY=true
-    break
-  fi
-  echo "No checks for $HEAD_SHA yet... ($i/12)"
-  sleep 10
-done
+if CI_SNAPSHOT=$(github_watch_pr_checks "$PR_NUM" "$HEAD_SHA"); then
+  CI_STATUS=0
+else
+  CI_STATUS=$?
+fi
+
+case "$CI_STATUS" in
+  0)
+    HAS_CI=true
+    CI_SKIP_REASON=""
+    ;;
+  "$GITHUB_CHECKS_FAILED")
+    HAS_CI=true
+    ;;
+  "$GITHUB_CHECKS_REGISTRATION_TIMEOUT")
+    HAS_CI=registration-timeout
+    ;;
+  "$GITHUB_CHECKS_API_ERROR")
+    WORKFLOW_REASON="ci-api-error"
+    ;;
+  "$GITHUB_CHECKS_HEAD_SHIFT")
+    WORKFLOW_REASON="ci-head-shift"
+    ;;
+  *)
+    WORKFLOW_REASON="ci-watch-unknown-error"
+    ;;
+esac
 ```
 
-When checks register, persist `has_ci: true` and clear `ci_skip_reason`.
+On status 0, persist `has_ci: true`, clear `ci_skip_reason`, display
+`CI_SNAPSHOT`, and continue to Step 11. On `GITHUB_CHECKS_FAILED`, display the
+full snapshot and continue to Step 10e. On `GITHUB_CHECKS_HEAD_SHIFT`, continue
+to Step 10d. On `GITHUB_CHECKS_API_ERROR` or an unknown status, follow **Hard
+Invariant Failure** immediately with the supplied reason. Never treat an API
+failure or head shift as passing CI.
 
-If checks do not register after 120s, determine whether any workflow can
+On `GITHUB_CHECKS_REGISTRATION_TIMEOUT`, determine whether any workflow can
 produce a check for this PR before stopping:
 
 1. Read the PR base branch, head branch, and changed paths.
@@ -81,19 +109,22 @@ If applicability cannot be determined from workflow state, triggers, filters,
 callers, and changed paths, stop incomplete with
 `WORKFLOW_REASON=ci-applicability-unknown`. Do not guess that CI is absent.
 
-## 10c. Watch checks for the correct SHA
+## 10c. Record the exact-head result
 
-```bash
-gh pr checks "$PR_NUM" --watch
-```
+Persist `has_ci` and `ci_skip_reason` only after applying the Step 10b outcome.
+The successful snapshot is the fresh CI evidence for this session.
 
 ## 10d. Post-watch SHA validation
 
-After `--watch` completes, verify the PR head hasn't shifted (a concurrent push could have advanced it):
+When the helper reports `GITHUB_CHECKS_HEAD_SHIFT`, or when explicitly
+revalidating after the watch, read the PR through the shared REST helper:
 
 ```bash
-FINAL_SHA=$(gh pr view "$PR_NUM" --json headRefOid --jq '.headRefOid' 2>/dev/null || true)
-if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
+if ! FINAL_PR=$(github_pr "$PR_NUM"); then
+  WORKFLOW_REASON="ci-post-watch-api-error"
+fi
+FINAL_SHA=$(jq -er '.head.sha' <<< "$FINAL_PR")
+if [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   echo "STOP: PR head shifted to SHA $FINAL_SHA during watch (expected $HEAD_SHA)."
   echo "A new commit landed on this PR that was NOT reviewed locally."
   echo "Restarting from review phase against the new HEAD."
@@ -104,7 +135,7 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   fi
   HEAD_SHA="$FINAL_SHA"
   BRANCH_REMOTE=$(git config "branch.$(git branch --show-current).remote" 2>/dev/null || echo "origin")
-  PR_HEAD_BRANCH=$(gh pr view "$PR_NUM" --json headRefName --jq '.headRefName')
+  PR_HEAD_BRANCH=$(jq -er '.head.ref' <<< "$FINAL_PR")
   git fetch "$BRANCH_REMOTE" "$PR_HEAD_BRANCH"
   git checkout "$PR_HEAD_BRANCH"
   git reset --hard "$BRANCH_REMOTE/$PR_HEAD_BRANCH"
@@ -112,9 +143,12 @@ if [ -n "$FINAL_SHA" ] && [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   jq --arg sha "$HEAD_SHA" --argjson pass 0 --arg rc "" --arg phase "review-required" \
     '.head_sha = $sha | .pass = $pass | .review_clean = $rc | .phase = $phase' \
     ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
-  # Go back to Step 5, which marks the review in-flight before dispatch.
 fi
 ```
+
+If the PR read fails, follow **Hard Invariant Failure** with
+`WORKFLOW_REASON=ci-post-watch-api-error`. A missing head SHA is an API/schema
+failure, not a successful watch.
 
 The dirty-tree check reapplies Step 3's driver-resolvable ownership policy
 during recovery. Inspect the diff and original workflow scope. Commit only
@@ -134,7 +168,8 @@ recovery applies.
 
 If CI fails:
 
-1. Analyze: `gh pr checks "$PR_NUM" --json name,state,description`
+1. Analyze every unsuccessful item in `CI_SNAPSHOT`:
+   `jq '.items[] | select(.terminal and (.successful | not))' <<< "$CI_SNAPSHOT"`
 2. Fix the issue
 3. Commit
 4. Push: `git push`

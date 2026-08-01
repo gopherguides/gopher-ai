@@ -14,6 +14,10 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
 choice.
 
+```bash
+source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
+```
+
 ## Output Durability
 
 Replies to review comments and any new commit messages describe what behavior changed and why, not file paths or line numbers. A reviewer reading the reply six months later, after the file in question has moved, must still understand what was fixed.
@@ -23,7 +27,8 @@ Replies to review comments and any new commit messages describe what behavior ch
 Auto-detect PR from current branch:
 
 ```bash
-gh pr view --json number --jq '.number' 2>/dev/null
+CURRENT_PR_JSON=$(github_current_pr 2>/dev/null) || true
+jq -r '.number' <<< "$CURRENT_PR_JSON" 2>/dev/null
 ```
 
 If no PR is found, display usage:
@@ -59,12 +64,19 @@ echo "WATCH_MODE=$WATCH_MODE PR_ARG=$PR_ARG"
 
 ## Security Validation
 
-!if [ -n "$PR_ARG" ] && ! echo "$PR_ARG" | grep -qE '^[0-9]+$'; then echo "Error: PR number must be numeric"; exit 1; fi
+!if [ -n "$PR_ARG" ] && ! echo "$PR_ARG" | rg -q '^[0-9]+$'; then echo "Error: PR number must be numeric"; exit 1; fi
 
 ## Resolve PR Number
 
 ```bash
-RESOLVED_PR="${PR_ARG:-$(gh pr view --json number --jq '.number' 2>/dev/null || echo 'auto')}"
+if [ -n "$PR_ARG" ]; then
+  RESOLVED_PR="$PR_ARG"
+elif CURRENT_PR_JSON=$(github_current_pr 2>/dev/null); then
+  RESOLVED_PR=$(jq -er '.number' <<< "$CURRENT_PR_JSON")
+else
+  RESOLVED_PR="auto"
+fi
+PR_NUM="$RESOLVED_PR"
 echo "Resolved PR: $RESOLVED_PR"
 ```
 
@@ -93,17 +105,17 @@ push, or output `<done>COMPLETE</done>` from an invariant-failure path.
 
 ## Context & Bot Discovery
 
-Read `setup-and-discovery.md` for PR context gathering, mode banner display, and bot discovery via GraphQL. Match discovered authors against `bot-registry.md`.
+Read `setup-and-discovery.md` for REST PR context gathering, mode banner display, and bot discovery from REST formal reviews plus GraphQL review threads. Match discovered authors against `bot-registry.md`.
 
 ---
 
 ## Step 1: Checkout PR Branch and Rebase
 
-Read `checkout-rebase.md` for the full procedure: checkout via `gh pr checkout`, detect base remote, check if behind, rebase + force-push if needed, wait for CI after rebase.
+Read `checkout-rebase.md` for the full procedure: fetch and checkout the REST-declared PR head without overwriting local work, preserve fork/base metadata, check if behind, rebase + force-push if needed, and wait for CI after rebase.
 
 ## Step 2: Fetch All Review Feedback
 
-Read `fetch-feedback.md` for GraphQL queries to fetch review threads (line-specific, auto-resolvable) and pending reviews (CHANGES_REQUESTED).
+Read `fetch-feedback.md` for GraphQL review threads (line-specific, auto-resolvable) and REST formal reviews (CHANGES_REQUESTED).
 
 ## Steps 3-9: Fix Cycle
 
@@ -126,8 +138,12 @@ Read `bot-registry.md` for the full re-review procedure (Steps 10a-10e) includin
 Confirm all resolvable threads are resolved and CI is passing:
 
 ```bash
-OWNER=$(gh repo view --json owner --jq '.owner.login')
-REPO=$(gh repo view --json name --jq '.name')
+PR_JSON=$(github_pr "$PR_NUM") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=pr-metadata-api-failure
+}
+OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
+REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
 
 gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
@@ -142,7 +158,29 @@ gh api graphql -f query='
 ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved == false)) | length'
 ```
 
-Confirm CI: `gh pr checks "$PR_NUM"`
+Pin completion checks to the exact published PR head:
+
+```bash
+PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=invalid-pr-metadata
+}
+
+CHECK_STATUS=0
+CHECKS_JSON=$(github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
+case "$CHECK_STATUS" in
+  0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
+  1) echo "CI failed. Return to the fix cycle and do not claim completion." ;;
+  2) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-registration-timeout ;;
+  3) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-api-failure ;;
+  4) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=pr-head-shift ;;
+  *) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-unknown-failure ;;
+esac
+```
+
+For statuses 2-4 or an unknown status, follow **Hard Invariant Failure**. A
+registration timeout, API failure, or PR head shift is never a successful CI
+result.
 
 ## Step 12: Watch for Bot Re-review
 
