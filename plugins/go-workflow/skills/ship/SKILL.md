@@ -51,25 +51,56 @@ phase (re-entry). If so, **skip** setup-loop to preserve custom fields (`args`,
 `pass`, `pr_number`, `base_branch`, `no_merge`, `llm`, `discovered_bots`).
 
 ```bash
-STATE_FILE=".local/state/ship.loop.local.json"
+CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
+ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print; exit}')
+WORKTREE_PATH="${WORKTREE_PATH:-$CURRENT_CHECKOUT_ROOT}"
+if [ -z "$ORIGINAL_REPO_ROOT" ] || [ "${ORIGINAL_REPO_ROOT#/}" = "$ORIGINAL_REPO_ROOT" ] ||
+   [ -z "$WORKTREE_PATH" ] || [ "${WORKTREE_PATH#/}" = "$WORKTREE_PATH" ] || [ ! -d "$WORKTREE_PATH" ]; then
+  echo "ERROR: Could not resolve absolute repository paths."
+  exit 1
+fi
+STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/ship.loop.local.json"
+CURRENT_REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
+EXISTING_PHASE=""
 if [ -f "$STATE_FILE" ]; then
   EXISTING_PHASE=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null || true)
-  if [ -n "$EXISTING_PHASE" ]; then
-    echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop to preserve state."
+fi
+if [ -n "$EXISTING_PHASE" ]; then
+  PERSISTED_ORIGINAL_REPO_ROOT=$(jq -r '.original_repo_root // empty' "$STATE_FILE" 2>/dev/null || true)
+  PERSISTED_WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$STATE_FILE" 2>/dev/null || true)
+  PERSISTED_REPO_SLUG=$(jq -r '.repo_slug // empty' "$STATE_FILE" 2>/dev/null || true)
+  REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print}')
+  if [ "$PERSISTED_ORIGINAL_REPO_ROOT" != "$ORIGINAL_REPO_ROOT" ] ||
+     [ -z "$PERSISTED_WORKTREE_PATH" ] ||
+     [ "${PERSISTED_WORKTREE_PATH#/}" = "$PERSISTED_WORKTREE_PATH" ] ||
+     [ ! -d "$PERSISTED_WORKTREE_PATH" ] ||
+     ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v path="$PERSISTED_WORKTREE_PATH" '$0 == path { found = 1 } END { exit !found }' ||
+     [ "$PERSISTED_REPO_SLUG" != "$CURRENT_REPO_SLUG" ]; then
+    TMP="${STATE_FILE}.tmp"
+    jq '.workflow_result = "incomplete" | .workflow_reason = "ship-worktree-path-invalid" | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+    echo "WORKFLOW_RESULT=INCOMPLETE"
+    echo "WORKFLOW_REASON=ship-worktree-path-invalid"
+    echo "<done>INCOMPLETE</done>"
+    exit 1
   fi
+  WORKTREE_PATH="$PERSISTED_WORKTREE_PATH"
+  REPO_SLUG="$PERSISTED_REPO_SLUG"
+  echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop to preserve state."
+else
+  REPO_SLUG="${REPO_SLUG:-$CURRENT_REPO_SLUG}"
 fi
 ```
 
 Only call setup-loop on fresh starts (no state file or empty phase):
 
 ```bash
-if [ -f ".local/state/ship.loop.local.json" ] && [ -n "$(jq -r '.phase // empty' .local/state/ship.loop.local.json 2>/dev/null)" ]; then
+if [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
   echo "Re-entry detected — skipping setup-loop."
 elif [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then
   echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."
   exit 1
 else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" "$(jq -c . "${CLAUDE_PLUGIN_ROOT}/lib/ship/resume-messages.json")"
+  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" "$(jq -c . "${CLAUDE_PLUGIN_ROOT}/lib/ship/resume-messages.json")" "$STATE_FILE"
 fi
 ```
 
@@ -91,7 +122,7 @@ Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`,
 `LLM_EXPLICIT=true` only when `$ARGUMENTS` contains `--llm`; otherwise it is
 `false`.
 
-Persist arguments to `.local/state/ship.loop.local.json` via `jq` so the
+Persist arguments to `$STATE_FILE` via `jq` so the
 stop-hook can recover all fields on re-entry. The full jq invocation lives in
 `${CLAUDE_PLUGIN_ROOT}/lib/ship/state-fields.md` — fields written: `args`,
 `llm`, `pass`, `no_merge`, `pr_number`, `base_branch`,
@@ -109,10 +140,10 @@ When this skill or a supporting file says to stop incomplete, set the supplied
 reason code as `WORKFLOW_REASON`, then persist the machine-readable outcome:
 
 ```bash
-TMP=".local/state/ship.loop.local.json.tmp"
+TMP="${STATE_FILE}.tmp"
 jq --arg reason "$WORKFLOW_REASON" \
   '.workflow_result = "incomplete" | .workflow_reason = $reason | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' \
-  ".local/state/ship.loop.local.json" > "$TMP" && mv "$TMP" ".local/state/ship.loop.local.json"
+  "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
 Report `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=$WORKFLOW_REASON`,
@@ -123,8 +154,9 @@ the invariant and never output `<done>SHIPPED</done>` on this path.
 
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
-STATE_FILE=".local/state/ship.loop.local.json"
 [ -f "$STATE_FILE" ] && read_loop_state "$STATE_FILE"
+WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$STATE_FILE")
+REPO_SLUG=$(jq -r '.repo_slug // empty' "$STATE_FILE")
 ```
 
 If `PHASE` is set (non-empty), this is a stop-hook re-entry. Restore all fields
@@ -181,10 +213,10 @@ and report them after the PR is open.
 ## 3. Detect Context
 
 ```bash
-CURRENT_BRANCH=$(git branch --show-current)
-LOCAL_HEAD_SHA=$(git rev-parse HEAD)
+CURRENT_BRANCH=$(git -C "$WORKTREE_PATH" branch --show-current)
+LOCAL_HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
 
-if PR_JSON=$(github_current_pr "$CURRENT_BRANCH" "$LOCAL_HEAD_SHA"); then
+if PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr "$CURRENT_BRANCH" "$LOCAL_HEAD_SHA"); then
   PR_NUM=$(echo "$PR_JSON" | jq -r '.number')
   BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.base.ref')
   echo "PR #$PR_NUM targets: $BASE_BRANCH"
@@ -193,7 +225,7 @@ else
   if [ "$PR_LOOKUP_STATUS" -ne 4 ]; then
     WORKFLOW_REASON="current-pr-api-error"
   fi
-  BASE_BRANCH=$(gh api "repos/{owner}/{repo}" --jq '.default_branch')
+  BASE_BRANCH=$(gh api "repos/$REPO_SLUG" --jq '.default_branch')
   PR_NUM=""
   echo "No PR found. Base: $BASE_BRANCH"
 fi
@@ -208,7 +240,7 @@ PR.
 `WORKFLOW_REASON=default-branch`, follow **Hard Invariant Failure**, and stop.
 Do not ship from the default branch.
 
-If `git status --porcelain` shows uncommitted changes, resolve a
+If `git -C "$WORKTREE_PATH" status --porcelain` shows uncommitted changes, resolve a
 **driver-resolvable gate**. Inspect the diff, staged state, original request,
 and workflow-owned file list:
 
@@ -263,7 +295,7 @@ fixed files (never `git add -A`).
 paths (codex exhaustive/quick, fable Claude-subagent, gemini, ollama,
 agent-based fallback), structured-JSON vs free-text parsing,
 `confidence_score < 0.3` filter, codegen-drift check
-(`make generate|gen|codegen|sqlc|proto|templ`), E2E skip conditions, and the
+(Make targets `generate`, `gen`, `codegen`, `sqlc`, `proto`, or `templ`), E2E skip conditions, and the
 staged-commit + pass-counter increment.
 
 ---
@@ -271,7 +303,7 @@ staged-commit + pass-counter increment.
 ## Phase 2: Push and PR Creation (Step 9)
 
 ```bash
-set_loop_phase ".local/state/ship.loop.local.json" "pushing"
+set_loop_phase "$STATE_FILE" "pushing"
 ```
 
 Push to remote (use the configured tracking remote and PR `headRefName`), ensure
@@ -287,7 +319,7 @@ creation logic, template detection, and the post-push capture block.
 ## Phase 3: CI Watch (Step 10)
 
 ```bash
-set_loop_phase ".local/state/ship.loop.local.json" "ci-watch"
+set_loop_phase "$STATE_FILE" "ci-watch"
 ```
 
 **MANDATORY — NO EXCEPTIONS:** You MUST verify that CI checks correspond to the
@@ -318,7 +350,7 @@ from Step 5), and CI failure recovery.
 ## Phase 4: Bot Watch (Step 11)
 
 ```bash
-set_loop_phase ".local/state/ship.loop.local.json" "bot-watching"
+set_loop_phase "$STATE_FILE" "bot-watching"
 ```
 
 Discover review bots from REST formal reviews, REST top-level issue comments,
@@ -345,10 +377,10 @@ and the bot-not-detected-yet retry policy.
 ## Phase 5: Address Bot Feedback (Step 12)
 
 ```bash
-set_loop_phase ".local/state/ship.loop.local.json" "addressing"
+set_loop_phase "$STATE_FILE" "addressing"
 ```
 
-Fetch and rebase against base (`git fetch origin "$BASE_BRANCH" && git rebase
+Fetch and rebase against base (`git -C "$WORKTREE_PATH" fetch origin "$BASE_BRANCH" && git -C "$WORKTREE_PATH" rebase
 "origin/$BASE_BRANCH"`). If conflicts cannot be resolved, abort the rebase,
 set `WORKFLOW_REASON=rebase-conflict`, follow **Hard Invariant Failure**, and
 stop before applying or pushing fixes.
@@ -369,7 +401,7 @@ handling and the baseline-then-push ordering.
 ## Phase 6: Merge (Step 13)
 
 ```bash
-set_loop_phase ".local/state/ship.loop.local.json" "merging"
+set_loop_phase "$STATE_FILE" "merging"
 ```
 
 **CRITICAL: NEVER use `--admin`. NEVER bypass branch protection.** If merge
@@ -405,8 +437,8 @@ or merge. Non-UI diffs may record `e2e_result=skipped`.
 Before outputting `<done>SHIPPED</done>`, every claim MUST have FRESH evidence
 from THIS session — actual command output, not narrative:
 
-- **"Tests pass"** → `go test` output with "ok" lines, zero failures
-- **"Build succeeds"** → `go build ./...` exit 0
+- **"Tests pass"** → `go -C "$WORKTREE_PATH" test` output with "ok" lines, zero failures
+- **"Build succeeds"** → `go -C "$WORKTREE_PATH" build ./...` exit 0
 - **"Generation is current"** → configured generation target exits 0 with generated changes included
 - **"Lint passes"** → configured lint command exits 0
 - **"CI passes"** → an exact-head `github_check_snapshot` with all registered

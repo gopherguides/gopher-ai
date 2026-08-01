@@ -23,7 +23,7 @@ totals accumulation differs. The `Notes` column distinguishes the two: blank
 for gated rows, `excluded from gate (package main)` for info rows.
 
 ```bash
-COVERAGE_FUNC=$(go tool cover -func=.local/state/coverage.out 2>/dev/null)
+COVERAGE_FUNC=$(go -C "$WORKTREE_PATH" tool cover -func=.local/state/coverage.out 2>/dev/null)
 AGGREGATE_COVERAGE=""
 FILE_REPORT=""
 UNCOVERED_FUNCS=""
@@ -33,7 +33,7 @@ INFO_COUNT=0
 
 # Pass 1: gated files — count toward TOTAL_STMTS / TOTAL_COVERED.
 for f in $CHANGED_SRC_GATED; do
-  FILE_STMTS=$(grep "^${f}:" .local/state/coverage.out 2>/dev/null | awk '{
+  FILE_STMTS=$(grep "^${f}:" "$WORKTREE_PATH/.local/state/coverage.out" 2>/dev/null | awk '{
     split($2, a, " "); stmts=$2; hit=$3
     total+=stmts; if(hit>0) covered+=stmts
   } END {printf "%d %d", total, covered}')
@@ -62,7 +62,7 @@ done
 # Pass 2: info files (package main) — display only, do NOT touch totals.
 for f in $CHANGED_SRC_INFO; do
   INFO_COUNT=$((INFO_COUNT + 1))
-  FILE_STMTS=$(grep "^${f}:" .local/state/coverage.out 2>/dev/null | awk '{
+  FILE_STMTS=$(grep "^${f}:" "$WORKTREE_PATH/.local/state/coverage.out" 2>/dev/null | awk '{
     split($2, a, " "); stmts=$2; hit=$3
     total+=stmts; if(hit>0) covered+=stmts
   } END {printf "%d %d", total, covered}')

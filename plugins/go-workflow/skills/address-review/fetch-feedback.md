@@ -5,14 +5,14 @@ GitHub has two types: **review threads** (line-specific, auto-resolvable) and **
 ## 2a. Fetch review threads
 
 ```bash
-PR_JSON=$(github_pr "$PR_NUM") || {
+PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
 OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
 REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
 
-gh api graphql -f query='
+(cd "$WORKTREE_PATH" && gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
@@ -34,13 +34,13 @@ gh api graphql -f query='
       }
     }
   }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM"
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM")
 ```
 
 ## 2b. Fetch pending formal reviews
 
 ```bash
-FORMAL_REVIEWS=$(github_pr_reviews "$PR_NUM") || {
+FORMAL_REVIEWS=$(cd "$WORKTREE_PATH" && github_pr_reviews "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=review-api-failure
 }

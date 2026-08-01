@@ -12,11 +12,14 @@ The calling command MUST set these variables before invoking this workflow:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `BASE_BRANCH` | Branch to diff against | `origin/main` |
+| `WORKTREE_PATH` | Absolute checkout path for every repository command | `/path/to/worktree` |
 | `STATE_FILE` | **Absolute path** to the loop state JSON file | `/path/to/.local/state/ship.loop.local.json` |
 | `SKIP_COVERAGE` | Compatibility flag; may skip only source-free changes | `true` or `false` |
 | `COVERAGE_THRESHOLD` | Minimum coverage percentage for changed files | `60` |
 
-**Worktree note:** When running in a worktree, `STATE_FILE` MUST be an absolute path to the state file (which lives in the original repo's `.local/state/` directory, not the worktree). Coverage artifacts (`.local/state/coverage.out`) are written relative to the current working directory — ensure `.local/state/` exists via `mkdir -p .local/state` before running coverage commands.
+**Worktree note:** `STATE_FILE` points into the original repo, while coverage
+artifacts live under `$WORKTREE_PATH/.local/state/`. Every repository and
+coverage command targets `WORKTREE_PATH` explicitly.
 
 ## State-file fields written
 
@@ -62,7 +65,7 @@ Run the coverage tool appropriate for the detected project type and store
 output for analysis.
 
 → Read `step-c-run-coverage.md` for the per-language commands (Go's built-in
-`go test -coverprofile`; Node detection of vitest/jest/c8; Rust llvm-cov or
+the Go coverage command; Node detection of vitest/jest/c8; Rust llvm-cov or
 tarpaulin; Python pytest-cov or coverage.py). It also contains the rule for
 when tool failure stops the workflow vs zero coverage proceeding to analysis.
 

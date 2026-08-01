@@ -38,13 +38,13 @@ If no fixes are testable, skip to Step 5.
 For each testable fix, check if a test file already exists:
 
 ```bash
-ls "${FILE%.*}_test.go" 2>/dev/null || ls "$(dirname "$FILE")"/*_test.go 2>/dev/null
+ls "$WORKTREE_PATH/${FILE%.*}_test.go" 2>/dev/null || ls "$WORKTREE_PATH/$(dirname "$FILE")"/*_test.go 2>/dev/null
 ```
 
 If a test file exists, look for existing table-driven tests for the affected function across ALL `*_test.go` files in the package (tests may be split across multiple files):
 
 ```bash
-grep -n "func Test.*${FUNCTION_NAME}" "$(dirname "$FILE")"/*_test.go 2>/dev/null
+grep -n "func Test.*${FUNCTION_NAME}" "$WORKTREE_PATH/$(dirname "$FILE")"/*_test.go 2>/dev/null
 ```
 
 ### 4.5c. Detect Testing Patterns
@@ -78,7 +78,7 @@ For each testable fix:
 Run the tests to confirm they pass with the fix applied:
 
 ```bash
-go test ./path/to/package/... -run "TestFunctionName" -v
+go -C "$WORKTREE_PATH" test ./path/to/package/... -run "TestFunctionName" -v
 ```
 
 All new tests must pass (green). If any fail, fix the test until green.

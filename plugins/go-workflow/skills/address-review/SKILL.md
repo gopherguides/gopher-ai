@@ -27,7 +27,9 @@ Replies to review comments and any new commit messages describe what behavior ch
 Auto-detect PR from current branch:
 
 ```bash
-CURRENT_PR_JSON=$(github_current_pr 2>/dev/null) || true
+CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
+WORKTREE_PATH="$CURRENT_CHECKOUT_ROOT"
+CURRENT_PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr 2>/dev/null) || true
 jq -r '.number' <<< "$CURRENT_PR_JSON" 2>/dev/null
 ```
 
@@ -64,14 +66,24 @@ echo "WATCH_MODE=$WATCH_MODE PR_ARG=$PR_ARG"
 
 ## Security Validation
 
-!if [ -n "$PR_ARG" ] && ! echo "$PR_ARG" | rg -q '^[0-9]+$'; then echo "Error: PR number must be numeric"; exit 1; fi
+!if [ -n "$PR_ARG" ] && ! echo "$PR_ARG" | grep -qE '^[0-9]+$'; then echo "Error: PR number must be numeric"; exit 1; fi
 
 ## Resolve PR Number
 
 ```bash
+CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
+ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print; exit}')
+WORKTREE_PATH="${WORKTREE_PATH:-$CURRENT_CHECKOUT_ROOT}"
+if [ -z "$ORIGINAL_REPO_ROOT" ] || [ "${ORIGINAL_REPO_ROOT#/}" = "$ORIGINAL_REPO_ROOT" ] ||
+   [ -z "$WORKTREE_PATH" ] || [ "${WORKTREE_PATH#/}" = "$WORKTREE_PATH" ] || [ ! -d "$WORKTREE_PATH" ]; then
+  echo "ERROR: Could not resolve absolute repository paths."
+  exit 1
+fi
+CURRENT_REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
+REPO_SLUG="${REPO_SLUG:-$CURRENT_REPO_SLUG}"
 if [ -n "$PR_ARG" ]; then
   RESOLVED_PR="$PR_ARG"
-elif CURRENT_PR_JSON=$(github_current_pr 2>/dev/null); then
+elif CURRENT_PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr 2>/dev/null); then
   RESOLVED_PR=$(jq -er '.number' <<< "$CURRENT_PR_JSON")
 else
   RESOLVED_PR="auto"
@@ -123,7 +135,7 @@ Read `fix-cycle.md` for the complete fix cycle:
 - **Step 3:** Categorize comments into Group A (resolvable threads) and Group B (pending reviews)
 - **Step 4:** Address each comment — parallel dispatch for 3+ comments on different files, sequential otherwise. Understand request, locate code, make minimal fix, validate against feedback
 - **Step 4.5:** Generate tests for testable fixes (read `test-generation.md`)
-- **Step 5:** Verify locally — `go build`, `go test`, `golangci-lint`
+- **Step 5:** Verify locally — `go -C "$WORKTREE_PATH" build`, `go -C "$WORKTREE_PATH" test`, and a worktree-scoped `golangci-lint`
 - **Step 6:** Commit and push, capture `BOT_REVIEW_BASELINE` timestamp
 - **Step 7:** Watch CI — retry up to 3x if no checks reported
 - **Step 8:** Reply to each comment
@@ -138,14 +150,14 @@ Read `bot-registry.md` for the full re-review procedure (Steps 10a-10e) includin
 Confirm all resolvable threads are resolved and CI is passing:
 
 ```bash
-PR_JSON=$(github_pr "$PR_NUM") || {
+PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
 OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
 REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
 
-gh api graphql -f query='
+(cd "$WORKTREE_PATH" && gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $pr) {
@@ -155,7 +167,7 @@ gh api graphql -f query='
       }
     }
   }
-' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM" | jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved == false)) | length'
+' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM") | jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved == false)) | length'
 ```
 
 Pin completion checks to the exact published PR head:
@@ -167,7 +179,7 @@ PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON") || {
 }
 
 CHECK_STATUS=0
-CHECKS_JSON=$(github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
+CHECKS_JSON=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
 case "$CHECK_STATUS" in
   0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
   1) echo "CI failed. Return to the fix cycle and do not claim completion." ;;

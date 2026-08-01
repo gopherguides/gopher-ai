@@ -11,9 +11,9 @@ files. Uncommitted/untracked changes are common when called from `$go-workflow:s
 before the commit step:
 
 ```bash
-mkdir -p .local/state
-rm -f .local/state/coverage.out .local/state/coverage.json 2>/dev/null
-CHANGED_FILES=$( (git diff --name-only "${BASE_BRANCH}...HEAD" 2>/dev/null; git diff --name-only HEAD 2>/dev/null; git diff --name-only --cached HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null) | sort -u )
+mkdir -p "$WORKTREE_PATH/.local/state"
+rm -f "$WORKTREE_PATH/.local/state/coverage.out" "$WORKTREE_PATH/.local/state/coverage.json" 2>/dev/null
+CHANGED_FILES=$( (git -C "$WORKTREE_PATH" diff --name-only "${BASE_BRANCH}...HEAD" 2>/dev/null; git -C "$WORKTREE_PATH" diff --name-only HEAD 2>/dev/null; git -C "$WORKTREE_PATH" diff --name-only --cached HEAD 2>/dev/null; git -C "$WORKTREE_PATH" ls-files --others --exclude-standard 2>/dev/null) | sort -u )
 ```
 
 The `rm -f` removes stale coverage artifacts from prior runs to prevent false
@@ -116,10 +116,10 @@ for f in $CHANGED_SRC; do
   # (no longer on disk), read the blob from the base branch via `git show` so
   # a diff that deletes only `cmd/foo/main.go` still triggers the all-main
   # path in Step E.2 instead of producing a 0% gate prompt.
-  if [ -f "$f" ]; then
-    pkg=$(get_pkg < "$f" 2>/dev/null)
+  if [ -f "$WORKTREE_PATH/$f" ]; then
+    pkg=$(get_pkg < "$WORKTREE_PATH/$f" 2>/dev/null)
   else
-    pkg=$(git show "${BASE_BRANCH}:${f}" 2>/dev/null | get_pkg)
+    pkg=$(git -C "$WORKTREE_PATH" show "${BASE_BRANCH}:${f}" 2>/dev/null | get_pkg)
   fi
   if [ "$pkg" = "main" ]; then
     CHANGED_SRC_INFO="${CHANGED_SRC_INFO}${f}

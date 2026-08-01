@@ -69,8 +69,8 @@ When the backend remains unavailable, display relevant install guidance:
 
 Display:
 
-- **codex:** `npm install -g @openai/codex`, then run `codex login` for ChatGPT sign-in or API-key authentication
-- **gemini:** `npm install -g @google/gemini-cli`
+- **codex:** install the global `@openai/codex` package with npm, then run `codex login` for ChatGPT sign-in or API-key authentication
+- **gemini:** install the global `@google/gemini-cli` package with npm
 - **ollama:** `brew install ollama && ollama serve`
 
 Then classify the decision:

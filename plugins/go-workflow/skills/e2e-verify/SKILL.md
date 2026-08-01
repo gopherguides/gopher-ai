@@ -52,14 +52,24 @@ echo "MODE=$MODE PR_ARG=$PR_ARG"
 ## Resolve PR Number
 
 ```bash
+CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
+ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print; exit}')
+WORKTREE_PATH="${WORKTREE_PATH:-$CURRENT_CHECKOUT_ROOT}"
+if [ -z "$ORIGINAL_REPO_ROOT" ] || [ "${ORIGINAL_REPO_ROOT#/}" = "$ORIGINAL_REPO_ROOT" ] ||
+   [ -z "$WORKTREE_PATH" ] || [ "${WORKTREE_PATH#/}" = "$WORKTREE_PATH" ] || [ ! -d "$WORKTREE_PATH" ]; then
+  echo "ERROR: Could not resolve absolute repository paths."
+  exit 1
+fi
+CURRENT_REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
+REPO_SLUG="${REPO_SLUG:-$CURRENT_REPO_SLUG}"
 PR_JSON=""
 if [ -n "$PR_ARG" ]; then
   PR_NUM="$PR_ARG"
-  if ! PR_JSON=$(github_pr "$PR_NUM" 2>/dev/null); then
+  if ! PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM" 2>/dev/null); then
     echo "Error: PR #$PR_NUM does not exist"
     exit 1
   fi
-elif PR_JSON=$(github_current_pr 2>/dev/null); then
+elif PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr 2>/dev/null); then
   PR_NUM=$(jq -er '.number' <<< "$PR_JSON")
 else
   PR_NUM=""
@@ -127,7 +137,7 @@ invoke ship, or output `<done>VERIFIED</done>` from an invariant-failure path.
 set_loop_phase "$STATE_FILE" "rebasing"
 ```
 
-Read `rebase-and-build.md` for the full procedure: detect base branch, fetch, rebase if behind, force-push with lease, wait for CI; then run code generation, `go build`, `go test`, `golangci-lint`, and check for generated-file drift.
+Read `rebase-and-build.md` for the full procedure: detect base branch, fetch, rebase if behind, force-push with lease, wait for CI; then run code generation, `go -C "$WORKTREE_PATH" build`, `go -C "$WORKTREE_PATH" test`, a worktree-scoped `golangci-lint`, and check for generated-file drift.
 
 After build verification, persist results — Read `loop-state.md` for the **persist-build-result block**.
 
@@ -157,11 +167,11 @@ After addressing review feedback, create a descriptive fix commit and push.
 
 ```bash
 BUILD_RESULT=pass
-if ! go build ./...; then
+if ! go -C "$WORKTREE_PATH" build ./...; then
   BUILD_RESULT=fail
-elif ! go test ./...; then
+elif ! go -C "$WORKTREE_PATH" test ./...; then
   BUILD_RESULT=fail
-elif command -v golangci-lint >/dev/null 2>&1 && ! golangci-lint run; then
+elif command -v golangci-lint >/dev/null 2>&1 && ! (cd "$WORKTREE_PATH" && golangci-lint run); then
   BUILD_RESULT=fail
 fi
 ```
@@ -180,8 +190,8 @@ stop. Fix the failure before rerunning.
 set_loop_phase "$STATE_FILE" "investigating"
 ```
 
-1. Refresh the PR metadata with `PR_JSON=$(github_pr "$PR_NUM")`, then read its requirements with `jq -r '"\(.title)\n\n\(.body // \"\")\n\n\(.html_url)"' <<< "$PR_JSON"`.
-2. Review the implementation against requirements: `git diff "${BASE_REMOTE}/${BASE_BRANCH}...HEAD"`
+1. Refresh the PR metadata with `PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM")`, then read its requirements with `jq -r '"\(.title)\n\n\(.body // \"\")\n\n\(.html_url)"' <<< "$PR_JSON"`.
+2. Review the implementation against requirements: `git -C "$WORKTREE_PATH" diff "${BASE_REMOTE}/${BASE_BRANCH}...HEAD"`
 3. Identify gaps between issue requirements and implementation: missing acceptance criteria, untested edge cases, potential regressions, architectural concerns
 4. Record findings for the PR comment. **Do NOT fix anything — only report.**
 
@@ -196,7 +206,7 @@ set_loop_phase "$STATE_FILE" "e2e-testing"
 Read the PR/issue description first to understand what the change is supposed to look like:
 
 ```bash
-PR_JSON=$(github_pr "$PR_NUM") || { echo "Error: Could not read PR #$PR_NUM"; exit 1; }
+PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || { echo "Error: Could not read PR #$PR_NUM"; exit 1; }
 jq -r '"\(.title)\n\n\(.body // \"\")"' <<< "$PR_JSON"
 ```
 

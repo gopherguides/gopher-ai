@@ -118,6 +118,36 @@ assert_eq "no tmp files" "0" "$TMP_COUNT"
 cleanup_loop ".local/state/tmp-test.loop.local.json"
 echo ""
 
+echo "Test 11: setup-loop.sh accepts an explicit absolute state path"
+EXPLICIT_STATE_FILE="$ROOT_DIR/.local/state/explicit-absolute-test.loop.local.json"
+[ -f "$EXPLICIT_STATE_FILE" ] && cleanup_loop "$EXPLICIT_STATE_FILE"
+./shared/scripts/setup-loop.sh "explicit-path-test" "DONE" "" "" '{}' "$EXPLICIT_STATE_FILE" > /dev/null
+assert_eq "explicit state file is valid JSON" "true" "$(jq empty "$EXPLICIT_STATE_FILE" 2>/dev/null && echo true || echo false)"
+assert_eq "explicit state file loop_name" "explicit-path-test" "$(jq -r '.loop_name' "$EXPLICIT_STATE_FILE")"
+assert_eq "explicit path does not create a CWD state file" "false" "$([ -f .local/state/explicit-path-test.loop.local.json ] && echo true || echo false)"
+cleanup_loop "$EXPLICIT_STATE_FILE"
+[ -f .local/state/explicit-path-test.loop.local.json ] && cleanup_loop ".local/state/explicit-path-test.loop.local.json"
+echo ""
+
+echo "Test 12: setup-loop.sh rejects a supplied relative state path"
+RELATIVE_ERROR=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-loop-relative.XXXXXX")
+if ./shared/scripts/setup-loop.sh "relative-path-test" "DONE" "" "" '{}' ".local/state/relative-path-test.loop.local.json" > /dev/null 2>"$RELATIVE_ERROR"; then
+  RELATIVE_STATUS="accepted"
+else
+  RELATIVE_STATUS="rejected"
+fi
+assert_eq "relative path rejected" "rejected" "$RELATIVE_STATUS"
+assert_eq "relative rejection explains absolute requirement" "true" "$(grep -q 'state-file path must be absolute' "$RELATIVE_ERROR" && echo true || echo false)"
+cleanup_loop "$RELATIVE_ERROR"
+[ -f .local/state/relative-path-test.loop.local.json ] && cleanup_loop ".local/state/relative-path-test.loop.local.json"
+echo ""
+
+echo "Test 13: setup-loop.sh retains its legacy default"
+./shared/scripts/setup-loop.sh "legacy-path-test" "DONE" > /dev/null
+assert_eq "legacy state file exists" "true" "$([ -f .local/state/legacy-path-test.loop.local.json ] && echo true || echo false)"
+cleanup_loop ".local/state/legacy-path-test.loop.local.json"
+echo ""
+
 # --- Cleanup debug log ---
 rm -f .local/state/loop-debug.log
 

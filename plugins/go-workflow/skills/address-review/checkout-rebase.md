@@ -5,7 +5,7 @@
 ## 1a. Load and validate PR head/base metadata
 
 ```bash
-PR_JSON=$(github_pr "$PR_NUM") || {
+PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-metadata-api-failure
 }
@@ -45,7 +45,7 @@ fetching, checkout, rebase, or push.
 Protect all existing work before changing the checked-out branch:
 
 ```bash
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(git -C "$WORKTREE_PATH" status --porcelain)" ]; then
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=dirty-worktree
 fi
@@ -59,8 +59,8 @@ stash, discard, carry, or overwrite the existing changes.
 ```bash
 PR_HEAD_REMOTE=""
 PR_BASE_REMOTE=""
-for remote in $(git remote); do
-  REMOTE_URL=$(git remote get-url "$remote")
+for remote in $(git -C "$WORKTREE_PATH" remote); do
+  REMOTE_URL=$(git -C "$WORKTREE_PATH" remote get-url "$remote")
   REMOTE_OWNER_REPO=$(printf '%s\n' "$REMOTE_URL" | sed 's|\.git$||' | sed -E 's|^https?://[^/]+/||' | sed -E 's|^ssh://[^/]+/||' | sed -E 's|^[^@]+@[^:]+:||')
   if [ "$REMOTE_OWNER_REPO" = "$PR_HEAD_OWNER_REPO" ] && [ -z "$PR_HEAD_REMOTE" ]; then
     PR_HEAD_REMOTE="$remote"
@@ -76,8 +76,8 @@ PR_BASE_FETCH_SOURCE="${PR_BASE_REMOTE:-$PR_BASE_CLONE_URL}"
 PR_HEAD_FETCH_REF="refs/address-review/$PR_NUM/head"
 PR_BASE_FETCH_REF="refs/address-review/$PR_NUM/base"
 
-git fetch "$PR_HEAD_FETCH_SOURCE" "+refs/heads/${PR_HEAD_BRANCH}:${PR_HEAD_FETCH_REF}"
-FETCHED_HEAD_SHA=$(git rev-parse "$PR_HEAD_FETCH_REF")
+git -C "$WORKTREE_PATH" fetch "$PR_HEAD_FETCH_SOURCE" "+refs/heads/${PR_HEAD_BRANCH}:${PR_HEAD_FETCH_REF}"
+FETCHED_HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse "$PR_HEAD_FETCH_REF")
 if [ "$FETCHED_HEAD_SHA" != "$PR_HEAD_SHA" ]; then
   WORKFLOW_RESULT=INCOMPLETE
   WORKFLOW_REASON=pr-head-shift
@@ -90,23 +90,23 @@ metadata.
 
 ```bash
 LOCAL_PR_BRANCH="$PR_HEAD_BRANCH"
-if git show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
-  LOCAL_BRANCH_SHA=$(git rev-parse "refs/heads/$LOCAL_PR_BRANCH")
+if git -C "$WORKTREE_PATH" show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
+  LOCAL_BRANCH_SHA=$(git -C "$WORKTREE_PATH" rev-parse "refs/heads/$LOCAL_PR_BRANCH")
   if [ "$LOCAL_BRANCH_SHA" != "$PR_HEAD_SHA" ]; then
     LOCAL_PR_BRANCH="address-review-pr-$PR_NUM"
   fi
 fi
 
-if git show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
-  LOCAL_BRANCH_SHA=$(git rev-parse "refs/heads/$LOCAL_PR_BRANCH")
+if git -C "$WORKTREE_PATH" show-ref --verify --quiet "refs/heads/$LOCAL_PR_BRANCH"; then
+  LOCAL_BRANCH_SHA=$(git -C "$WORKTREE_PATH" rev-parse "refs/heads/$LOCAL_PR_BRANCH")
   if [ "$LOCAL_BRANCH_SHA" != "$PR_HEAD_SHA" ]; then
     WORKFLOW_RESULT=INCOMPLETE
     WORKFLOW_REASON=local-pr-branch-diverged
   else
-    git checkout "$LOCAL_PR_BRANCH"
+    git -C "$WORKTREE_PATH" checkout "$LOCAL_PR_BRANCH"
   fi
 else
-  git checkout -b "$LOCAL_PR_BRANCH" "$PR_HEAD_FETCH_REF"
+  git -C "$WORKTREE_PATH" checkout -b "$LOCAL_PR_BRANCH" "$PR_HEAD_FETCH_REF"
 fi
 ```
 
@@ -117,8 +117,8 @@ Failure** procedure instead of resetting either branch.
 ## 1c. Check if behind base branch and rebase
 
 ```bash
-git fetch "$PR_BASE_FETCH_SOURCE" "+refs/heads/${PR_BASE_BRANCH}:${PR_BASE_FETCH_REF}"
-BEHIND=$(git rev-list --count "HEAD..${PR_BASE_FETCH_REF}")
+git -C "$WORKTREE_PATH" fetch "$PR_BASE_FETCH_SOURCE" "+refs/heads/${PR_BASE_BRANCH}:${PR_BASE_FETCH_REF}"
+BEHIND=$(git -C "$WORKTREE_PATH" rev-list --count "HEAD..${PR_BASE_FETCH_REF}")
 echo "PR #$PR_NUM is $BEHIND commit(s) behind $PR_BASE_OWNER_REPO/$PR_BASE_BRANCH"
 ```
 
@@ -126,12 +126,12 @@ echo "PR #$PR_NUM is $BEHIND commit(s) behind $PR_BASE_OWNER_REPO/$PR_BASE_BRANC
 
 **If `$BEHIND` > 0:**
 
-1. Re-check `git status --porcelain`. If dirty, report
+1. Re-check `git -C "$WORKTREE_PATH" status --porcelain`. If dirty, report
    `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=dirty-worktree`, follow the
    top-level **Hard Invariant Failure** procedure, and stop.
-2. Run `git rebase "$PR_BASE_FETCH_REF"`. Resolve conflicts only when the
+2. Run `git -C "$WORKTREE_PATH" rebase "$PR_BASE_FETCH_REF"`. Resolve conflicts only when the
    correct resolution is evident and every conflict is cleared. If any
-   conflict remains, run `git rebase --abort`, report
+   conflict remains, run `git -C "$WORKTREE_PATH" rebase --abort`, report
    `WORKFLOW_RESULT=INCOMPLETE` and `WORKFLOW_REASON=rebase-conflict`, then
    follow the top-level **Hard Invariant Failure** procedure and stop.
 3. Force-push only to the REST-declared fork/head branch and pin the lease to
@@ -139,10 +139,10 @@ echo "PR #$PR_NUM is $BEHIND commit(s) behind $PR_BASE_OWNER_REPO/$PR_BASE_BRANC
 
    ```bash
    EXPECTED_REMOTE_HEAD_SHA="$PR_HEAD_SHA"
-   PR_HEAD_SHA=$(git rev-parse HEAD)
-   git push --force-with-lease="refs/heads/${PR_HEAD_BRANCH}:${EXPECTED_REMOTE_HEAD_SHA}" \
+   PR_HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
+   git -C "$WORKTREE_PATH" push --force-with-lease="refs/heads/${PR_HEAD_BRANCH}:${EXPECTED_REMOTE_HEAD_SHA}" \
      "$PR_HEAD_PUSH_TARGET" "HEAD:refs/heads/$PR_HEAD_BRANCH"
-   PUBLISHED_HEAD_SHA=$(github_pr "$PR_NUM" | jq -er '.head.sha') || {
+   PUBLISHED_HEAD_SHA=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM" | jq -er '.head.sha') || {
      WORKFLOW_RESULT=INCOMPLETE
      WORKFLOW_REASON=pr-metadata-api-failure
    }
@@ -161,7 +161,7 @@ Only after a rebase, watch checks pinned to the exact pushed head:
 
 ```bash
 CHECK_STATUS=0
-CHECKS_JSON=$(github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
+CHECKS_JSON=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
 case "$CHECK_STATUS" in
   0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
   1) echo "CI failed after rebase. Analyze and fix every failure before proceeding." ;;

@@ -21,8 +21,8 @@ The `start-issue` workflow runs with `$ISSUE_NUM $FLAGS` as its arguments:
 11. Watch CI
 
 This is purely informational — `$go-workflow:start-issue` owns the implementation. The
-trunk in `SKILL.md` does the post-completion bookkeeping (PR detection,
-worktree-CWD reassignment, state persistence).
+trunk in `SKILL.md` consumes its persisted worktree output, validates it, and
+does the post-completion bookkeeping.
 
 `$go-workflow:start-issue` also owns subagent model tiering. Its orchestrated workflow uses
 the `model` frontmatter in `agents/*.md` unless the user sets
@@ -34,8 +34,8 @@ After detection succeeds in `SKILL.md`, plan and run codex review on the PR
 diff with an adaptive timeout:
 
 ```bash
-DEFAULT_BRANCH=$(git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
-DIFF=$(git diff "origin/${DEFAULT_BRANCH}...HEAD")
+DEFAULT_BRANCH=$(git -C "$WORKTREE_PATH" remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main")
+DIFF=$(git -C "$WORKTREE_PATH" diff "origin/${DEFAULT_BRANCH}...HEAD")
 DIFF_LINES=$(printf '%s\n' "$DIFF" | wc -l)
 REVIEW_BASE="origin/${DEFAULT_BRANCH}"
 REVIEW_BACKEND=codex
@@ -49,7 +49,11 @@ elif command -v timeout >/dev/null 2>&1; then TIMEOUT_CMD="timeout"
 else TIMEOUT_CMD=""; fi
 ```
 
-If `$TIMEOUT_CMD` is available, invoke `$TIMEOUT_CMD $CODEX_TIMEOUT $CODEX_CMD exec -c model_reasoning_effort="high"` with structured output. If no timeout command is available, run `$CODEX_CMD exec -c model_reasoning_effort="high"` without a timeout wrapper. Reasoning effort is always pinned to `high`.
+If `$TIMEOUT_CMD` is available, invoke
+`(cd "$WORKTREE_PATH" && $TIMEOUT_CMD $CODEX_TIMEOUT $CODEX_CMD exec -c model_reasoning_effort="high")`
+with structured output. If no timeout command is available, run
+`(cd "$WORKTREE_PATH" && $CODEX_CMD exec -c model_reasoning_effort="high")`
+without a timeout wrapper. Reasoning effort is always pinned to `high`.
 
 No model flag is passed in either Codex path. A `model = "..."` pin in
 `~/.codex/config.toml` is respected; leaving it unset lets the Codex CLI choose
@@ -75,12 +79,12 @@ each valid fix in ranked order. Skip findings that are:
 
 Maintain `REVIEW_FILES` as the exact list of files modified while addressing
 valid findings, including generated or updated tests. Before modifying an
-existing path, confirm `git status --porcelain -- "$TARGET_FILE"` is empty so
+existing path, confirm `git -C "$WORKTREE_PATH" status --porcelain -- "$TARGET_FILE"` is empty so
 pre-existing changes cannot be attributed to this review phase. Commit fixes if
 any changes were made:
 
 ```bash
-if ! git diff --cached --quiet; then
+if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
   echo "Error: Pre-existing staged changes must be committed or unstaged before complete-issue can commit review fixes."
   exit 1
 fi
@@ -90,10 +94,10 @@ REVIEW_FILES=(
   "path/to/reviewed-file_test.go"
 )
 if [ "${#REVIEW_FILES[@]}" -gt 0 ]; then
-  git add -- "${REVIEW_FILES[@]}"
-  if ! git diff --cached --quiet; then
-    git commit -m "fix: address codex review findings"
-    git push
+  git -C "$WORKTREE_PATH" add -- "${REVIEW_FILES[@]}"
+  if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
+    git -C "$WORKTREE_PATH" commit -m "fix: address codex review findings"
+    git -C "$WORKTREE_PATH" push
   fi
 fi
 ```

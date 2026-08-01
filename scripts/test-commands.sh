@@ -42,9 +42,8 @@ for file in $COMMAND_FILES; do
     continue
   fi
 
-  # Extract frontmatter and check for description field
-  FRONTMATTER=$(sed -n "2,$((CLOSING_LINE - 1))p" "$file")
-  if ! grep -q 'description:' <<< "$FRONTMATTER"; then
+  # Check frontmatter for a description field
+  if ! awk 'NR > 1 && /^---$/ { exit } /^description:/ { found = 1 } END { exit found ? 0 : 1 }' "$file"; then
     INVALID="$INVALID\n  $REL_PATH (missing description field)"
     ERRORS=$((ERRORS + 1))
     continue
@@ -228,10 +227,10 @@ if file_contains 'git add -A' "$ADDRESS_REVIEW_FIX_CYCLE"; then
 elif ! file_contains 'Stage only files modified during this fix cycle' "$ADDRESS_REVIEW_FIX_CYCLE"; then
   echo "FAIL (owned-file staging policy missing)"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'git status --porcelain -- "$TARGET_FILE"' "$ADDRESS_REVIEW_FIX_CYCLE"; then
+elif ! file_contains 'git -C "$WORKTREE_PATH" status --porcelain -- "$TARGET_FILE"' "$ADDRESS_REVIEW_FIX_CYCLE"; then
   echo "FAIL (pre-existing target-file changes are not guarded)"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'git add -- "${OWNED_FILES[@]}"' "$ADDRESS_REVIEW_FIX_CYCLE"; then
+elif ! file_contains 'git -C "$WORKTREE_PATH" add -- "${OWNED_FILES[@]}"' "$ADDRESS_REVIEW_FIX_CYCLE"; then
   echo "FAIL (owned-file staging command missing)"
   ERRORS=$((ERRORS + 1))
 else
@@ -241,10 +240,10 @@ fi
 echo -n "Go-workflow stages only phase-owned files... "
 COMPLETE_ISSUE_PHASES="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/phases.md"
 COMPLETE_ISSUE_SKILL_INDEX_GUARDS=$(awk \
-  '/^[[:space:]]*if ! git diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
+  '/^[[:space:]]*if ! git -C "[$]WORKTREE_PATH" diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
   "$COMPLETE_ISSUE_SKILL")
 COMPLETE_ISSUE_PHASE_INDEX_GUARDS=$(awk \
-  '/^[[:space:]]*if ! git diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
+  '/^[[:space:]]*if ! git -C "[$]WORKTREE_PATH" diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
   "$COMPLETE_ISSUE_PHASES")
 GO_WORKFLOW_AUDIT_FILES=()
 while IFS= read -r workflow_file; do
@@ -256,8 +255,8 @@ if [ -n "$LIVE_BROAD_STAGING" ]; then
   echo "FAIL (live broad staging commands found)"
   echo "$LIVE_BROAD_STAGING"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'git add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_SKILL" ||
-     ! file_contains 'git add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_PHASES"; then
+elif ! file_contains 'git -C "$WORKTREE_PATH" add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_SKILL" ||
+     ! file_contains 'git -C "$WORKTREE_PATH" add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_PHASES"; then
   echo "FAIL (complete-issue review-owned staging command missing)"
   ERRORS=$((ERRORS + 1))
 elif [ "$COMPLETE_ISSUE_SKILL_INDEX_GUARDS" -ne 2 ] ||
@@ -282,6 +281,206 @@ elif ! file_contains 'approval_result' "$ADDRESS_REVIEW_WATCH_LOOP" ||
      ! file_contains 'completion_promise" "INCOMPLETE"' "$ADDRESS_REVIEW_WATCH_LOOP" ||
      ! file_contains '<done>INCOMPLETE</done>' "$ADDRESS_REVIEW_WATCH_LOOP"; then
   echo "FAIL (durable incomplete approval outcome contract missing)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Issue-to-PR workflows persist absolute repository and worktree paths... "
+START_ISSUE_SKILL="$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md"
+START_ISSUE_WORKTREE_CREATE="$ROOT_DIR/plugins/go-workflow/lib/start-issue/worktree-create.md"
+COMPLETE_ISSUE_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/loop-state.md"
+E2E_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/loop-state.md"
+SHIP_SKILL="$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
+ADDRESS_REVIEW_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/address-review/loop-management.md"
+PATH_CONTRACT_FAILURE=""
+
+setup_loop_uses_state_path() {
+  local file="$1"
+  local state_expression="$2"
+
+  awk -v state_expression="$state_expression" '
+    /scripts\/setup-loop[.]sh/ { active = 1; remaining = 4 }
+    active && index($0, state_expression) { found = 1 }
+    active { remaining--; if (remaining == 0) active = 0 }
+    END { exit found ? 0 : 1 }
+  ' "$file"
+}
+
+if ! file_contains 'ORIGINAL_REPO_ROOT=' "$START_ISSUE_SKILL" ||
+   ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/start-issue-${ISSUE_NUM}.loop.local.json"' "$START_ISSUE_SKILL" ||
+   ! file_contains '"$STATE_FILE"' "$START_ISSUE_SKILL" ||
+   ! file_contains 'original_repo_root: $original_repo_root, worktree_path: $worktree_path' "$START_ISSUE_SKILL"; then
+  PATH_CONTRACT_FAILURE="start-issue does not bootstrap and persist absolute path outputs"
+elif ! file_contains '.worktree_path = $worktree_path' "$START_ISSUE_WORKTREE_CREATE"; then
+  PATH_CONTRACT_FAILURE="worktree creation does not persist its absolute output"
+elif file_contains 'WORKTREE_PATH=$(pwd)' "$COMPLETE_ISSUE_SKILL" ||
+     file_contains 'STATE_FILE="$(pwd)' "$COMPLETE_ISSUE_SKILL"; then
+  PATH_CONTRACT_FAILURE="complete-issue still rediscovers paths from pwd"
+elif ! file_contains 'START_ISSUE_STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/start-issue-${ISSUE_NUM}.loop.local.json"' "$COMPLETE_ISSUE_SKILL" ||
+     ! file_contains 'WORKTREE_PATH=$(jq -r' "$COMPLETE_ISSUE_SKILL" ||
+     ! file_contains 'WORKFLOW_REASON=start-issue-worktree-path-invalid' "$COMPLETE_ISSUE_SKILL" ||
+     ! file_contains 'completion_promise = "INCOMPLETE"' "$COMPLETE_ISSUE_SKILL"; then
+  PATH_CONTRACT_FAILURE="complete-issue does not consume and validate the persisted start-issue output"
+elif ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/complete-issue-${ISSUE_NUM}.loop.local.json"' "$COMPLETE_ISSUE_LOOP_STATE" ||
+     ! file_contains '"$STATE_FILE"' "$COMPLETE_ISSUE_LOOP_STATE" ||
+     ! file_contains 'WORKFLOW_REASON=start-issue-worktree-path-invalid' "$COMPLETE_ISSUE_LOOP_STATE" ||
+     ! file_contains 'REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain' "$COMPLETE_ISSUE_LOOP_STATE"; then
+  PATH_CONTRACT_FAILURE="complete-issue loop bootstrap is not absolutely anchored"
+elif ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/e2e-verify-${PR_NUM}.loop.local.json"' "$E2E_LOOP_STATE" ||
+     ! file_contains '"$STATE_FILE"' "$E2E_LOOP_STATE"; then
+  PATH_CONTRACT_FAILURE="e2e-verify loop bootstrap is not absolutely anchored"
+elif ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/ship.loop.local.json"' "$SHIP_SKILL" ||
+     ! file_contains '"$STATE_FILE"' "$SHIP_SKILL"; then
+  PATH_CONTRACT_FAILURE="ship loop bootstrap is not absolutely anchored"
+elif ! file_contains 'LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"' "$ADDRESS_REVIEW_LOOP_STATE" ||
+     ! file_contains '"$LOOP_STATE_FILE"' "$ADDRESS_REVIEW_LOOP_STATE"; then
+  PATH_CONTRACT_FAILURE="address-review loop bootstrap is not absolutely anchored"
+elif ! setup_loop_uses_state_path "$START_ISSUE_SKILL" '"$STATE_FILE"' ||
+     ! setup_loop_uses_state_path "$COMPLETE_ISSUE_LOOP_STATE" '"$STATE_FILE"' ||
+     ! setup_loop_uses_state_path "$E2E_LOOP_STATE" '"$STATE_FILE"' ||
+     ! setup_loop_uses_state_path "$SHIP_SKILL" '"$STATE_FILE"' ||
+     ! setup_loop_uses_state_path "$ADDRESS_REVIEW_LOOP_STATE" '"$LOOP_STATE_FILE"'; then
+  PATH_CONTRACT_FAILURE="a setup-loop bootstrap does not pass its absolute state path as argument six"
+fi
+
+if [ -n "$PATH_CONTRACT_FAILURE" ]; then
+  echo "FAIL ($PATH_CONTRACT_FAILURE)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Post-worktree workflow commands are explicitly scoped... "
+POST_WORKTREE_FILES=(
+  "$START_ISSUE_SKILL"
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/orchestrated-workflow.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/manual-workflow.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/phases.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-build.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/e2e-test-execution.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/pr-results-comment.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/mode-finish.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/address-bots.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/bot-watch.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/ci-watch.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/push-and-pr.md"
+  "$ROOT_DIR"/plugins/go-workflow/lib/coverage/*.md
+  "$ROOT_DIR"/plugins/go-workflow/skills/address-review/*.md
+)
+UNQUALIFIED_WORKTREE_COMMANDS=$(awk '
+  function scoped(line) {
+    return line ~ /git -C "[$]WORKTREE_PATH"/ ||
+      line ~ /git -C "[$](ORIGINAL_REPO_ROOT|CURRENT_CHECKOUT_ROOT)"/ ||
+      line ~ /go -C "[$]WORKTREE_PATH"/ ||
+      line ~ /gh .*--repo "[$]REPO_SLUG"/ ||
+      line ~ /gh api .*repos\/[$]REPO_SLUG/ ||
+      line ~ /\(cd "[$]WORKTREE_PATH" &&/ ||
+      line ~ /\(cd "[$]ORIGINAL_REPO_ROOT" &&/ ||
+      line ~ /rm .*"[$]WORKTREE_PATH\// ||
+      line ~ /rm -f ("\/tmp\/|"[$](PROMPT_FILE|SCHEMA_FILE))/ ||
+      line ~ /command -v (go|git|gh|golangci-lint|govulncheck|cargo-llvm-cov|cargo-tarpaulin|pytest|coverage)/ ||
+      line ~ /^CURRENT_CHECKOUT_ROOT=[$]\(git rev-parse --show-toplevel\)$/
+  }
+  FNR == 1 {
+    shell = 0
+    post_transition = FILENAME ~ /skills\/start-issue\/SKILL[.]md$/ ? 0 : 1
+  }
+  FILENAME ~ /skills\/start-issue\/SKILL[.]md$/ && /^## MANDATORY: All Work Happens in the Worktree/ { post_transition = 1 }
+  post_transition && /^[[:space:]]*```bash[[:space:]]*$/ { shell = 1; next }
+  shell && /^[[:space:]]*```[[:space:]]*$/ { shell = 0; next }
+  shell && ($0 ~ /(^[[:space:]]*|[;&|!(][[:space:]]*)(git|go|gh|golangci-lint|govulncheck|make|cargo|npx|npm|pytest|coverage|rm|codex|gemini|ollama)([[:space:]]|$)/ ||
+    $0 ~ /[$](DEV_SERVER_CMD|CODEX_CMD)/ ||
+    $0 ~ /(select-ollama-model|cleanup-loop)[.]sh/) && !scoped($0) {
+    print FILENAME ":" FNR ":" $0
+  }
+' "${POST_WORKTREE_FILES[@]}")
+
+if [ -n "$UNQUALIFIED_WORKTREE_COMMANDS" ]; then
+  echo "FAIL (live commands depend on ambient CWD)"
+  echo "$UNQUALIFIED_WORKTREE_COMMANDS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Inline post-worktree commands are explicitly scoped... "
+UNQUALIFIED_INLINE_COMMANDS=$(awk '
+  function scoped(line) {
+    return line ~ /git -C "[$]WORKTREE_PATH"/ ||
+      line ~ /git -C "[$](ORIGINAL_REPO_ROOT|CURRENT_CHECKOUT_ROOT)"/ ||
+      line ~ /go -C "[$]WORKTREE_PATH"/ ||
+      line ~ /gh .*--repo "[$]REPO_SLUG"/ ||
+      line ~ /gh api .*repos\/[$]REPO_SLUG/ ||
+      line ~ /\(cd "[$]WORKTREE_PATH" &&/
+  }
+  FNR == 1 {
+    shell = 0
+    post_transition = FILENAME ~ /skills\/start-issue\/SKILL[.]md$/ ? 0 : 1
+  }
+  FILENAME ~ /skills\/start-issue\/SKILL[.]md$/ && /^## MANDATORY: All Work Happens in the Worktree/ { post_transition = 1 }
+  /^[[:space:]]*```/ { shell = !shell; next }
+  post_transition && !shell && $0 ~ /`(git|go|gh|golangci-lint|govulncheck|make|cargo|npx|npm|pytest|coverage)([[:space:]]|`)/ &&
+    !scoped($0) &&
+    $0 !~ /(store the raw executable|→|Fallback for Go|never `|do NOT use `|MUST NOT be passed|Avoid looping|instead of `|^\|)/ {
+    print FILENAME ":" FNR ":" $0
+  }
+' "${POST_WORKTREE_FILES[@]}")
+
+if [ -n "$UNQUALIFIED_INLINE_COMMANDS" ]; then
+  echo "FAIL (inline commands depend on ambient CWD)"
+  echo "$UNQUALIFIED_INLINE_COMMANDS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Dynamic workflow commands preserve worktree scope... "
+E2E_TEST_EXECUTION="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/e2e-test-execution.md"
+SHIP_LOCAL_REVIEW="$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
+if ! file_contains 'store the raw executable' "$E2E_TEST_EXECUTION" ||
+   file_contains 'command: `(cd "$WORKTREE_PATH" && make <target>)`' "$E2E_TEST_EXECUTION" ||
+   ! file_contains '"$WORKTREE_PATH/$f"' "$SHIP_LOCAL_REVIEW"; then
+  echo "FAIL (dynamic command or handler-file scope is invalid)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "Workflow re-entry rejects invalid persisted repository paths... "
+REENTRY_FAILURE=""
+assert_reentry_contract() {
+  local label="$1"
+  local file="$2"
+  local reason="$3"
+
+  if ! file_contains 'PERSISTED_ORIGINAL_REPO_ROOT' "$file" ||
+     ! file_contains 'PERSISTED_WORKTREE_PATH' "$file" ||
+     ! file_contains 'PERSISTED_REPO_SLUG' "$file" ||
+     ! file_contains '[ -z "$PERSISTED_WORKTREE_PATH" ]' "$file" ||
+     ! file_contains '[ "${PERSISTED_WORKTREE_PATH#/}" = "$PERSISTED_WORKTREE_PATH" ]' "$file" ||
+     ! file_contains '[ ! -d "$PERSISTED_WORKTREE_PATH" ]' "$file" ||
+     ! file_contains 'REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain' "$file" ||
+     ! file_contains 'PERSISTED_ORIGINAL_REPO_ROOT" != "$ORIGINAL_REPO_ROOT' "$file" ||
+     ! file_contains 'PERSISTED_REPO_SLUG" != "$CURRENT_REPO_SLUG' "$file" ||
+     ! file_contains "WORKFLOW_REASON=$reason" "$file" ||
+     ! file_contains 'completion_promise = "INCOMPLETE"' "$file"; then
+    REENTRY_FAILURE="$label does not reject missing, relative, nonexistent, unregistered, or mismatched persisted paths"
+  fi
+}
+
+assert_reentry_contract "start-issue" "$START_ISSUE_SKILL" "start-issue-worktree-path-invalid"
+assert_reentry_contract "e2e-verify" "$E2E_LOOP_STATE" "e2e-worktree-path-invalid"
+assert_reentry_contract "ship" "$SHIP_SKILL" "ship-worktree-path-invalid"
+assert_reentry_contract "address-review" "$ADDRESS_REVIEW_LOOP_STATE" "address-review-worktree-path-invalid"
+
+if [ -n "$REENTRY_FAILURE" ]; then
+  echo "FAIL ($REENTRY_FAILURE)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
@@ -519,10 +718,10 @@ else
     block { print }
   ' "$GEMINI_IMAGE_DIR/request-builder.md" > "$BUILD_BLOCK"
 
-  DEFAULT_REQUEST=$(env -u GEMINI_MODEL -u GEMINI_SERVICE_TIER GEMINI_PROMPT=test bash "$BUILD_BLOCK")
-  UNSUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-3.1-flash-image GEMINI_SERVICE_TIER=priority GEMINI_PROMPT=test bash "$BUILD_BLOCK")
-  SUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=PRIORITY GEMINI_PROMPT=test bash "$BUILD_BLOCK")
-  INVALID_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=express GEMINI_IMAGE_SIZE=4K GEMINI_PROMPT=test bash "$BUILD_BLOCK")
+  DEFAULT_REQUEST=$(env -u GEMINI_MODEL -u GEMINI_SERVICE_TIER GEMINI_PROMPT=test "$BASH" "$BUILD_BLOCK")
+  UNSUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-3.1-flash-image GEMINI_SERVICE_TIER=priority GEMINI_PROMPT=test "$BASH" "$BUILD_BLOCK")
+  SUPPORTED_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=PRIORITY GEMINI_PROMPT=test "$BASH" "$BUILD_BLOCK")
+  INVALID_REQUEST=$(GEMINI_MODEL=gemini-2.5-flash-image GEMINI_SERVICE_TIER=express GEMINI_IMAGE_SIZE=4K GEMINI_PROMPT=test "$BASH" "$BUILD_BLOCK")
 
   if ! grep -q 'os.environ.get("GEMINI_MODEL", "gemini-3\.1-flash-image")' "$GEMINI_IMAGE_DIR/request-builder.md"; then
     echo "FAIL (GA model is not the builder default)"

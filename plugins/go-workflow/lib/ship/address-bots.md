@@ -7,8 +7,8 @@ Loaded by `skills/ship/SKILL.md` Phase 5.
 Before applying fixes, ensure the branch is up to date with the base to avoid conflicts:
 
 ```bash
-git fetch origin "$BASE_BRANCH"
-git rebase "origin/$BASE_BRANCH"
+git -C "$WORKTREE_PATH" fetch origin "$BASE_BRANCH"
+git -C "$WORKTREE_PATH" rebase "origin/$BASE_BRANCH"
 ```
 
 Resolve conflicts only when the correct resolution is evident and every
@@ -41,8 +41,8 @@ BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 Then push the fixes. After pushing, capture HEAD SHA:
 
 ```bash
-git push
-HEAD_SHA=$(git rev-parse HEAD)
+git -C "$WORKTREE_PATH" push
+HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
 echo "HEAD SHA captured: $HEAD_SHA"
 ```
 

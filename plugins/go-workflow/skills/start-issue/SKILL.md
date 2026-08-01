@@ -73,8 +73,8 @@ must remain interpretable after a future refactor.
 
 ## Clear Stale Worktree State
 
-Clear any leftover worktree state from a prior session. This prevents the
-pre-tool-use hook from blocking commands in a fresh `$go-workflow:start-issue` invocation:
+Clear any leftover worktree state from a prior session so it cannot affect a
+fresh `$go-workflow:start-issue` invocation:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true
@@ -115,25 +115,73 @@ Store the parsed flags:
 ## Loop Initialization
 
 ```bash
-if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then
+ISSUE_NUM=$(echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g; s/--no-agents//g' | tr -d ' ')
+CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
+ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print; exit}')
+if [ -z "$ORIGINAL_REPO_ROOT" ] || [ "${ORIGINAL_REPO_ROOT#/}" = "$ORIGINAL_REPO_ROOT" ] || [ ! -d "$ORIGINAL_REPO_ROOT" ]; then
+  echo "ERROR: Could not resolve the absolute original repository root."
+  exit 1
+fi
+WORKTREE_PATH="$CURRENT_CHECKOUT_ROOT"
+STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/start-issue-${ISSUE_NUM}.loop.local.json"
+CURRENT_REPO_SLUG=$(cd "$CURRENT_CHECKOUT_ROOT" && gh repo view --json nameWithOwner --jq '.nameWithOwner')
+EXISTING_PHASE=""
+if [ -f "$STATE_FILE" ]; then
+  EXISTING_PHASE=$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null || true)
+fi
+if [ -n "$EXISTING_PHASE" ]; then
+  PERSISTED_ORIGINAL_REPO_ROOT=$(jq -r '.original_repo_root // empty' "$STATE_FILE" 2>/dev/null || true)
+  PERSISTED_WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$STATE_FILE" 2>/dev/null || true)
+  PERSISTED_REPO_SLUG=$(jq -r '.repo_slug // empty' "$STATE_FILE" 2>/dev/null || true)
+  REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print}')
+  if [ "$PERSISTED_ORIGINAL_REPO_ROOT" != "$ORIGINAL_REPO_ROOT" ] ||
+     [ -z "$PERSISTED_WORKTREE_PATH" ] ||
+     [ "${PERSISTED_WORKTREE_PATH#/}" = "$PERSISTED_WORKTREE_PATH" ] ||
+     [ ! -d "$PERSISTED_WORKTREE_PATH" ] ||
+     ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v path="$PERSISTED_WORKTREE_PATH" '$0 == path { found = 1 } END { exit !found }' ||
+     [ "$PERSISTED_REPO_SLUG" != "$CURRENT_REPO_SLUG" ]; then
+    TMP="${STATE_FILE}.tmp"
+    jq '.workflow_result = "incomplete" | .workflow_reason = "start-issue-worktree-path-invalid" | .phase = "incomplete" | .completion_promise = "INCOMPLETE"' "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+    echo "WORKFLOW_RESULT=INCOMPLETE"
+    echo "WORKFLOW_REASON=start-issue-worktree-path-invalid"
+    echo "<done>INCOMPLETE</done>"
+    exit 1
+  fi
+  WORKTREE_PATH="$PERSISTED_WORKTREE_PATH"
+  REPO_SLUG="$PERSISTED_REPO_SLUG"
+else
+  REPO_SLUG="$CURRENT_REPO_SLUG"
+fi
+
+if [ -n "$EXISTING_PHASE" ]; then
+  echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop to preserve state."
+elif [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then
   echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."
   exit 1
 else
-  ISSUE_NUM=$(echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g; s/--no-agents//g' | tr -d ' ')
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ISSUE_NUM" "COMPLETE" "" "" '{}'
+  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ISSUE_NUM" "COMPLETE" "" "" '{}' "$STATE_FILE"
 fi
+
+TMP="${STATE_FILE}.tmp"
+jq --arg original_repo_root "$ORIGINAL_REPO_ROOT" --arg worktree_path "$WORKTREE_PATH" --arg repo_slug "$REPO_SLUG" \
+  '. + {original_repo_root: $original_repo_root, worktree_path: $worktree_path, repo_slug: $repo_slug}' \
+  "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
+
+`ORIGINAL_REPO_ROOT`, `WORKTREE_PATH`, `STATE_FILE`, and `REPO_SLUG` are
+resolved once before any worktree transition. Do not derive them again from
+the ambient shell directory.
 
 ## Context
 
 Gather context before worktree or plan decisions:
 
 ```bash
-gh issue view "$ISSUE_NUM" --json title,state,body,labels,comments --jq '.'
-git branch --show-current
-git remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"
-basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown"
-git worktree list
+gh issue view "$ISSUE_NUM" --repo "$REPO_SLUG" --json title,state,body,labels,comments --jq '.'
+git -C "$WORKTREE_PATH" branch --show-current
+git -C "$WORKTREE_PATH" remote show origin 2>/dev/null | grep 'HEAD branch' | sed 's/.*: //' || echo "main"
+basename "$WORKTREE_PATH"
+git -C "$WORKTREE_PATH" worktree list
 ```
 
 ---
@@ -144,8 +192,9 @@ First, check if already running inside a git worktree:
 
 ```bash
 IN_WORKTREE=false
-GIT_DIR_ABS=$(cd "$(git rev-parse --git-dir 2>/dev/null)" && pwd)
-GIT_COMMON_ABS=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd)
+GIT_DIR_ABS=$(git -C "$WORKTREE_PATH" rev-parse --absolute-git-dir 2>/dev/null)
+GIT_COMMON_REL=$(git -C "$WORKTREE_PATH" rev-parse --git-common-dir 2>/dev/null)
+GIT_COMMON_ABS=$(cd "$WORKTREE_PATH" && cd "$GIT_COMMON_REL" && pwd)
 if [ -n "$GIT_DIR_ABS" ] && [ -n "$GIT_COMMON_ABS" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
   IN_WORKTREE=true
 fi
@@ -185,8 +234,8 @@ choice.
 full procedure: capture `SOURCE_DIR`, derive `WORKTREE_NAME`/`BRANCH_NAME` from
 issue title, fetch and create the worktree, search for env files
 (`.env`/`.env.local`/`.envrc`) and offer to copy with directory structure
-preserved, capture `WORKTREE_ABS_PATH`, register the worktree state file
-(enables hook-based path enforcement), and confirm to the user.
+preserved, capture `WORKTREE_ABS_PATH`, register the compatibility worktree
+state file, and confirm to the user.
 
 After the worktree is established, continue to **Plan Mode Check** below.
 
@@ -214,9 +263,10 @@ If a worktree was created:
 
 ```markdown
 ## Working Directory
-All work MUST happen in: <the concrete WORKTREE_ABS_PATH value>
-Original repo (DO NOT USE): <the SOURCE_DIR value>
-The pre-tool-use hook will BLOCK any tool call targeting the original repo.
+All work MUST happen in: <the concrete WORKTREE_PATH value>
+Original repo (state only): <the ORIGINAL_REPO_ROOT value>
+Every repository command and file path must explicitly target the worktree.
+Do not rely on a pre-tool-use hook to reject an ambient-directory operation.
 ```
 
 If no worktree:
@@ -232,24 +282,23 @@ If you ARE already in plan mode, continue with the workflow below.
 
 ## MANDATORY: All Work Happens in the Worktree
 
-**Your shell CWD does NOT persist between Bash calls. Claude Code resets it
-every time.** You CANNOT just `cd` once — it will be forgotten. You must
-actively use the worktree path in EVERY tool call.
+**Your shell CWD does NOT persist between Bash calls.** Every repository command
+must explicitly target `WORKTREE_PATH`; a prior `cd` is never evidence of scope.
 
 | Tool | How to use the worktree path |
 |------|------------------------------|
-| **Bash** | Prefix EVERY command: `cd "$WORKTREE_ABS_PATH" && <your command>` |
-| **Read** | Use `$WORKTREE_ABS_PATH/path/to/file` as the `file_path` |
-| **Edit** | Use `$WORKTREE_ABS_PATH/path/to/file` as the `file_path` |
-| **Write** | Use `$WORKTREE_ABS_PATH/path/to/file` as the `file_path` |
-| **Glob** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
-| **Grep** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
+| **Bash** | Prefer `git -C "$WORKTREE_PATH"`, `go -C "$WORKTREE_PATH"`, and `gh ... --repo "$REPO_SLUG"`; use `(cd "$WORKTREE_PATH" && ...)` only when a command has no directory option |
+| **Read** | Use `$WORKTREE_PATH/path/to/file` as the `file_path` |
+| **Edit** | Use `$WORKTREE_PATH/path/to/file` as the `file_path` |
+| **Write** | Use `$WORKTREE_PATH/path/to/file` as the `file_path` |
+| **Glob** | Set `path` parameter to `$WORKTREE_PATH` |
+| **Grep** | Set `path` parameter to `$WORKTREE_PATH` |
 
-**If you forget to use the worktree path, the pre-tool-use hook will BLOCK the
-tool call** and tell you the correct path to use. This is your safety net.
+No hook is assumed to enforce this invariant. Each command and file operation
+must be correct on its own.
 
 **Self-check before EVERY file operation:** "Does this path start with
-`$WORKTREE_ABS_PATH`?" If not, STOP and fix it.
+`$WORKTREE_PATH`?" If not, STOP and fix it.
 
 **Note:** When using a worktree, the branch is already
 `issue-<num>-<title>`. Skip the "Create Branch" step in the workflows below.
@@ -322,10 +371,10 @@ verify → coverage → security → submit → watch CI.
 Before outputting `<done>COMPLETE</done>`, every claim MUST have FRESH evidence
 from THIS session — actual command output, not narrative:
 
-- **"Tests pass"** → `go test` output with "ok" lines, zero failures
-- **"Build succeeds"** → `go build ./...` exit 0
-- **"Lint clean"** → `golangci-lint run` output (skip if not installed)
-- **"CI passes"** → `gh pr checks` with all checks green
+- **"Tests pass"** → `go -C "$WORKTREE_PATH" test ./...` output with "ok" lines, zero failures
+- **"Build succeeds"** → `go -C "$WORKTREE_PATH" build ./...` exit 0
+- **"Lint clean"** → `(cd "$WORKTREE_PATH" && golangci-lint run)` output (skip if not installed)
+- **"CI passes"** → `gh pr checks "$PR_NUM" --repo "$REPO_SLUG"` with all checks green
 
 **Red-flag language check** — if you are about to write "should work" / "should
 be fine" / "probably" / "likely" / "I believe this fixes…" / "I think this
@@ -339,14 +388,14 @@ STOP and run verification instead.
 **DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:**
 
 1. Code changes implemented and address the issue
-2. Tests written and ALL PASS (`go test ./...` or equivalent) — with output shown above
+2. Tests written and ALL PASS (`go -C "$WORKTREE_PATH" test ./...` or equivalent) — with output shown above
 3. Coverage verified for changed source files, or not applicable because the
    diff is source-free / all changed Go files are `package main`
-4. Linting passes (`golangci-lint run` or equivalent, if installed) — with output shown above
+4. Linting passes (`(cd "$WORKTREE_PATH" && golangci-lint run)` or equivalent, if installed) — with output shown above
 5. Changes committed with a proper commit message
 6. Changes pushed to the remote branch
 7. PR created and the PR URL displayed
-8. CI checks pass (`gh pr checks` shows all green) — with output shown above
+8. CI checks pass (`gh pr checks "$PR_NUM" --repo "$REPO_SLUG"` shows all green) — with output shown above
 
 When ALL criteria are met, output exactly:
 
