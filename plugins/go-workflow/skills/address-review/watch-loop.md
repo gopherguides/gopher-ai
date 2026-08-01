@@ -19,7 +19,7 @@ fi
 **CRITICAL: Persist the baseline in the state file** so it survives context-loss re-entry:
 
 ```bash
-if [ -z "$BOT_REVIEW_BASELINE" ]; then
+if [ -z "${BOT_REVIEW_BASELINE:-}" ]; then
   BOT_REVIEW_BASELINE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   echo "Bot review baseline captured (fallback): $BOT_REVIEW_BASELINE"
 fi

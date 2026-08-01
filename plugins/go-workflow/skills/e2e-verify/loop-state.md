@@ -62,7 +62,11 @@ jq --arg mode "$MODE" --arg pr_number "$PR_NUM" --arg build_result "" \
    --arg e2e_result "" --argjson pages_tested 0 --arg base_branch "" \
    --arg workflow_result "" --arg workflow_reason "" --arg original_repo_root "$ORIGINAL_REPO_ROOT" \
    --arg worktree_path "$WORKTREE_PATH" --arg repo_slug "$REPO_SLUG" \
-   '. + {mode: $mode, pr_number: $pr_number, build_result: $build_result, e2e_result: $e2e_result, pages_tested: $pages_tested, base_branch: $base_branch, workflow_result: $workflow_result, workflow_reason: $workflow_reason, original_repo_root: (if (.original_repo_root // "") == "" then $original_repo_root else .original_repo_root end), worktree_path: (if (.worktree_path // "") == "" then $worktree_path else .worktree_path end), repo_slug: (if (.repo_slug // "") == "" then $repo_slug else .repo_slug end)}' \
+   --arg generation_target "" --argjson generation_snapshot '[]' \
+   --arg generated_commit_status "" --arg generated_commit_parent "" \
+   --arg generated_commit_sha "" \
+   --argjson generated_files '[]' \
+   '. + {mode: $mode, pr_number: $pr_number, build_result: $build_result, e2e_result: $e2e_result, pages_tested: $pages_tested, base_branch: $base_branch, workflow_result: $workflow_result, workflow_reason: $workflow_reason, original_repo_root: (if (.original_repo_root // "") == "" then $original_repo_root else .original_repo_root end), worktree_path: (if (.worktree_path // "") == "" then $worktree_path else .worktree_path end), repo_slug: (if (.repo_slug // "") == "" then $repo_slug else .repo_slug end), generation_target: (.generation_target // $generation_target), generation_snapshot: (.generation_snapshot // $generation_snapshot), generated_files: (.generated_files // $generated_files), generated_commit_status: (.generated_commit_status // $generated_commit_status), generated_commit_parent: (.generated_commit_parent // $generated_commit_parent), generated_commit_sha: (.generated_commit_sha // $generated_commit_sha)}' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 
@@ -72,21 +76,65 @@ jq --arg mode "$MODE" --arg pr_number "$PR_NUM" --arg build_result "" \
 source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
 if [ -f "$STATE_FILE" ]; then
   read_loop_state "$STATE_FILE"
+  E2E_STATE_JSON=$(cat "$STATE_FILE")
+  GEN_TARGET=$(jq -r '.generation_target // empty' <<< "$E2E_STATE_JSON")
+  GEN_SNAPSHOT_FILES=()
+  while IFS= read -r -d '' SNAPSHOT_FILE; do
+    GEN_SNAPSHOT_FILES+=("$SNAPSHOT_FILE")
+  done < <(jq -j 'if ((.generation_snapshot // []) | type) == "array" then .generation_snapshot[]? else ((.generation_snapshot // "") | split("\n")[] | select(length > 0)) end | ., "\u0000"' <<< "$E2E_STATE_JSON")
+  GENERATED_COMMIT_STATUS=$(jq -r '.generated_commit_status // empty' <<< "$E2E_STATE_JSON")
+  GENERATED_COMMIT_PARENT=$(jq -r '.generated_commit_parent // empty' <<< "$E2E_STATE_JSON")
+  GENERATED_COMMIT_SHA=$(jq -r '.generated_commit_sha // empty' <<< "$E2E_STATE_JSON")
+  GEN_NEW_FILES=()
+  while IFS= read -r -d '' GENERATED_FILE; do
+    GEN_NEW_FILES+=("$GENERATED_FILE")
+  done < <(jq -j '.generated_files[]? | ., "\u0000"' <<< "$E2E_STATE_JSON")
+fi
+```
+
+If `PHASE=incomplete` and `GENERATED_COMMIT_STATUS` is `committing` or
+`push-pending`, the generated-output transaction is recoverable. Clear the
+incomplete outcome, restore the normal completion promise, set phase to
+`addressing`, and resume Step 3 so it can reconcile the exact persisted
+transaction before invoking address-review:
+
+```bash
+if [ "${PHASE:-}" = "incomplete" ] &&
+   { [ "${GENERATED_COMMIT_STATUS:-}" = "committing" ] ||
+     [ "${GENERATED_COMMIT_STATUS:-}" = "push-pending" ]; }; then
+  TMP="${STATE_FILE}.tmp"
+  jq '.workflow_result = "" | .workflow_reason = "" | .completion_promise = "VERIFIED" | .phase = "addressing"' \
+    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
+  PHASE=addressing
 fi
 ```
 
 If `PHASE` is set (non-empty), this is a re-entry. Recover state from
-persisted fields and skip to the corresponding phase listed in the SKILL.md
-phase routing table. If `PHASE` is empty, this is a fresh start — continue
-to Step 1.
+persisted fields, including the exact `GEN_NEW_FILES` array when re-entering
+the `addressing` phase, and skip to the corresponding phase listed in the
+SKILL.md phase routing table. If `PHASE` is empty, this is a fresh start —
+continue to Step 1.
 
 ## Persist Build Result (Steps 1-2)
 
 ```bash
 set_loop_phase "$STATE_FILE" "building"
+if [ "${GEN_NEW_FILES[0]+set}" = "set" ]; then
+  GENERATED_FILES_JSON=$(jq -cn '$ARGS.positional' --args "${GEN_NEW_FILES[@]}")
+else
+  GENERATED_FILES_JSON='[]'
+fi
+if [ "${GEN_SNAPSHOT_FILES[0]+set}" = "set" ]; then
+  GENERATION_SNAPSHOT_JSON=$(jq -cn '$ARGS.positional' --args "${GEN_SNAPSHOT_FILES[@]}")
+else
+  GENERATION_SNAPSHOT_JSON='[]'
+fi
 TMP="${STATE_FILE}.tmp"
 jq --arg build_result "$BUILD_RESULT" --arg base_branch "$BASE_BRANCH" \
-   '.build_result = $build_result | .base_branch = $base_branch' \
+   --arg generation_target "${GEN_TARGET:-}" \
+   --argjson generation_snapshot "$GENERATION_SNAPSHOT_JSON" \
+   --argjson generated_files "$GENERATED_FILES_JSON" \
+   '.build_result = $build_result | .base_branch = $base_branch | .generation_target = $generation_target | .generation_snapshot = $generation_snapshot | .generated_files = $generated_files' \
    "$STATE_FILE" > "$TMP" && mv "$TMP" "$STATE_FILE"
 ```
 

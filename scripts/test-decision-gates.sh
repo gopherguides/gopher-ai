@@ -152,10 +152,54 @@ assert_contains "$bot_success" "return control to ship Step 13" "nested bot watc
 assert_contains "$bot_success" "standalone address-review" "standalone bot watch lacks its completion outcome"
 assert_contains "$bot_success" "top-level completion criteria" "caller completion criteria are not authoritative"
 
+bot_baseline=$(section_text "$ADDRESS_WATCH" "**CRITICAL: Persist the baseline" "## Incomplete Approval Outcome")
+assert_contains "$bot_baseline" '${BOT_REVIEW_BASELINE:-}' "clean review watch fallback is not nounset-safe"
+
 dirty_review=$(section_text "$ADDRESS_FIX" "### Protect Pre-existing Target Changes" "### Parallel Fix Dispatch")
 assert_contains "$dirty_review" "pre-existing diff" "review ownership gate does not inspect evidence"
 assert_contains "$dirty_review" "do not edit or stage" "review ownership gate can capture unrelated hunks"
 assert_contains "$dirty_review" "WORKFLOW_REASON=unowned-review-target-changes" "review ownership gate lacks incomplete outcome"
+
+clean_review=$(section_text "$ADDRESS_FIX" "### If no feedback found:" "### If only pending reviews")
+assert_contains "$clean_review" "REVIEW_CLEAN=true" "clean review does not return structured runtime state"
+assert_contains "$clean_review" 'REVIEW_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-$ORIGINAL_REPO_ROOT/' "clean review does not prefer caller-owned state"
+assert_contains "$clean_review" 'set_loop_field "$REVIEW_STATE_FILE" "review_clean" "true"' "clean review does not persist durable state"
+assert_contains "$clean_review" "Skip Steps 4, 4.5, 6, 8, 9, and 10" "clean review does not skip inapplicable mutation work"
+assert_contains "$clean_review" "Step 5" "clean review skips local verification"
+assert_contains "$clean_review" "Step 7" "clean review skips CI verification"
+assert_contains "$clean_review" "Step 11" "clean review skips completion verification"
+assert_contains "$clean_review" "After Step 11 succeeds" "clean review can transition before completion verification"
+assert_contains "$clean_review" '[ -z "${STATE_FILE:-}" ]' "embedded clean review can mutate its caller phase"
+assert_contains "$clean_review" '[ "${CURRENT_PHASE:-}" = "fixing" ]' "clean review transition ignores the current phase"
+assert_contains "$clean_review" '[ "${WATCH_MODE:-false}" = "true" ]' "clean review transition ignores watch mode"
+assert_contains "$clean_review" '[ -n "${DETECTED_BOTS:-}" ]' "clean review transition ignores detected bots"
+assert_not_contains "$clean_review" "<done>COMPLETE</done>" "clean review can terminate before completion gates"
+
+clean_review_ci=$(section_text "$ADDRESS_FIX" "## Step 7: Watch CI" "## Step 8: Reply")
+assert_contains "$clean_review_ci" 'CI_PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM")' "clean review CI does not refresh PR metadata"
+assert_contains "$clean_review_ci" 'PR_HEAD_SHA=$(jq -er '\''.head.sha'\'' <<< "$CI_PR_JSON")' "clean review CI can consume an undefined PR head"
+assert_contains "$clean_review_ci" 'github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA"' "clean review CI is not pinned to the refreshed PR head"
+
+embedded_review=$(section_text "$ADDRESS" "## Embedded Consumer Contract" "## Completion Criteria")
+assert_contains "$embedded_review" "Steps 2-11" "embedded address-review contract lacks its execution boundary"
+assert_contains "$embedded_review" "REVIEW_CLEAN" "embedded address-review contract lacks structured runtime state"
+assert_contains "$embedded_review" "review_clean" "embedded address-review contract lacks durable state"
+assert_contains "$embedded_review" "return control to the caller" "embedded address-review can retain workflow control"
+assert_contains "$embedded_review" "no terminal marker" "embedded address-review can terminate its caller"
+assert_not_contains "$embedded_review" "<done>COMPLETE</done>" "embedded address-review owns a foreign completion marker"
+
+embedded_invariant=$(section_text "$ADDRESS" "## Hard Invariant Failure" "## Context & Bot Discovery")
+assert_contains "$embedded_invariant" 'INVARIANT_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-}}"' "embedded invariant cannot use caller-owned state"
+assert_contains "$embedded_invariant" "returns the structured incomplete state" "embedded invariant lacks a structured return"
+assert_contains "$embedded_invariant" "emits no terminal marker" "embedded invariant owns its caller's terminal marker"
+
+address_completion=$(section_text "$ADDRESS" "## Completion Criteria" "## Supporting Files")
+assert_contains "$address_completion" "standalone address-review owns" "standalone address-review does not own its final marker"
+assert_contains "$address_completion" "after Step 11" "standalone address-review can terminate before completion verification"
+
+address_step_11=$(section_text "$ADDRESS" "## Step 11: Verify Completion" "## Step 12: Watch")
+assert_contains "$address_step_11" 'REVIEW_HEAD_EXPECTATION="${EXPECTED_REVIEW_HEAD:-$(git -C "$WORKTREE_PATH" rev-parse HEAD)}"' "embedded completion cannot bind Step 11 to the caller head"
+assert_contains "$address_step_11" '[ "$PR_HEAD_SHA" != "$REVIEW_HEAD_EXPECTATION" ]' "embedded completion accepts a concurrent PR head shift"
 
 post_review=$(section_text "$REVIEW_DEEP" "### Post to PR" "## Further Reading")
 assert_contains "$post_review" "original request explicitly asks" "review posting ignores request evidence"

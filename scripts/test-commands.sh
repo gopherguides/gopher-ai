@@ -237,6 +237,359 @@ else
   echo "OK"
 fi
 
+echo -n "E2E preserves generated-path ownership across address-review... "
+E2E_REBASE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-build.md"
+E2E_SKILL="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
+E2E_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/loop-state.md"
+E2E_ADDRESSING=$(awk '
+  /^## Step 3:/ { active = 1 }
+  /^## Step 4:/ { exit }
+  active { print }
+' "$E2E_SKILL")
+E2E_ADDRESS_REVIEW_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /follow [*][*]Steps 2-11 only[*][*]/ { print NR; found = 1 }')
+E2E_EMPTY_INDEX_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /if ! git -C "[$]WORKTREE_PATH" diff --cached --quiet; then/ { print NR; found = 1 }')
+E2E_GENERATOR_RERUN_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /make "[$]GEN_TARGET"/ { print NR; found = 1 }')
+E2E_GENERATED_STAGE_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && index($0, "git -C \"$WORKTREE_PATH\" add -- \"${GEN_NEW_FILES[@]}\"") { print NR; found = 1 }')
+E2E_GENERATED_COMMIT_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /git -C "[$]WORKTREE_PATH" commit -m "chore: refresh generated output"/ { print NR; found = 1 }')
+E2E_GENERATED_PUSH_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '/git -C "[$]WORKTREE_PATH" commit -m "chore: refresh generated output"/ { commit_seen = 1 } commit_seen && !found && /git -C "[$]WORKTREE_PATH" push "[$]PR_HEAD_PUSH_TARGET"/ { print NR; found = 1 }')
+E2E_POST_FIX_VERIFY_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /BUILD_RESULT=pass/ { print NR; found = 1 }')
+E2E_FINAL_HEAD_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /FINAL_REVIEW_HEAD=[$][(]git -C "[$]WORKTREE_PATH" rev-parse HEAD[)]/ { print NR; found = 1 }')
+E2E_BASELINE_PERSIST_LINE=$(awk '!found && /[.]generation_target = [$]generation_target \| [.]generation_snapshot = [$]generation_snapshot/ { print NR; found = 1 }' "$E2E_REBASE")
+E2E_INITIAL_GENERATOR_LINE=$(awk '!found && /make "[$]GEN_TARGET"/ { print NR; found = 1 }' "$E2E_REBASE")
+E2E_OWNED_APPEND_LINE=$(awk '!found && index($0, "GEN_NEW_FILES+=(\"$GENERATED_FILE\")") { print NR; found = 1 }' "$E2E_REBASE")
+E2E_OWNED_PERSIST_LINE=$(awk '!found && /[.]generated_files = [$]generated_files/ { print NR; found = 1 }' "$E2E_REBASE")
+
+markdown_bash_after() {
+  local file="$1"
+  local heading="$2"
+
+  awk -v heading="$heading" '
+    index($0, heading) { found_heading = 1; next }
+    found_heading && /^```bash$/ { in_block = 1; next }
+    in_block && /^```$/ { exit }
+    in_block { print }
+  ' "$file"
+}
+
+E2E_INIT_CODE=$(markdown_bash_after "$E2E_REBASE" "### 2a. Code Generation")
+E2E_DRIFT_CODE=$(markdown_bash_after "$E2E_REBASE" "Check for generated file drift:")
+E2E_PERSIST_CODE=$(markdown_bash_after "$E2E_LOOP_STATE" "## Persist Build Result" | awk '/^TMP=/{exit} {print}')
+E2E_RECOVER_CODE=$(markdown_bash_after "$E2E_LOOP_STATE" "## Re-entry Check" | awk '/^  E2E_STATE_JSON=/{active=1} active {print} /^  done </ {exit}')
+E2E_TRANSACTION_RECOVERY_CODE=$(markdown_bash_after "$E2E_SKILL" "### Recover an Interrupted Generated-Output Transaction")
+E2E_INDEX_CODE=$(markdown_bash_after "$E2E_SKILL" "### Require Empty Index After Review")
+E2E_REFRESH_CODE=$(markdown_bash_after "$E2E_SKILL" "### Refresh Generated Output After Review")
+E2E_STAGE_CODE=$(markdown_bash_after "$E2E_SKILL" "### Commit E2E-Owned Generated Output")
+E2E_RUNTIME_FAILURE=""
+if E2E_RUNTIME_OUTPUT=$(
+  E2E_INIT_CODE="$E2E_INIT_CODE" \
+  E2E_DRIFT_CODE="$E2E_DRIFT_CODE" \
+  E2E_PERSIST_CODE="$E2E_PERSIST_CODE" \
+  E2E_RECOVER_CODE="$E2E_RECOVER_CODE" \
+  E2E_TRANSACTION_RECOVERY_CODE="$E2E_TRANSACTION_RECOVERY_CODE" \
+  E2E_INDEX_CODE="$E2E_INDEX_CODE" \
+  E2E_REFRESH_CODE="$E2E_REFRESH_CODE" \
+  E2E_STAGE_CODE="$E2E_STAGE_CODE" \
+  /bin/bash -eu -c '
+    WORKTREE_PATH="$PWD"
+    GENERATED_PATH=$(printf "generated/é\noutput.go")
+    STATE_FILE=/dev/null
+    set_loop_phase() { return 0; }
+    eval "$E2E_INIT_CODE"
+    eval "$E2E_PERSIST_CODE"
+    [ "$GENERATED_FILES_JSON" = "[]" ] || exit 1
+
+    git() {
+      if [ "${1:-}" = "-C" ]; then shift 2; fi
+      case "$*" in
+        "diff --name-only -z") return 0 ;;
+        "ls-files --others --exclude-standard -z") printf "%s\0" "$GENERATED_PATH" ;;
+        *) return 1 ;;
+      esac
+    }
+    GEN_TARGET=generate
+    GEN_SNAPSHOT_FILES=()
+    WORKFLOW_REASON=""
+    eval "$E2E_DRIFT_CODE" >/dev/null
+    [ "${GEN_NEW_FILES[0]}" = "$GENERATED_PATH" ] || exit 1
+    [ "${GEN_NEW_FILES[1]+set}" != "set" ] || exit 1
+
+    eval "$E2E_PERSIST_CODE"
+    [ "$(jq -r ".[0]" <<< "$GENERATED_FILES_JSON")" = "$GENERATED_PATH" ] || exit 1
+
+    STATE_FILE=<(printf "{\"generation_target\":\"generate\",\"generation_snapshot\":[],\"generated_files\":[]}\n")
+    eval "$E2E_RECOVER_CODE"
+    STATE_FILE=/dev/null
+    eval "$E2E_DRIFT_CODE" >/dev/null
+    [ "${GEN_NEW_FILES[0]}" = "$GENERATED_PATH" ] || exit 1
+    [ "${GEN_NEW_FILES[1]+set}" != "set" ] || exit 1
+
+    unset GEN_TARGET
+    STATE_FILE=<(printf "{\"generation_target\":\"generate\",\"generation_snapshot\":[],\"generated_files\":%s}\n" "$GENERATED_FILES_JSON")
+    eval "$E2E_RECOVER_CODE"
+    [ "$GEN_TARGET" = "generate" ] || exit 1
+    [ "${GEN_NEW_FILES[0]}" = "$GENERATED_PATH" ] || exit 1
+
+    git() {
+      if [ "${1:-}" = "-C" ]; then shift 2; fi
+      case "$*" in
+        "diff --cached --quiet") return 0 ;;
+        "diff --name-only -z") return 0 ;;
+        "ls-files --others --exclude-standard -z") printf "%s\0" "$GENERATED_PATH" ;;
+        *) return 1 ;;
+      esac
+    }
+    eval "$E2E_INDEX_CODE"
+    [ -z "$WORKFLOW_REASON" ] || exit 1
+
+    make() { return 0; }
+    eval "$E2E_REFRESH_CODE"
+    [ "${GEN_NEW_FILES[0]}" = "$GENERATED_PATH" ] || exit 1
+    [ "${GEN_NEW_FILES[1]+set}" != "set" ] || exit 1
+
+    STATE_FILE=/dev/null
+    STAGE_LOG=""
+    LOCAL_HEAD=before
+    PR_NUM=300
+    COMMIT_FAIL=false
+    PUSH_FAIL=false
+    INDEX_STAGED=false
+    CACHED_PATHS=("$GENERATED_PATH")
+    INJECT_UNRELATED_AFTER_ADD=false
+    github_pr() {
+      printf "{\"head\":{\"sha\":\"%s\",\"ref\":\"issue-300\",\"repo\":{\"full_name\":\"gopherguides/gopher-ai\",\"clone_url\":\"https://github.com/gopherguides/gopher-ai.git\"}}}\n" "$LOCAL_HEAD"
+    }
+    git() {
+      if [ "${1:-}" = "-C" ]; then shift 2; fi
+      case "$1" in
+        add)
+          shift
+          STAGE_LOG="add:$*"
+          INDEX_STAGED=true
+          if [ "$INJECT_UNRELATED_AFTER_ADD" = "true" ]; then
+            CACHED_PATHS=("$GENERATED_PATH" "unrelated.txt")
+          else
+            CACHED_PATHS=("$GENERATED_PATH")
+          fi
+          ;;
+        diff)
+          if [ "$*" = "diff --cached --quiet" ]; then
+            [ "$INDEX_STAGED" = "false" ]
+          elif [ "$*" = "diff --cached --name-only -z" ]; then
+            printf "%s\0" "${CACHED_PATHS[@]}"
+          else
+            return 1
+          fi
+          ;;
+        commit)
+          STAGE_LOG="$STAGE_LOG|commit:$*"
+          if [ "$COMMIT_FAIL" = "true" ]; then return 1; fi
+          LOCAL_HEAD=after
+          INDEX_STAGED=false
+          ;;
+        push)
+          STAGE_LOG="$STAGE_LOG|push:$*"
+          if [ "$PUSH_FAIL" = "true" ]; then return 1; fi
+          ;;
+        remote)
+          if [ "${2:-}" = "get-url" ]; then
+            printf "%s\n" "https://github.com/gopherguides/gopher-ai.git"
+          else
+            printf "%s\n" origin
+          fi
+          ;;
+        rev-parse) printf "%s\n" "$LOCAL_HEAD" ;;
+        restore) INDEX_STAGED=false ;;
+        *) return 1 ;;
+      esac
+    }
+    eval "$E2E_STAGE_CODE"
+    [ "$STAGE_LOG" = "add:-- $GENERATED_PATH|commit:commit -m chore: refresh generated output|push:push origin HEAD:refs/heads/issue-300" ] || exit 1
+    [ "$PR_HEAD_SHA" = "after" ] || exit 1
+
+    WORKFLOW_REASON=""
+    STAGE_LOG=""
+    LOCAL_HEAD=before
+    INDEX_STAGED=false
+    COMMIT_FAIL=true
+    eval "$E2E_STAGE_CODE"
+    [ "$WORKFLOW_REASON" = "generated-commit-failed" ] || exit 1
+    [ "$STAGE_LOG" = "add:-- $GENERATED_PATH|commit:commit -m chore: refresh generated output" ] || exit 1
+    [ "$INDEX_STAGED" = "false" ] || exit 1
+
+    WORKFLOW_REASON=""
+    STAGE_LOG=""
+    LOCAL_HEAD=before
+    INDEX_STAGED=false
+    COMMIT_FAIL=false
+    PUSH_FAIL=true
+    eval "$E2E_STAGE_CODE"
+    [ "$WORKFLOW_REASON" = "generated-push-failed" ] || exit 1
+    [ "$STAGE_LOG" = "add:-- $GENERATED_PATH|commit:commit -m chore: refresh generated output|push:push origin HEAD:refs/heads/issue-300" ] || exit 1
+
+    WORKFLOW_REASON=""
+    STAGE_LOG=""
+    LOCAL_HEAD=before
+    INDEX_STAGED=true
+    COMMIT_FAIL=false
+    PUSH_FAIL=false
+    eval "$E2E_STAGE_CODE"
+    [ "$WORKFLOW_REASON" = "generator-staged-changes" ] || exit 1
+    [ -z "$STAGE_LOG" ] || exit 1
+
+    WORKFLOW_REASON=""
+    STAGE_LOG=""
+    GEN_NEW_FILES=()
+    eval "$E2E_STAGE_CODE"
+    [ "$WORKFLOW_REASON" = "generator-staged-changes" ] || exit 1
+    [ -z "$STAGE_LOG" ] || exit 1
+
+    WORKFLOW_REASON=""
+    STAGE_LOG=""
+    GEN_NEW_FILES=("$GENERATED_PATH")
+    LOCAL_HEAD=before
+    INDEX_STAGED=false
+    INJECT_UNRELATED_AFTER_ADD=true
+    eval "$E2E_STAGE_CODE"
+    [ "$WORKFLOW_REASON" = "generated-index-mismatch" ] || exit 1
+    [ "$STAGE_LOG" = "add:-- $GENERATED_PATH" ] || exit 1
+
+    STATE_FILE=$(mktemp /tmp/e2e-generated-transaction-XXXXXX)
+    trap '\''rm -f "$STATE_FILE"'\'' EXIT
+    GEN_NEW_FILES=("$GENERATED_PATH")
+    GENERATED_COMMIT_STATUS=committing
+    GENERATED_COMMIT_PARENT=before
+    GENERATED_COMMIT_SHA=""
+    LOCAL_HEAD=before
+    PUBLISHED_HEAD=before
+    INDEX_STAGED=true
+    CACHED_PATHS=("$GENERATED_PATH")
+    WORKFLOW_REASON=""
+    TRANSACTION_LOG=""
+    printf "{\"generated_commit_status\":\"committing\",\"generated_commit_parent\":\"before\",\"generated_commit_sha\":\"\"}\n" > "$STATE_FILE"
+    github_pr() {
+      printf "{\"head\":{\"sha\":\"%s\",\"ref\":\"issue-300\",\"repo\":{\"full_name\":\"gopherguides/gopher-ai\",\"clone_url\":\"https://github.com/gopherguides/gopher-ai.git\"}}}\n" "$PUBLISHED_HEAD"
+    }
+    git() {
+      if [ "${1:-}" = "-C" ]; then shift 2; fi
+      case "$1" in
+        diff)
+          if [ "$*" = "diff --cached --name-only -z" ]; then printf "%s\0" "${CACHED_PATHS[@]}"; else return 1; fi
+          ;;
+        diff-tree) printf "%s\0" "$GENERATED_PATH" ;;
+        restore) INDEX_STAGED=false; TRANSACTION_LOG="$TRANSACTION_LOG|restore" ;;
+        rev-parse)
+          if [ "${2:-}" = "HEAD" ]; then printf "%s\n" "$LOCAL_HEAD"; else printf "%s\n" before; fi
+          ;;
+        remote)
+          if [ "${2:-}" = "get-url" ]; then printf "%s\n" "https://github.com/gopherguides/gopher-ai.git"; else printf "%s\n" origin; fi
+          ;;
+        push) PUBLISHED_HEAD=after; TRANSACTION_LOG="$TRANSACTION_LOG|push" ;;
+        *) return 1 ;;
+      esac
+    }
+    eval "$E2E_TRANSACTION_RECOVERY_CODE"
+    [ -z "$WORKFLOW_REASON" ] || exit 1
+    [ "$INDEX_STAGED" = "false" ] || exit 1
+    [ -z "$GENERATED_COMMIT_STATUS" ] || exit 1
+    [ "$(jq -r ".generated_commit_status" "$STATE_FILE")" = "" ] || exit 1
+
+    GENERATED_COMMIT_STATUS=committing
+    GENERATED_COMMIT_PARENT=before
+    GENERATED_COMMIT_SHA=""
+    LOCAL_HEAD=after
+    PUBLISHED_HEAD=before
+    INDEX_STAGED=false
+    WORKFLOW_REASON=""
+    TRANSACTION_LOG=""
+    printf "{\"generated_commit_status\":\"committing\",\"generated_commit_parent\":\"before\",\"generated_commit_sha\":\"\"}\n" > "$STATE_FILE"
+    eval "$E2E_TRANSACTION_RECOVERY_CODE"
+    [ -z "$WORKFLOW_REASON" ] || exit 1
+    [ "$GENERATED_PUSH_RECOVERED" = "true" ] || exit 1
+    [ "$PUBLISHED_HEAD" = "after" ] || exit 1
+    [ "$TRANSACTION_LOG" = "|push" ] || exit 1
+    [ "$(jq -r ".generated_commit_status" "$STATE_FILE")" = "" ] || exit 1
+  ' 2>&1
+); then
+  E2E_RUNTIME_FAILURE=""
+else
+  E2E_RUNTIME_FAILURE="$E2E_RUNTIME_OUTPUT"
+fi
+
+if file_contains 'xargs git add' "$E2E_REBASE" ||
+   file_contains 'git add -- "${GEN_NEW_FILES[@]}"' "$E2E_REBASE"; then
+  echo "FAIL (generated paths are staged before embedded address-review)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'GEN_NEW_FILES+=("$GENERATED_FILE")' "$E2E_REBASE" ||
+     ! file_contains 'Keep the generated paths unstaged' "$E2E_REBASE"; then
+  echo "FAIL (generated drift is not retained as an unstaged owned-path array)"
+  ERRORS=$((ERRORS + 1))
+elif file_contains 'GEN_NEW_FILES=("${GEN_NEW_FILES[@]}")' "$E2E_REBASE" ||
+     ! file_contains 'if ! declare -p GEN_NEW_FILES >/dev/null 2>&1; then' "$E2E_REBASE" ||
+     ! file_contains 'GEN_NEW_FILES=()' "$E2E_REBASE" ||
+     ! file_contains '${GEN_NEW_FILES[0]+set}' "$E2E_REBASE" ||
+     ! file_contains '${GEN_NEW_FILES[0]+set}' "$E2E_LOOP_STATE" ||
+     ! file_contains '${GEN_NEW_FILES[0]+set}' "$E2E_SKILL"; then
+  echo "FAIL (fresh E2E runs do not initialize generated paths safely under nounset)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'generated_files: (.generated_files // $generated_files)' "$E2E_LOOP_STATE" ||
+     ! file_contains 'generation_target: (.generation_target // $generation_target)' "$E2E_LOOP_STATE" ||
+     ! file_contains '.generation_target = $generation_target' "$E2E_LOOP_STATE" ||
+     ! file_contains "GEN_TARGET=\$(jq -r '.generation_target // empty'" "$E2E_LOOP_STATE" ||
+     ! file_contains 'generation_snapshot: (.generation_snapshot // $generation_snapshot)' "$E2E_LOOP_STATE" ||
+     ! file_contains '.generation_snapshot = $generation_snapshot' "$E2E_LOOP_STATE" ||
+     ! file_contains '.generated_files = $generated_files' "$E2E_LOOP_STATE" ||
+     ! file_contains 'generated_commit_status: (.generated_commit_status // $generated_commit_status)' "$E2E_LOOP_STATE" ||
+     ! file_contains "GENERATED_COMMIT_STATUS=\$(jq -r '.generated_commit_status // empty'" "$E2E_LOOP_STATE" ||
+     ! file_contains '[ "${PHASE:-}" = "incomplete" ]' "$E2E_LOOP_STATE" ||
+     ! file_contains 'set_loop_phase "$STATE_FILE" "building"' "$E2E_LOOP_STATE" ||
+     ! file_contains 'jq -cn '\''$ARGS.positional'\'' --args "${GEN_NEW_FILES[@]}"' "$E2E_LOOP_STATE" ||
+     ! file_contains "while IFS= read -r -d '' GENERATED_FILE" "$E2E_LOOP_STATE" ||
+     ! file_contains '.generated_files[]?' "$E2E_LOOP_STATE"; then
+  echo "FAIL (generated-path JSON persistence or re-entry recovery missing)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'if [ -z "${GEN_TARGET:-}" ]; then' "$E2E_REBASE" ||
+     ! file_contains '.generation_target = $generation_target | .generation_snapshot = $generation_snapshot' "$E2E_REBASE" ||
+     ! file_contains '.generated_files = $generated_files' "$E2E_REBASE" ||
+     [ -z "$E2E_BASELINE_PERSIST_LINE" ] || [ -z "$E2E_INITIAL_GENERATOR_LINE" ] ||
+     [ -z "$E2E_OWNED_APPEND_LINE" ] || [ -z "$E2E_OWNED_PERSIST_LINE" ] ||
+     [ "$E2E_BASELINE_PERSIST_LINE" -ge "$E2E_INITIAL_GENERATOR_LINE" ] ||
+     [ "$E2E_OWNED_APPEND_LINE" -ge "$E2E_OWNED_PERSIST_LINE" ]; then
+  echo "FAIL (generation ownership is not persisted before or immediately after generation)"
+  ERRORS=$((ERRORS + 1))
+elif [ -z "$E2E_ADDRESS_REVIEW_LINE" ] || [ -z "$E2E_EMPTY_INDEX_LINE" ] ||
+     [ -z "$E2E_GENERATOR_RERUN_LINE" ] ||
+     [ -z "$E2E_GENERATED_STAGE_LINE" ] ||
+     [ -z "$E2E_GENERATED_COMMIT_LINE" ] || [ -z "$E2E_GENERATED_PUSH_LINE" ] ||
+     [ -z "$E2E_POST_FIX_VERIFY_LINE" ] || [ -z "$E2E_FINAL_HEAD_LINE" ] ||
+     [ "$E2E_ADDRESS_REVIEW_LINE" -ge "$E2E_EMPTY_INDEX_LINE" ] ||
+     [ "$E2E_EMPTY_INDEX_LINE" -ge "$E2E_GENERATOR_RERUN_LINE" ] ||
+     [ "$E2E_GENERATOR_RERUN_LINE" -ge "$E2E_GENERATED_STAGE_LINE" ] ||
+     [ "$E2E_EMPTY_INDEX_LINE" -ge "$E2E_GENERATED_STAGE_LINE" ] ||
+     [ "$E2E_GENERATED_STAGE_LINE" -ge "$E2E_GENERATED_COMMIT_LINE" ] ||
+     [ "$E2E_GENERATED_COMMIT_LINE" -ge "$E2E_GENERATED_PUSH_LINE" ] ||
+     [ "$E2E_GENERATED_PUSH_LINE" -ge "$E2E_POST_FIX_VERIFY_LINE" ] ||
+     [ "$E2E_POST_FIX_VERIFY_LINE" -ge "$E2E_FINAL_HEAD_LINE" ] ||
+     ! file_contains 'WORKFLOW_REASON=generated-commit-failed' "$E2E_SKILL" ||
+     ! file_contains 'WORKFLOW_REASON=generated-push-failed' "$E2E_SKILL" ||
+     ! file_contains 'WORKFLOW_REASON=generator-staged-changes' "$E2E_SKILL" ||
+     ! file_contains 'WORKFLOW_REASON=generated-index-mismatch' "$E2E_SKILL" ||
+     ! file_contains 'GENERATED_COMMIT_STATUS=push-pending' "$E2E_SKILL" ||
+     ! file_contains 'GENERATED_PUSH_RECOVERED=true' "$E2E_SKILL" ||
+     ! file_contains 'PUBLISHED_FINAL_REVIEW_HEAD' "$E2E_SKILL" ||
+     ! file_contains '[ "$PUBLISHED_FINAL_REVIEW_HEAD" != "$FINAL_REVIEW_HEAD" ]' "$E2E_SKILL" ||
+     ! file_contains 'EXPECTED_REVIEW_HEAD="$FINAL_REVIEW_HEAD"' "$E2E_SKILL" ||
+     ! file_contains 'REVIEW_HEAD_EXPECTATION="${EXPECTED_REVIEW_HEAD:-$(git -C "$WORKTREE_PATH" rev-parse HEAD)}"' "$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md" ||
+     ! file_contains '[ "$PR_HEAD_SHA" != "$REVIEW_HEAD_EXPECTATION" ]' "$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md" ||
+     ! file_contains 'repeat **Step 11' "$E2E_SKILL"; then
+  echo "FAIL (fix modes do not refresh, commit, and verify the final generated-output head in order)"
+  ERRORS=$((ERRORS + 1))
+elif [ -n "$E2E_RUNTIME_FAILURE" ]; then
+  echo "FAIL (generated-path runtime contract failed: $E2E_RUNTIME_FAILURE)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Go-workflow stages only phase-owned files... "
 COMPLETE_ISSUE_PHASES="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/phases.md"
 COMPLETE_ISSUE_SKILL_INDEX_GUARDS=$(awk \
