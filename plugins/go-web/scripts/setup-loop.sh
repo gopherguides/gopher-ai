@@ -97,15 +97,7 @@ if [ "$ACTIVE_COUNT" -ne 0 ]; then
   exit 1
 fi
 
-SESSION_ID=""
-if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
-  SESSION_ID="$CLAUDE_SESSION_ID"
-elif [ -d ".claude" ]; then
-  LATEST_TRANSCRIPT=$(find .claude -maxdepth 1 -name '*.jsonl' 2>/dev/null | LC_ALL=C sort | tail -n 1 || true)
-  if [ -n "$LATEST_TRANSCRIPT" ]; then
-    SESSION_ID=$(basename "$LATEST_TRANSCRIPT" .jsonl)
-  fi
-fi
+SESSION_ID="${CLAUDE_SESSION_ID:-}"
 
 MAX_ITER_JSON="null"
 if [ -n "$MAX_ITERATIONS" ]; then
