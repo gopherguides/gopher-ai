@@ -18,6 +18,10 @@ HOOK_INPUT=$(cat)
 
 # Extract transcript path from hook input
 TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
+CURRENT_SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null)
+if [ -z "$CURRENT_SESSION_ID" ] && [ -n "$TRANSCRIPT_PATH" ]; then
+  CURRENT_SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl 2>/dev/null || true)
+fi
 
 # Source shared library for state management
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -41,11 +45,54 @@ block_stop() {
     '{"decision": "block", "reason": $reason, "systemMessage": $msg}'
 }
 
+transcript_owns_loop() {
+  local loop_name="$1"
+
+  [ -n "$loop_name" ] &&
+    [ -n "$TRANSCRIPT_PATH" ] &&
+    [ -f "$TRANSCRIPT_PATH" ] &&
+    grep -Fq -- "Loop initialized: $loop_name" "$TRANSCRIPT_PATH"
+}
+
+session_owns_loop_state() {
+  local state_file="$1"
+  local stored_session_id
+  local loop_name
+
+  [ -f "$state_file" ] && [ -r "$state_file" ] && jq empty "$state_file" 2>/dev/null || return 1
+
+  stored_session_id=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null)
+  loop_name=$(jq -r '.loop_name // empty' "$state_file" 2>/dev/null)
+
+  if [ -n "$stored_session_id" ] && [ -n "$CURRENT_SESSION_ID" ]; then
+    [ "$stored_session_id" = "$CURRENT_SESSION_ID" ]
+    return
+  fi
+
+  transcript_owns_loop "$loop_name"
+}
+
 # Find any active loop state file
 STATE_FILES=$(find_active_loops)
 
+OWNED_STATE_FILES=""
+while IFS= read -r CANDIDATE_STATE_FILE; do
+  [ -n "$CANDIDATE_STATE_FILE" ] || continue
+  if session_owns_loop_state "$CANDIDATE_STATE_FILE"; then
+    if [ -z "$OWNED_STATE_FILES" ]; then
+      OWNED_STATE_FILES="$CANDIDATE_STATE_FILE"
+    else
+      OWNED_STATE_FILES="$OWNED_STATE_FILES
+$CANDIDATE_STATE_FILE"
+    fi
+  else
+    loop_log "stop-hook: current session does not own loop state '$CANDIDATE_STATE_FILE', skipping"
+  fi
+done <<< "$STATE_FILES"
+STATE_FILES="$OWNED_STATE_FILES"
+
 if [ -z "$STATE_FILES" ]; then
-  loop_log "stop-hook: no active loops found"
+  loop_log "stop-hook: no active loops owned by current session"
   exit 0
 fi
 
@@ -90,36 +137,10 @@ if ! read_loop_state "$STATE_FILE" '[]' 2>/dev/null; then
   exit 0
 fi
 
-# Check if loop is stale (from a previous session)
-# Primary: Compare session ID (portable, instant)
 STORED_SESSION_ID=$(jq -r '.session_id // empty' "$STATE_FILE")
-
-if [ -n "$STORED_SESSION_ID" ] && [ -n "$TRANSCRIPT_PATH" ]; then
-  CURRENT_SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl 2>/dev/null || true)
-  if [ -n "$CURRENT_SESSION_ID" ] && [ "$STORED_SESSION_ID" != "$CURRENT_SESSION_ID" ]; then
-    loop_log "stop-hook: stale session detected (stored=$STORED_SESSION_ID current=$CURRENT_SESSION_ID), cleaning up"
-    cleanup_loop "$STATE_FILE"
-    exit 0
-  fi
-fi
-
-# Fallback: Timestamp-based stale detection
-if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
-  STARTED_AT=$(jq -r '.started_at // empty' "$STATE_FILE")
-  if [ -n "$STARTED_AT" ]; then
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-      TRANSCRIPT_BIRTH=$(stat -f %B "$TRANSCRIPT_PATH" 2>/dev/null || echo "0")
-      LOOP_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$STARTED_AT" +%s 2>/dev/null || echo "0")
-    else
-      TRANSCRIPT_BIRTH=$(stat -c %W "$TRANSCRIPT_PATH" 2>/dev/null || echo "0")
-      LOOP_EPOCH=$(date -d "$STARTED_AT" +%s 2>/dev/null || echo "0")
-    fi
-    if [ "$LOOP_EPOCH" -gt 0 ] && [ "$TRANSCRIPT_BIRTH" -gt 0 ] && [ "$TRANSCRIPT_BIRTH" -gt "$LOOP_EPOCH" ]; then
-      loop_log "stop-hook: stale loop detected via timestamp (loop=$STARTED_AT transcript_birth=$TRANSCRIPT_BIRTH)"
-      cleanup_loop "$STATE_FILE"
-      exit 0
-    fi
-  fi
+if [ -z "$STORED_SESSION_ID" ] && [ -n "$CURRENT_SESSION_ID" ]; then
+  set_loop_field "$STATE_FILE" "session_id" "$CURRENT_SESSION_ID" '[]'
+  loop_log "stop-hook: claimed loop state '$STATE_FILE' for session '$CURRENT_SESSION_ID'"
 fi
 
 # Validate iteration is a number
