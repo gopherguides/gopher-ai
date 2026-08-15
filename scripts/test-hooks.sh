@@ -831,29 +831,37 @@ fi
 
 echo -n "  Stop hook tracks filesystem progress before Git initialization... "
 NONREPOSITORY_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-nonrepository.XXXXXX")
-NONREPOSITORY_STATE="$NONREPOSITORY_ROOT/.local/state/create-go-project.loop.local.json"
+NONREPOSITORY_STATE="$NONREPOSITORY_ROOT/.local/state/create-go-project-example-project.loop.local.json"
 NONREPOSITORY_TRANSCRIPT="$NONREPOSITORY_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$NONREPOSITORY_STATE")" "$NONREPOSITORY_ROOT/example-project"
 jq -n \
   --arg worktree "$NONREPOSITORY_ROOT" \
-  '{schema_version:2,owner_workflow:"create-go-project-example",loop_name:"create-go-project-example",iteration:1,max_iterations:50,completion_promise:"COMPLETE",terminal_promises:["COMPLETE","INCOMPLETE"],components:{},phase:"implementing",original_prompt:"create example project",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  '{schema_version:2,owner_workflow:"create-go-project-example-project",loop_name:"create-go-project-example-project",iteration:1,max_iterations:50,completion_promise:"COMPLETE",terminal_promises:["COMPLETE","INCOMPLETE"],components:{},phase:"implementing",original_prompt:"create example project",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
   > "$NONREPOSITORY_STATE"
-printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: create-go-project-example"}]}}' > "$NONREPOSITORY_TRANSCRIPT"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: create-go-project-example-project"}]}}' > "$NONREPOSITORY_TRANSCRIPT"
 printf '%s\n' 'first revision' > "$NONREPOSITORY_ROOT/example-project/main.go"
 for _ in 1 2; do
   (
     cd "$NONREPOSITORY_ROOT"
     jq -n --arg transcript "$NONREPOSITORY_TRANSCRIPT" --arg session "owner-session" \
-      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
   ) >/dev/null
 done
+printf '%s\n' 'unrelated revision' > "$NONREPOSITORY_ROOT/unrelated.txt"
+(
+  cd "$NONREPOSITORY_ROOT"
+  jq -n --arg transcript "$NONREPOSITORY_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+) >/dev/null
+NONREPOSITORY_SCOPED_COUNT=$(jq -r '.unchanged_block_count' "$NONREPOSITORY_STATE")
 printf '%s\n' 'second revision' > "$NONREPOSITORY_ROOT/example-project/main.go"
 NONREPOSITORY_OUTPUT=$(
   cd "$NONREPOSITORY_ROOT"
   jq -n --arg transcript "$NONREPOSITORY_TRANSCRIPT" --arg session "owner-session" \
     '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
-if printf '%s\n' "$NONREPOSITORY_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+if [ "$NONREPOSITORY_SCOPED_COUNT" -eq 3 ] &&
+   printf '%s\n' "$NONREPOSITORY_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
    jq -e '.unchanged_block_count == 1' "$NONREPOSITORY_STATE" >/dev/null 2>&1; then
   echo "OK"
 else

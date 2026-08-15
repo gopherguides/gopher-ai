@@ -242,8 +242,14 @@ repository_state_fingerprint() {
   local upstream
   local upstream_head
   local filesystem_entry
+  local filesystem_root
+  local generated_project
   local relative_entry
   local entry_type
+  local entry_metadata
+  local entry_size
+  local scanned_entries=0
+  local remaining_content_bytes=8388608
   head=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null || true)
   upstream=$(git -C "$worktree_path" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)
   upstream_head=$(git -C "$worktree_path" rev-parse '@{upstream}' 2>/dev/null || true)
@@ -262,9 +268,30 @@ repository_state_fingerprint() {
       done < <(git -C "$worktree_path" ls-files --others --exclude-standard -z -- \
         . ':(exclude).local/state/**' 2>/dev/null)
     else
+      filesystem_root="$worktree_path"
+      case "${LOOP_NAME:-}" in
+        create-go-project-*)
+          generated_project="${LOOP_NAME#create-go-project-}"
+          case "$generated_project" in
+            ''|*[!A-Za-z0-9_-]*) ;;
+            *)
+              if [ -d "$worktree_path/$generated_project" ] &&
+                 [ ! -L "$worktree_path/$generated_project" ]; then
+                filesystem_root="$worktree_path/$generated_project"
+              fi
+              ;;
+          esac
+          ;;
+      esac
+      printf '%s\n' "$filesystem_root"
       while IFS= read -r -d '' filesystem_entry; do
         [ "$filesystem_entry" != "$TRANSCRIPT_PATH" ] || continue
-        relative_entry="${filesystem_entry#"$worktree_path"/}"
+        scanned_entries=$((scanned_entries + 1))
+        if [ "$scanned_entries" -gt 512 ]; then
+          printf '%s\n' "entry-limit:512"
+          break
+        fi
+        relative_entry="${filesystem_entry#"$filesystem_root"/}"
         if [ -L "$filesystem_entry" ]; then
           entry_type="link"
         elif [ -d "$filesystem_entry" ]; then
@@ -274,12 +301,28 @@ repository_state_fingerprint() {
         fi
         printf '%s\0%s\0' "$entry_type" "$relative_entry"
         if [ "$entry_type" = "file" ]; then
-          cksum < "$filesystem_entry" 2>/dev/null || true
+          entry_metadata=$(stat -f '%z:%m' "$filesystem_entry" 2>/dev/null || \
+            stat -c '%s:%Y' "$filesystem_entry" 2>/dev/null || true)
+          printf '%s\0' "$entry_metadata"
+          entry_size="${entry_metadata%%:*}"
+          case "$entry_size" in
+            ''|*[!0-9]*) entry_size=0 ;;
+          esac
+          if [ "$remaining_content_bytes" -gt 0 ]; then
+            if [ "$entry_size" -le "$remaining_content_bytes" ]; then
+              cksum < "$filesystem_entry" 2>/dev/null || true
+              remaining_content_bytes=$((remaining_content_bytes - entry_size))
+            else
+              head -c "$remaining_content_bytes" "$filesystem_entry" 2>/dev/null | cksum || true
+              remaining_content_bytes=0
+            fi
+          fi
         elif [ "$entry_type" = "link" ]; then
           readlink "$filesystem_entry" 2>/dev/null || true
         fi
-      done < <(find "$worktree_path" \
-        \( -type d -name .git -o -type d -path "$worktree_path/.local/state" \) -prune -o \
+      done < <(find "$filesystem_root" \
+        \( -type d \( -name .git -o -name node_modules -o -name vendor -o -name .cache \) \
+          -o -type d -path "$worktree_path/.local/state" \) -prune -o \
         \( -type d -o -type f -o -type l \) -print0 2>/dev/null)
     fi
   } | cksum | awk '{print $1 ":" $2}'
@@ -520,7 +563,7 @@ if [ "$UNCHANGED_BLOCK_COUNT" -gt "$MAX_UNCHANGED_BLOCKS" ]; then
   cleanup_loop "$STATE_FILE"
   exit 0
 fi
-SYSTEM_MSG="$SYSTEM_MSG Unchanged repository-state block $UNCHANGED_BLOCK_COUNT of $MAX_UNCHANGED_BLOCKS; the loop self-expires before another identical block."
+SYSTEM_MSG="$SYSTEM_MSG Unchanged worktree-state block $UNCHANGED_BLOCK_COUNT of $MAX_UNCHANGED_BLOCKS; the loop self-expires before another identical block."
 
 loop_log "stop-hook: blocking exit, reason='$REASON' unchanged_blocks=$UNCHANGED_BLOCK_COUNT"
 
