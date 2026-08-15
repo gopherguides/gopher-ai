@@ -241,22 +241,47 @@ repository_state_fingerprint() {
   local head
   local upstream
   local upstream_head
+  local filesystem_entry
+  local relative_entry
+  local entry_type
   head=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null || true)
   upstream=$(git -C "$worktree_path" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)
   upstream_head=$(git -C "$worktree_path" rev-parse '@{upstream}' 2>/dev/null || true)
   {
     printf '%s\n' "$worktree_path" "$phase" "$reason" "$head" "$upstream" "$upstream_head"
-    git -C "$worktree_path" status --porcelain=v1 --untracked-files=all -- \
-      . ':(exclude).local/state/**' 2>/dev/null || true
-    git -C "$worktree_path" diff --no-ext-diff --binary --cached -- \
-      . ':(exclude).local/state/**' 2>/dev/null || true
-    git -C "$worktree_path" diff --no-ext-diff --binary -- \
-      . ':(exclude).local/state/**' 2>/dev/null || true
-    while IFS= read -r -d '' untracked_file; do
-      printf '%s\0' "$untracked_file"
-      git -C "$worktree_path" hash-object -- "$untracked_file" 2>/dev/null || true
-    done < <(git -C "$worktree_path" ls-files --others --exclude-standard -z -- \
-      . ':(exclude).local/state/**' 2>/dev/null)
+    if git -C "$worktree_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      git -C "$worktree_path" status --porcelain=v1 --untracked-files=all -- \
+        . ':(exclude).local/state/**' 2>/dev/null || true
+      git -C "$worktree_path" diff --no-ext-diff --binary --cached -- \
+        . ':(exclude).local/state/**' 2>/dev/null || true
+      git -C "$worktree_path" diff --no-ext-diff --binary -- \
+        . ':(exclude).local/state/**' 2>/dev/null || true
+      while IFS= read -r -d '' untracked_file; do
+        printf '%s\0' "$untracked_file"
+        git -C "$worktree_path" hash-object -- "$untracked_file" 2>/dev/null || true
+      done < <(git -C "$worktree_path" ls-files --others --exclude-standard -z -- \
+        . ':(exclude).local/state/**' 2>/dev/null)
+    else
+      while IFS= read -r -d '' filesystem_entry; do
+        [ "$filesystem_entry" != "$TRANSCRIPT_PATH" ] || continue
+        relative_entry="${filesystem_entry#"$worktree_path"/}"
+        if [ -L "$filesystem_entry" ]; then
+          entry_type="link"
+        elif [ -d "$filesystem_entry" ]; then
+          entry_type="directory"
+        else
+          entry_type="file"
+        fi
+        printf '%s\0%s\0' "$entry_type" "$relative_entry"
+        if [ "$entry_type" = "file" ]; then
+          cksum < "$filesystem_entry" 2>/dev/null || true
+        elif [ "$entry_type" = "link" ]; then
+          readlink "$filesystem_entry" 2>/dev/null || true
+        fi
+      done < <(find "$worktree_path" \
+        \( -type d -name .git -o -type d -path "$worktree_path/.local/state" \) -prune -o \
+        \( -type d -o -type f -o -type l \) -print0 2>/dev/null)
+    fi
   } | cksum | awk '{print $1 ":" $2}'
 }
 
