@@ -224,3 +224,9 @@ backlog_admission:
             - jarvislanou
     auto_admit: true
     auto_admit_min_confidence: 0.9
+
+worker:
+  # Ambient gh worker auth (v0.66.0, detent#1798): workers resolve gh auth token
+  # into their isolated environment. Shared-budget mode by design -- the
+  # reserved-headroom brake throttles workers before the orchestrator starves.
+  github_token: gh
