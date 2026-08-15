@@ -21,7 +21,7 @@ assert_contains() {
   local expected="$2"
   local message="$3"
 
-  rg -Fq -- "$expected" "$file" || fail "$message"
+  awk -v expected="$expected" 'index($0, expected) { found = 1 } END { exit found ? 0 : 1 }' "$file" || fail "$message"
 }
 
 test_action_contract() {
@@ -144,7 +144,7 @@ run_response_case() {
   assert_contains "$case_root/output" "skip_reason=$want_skip_reason" "$name emitted the wrong skip reason"
   assert_contains "$case_root/log" 'attempt 1 of 2' "$name did not identify the failed attempt"
   assert_contains "$case_root/log" 'Response excerpt:' "$name did not log the actual response excerpt"
-  if rg -Fq -- 'do-not-log' "$case_root/log"; then
+  if awk 'index($0, "do-not-log") { found = 1 } END { exit found ? 0 : 1 }' "$case_root/log"; then
     fail "$name exposed a secret from the malformed response"
   fi
 
