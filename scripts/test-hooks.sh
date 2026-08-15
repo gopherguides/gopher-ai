@@ -282,7 +282,9 @@ REASON_MUTATION_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-reason-muta
 mkdir -p "$REASON_MUTATION_ROOT/hooks" "$REASON_MUTATION_ROOT/lib" "$REASON_MUTATION_ROOT/.local/state"
 cp "$ROOT_DIR/shared/hooks/stop-hook.sh" "$REASON_MUTATION_ROOT/hooks/stop-hook.sh"
 cp "$ROOT_DIR/shared/lib/loop-state.sh" "$REASON_MUTATION_ROOT/lib/loop-state.sh"
-sed 's/^  REASON="Continue working on the task\."$/  REASON=""/' \
+sed \
+  -e 's/^  REASON="Continue working on the task\."$/  REASON=""/' \
+  -e 's/^    reason="Loop execution is blocked by invalid state\."$/    reason=""/' \
   "$REASON_MUTATION_ROOT/hooks/stop-hook.sh" > "$REASON_MUTATION_ROOT/hooks/stop-hook-mutated.sh"
 printf '%s\n' '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","original_prompt":"","session_id":""}' \
   > "$REASON_MUTATION_ROOT/.local/state/start-issue-302.loop.local.json"
@@ -525,48 +527,423 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-echo -n "  Linked-worktree Stop hook resolves the primary owner state... "
-WORKTREE_FIXTURE=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-worktree.XXXXXX")
-WORKTREE_MAIN="$WORKTREE_FIXTURE/main"
-WORKTREE_LINKED="$WORKTREE_FIXTURE/linked"
-mkdir -p "$WORKTREE_MAIN"
-git -C "$WORKTREE_MAIN" init -q
-git -C "$WORKTREE_MAIN" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
-  commit --allow-empty -qm 'test: initialize owner root'
-git -C "$WORKTREE_MAIN" worktree add -qb linked-fixture "$WORKTREE_LINKED" >/dev/null
-mkdir -p "$WORKTREE_MAIN/.local/state"
-printf '%s\n' '{"schema_version":2,"owner_workflow":"start-issue","loop_name":"start-issue-42","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","terminal_promises":["COMPLETE","INCOMPLETE"],"components":{},"phase":"implementing","original_prompt":"issue 42","session_id":""}' > "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json"
-WORKTREE_TRANSCRIPT="$WORKTREE_LINKED/transcript.jsonl"
-printf '%s\n' \
-  '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: start-issue-42"}]}}' \
-  '{"role":"assistant","message":{"content":[{"type":"text","text":"<done>COMPLETE</done>"}]}}' \
-  > "$WORKTREE_TRANSCRIPT"
-WORKTREE_OUTPUT=$(
-  cd "$WORKTREE_LINKED"
-  printf '%s\n' "{\"transcript_path\":\"$WORKTREE_TRANSCRIPT\"}" | "$CORE_STOP_HOOK"
+echo -n "  Stop hook prunes owned state whose worktree no longer exists... "
+STALE_WORKTREE_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-stale-worktree.XXXXXX")
+STALE_WORKTREE_STATE="$STALE_WORKTREE_ROOT/.local/state/ship.loop.local.json"
+STALE_WORKTREE_TRANSCRIPT="$STALE_WORKTREE_ROOT/transcript.jsonl"
+mkdir -p "$(dirname "$STALE_WORKTREE_STATE")"
+jq -n \
+  --arg owner "$STALE_WORKTREE_ROOT" \
+  --arg missing "$STALE_WORKTREE_ROOT/missing-worktree" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$owner,worktree_path:$missing}' \
+  > "$STALE_WORKTREE_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$STALE_WORKTREE_TRANSCRIPT"
+STALE_WORKTREE_OUTPUT=$(
+  cd "$STALE_WORKTREE_ROOT"
+  jq -n --arg transcript "$STALE_WORKTREE_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
-if [ -z "$WORKTREE_OUTPUT" ] && [ ! -e "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json" ]; then
+if [ -z "$STALE_WORKTREE_OUTPUT" ] && [ ! -e "$STALE_WORKTREE_STATE" ]; then
   echo "OK"
 else
   echo "FAIL"
   ERRORS=$((ERRORS + 1))
 fi
 
-echo -n "  Linked-worktree ambient stray state is ignored... "
-mkdir -p "$WORKTREE_MAIN/.local/state" "$WORKTREE_LINKED/.local/state"
-printf '%s\n' '{"schema_version":2,"owner_workflow":"start-issue","loop_name":"start-issue-43","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","terminal_promises":["COMPLETE","INCOMPLETE"],"components":{},"phase":"implementing","original_prompt":"issue 43","session_id":""}' > "$WORKTREE_MAIN/.local/state/start-issue-43.loop.local.json"
-printf '%s\n' '{"loop_name":"direct-smoke","iteration":1,"completion_promise":"DONE","phase":"testing"}' > "$WORKTREE_LINKED/.local/state/direct-smoke.loop.local.json"
+echo -n "  Linked-worktree Stop hook ignores state owned by another worktree... "
+WORKTREE_FIXTURE=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-worktree.XXXXXX")
+WORKTREE_MAIN="$WORKTREE_FIXTURE/main"
+WORKTREE_LINKED="$WORKTREE_FIXTURE/linked"
+mkdir -p "$WORKTREE_MAIN"
+git -C "$WORKTREE_MAIN" init -b main -q
+git -C "$WORKTREE_MAIN" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: initialize owner root'
+git -C "$WORKTREE_MAIN" worktree add -qb linked-fixture "$WORKTREE_LINKED" >/dev/null
+mkdir -p "$WORKTREE_MAIN/.local/state"
+jq -n \
+  --arg worktree "$WORKTREE_MAIN" \
+  '{schema_version:2,owner_workflow:"start-issue",loop_name:"start-issue-42",iteration:1,max_iterations:50,completion_promise:"COMPLETE",terminal_promises:["COMPLETE","INCOMPLETE"],components:{},phase:"implementing",original_prompt:"issue 42",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json"
+WORKTREE_TRANSCRIPT="$WORKTREE_LINKED/transcript.jsonl"
+printf '%s\n' \
+  '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: start-issue-42"}]}}' \
+  '{"role":"assistant","message":{"content":[{"type":"text","text":"<done>COMPLETE</done>"}]}}' \
+  > "$WORKTREE_TRANSCRIPT"
+WORKTREE_STATE_BEFORE=$(cksum "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json")
+WORKTREE_OUTPUT=$(
+  cd "$WORKTREE_LINKED"
+  jq -n --arg transcript "$WORKTREE_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if [ -z "$WORKTREE_OUTPUT" ] &&
+   [ -e "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json" ] &&
+   [ "$WORKTREE_STATE_BEFORE" = "$(cksum "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json")" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook separates the session checkout from a linked workflow target... "
+rm -f "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json"
+jq -n \
+  --arg owner "$WORKTREE_MAIN" \
+  --arg target "$WORKTREE_LINKED" \
+  '{schema_version:2,owner_workflow:"start-issue",loop_name:"start-issue-43",iteration:1,max_iterations:50,completion_promise:"COMPLETE",terminal_promises:["COMPLETE","INCOMPLETE"],components:{},phase:"implementing",original_prompt:"issue 43",session_id:"owner-session",session_worktree_path:$owner,worktree_path:$target}' \
+  > "$WORKTREE_MAIN/.local/state/start-issue-43.loop.local.json"
+WORKTREE_TRANSCRIPT="$WORKTREE_MAIN/transcript.jsonl"
 printf '%s\n' \
   '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: start-issue-43"}]}}' \
   '{"role":"assistant","message":{"content":[{"type":"text","text":"<done>COMPLETE</done>"}]}}' \
   > "$WORKTREE_TRANSCRIPT"
 WORKTREE_OUTPUT=$(
-  cd "$WORKTREE_LINKED"
-  printf '%s\n' "{\"transcript_path\":\"$WORKTREE_TRANSCRIPT\"}" | "$CORE_STOP_HOOK"
+  cd "$WORKTREE_MAIN"
+  jq -n --arg transcript "$WORKTREE_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
 if [ -z "$WORKTREE_OUTPUT" ] &&
-   [ ! -e "$WORKTREE_MAIN/.local/state/start-issue-43.loop.local.json" ] &&
-   [ -e "$WORKTREE_LINKED/.local/state/direct-smoke.loop.local.json" ]; then
+   [ ! -e "$WORKTREE_MAIN/.local/state/start-issue-43.loop.local.json" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook clears targetless ship recovery phases... "
+NO_TARGET_STATE="$WORKTREE_MAIN/.local/state/ship.loop.local.json"
+NO_TARGET_TRANSCRIPT="$WORKTREE_MAIN/no-target.jsonl"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$NO_TARGET_TRANSCRIPT"
+NO_TARGET_FAILURES=0
+for NO_TARGET_PHASE in reviewing pushing; do
+  jq -n \
+    --arg worktree "$WORKTREE_MAIN" \
+    --arg phase "$NO_TARGET_PHASE" \
+    '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:$phase,original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+    > "$NO_TARGET_STATE"
+  NO_TARGET_OUTPUT=$(
+    cd "$WORKTREE_MAIN"
+    jq -n --arg transcript "$NO_TARGET_TRANSCRIPT" --arg session "owner-session" \
+      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+  )
+  if [ -n "$NO_TARGET_OUTPUT" ] || [ -e "$NO_TARGET_STATE" ]; then
+    NO_TARGET_FAILURES=$((NO_TARGET_FAILURES + 1))
+  fi
+done
+if [ "$NO_TARGET_FAILURES" -eq 0 ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook preserves targetless recovery state owned by another session... "
+jq -n \
+  --arg worktree "$WORKTREE_MAIN" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"foreign-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$NO_TARGET_STATE"
+FOREIGN_NO_TARGET_BEFORE=$(cksum "$NO_TARGET_STATE")
+FOREIGN_NO_TARGET_OUTPUT=$(
+  cd "$WORKTREE_MAIN"
+  jq -n --arg transcript "$NO_TARGET_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if [ -z "$FOREIGN_NO_TARGET_OUTPUT" ] &&
+   [ -e "$NO_TARGET_STATE" ] &&
+   [ "$FOREIGN_NO_TARGET_BEFORE" = "$(cksum "$NO_TARGET_STATE")" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook preserves clean pushed-PR wait phases... "
+CLEAN_WAIT_FAILURES=0
+for CLEAN_WAIT_PHASE in ci-watch bot-watching merging; do
+  jq -n \
+    --arg worktree "$WORKTREE_MAIN" \
+    --arg phase "$CLEAN_WAIT_PHASE" \
+    '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:$phase,original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+    > "$NO_TARGET_STATE"
+  CLEAN_WAIT_OUTPUT=$(
+    cd "$WORKTREE_MAIN"
+    jq -n --arg transcript "$NO_TARGET_TRANSCRIPT" --arg session "owner-session" \
+      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+  )
+  if ! printf '%s\n' "$CLEAN_WAIT_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 ||
+     [ ! -e "$NO_TARGET_STATE" ]; then
+    CLEAN_WAIT_FAILURES=$((CLEAN_WAIT_FAILURES + 1))
+  fi
+done
+if [ "$CLEAN_WAIT_FAILURES" -eq 0 ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook accepts a staged repository target... "
+STAGED_TARGET_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-staged-target.XXXXXX")
+git -C "$STAGED_TARGET_ROOT" init -b main -q
+git -C "$STAGED_TARGET_ROOT" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: initialize staged target'
+printf '%s\n' 'staged target' > "$STAGED_TARGET_ROOT/target.txt"
+git -C "$STAGED_TARGET_ROOT" add target.txt
+STAGED_TARGET_STATE="$STAGED_TARGET_ROOT/.local/state/ship.loop.local.json"
+STAGED_TARGET_TRANSCRIPT="$STAGED_TARGET_ROOT/transcript.jsonl"
+mkdir -p "$(dirname "$STAGED_TARGET_STATE")"
+jq -n \
+  --arg worktree "$STAGED_TARGET_ROOT" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$STAGED_TARGET_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$STAGED_TARGET_TRANSCRIPT"
+STAGED_TARGET_OUTPUT=$(
+  cd "$STAGED_TARGET_ROOT"
+  jq -n --arg transcript "$STAGED_TARGET_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if printf '%s\n' "$STAGED_TARGET_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   [ -e "$STAGED_TARGET_STATE" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook accepts commits ahead of the configured upstream... "
+UNPUSHED_FIXTURE=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-unpushed.XXXXXX")
+UNPUSHED_REMOTE="$UNPUSHED_FIXTURE/remote.git"
+UNPUSHED_WORKTREE="$UNPUSHED_FIXTURE/worktree"
+git init --bare -q "$UNPUSHED_REMOTE"
+git init -b main -q "$UNPUSHED_WORKTREE"
+git -C "$UNPUSHED_WORKTREE" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: initialize upstream target'
+git -C "$UNPUSHED_WORKTREE" remote add origin "$UNPUSHED_REMOTE"
+git -C "$UNPUSHED_WORKTREE" push -qu origin main
+git -C "$UNPUSHED_WORKTREE" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: create unpushed target'
+UNPUSHED_STATE="$UNPUSHED_WORKTREE/.local/state/ship.loop.local.json"
+UNPUSHED_TRANSCRIPT="$UNPUSHED_WORKTREE/transcript.jsonl"
+mkdir -p "$(dirname "$UNPUSHED_STATE")"
+jq -n \
+  --arg worktree "$UNPUSHED_WORKTREE" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$UNPUSHED_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$UNPUSHED_TRANSCRIPT"
+UNPUSHED_OUTPUT=$(
+  cd "$UNPUSHED_WORKTREE"
+  jq -n --arg transcript "$UNPUSHED_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if printf '%s\n' "$UNPUSHED_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   [ -e "$UNPUSHED_STATE" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook uses the persisted nonstandard base branch... "
+NONSTANDARD_FIXTURE=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-nonstandard-base.XXXXXX")
+NONSTANDARD_REMOTE="$NONSTANDARD_FIXTURE/remote.git"
+NONSTANDARD_WORKTREE="$NONSTANDARD_FIXTURE/worktree"
+git init --bare -q "$NONSTANDARD_REMOTE"
+git init -b develop -q "$NONSTANDARD_WORKTREE"
+git -C "$NONSTANDARD_WORKTREE" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: initialize nonstandard base'
+git -C "$NONSTANDARD_WORKTREE" remote add origin "$NONSTANDARD_REMOTE"
+git -C "$NONSTANDARD_WORKTREE" push -qu origin develop
+git -C "$NONSTANDARD_WORKTREE" checkout -qb feature
+git -C "$NONSTANDARD_WORKTREE" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: create fully pushed feature'
+git -C "$NONSTANDARD_WORKTREE" push -qu -u origin feature
+NONSTANDARD_STATE="$NONSTANDARD_WORKTREE/.local/state/ship.loop.local.json"
+NONSTANDARD_TRANSCRIPT="$NONSTANDARD_WORKTREE/transcript.jsonl"
+mkdir -p "$(dirname "$NONSTANDARD_STATE")"
+jq -n \
+  --arg worktree "$NONSTANDARD_WORKTREE" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",base_branch:"develop",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$NONSTANDARD_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$NONSTANDARD_TRANSCRIPT"
+NONSTANDARD_OUTPUT=$(
+  cd "$NONSTANDARD_WORKTREE"
+  jq -n --arg transcript "$NONSTANDARD_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if printf '%s\n' "$NONSTANDARD_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   [ -e "$NONSTANDARD_STATE" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+git -C "$WORKTREE_LINKED" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: create repository target'
+RETRY_STATE="$WORKTREE_MAIN/.local/state/ship.loop.local.json"
+RETRY_TRANSCRIPT="$WORKTREE_LINKED/retry.jsonl"
+
+echo -n "  Stop hook accepts a non-default branch ahead of the default branch... "
+jq -n \
+  --arg worktree "$WORKTREE_LINKED" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$RETRY_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$RETRY_TRANSCRIPT"
+NONDEFAULT_TARGET_OUTPUT=$(
+  cd "$WORKTREE_LINKED"
+  jq -n --arg transcript "$RETRY_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if printf '%s\n' "$NONDEFAULT_TARGET_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   [ -e "$RETRY_STATE" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook resets the retry cap after content-only progress... "
+printf '%s\n' 'first revision' > "$WORKTREE_LINKED/progress.txt"
+jq -n \
+  --arg worktree "$WORKTREE_LINKED" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$RETRY_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$RETRY_TRANSCRIPT"
+for _ in 1 2; do
+  (
+    cd "$WORKTREE_LINKED"
+    jq -n --arg transcript "$RETRY_TRANSCRIPT" --arg session "owner-session" \
+      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+  ) >/dev/null
+done
+printf '%s\n' 'second revision' > "$WORKTREE_LINKED/progress.txt"
+PROGRESS_OUTPUT=$(
+  cd "$WORKTREE_LINKED"
+  jq -n --arg transcript "$RETRY_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if printf '%s\n' "$PROGRESS_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   jq -e '.unchanged_block_count == 1' "$RETRY_STATE" >/dev/null 2>&1; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook tracks filesystem progress before Git initialization... "
+NONREPOSITORY_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-nonrepository.XXXXXX")
+NONREPOSITORY_STATE="$NONREPOSITORY_ROOT/.local/state/create-go-project-example-project.loop.local.json"
+NONREPOSITORY_TRANSCRIPT="$NONREPOSITORY_ROOT/transcript.jsonl"
+mkdir -p "$(dirname "$NONREPOSITORY_STATE")" "$NONREPOSITORY_ROOT/example-project"
+jq -n \
+  --arg worktree "$NONREPOSITORY_ROOT" \
+  '{schema_version:2,owner_workflow:"create-go-project-example-project",loop_name:"create-go-project-example-project",iteration:1,max_iterations:50,completion_promise:"COMPLETE",terminal_promises:["COMPLETE","INCOMPLETE"],components:{},phase:"implementing",original_prompt:"create example project",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$NONREPOSITORY_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: create-go-project-example-project"}]}}' > "$NONREPOSITORY_TRANSCRIPT"
+printf '%s\n' 'first revision' > "$NONREPOSITORY_ROOT/example-project/main.go"
+for _ in 1 2; do
+  (
+    cd "$NONREPOSITORY_ROOT"
+    jq -n --arg transcript "$NONREPOSITORY_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+  ) >/dev/null
+done
+printf '%s\n' 'unrelated revision' > "$NONREPOSITORY_ROOT/unrelated.txt"
+(
+  cd "$NONREPOSITORY_ROOT"
+  jq -n --arg transcript "$NONREPOSITORY_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+) >/dev/null
+NONREPOSITORY_SCOPED_COUNT=$(jq -r '.unchanged_block_count' "$NONREPOSITORY_STATE")
+printf '%s\n' 'second revision' > "$NONREPOSITORY_ROOT/example-project/main.go"
+NONREPOSITORY_OUTPUT=$(
+  cd "$NONREPOSITORY_ROOT"
+  jq -n --arg transcript "$NONREPOSITORY_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if [ "$NONREPOSITORY_SCOPED_COUNT" -eq 3 ] &&
+   printf '%s\n' "$NONREPOSITORY_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   jq -e '.unchanged_block_count == 1' "$NONREPOSITORY_STATE" >/dev/null 2>&1; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook excludes its own state mutations from the retry cap... "
+SELF_STATE_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-self-state.XXXXXX")
+git -C "$SELF_STATE_ROOT" init -b main -q
+git -C "$SELF_STATE_ROOT" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: initialize self-state target'
+printf '%s\n' 'staged target' > "$SELF_STATE_ROOT/target.txt"
+git -C "$SELF_STATE_ROOT" add target.txt
+SELF_STATE_FILE="$SELF_STATE_ROOT/.local/state/ship.loop.local.json"
+SELF_STATE_TRANSCRIPT="$SELF_STATE_ROOT/transcript.jsonl"
+mkdir -p "$(dirname "$SELF_STATE_FILE")"
+jq -n \
+  --arg worktree "$SELF_STATE_ROOT" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$SELF_STATE_FILE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$SELF_STATE_TRANSCRIPT"
+for _ in 1 2; do
+  (
+    cd "$SELF_STATE_ROOT"
+    jq -n --arg transcript "$SELF_STATE_TRANSCRIPT" --arg session "owner-session" \
+      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+  ) >/dev/null
+done
+if jq -e '.unchanged_block_count == 2' "$SELF_STATE_FILE" >/dev/null 2>&1; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook resets the retry cap after a phase change... "
+SELF_STATE_TMP="${SELF_STATE_FILE}.tmp"
+jq '.phase = "ci-watch"' "$SELF_STATE_FILE" > "$SELF_STATE_TMP"
+mv "$SELF_STATE_TMP" "$SELF_STATE_FILE"
+SELF_STATE_PHASE_OUTPUT=$(
+  cd "$SELF_STATE_ROOT"
+  jq -n --arg transcript "$SELF_STATE_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if printf '%s\n' "$SELF_STATE_PHASE_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   jq -e '.unchanged_block_count == 1' "$SELF_STATE_FILE" >/dev/null 2>&1; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook caps identical blocks and includes recovery details... "
+jq -n \
+  --arg worktree "$WORKTREE_LINKED" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$RETRY_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$RETRY_TRANSCRIPT"
+RETRY_FIRST=""
+RETRY_THIRD=""
+RETRY_FOURTH=""
+for RETRY_ATTEMPT in 1 2 3 4; do
+  RETRY_OUTPUT=$(
+    cd "$WORKTREE_LINKED"
+    jq -n --arg transcript "$RETRY_TRANSCRIPT" --arg session "owner-session" \
+      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+  )
+  case "$RETRY_ATTEMPT" in
+    1) RETRY_FIRST="$RETRY_OUTPUT" ;;
+    3) RETRY_THIRD="$RETRY_OUTPUT" ;;
+    4) RETRY_FOURTH="$RETRY_OUTPUT" ;;
+  esac
+done
+if printf '%s\n' "$RETRY_FIRST" | jq -e --arg state "$RETRY_STATE" '
+     .decision == "block" and
+     (.systemMessage | contains($state)) and
+     (.systemMessage | contains("/go-workflow:cancel-loop"))
+   ' >/dev/null 2>&1 &&
+   printf '%s\n' "$RETRY_THIRD" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   [ -z "$RETRY_FOURTH" ] &&
+   [ ! -e "$RETRY_STATE" ]; then
   echo "OK"
 else
   echo "FAIL"

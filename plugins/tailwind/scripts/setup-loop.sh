@@ -98,6 +98,8 @@ if [ "$ACTIVE_COUNT" -ne 0 ]; then
 fi
 
 SESSION_ID="${CLAUDE_SESSION_ID:-}"
+WORKTREE_PATH=$(resolve_loop_worktree_root)
+SESSION_WORKTREE_PATH="$WORKTREE_PATH"
 
 MAX_ITER_JSON="null"
 if [ -n "$MAX_ITERATIONS" ]; then
@@ -131,6 +133,8 @@ jq -n \
   --arg phase "$INITIAL_PHASE" \
   --arg started_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
   --arg session_id "$SESSION_ID" \
+  --arg session_worktree_path "$SESSION_WORKTREE_PATH" \
+  --arg worktree_path "$WORKTREE_PATH" \
   --argjson phase_messages "$PHASE_MSGS_JSON" \
   '{
     schema_version: $schema_version,
@@ -144,6 +148,8 @@ jq -n \
     bot_review_baseline: "",
     started_at: $started_at,
     session_id: $session_id,
+    session_worktree_path: $session_worktree_path,
+    worktree_path: $worktree_path,
     awaiting_driver_input: false,
     driver_input_reason: "",
     phase_messages: $phase_messages,

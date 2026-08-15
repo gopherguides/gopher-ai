@@ -6,7 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOOP_LIB="$ROOT_DIR/shared/lib/loop-state.sh"
 SETUP_LOOP="$ROOT_DIR/shared/scripts/setup-loop.sh"
-FIXTURE_BASE=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-loop-state.XXXXXX")
+LOOP_TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+case "$LOOP_TMP_BASE/" in
+  "$ROOT_DIR/"*)
+    export GIT_CEILING_DIRECTORIES="$LOOP_TMP_BASE${GIT_CEILING_DIRECTORIES:+:$GIT_CEILING_DIRECTORIES}"
+    ;;
+esac
+FIXTURE_BASE=$(mktemp -d "$LOOP_TMP_BASE/gopher-ai-loop-state.XXXXXX")
 
 PASS=0
 FAIL=0
@@ -47,8 +53,10 @@ assert_eq "fresh schema contract" "true" "$(jq -r '
   .owner_workflow == "test-loop" and
   .terminal_promises == ["TEST_DONE", "TEST_FAIL"] and
   .completion_promise == "TEST_DONE" and
+  .session_worktree_path == $expected_worktree and
+  .worktree_path == $expected_worktree and
   .components == {}
-' "$FRESH_STATE")"
+' --arg expected_worktree "$FRESH_DIR" "$FRESH_STATE")"
 
 REENTRY_BEFORE=$(jq -cS '.iteration = 7 | .phase = "watching" | .custom = "preserved"' "$FRESH_STATE")
 printf '%s\n' "$REENTRY_BEFORE" > "$FRESH_STATE"

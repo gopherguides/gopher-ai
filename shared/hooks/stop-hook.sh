@@ -19,6 +19,7 @@ HOOK_INPUT=$(cat)
 # Extract transcript path from hook input
 TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 CURRENT_SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null)
+HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 if [ -z "$CURRENT_SESSION_ID" ] && [ -n "$TRANSCRIPT_PATH" ]; then
   CURRENT_SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl 2>/dev/null || true)
 fi
@@ -33,14 +34,33 @@ fi
 
 source "$LIB_PATH"
 
-loop_log "stop-hook: entered, transcript=$TRANSCRIPT_PATH"
+resolve_current_worktree() {
+  local candidate="$HOOK_CWD"
+  local root
+  if [ -z "$candidate" ] || [ ! -d "$candidate" ]; then
+    candidate=$(pwd -P)
+  fi
+  root=$(git -C "$candidate" rev-parse --show-toplevel 2>/dev/null || true)
+  if [ -n "$root" ] && [ -d "$root" ]; then
+    root=$(cd "$root" && pwd -P)
+  else
+    root=$(cd "$candidate" && pwd -P)
+  fi
+  printf '%s\n' "$root"
+}
+
+CURRENT_WORKTREE_PATH=$(resolve_current_worktree)
+
+loop_log "stop-hook: entered, transcript=$TRANSCRIPT_PATH worktree=$CURRENT_WORKTREE_PATH"
 
 block_stop() {
   local reason="$1"
   local message="$2"
+  local state_context="${3:-${STATE_FILE:-unknown}}"
   if ! printf '%s' "$reason" | grep '[^[:space:]]' >/dev/null; then
     reason="Loop execution is blocked by invalid state."
   fi
+  message="$message State file(s): $state_context. Cancel with /go-workflow:cancel-loop."
   jq -n --arg reason "$reason" --arg msg "$message" \
     '{"decision": "block", "reason": $reason, "systemMessage": $msg}'
 }
@@ -57,19 +77,260 @@ transcript_owns_loop() {
 session_owns_loop_state() {
   local state_file="$1"
   local stored_session_id
+  local stored_session_worktree_path
   local loop_name
 
   [ -f "$state_file" ] && [ -r "$state_file" ] && jq empty "$state_file" 2>/dev/null || return 1
 
   stored_session_id=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null)
+  stored_session_worktree_path=$(jq -r '.session_worktree_path // empty' "$state_file" 2>/dev/null)
   loop_name=$(jq -r '.loop_name // empty' "$state_file" 2>/dev/null)
 
-  if [ -n "$stored_session_id" ] && [ -n "$CURRENT_SESSION_ID" ]; then
-    [ "$stored_session_id" = "$CURRENT_SESSION_ID" ]
+  if [ -n "$stored_session_worktree_path" ]; then
+    [ -d "$stored_session_worktree_path" ] || return 1
+    stored_session_worktree_path=$(cd "$stored_session_worktree_path" && pwd -P)
+    [ "$stored_session_worktree_path" = "$CURRENT_WORKTREE_PATH" ] || return 1
+  fi
+
+  if [ -n "$stored_session_id" ]; then
+    [ -n "$CURRENT_SESSION_ID" ] && [ "$stored_session_id" = "$CURRENT_SESSION_ID" ]
     return
   fi
 
   transcript_owns_loop "$loop_name"
+}
+
+state_has_stale_worktree() {
+  local state_file="$1"
+  local field
+  local stored_path
+  for field in session_worktree_path worktree_path; do
+    stored_path=$(jq -r --arg field "$field" '.[$field] // empty' "$state_file" 2>/dev/null)
+    if [ -n "$stored_path" ] && [ ! -d "$stored_path" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+repository_target_required_for() {
+  local owner_workflow="$1"
+  local phase="$2"
+  case "$owner_workflow:$phase" in
+    ship:reviewing|ship:pushing)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+loop_requires_repository_target() {
+  repository_target_required_for "$OWNER_WORKFLOW" "$PHASE"
+}
+
+repository_has_target() {
+  local worktree_path="$1"
+  local base_branch="${2:-}"
+  local current_branch
+  local upstream
+  local default_ref
+  local default_branch
+  local remote
+  local candidate
+  local ahead
+
+  git -C "$worktree_path" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 2
+
+  if ! git -C "$worktree_path" diff --cached --quiet --; then
+    return 0
+  fi
+
+  upstream=$(git -C "$worktree_path" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)
+  if [ -n "$upstream" ]; then
+    ahead=$(git -C "$worktree_path" rev-list --count "$upstream"..HEAD 2>/dev/null) || return 2
+    if [ "$ahead" -gt 0 ]; then
+      return 0
+    fi
+  fi
+
+  current_branch=$(git -C "$worktree_path" branch --show-current 2>/dev/null || true)
+  default_ref=""
+  default_branch=""
+  if [ -n "$base_branch" ]; then
+    case "$base_branch" in
+      refs/heads/*)
+        default_branch="${base_branch#refs/heads/}"
+        candidate="$base_branch"
+        ;;
+      refs/remotes/*)
+        candidate="$base_branch"
+        default_branch="${base_branch#refs/remotes/}"
+        default_branch="${default_branch#*/}"
+        ;;
+      *)
+        default_branch="$base_branch"
+        candidate="$base_branch"
+        ;;
+    esac
+    if git -C "$worktree_path" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
+      default_ref="$candidate"
+    else
+      for remote in $(git -C "$worktree_path" remote); do
+        candidate="$remote/$base_branch"
+        if git -C "$worktree_path" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
+          default_ref="$candidate"
+          break
+        fi
+      done
+    fi
+  fi
+  if [ -z "$default_ref" ]; then
+    for remote in $(git -C "$worktree_path" remote); do
+      candidate=$(git -C "$worktree_path" symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null || true)
+      if [ -n "$candidate" ] &&
+         git -C "$worktree_path" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
+        default_ref="$candidate"
+        default_branch="${candidate#"$remote"/}"
+        break
+      fi
+    done
+  fi
+  if [ -z "$default_ref" ]; then
+    for candidate in origin/main origin/master main master; do
+      if git -C "$worktree_path" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
+        default_ref="$candidate"
+        default_branch="${candidate#origin/}"
+        break
+      fi
+    done
+  fi
+  [ -n "$default_ref" ] || return 2
+  if [ -n "$current_branch" ] && [ "$current_branch" != "$default_branch" ]; then
+    ahead=$(git -C "$worktree_path" rev-list --count "$default_ref"..HEAD 2>/dev/null) || return 2
+    if [ "$ahead" -gt 0 ]; then
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+state_has_no_repository_target() {
+  local state_file="$1"
+  local owner_workflow
+  local phase
+  local worktree_path
+  local base_branch
+  local target_status=0
+  owner_workflow=$(jq -r '.owner_workflow // empty' "$state_file" 2>/dev/null)
+  phase=$(jq -r '.phase // empty' "$state_file" 2>/dev/null)
+  worktree_path=$(jq -r '.worktree_path // empty' "$state_file" 2>/dev/null)
+  base_branch=$(jq -r '.base_branch // empty' "$state_file" 2>/dev/null)
+  repository_target_required_for "$owner_workflow" "$phase" || return 1
+  [ -n "$worktree_path" ] && [ -d "$worktree_path" ] || return 1
+  repository_has_target "$worktree_path" "$base_branch" || target_status=$?
+  [ "$target_status" -eq 1 ]
+}
+
+repository_state_fingerprint() {
+  local worktree_path="$1"
+  local phase="$2"
+  local reason="$3"
+  local head
+  local upstream
+  local upstream_head
+  local filesystem_entry
+  local filesystem_root
+  local generated_project
+  local relative_entry
+  local entry_type
+  local entry_metadata
+  local entry_size
+  local scanned_entries=0
+  local remaining_content_bytes=8388608
+  head=$(git -C "$worktree_path" rev-parse HEAD 2>/dev/null || true)
+  upstream=$(git -C "$worktree_path" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)
+  upstream_head=$(git -C "$worktree_path" rev-parse '@{upstream}' 2>/dev/null || true)
+  {
+    printf '%s\n' "$worktree_path" "$phase" "$reason" "$head" "$upstream" "$upstream_head"
+    if git -C "$worktree_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      git -C "$worktree_path" status --porcelain=v1 --untracked-files=all -- \
+        . ':(exclude).local/state/**' 2>/dev/null || true
+      git -C "$worktree_path" diff --no-ext-diff --binary --cached -- \
+        . ':(exclude).local/state/**' 2>/dev/null || true
+      git -C "$worktree_path" diff --no-ext-diff --binary -- \
+        . ':(exclude).local/state/**' 2>/dev/null || true
+      while IFS= read -r -d '' untracked_file; do
+        printf '%s\0' "$untracked_file"
+        git -C "$worktree_path" hash-object -- "$untracked_file" 2>/dev/null || true
+      done < <(git -C "$worktree_path" ls-files --others --exclude-standard -z -- \
+        . ':(exclude).local/state/**' 2>/dev/null)
+    else
+      filesystem_root="$worktree_path"
+      case "${LOOP_NAME:-}" in
+        create-go-project-*)
+          generated_project="${LOOP_NAME#create-go-project-}"
+          case "$generated_project" in
+            ''|*[!A-Za-z0-9_-]*) ;;
+            *)
+              if [ -d "$worktree_path/$generated_project" ] &&
+                 [ ! -L "$worktree_path/$generated_project" ]; then
+                filesystem_root="$worktree_path/$generated_project"
+              fi
+              ;;
+          esac
+          ;;
+      esac
+      printf '%s\n' "$filesystem_root"
+      while IFS= read -r -d '' filesystem_entry; do
+        [ "$filesystem_entry" != "$TRANSCRIPT_PATH" ] || continue
+        scanned_entries=$((scanned_entries + 1))
+        if [ "$scanned_entries" -gt 512 ]; then
+          printf '%s\n' "entry-limit:512"
+          break
+        fi
+        relative_entry="${filesystem_entry#"$filesystem_root"/}"
+        if [ -L "$filesystem_entry" ]; then
+          entry_type="link"
+        elif [ -d "$filesystem_entry" ]; then
+          entry_type="directory"
+        else
+          entry_type="file"
+        fi
+        printf '%s\0%s\0' "$entry_type" "$relative_entry"
+        if [ "$entry_type" = "file" ]; then
+          if entry_metadata=$(stat -c '%s:%Y' -- "$filesystem_entry" 2>/dev/null); then
+            :
+          elif entry_metadata=$(stat -f '%z:%m' "$filesystem_entry" 2>/dev/null); then
+            :
+          else
+            entry_metadata=""
+          fi
+          printf '%s\0' "$entry_metadata"
+          entry_size="${entry_metadata%%:*}"
+          case "$entry_size" in
+            ''|*[!0-9]*) entry_size=0 ;;
+          esac
+          if [ "$remaining_content_bytes" -gt 0 ]; then
+            if [ "$entry_size" -le "$remaining_content_bytes" ]; then
+              cksum < "$filesystem_entry" 2>/dev/null || true
+              remaining_content_bytes=$((remaining_content_bytes - entry_size))
+            else
+              head -c "$remaining_content_bytes" "$filesystem_entry" 2>/dev/null | cksum || true
+              remaining_content_bytes=0
+            fi
+          fi
+        elif [ "$entry_type" = "link" ]; then
+          readlink "$filesystem_entry" 2>/dev/null || true
+        fi
+      done < <(find "$filesystem_root" \
+        \( -type d \( -name .git -o -name node_modules -o -name vendor -o -name .cache \) \
+          -o -type d -path "$worktree_path/.local/state" \) -prune -o \
+        \( -type d -o -type f -o -type l \) -print0 2>/dev/null)
+    fi
+  } | cksum | awk '{print $1 ":" $2}'
 }
 
 # Find any active loop state file
@@ -78,7 +339,17 @@ STATE_FILES=$(find_active_loops)
 OWNED_STATE_FILES=""
 while IFS= read -r CANDIDATE_STATE_FILE; do
   [ -n "$CANDIDATE_STATE_FILE" ] || continue
+  if state_has_stale_worktree "$CANDIDATE_STATE_FILE"; then
+    loop_log "stop-hook: pruning stale loop state '$CANDIDATE_STATE_FILE'"
+    cleanup_loop "$CANDIDATE_STATE_FILE"
+    continue
+  fi
   if session_owns_loop_state "$CANDIDATE_STATE_FILE"; then
+    if state_has_no_repository_target "$CANDIDATE_STATE_FILE"; then
+      loop_log "stop-hook: pruning targetless loop state '$CANDIDATE_STATE_FILE'"
+      cleanup_loop "$CANDIDATE_STATE_FILE"
+      continue
+    fi
     if [ -z "$OWNED_STATE_FILES" ]; then
       OWNED_STATE_FILES="$CANDIDATE_STATE_FILE"
     else
@@ -101,7 +372,8 @@ if [ "$STATE_COUNT" -ne 1 ]; then
   MULTIPLE_REASON=$(printf 'Multiple active loop states were found; ownership is ambiguous:\n%s' "$STATE_FILES")
   loop_log "stop-hook: refusing ambiguous active loops: $STATE_FILES"
   block_stop "$MULTIPLE_REASON" \
-    "$MULTIPLE_REASON Cancel the orphaned loop states or restore one caller-owned state before continuing."
+    "$MULTIPLE_REASON Cancel the orphaned loop states or restore one caller-owned state before continuing." \
+    "$STATE_FILES"
   exit 0
 fi
 
@@ -142,6 +414,18 @@ if [ -z "$STORED_SESSION_ID" ] && [ -n "$CURRENT_SESSION_ID" ]; then
   set_loop_field "$STATE_FILE" "session_id" "$CURRENT_SESSION_ID" '[]'
   loop_log "stop-hook: claimed loop state '$STATE_FILE' for session '$CURRENT_SESSION_ID'"
 fi
+STORED_SESSION_WORKTREE_PATH=$(jq -r '.session_worktree_path // empty' "$STATE_FILE")
+if [ -z "$STORED_SESSION_WORKTREE_PATH" ]; then
+  set_loop_field "$STATE_FILE" "session_worktree_path" "$CURRENT_WORKTREE_PATH" '[]'
+  STORED_SESSION_WORKTREE_PATH="$CURRENT_WORKTREE_PATH"
+  loop_log "stop-hook: claimed loop state '$STATE_FILE' for session worktree '$CURRENT_WORKTREE_PATH'"
+fi
+STORED_WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$STATE_FILE")
+if [ -z "$STORED_WORKTREE_PATH" ]; then
+  set_loop_field "$STATE_FILE" "worktree_path" "$CURRENT_WORKTREE_PATH" '[]'
+  STORED_WORKTREE_PATH="$CURRENT_WORKTREE_PATH"
+  loop_log "stop-hook: claimed loop state '$STATE_FILE' for worktree '$CURRENT_WORKTREE_PATH'"
+fi
 
 # Validate iteration is a number
 if ! [[ "$ITERATION" =~ ^[0-9]+$ ]]; then
@@ -170,6 +454,17 @@ if [ -n "$COMPLETION_PROMISE" ] && [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIP
   loop_log "stop-hook: checking completion promise '$COMPLETION_PROMISE'"
   if check_completion_promise "$COMPLETION_PROMISE" "$TRANSCRIPT_PATH"; then
     loop_log "stop-hook: completion promise found, cleaning up"
+    cleanup_loop "$STATE_FILE"
+    exit 0
+  fi
+fi
+
+TARGET_STATUS=0
+if loop_requires_repository_target; then
+  STORED_BASE_BRANCH=$(jq -r '.base_branch // empty' "$STATE_FILE")
+  repository_has_target "$STORED_WORKTREE_PATH" "$STORED_BASE_BRANCH" || TARGET_STATUS=$?
+  if [ "$TARGET_STATUS" -eq 1 ]; then
+    loop_log "stop-hook: no repository target remains; cleaning up '$STATE_FILE'"
     cleanup_loop "$STATE_FILE"
     exit 0
   fi
@@ -265,8 +560,16 @@ if ! printf '%s' "$REASON" | grep '[^[:space:]]' >/dev/null; then
   REASON="Continue working on the task."
 fi
 
-loop_log "stop-hook: blocking exit, reason='$REASON'"
+MAX_UNCHANGED_BLOCKS=3
+BLOCK_FINGERPRINT=$(repository_state_fingerprint "$STORED_WORKTREE_PATH" "$PHASE" "$REASON")
+UNCHANGED_BLOCK_COUNT=$(record_loop_block_attempt "$STATE_FILE" "$BLOCK_FINGERPRINT")
+if [ "$UNCHANGED_BLOCK_COUNT" -gt "$MAX_UNCHANGED_BLOCKS" ]; then
+  loop_log "stop-hook: unchanged block cap reached ($UNCHANGED_BLOCK_COUNT > $MAX_UNCHANGED_BLOCKS); cleaning up '$STATE_FILE'"
+  cleanup_loop "$STATE_FILE"
+  exit 0
+fi
+SYSTEM_MSG="$SYSTEM_MSG Unchanged worktree-state block $UNCHANGED_BLOCK_COUNT of $MAX_UNCHANGED_BLOCKS; the loop self-expires before another identical block."
 
-# Block exit and re-feed prompt
-jq -n --arg reason "$REASON" --arg msg "$SYSTEM_MSG" \
-  '{"decision": "block", "reason": $reason, "systemMessage": $msg}'
+loop_log "stop-hook: blocking exit, reason='$REASON' unchanged_blocks=$UNCHANGED_BLOCK_COUNT"
+
+block_stop "$REASON" "$SYSTEM_MSG" "$STATE_FILE"

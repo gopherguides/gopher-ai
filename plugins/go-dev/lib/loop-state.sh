@@ -18,6 +18,17 @@ resolve_loop_owner_root() {
   printf '%s\n' "$root"
 }
 
+resolve_loop_worktree_root() {
+  local root
+  root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [ -z "$root" ]; then
+    root=$(pwd -P)
+  elif [ -d "$root" ]; then
+    root=$(cd "$root" && pwd -P)
+  fi
+  printf '%s\n' "$root"
+}
+
 loop_state_directory() {
   printf '%s/.local/state\n' "$(resolve_loop_owner_root)"
 }
@@ -246,6 +257,22 @@ increment_iteration() {
   ensure_loop_state_schema "$state_file" || return 1
   jq '.iteration = ((.iteration // 0) + 1)' "$state_file" > "$tmp_file" && mv "$tmp_file" "$state_file"
   loop_log "increment_iteration: file=$state_file"
+}
+
+record_loop_block_attempt() {
+  local state_file="$1"
+  local fingerprint="$2"
+  local tmp_file="${state_file}.tmp.$$"
+  ensure_loop_state_schema "$state_file" || return 1
+  jq --arg fingerprint "$fingerprint" '
+    if (.last_block_fingerprint // "") == $fingerprint then
+      .unchanged_block_count = ((.unchanged_block_count // 0) + 1)
+    else
+      .last_block_fingerprint = $fingerprint |
+      .unchanged_block_count = 1
+    end
+  ' "$state_file" > "$tmp_file" && mv "$tmp_file" "$state_file"
+  jq -r '.unchanged_block_count' "$state_file"
 }
 
 set_loop_phase() {
