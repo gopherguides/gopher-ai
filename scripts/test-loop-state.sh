@@ -53,6 +53,7 @@ assert_eq "fresh schema contract" "true" "$(jq -r '
   .owner_workflow == "test-loop" and
   .terminal_promises == ["TEST_DONE", "TEST_FAIL"] and
   .completion_promise == "TEST_DONE" and
+  .session_worktree_path == $expected_worktree and
   .worktree_path == $expected_worktree and
   .components == {}
 ' --arg expected_worktree "$FRESH_DIR" "$FRESH_STATE")"

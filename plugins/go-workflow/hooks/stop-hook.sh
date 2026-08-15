@@ -77,19 +77,19 @@ transcript_owns_loop() {
 session_owns_loop_state() {
   local state_file="$1"
   local stored_session_id
-  local stored_worktree_path
+  local stored_session_worktree_path
   local loop_name
 
   [ -f "$state_file" ] && [ -r "$state_file" ] && jq empty "$state_file" 2>/dev/null || return 1
 
   stored_session_id=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null)
-  stored_worktree_path=$(jq -r '.worktree_path // empty' "$state_file" 2>/dev/null)
+  stored_session_worktree_path=$(jq -r '.session_worktree_path // empty' "$state_file" 2>/dev/null)
   loop_name=$(jq -r '.loop_name // empty' "$state_file" 2>/dev/null)
 
-  if [ -n "$stored_worktree_path" ]; then
-    [ -d "$stored_worktree_path" ] || return 1
-    stored_worktree_path=$(cd "$stored_worktree_path" && pwd -P)
-    [ "$stored_worktree_path" = "$CURRENT_WORKTREE_PATH" ] || return 1
+  if [ -n "$stored_session_worktree_path" ]; then
+    [ -d "$stored_session_worktree_path" ] || return 1
+    stored_session_worktree_path=$(cd "$stored_session_worktree_path" && pwd -P)
+    [ "$stored_session_worktree_path" = "$CURRENT_WORKTREE_PATH" ] || return 1
   fi
 
   if [ -n "$stored_session_id" ]; then
@@ -102,9 +102,15 @@ session_owns_loop_state() {
 
 state_has_stale_worktree() {
   local state_file="$1"
-  local stored_worktree_path
-  stored_worktree_path=$(jq -r '.worktree_path // empty' "$state_file" 2>/dev/null)
-  [ -n "$stored_worktree_path" ] && [ ! -d "$stored_worktree_path" ]
+  local field
+  local stored_path
+  for field in session_worktree_path worktree_path; do
+    stored_path=$(jq -r --arg field "$field" '.[$field] // empty' "$state_file" 2>/dev/null)
+    if [ -n "$stored_path" ] && [ ! -d "$stored_path" ]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 repository_target_required_for() {
@@ -126,9 +132,12 @@ loop_requires_repository_target() {
 
 repository_has_target() {
   local worktree_path="$1"
+  local base_branch="${2:-}"
   local current_branch
   local upstream
   local default_ref
+  local default_branch
+  local remote
   local candidate
   local ahead
 
@@ -140,25 +149,66 @@ repository_has_target() {
 
   upstream=$(git -C "$worktree_path" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)
   if [ -n "$upstream" ]; then
-    ahead=$(git -C "$worktree_path" rev-list --count "$upstream"..HEAD 2>/dev/null || printf '0')
+    ahead=$(git -C "$worktree_path" rev-list --count "$upstream"..HEAD 2>/dev/null) || return 2
     if [ "$ahead" -gt 0 ]; then
       return 0
     fi
   fi
 
   current_branch=$(git -C "$worktree_path" branch --show-current 2>/dev/null || true)
-  default_ref=$(git -C "$worktree_path" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
+  default_ref=""
+  default_branch=""
+  if [ -n "$base_branch" ]; then
+    case "$base_branch" in
+      refs/heads/*)
+        default_branch="${base_branch#refs/heads/}"
+        candidate="$base_branch"
+        ;;
+      refs/remotes/*)
+        candidate="$base_branch"
+        default_branch="${base_branch#refs/remotes/}"
+        default_branch="${default_branch#*/}"
+        ;;
+      *)
+        default_branch="$base_branch"
+        candidate="$base_branch"
+        ;;
+    esac
+    if git -C "$worktree_path" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
+      default_ref="$candidate"
+    else
+      for remote in $(git -C "$worktree_path" remote); do
+        candidate="$remote/$base_branch"
+        if git -C "$worktree_path" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
+          default_ref="$candidate"
+          break
+        fi
+      done
+    fi
+  fi
   if [ -z "$default_ref" ]; then
-    for candidate in origin/main origin/master main master; do
-      if git -C "$worktree_path" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
+    for remote in $(git -C "$worktree_path" remote); do
+      candidate=$(git -C "$worktree_path" symbolic-ref --quiet --short "refs/remotes/$remote/HEAD" 2>/dev/null || true)
+      if [ -n "$candidate" ] &&
+         git -C "$worktree_path" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
         default_ref="$candidate"
+        default_branch="${candidate#"$remote"/}"
         break
       fi
     done
   fi
-  if [ -n "$current_branch" ] && [ -n "$default_ref" ] &&
-     [ "$current_branch" != "${default_ref#origin/}" ]; then
-    ahead=$(git -C "$worktree_path" rev-list --count "$default_ref"..HEAD 2>/dev/null || printf '0')
+  if [ -z "$default_ref" ]; then
+    for candidate in origin/main origin/master main master; do
+      if git -C "$worktree_path" rev-parse --verify --quiet "$candidate^{commit}" >/dev/null; then
+        default_ref="$candidate"
+        default_branch="${candidate#origin/}"
+        break
+      fi
+    done
+  fi
+  [ -n "$default_ref" ] || return 2
+  if [ -n "$current_branch" ] && [ "$current_branch" != "$default_branch" ]; then
+    ahead=$(git -C "$worktree_path" rev-list --count "$default_ref"..HEAD 2>/dev/null) || return 2
     if [ "$ahead" -gt 0 ]; then
       return 0
     fi
@@ -172,13 +222,15 @@ state_has_no_repository_target() {
   local owner_workflow
   local phase
   local worktree_path
+  local base_branch
   local target_status=0
   owner_workflow=$(jq -r '.owner_workflow // empty' "$state_file" 2>/dev/null)
   phase=$(jq -r '.phase // empty' "$state_file" 2>/dev/null)
   worktree_path=$(jq -r '.worktree_path // empty' "$state_file" 2>/dev/null)
+  base_branch=$(jq -r '.base_branch // empty' "$state_file" 2>/dev/null)
   repository_target_required_for "$owner_workflow" "$phase" || return 1
   [ -n "$worktree_path" ] && [ -d "$worktree_path" ] || return 1
-  repository_has_target "$worktree_path" || target_status=$?
+  repository_has_target "$worktree_path" "$base_branch" || target_status=$?
   [ "$target_status" -eq 1 ]
 }
 
@@ -289,6 +341,12 @@ if [ -z "$STORED_SESSION_ID" ] && [ -n "$CURRENT_SESSION_ID" ]; then
   set_loop_field "$STATE_FILE" "session_id" "$CURRENT_SESSION_ID" '[]'
   loop_log "stop-hook: claimed loop state '$STATE_FILE' for session '$CURRENT_SESSION_ID'"
 fi
+STORED_SESSION_WORKTREE_PATH=$(jq -r '.session_worktree_path // empty' "$STATE_FILE")
+if [ -z "$STORED_SESSION_WORKTREE_PATH" ]; then
+  set_loop_field "$STATE_FILE" "session_worktree_path" "$CURRENT_WORKTREE_PATH" '[]'
+  STORED_SESSION_WORKTREE_PATH="$CURRENT_WORKTREE_PATH"
+  loop_log "stop-hook: claimed loop state '$STATE_FILE' for session worktree '$CURRENT_WORKTREE_PATH'"
+fi
 STORED_WORKTREE_PATH=$(jq -r '.worktree_path // empty' "$STATE_FILE")
 if [ -z "$STORED_WORKTREE_PATH" ]; then
   set_loop_field "$STATE_FILE" "worktree_path" "$CURRENT_WORKTREE_PATH" '[]'
@@ -330,7 +388,8 @@ fi
 
 TARGET_STATUS=0
 if loop_requires_repository_target; then
-  repository_has_target "$STORED_WORKTREE_PATH" || TARGET_STATUS=$?
+  STORED_BASE_BRANCH=$(jq -r '.base_branch // empty' "$STATE_FILE")
+  repository_has_target "$STORED_WORKTREE_PATH" "$STORED_BASE_BRANCH" || TARGET_STATUS=$?
   if [ "$TARGET_STATUS" -eq 1 ]; then
     loop_log "stop-hook: no repository target remains; cleaning up '$STATE_FILE'"
     cleanup_loop "$STATE_FILE"

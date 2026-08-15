@@ -533,8 +533,9 @@ STALE_WORKTREE_STATE="$STALE_WORKTREE_ROOT/.local/state/ship.loop.local.json"
 STALE_WORKTREE_TRANSCRIPT="$STALE_WORKTREE_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$STALE_WORKTREE_STATE")"
 jq -n \
+  --arg owner "$STALE_WORKTREE_ROOT" \
   --arg missing "$STALE_WORKTREE_ROOT/missing-worktree" \
-  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",worktree_path:$missing}' \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$owner,worktree_path:$missing}' \
   > "$STALE_WORKTREE_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$STALE_WORKTREE_TRANSCRIPT"
 STALE_WORKTREE_OUTPUT=$(
@@ -561,7 +562,7 @@ git -C "$WORKTREE_MAIN" worktree add -qb linked-fixture "$WORKTREE_LINKED" >/dev
 mkdir -p "$WORKTREE_MAIN/.local/state"
 jq -n \
   --arg worktree "$WORKTREE_MAIN" \
-  '{schema_version:2,owner_workflow:"start-issue",loop_name:"start-issue-42",iteration:1,max_iterations:50,completion_promise:"COMPLETE",terminal_promises:["COMPLETE","INCOMPLETE"],components:{},phase:"implementing",original_prompt:"issue 42",session_id:"owner-session",worktree_path:$worktree}' \
+  '{schema_version:2,owner_workflow:"start-issue",loop_name:"start-issue-42",iteration:1,max_iterations:50,completion_promise:"COMPLETE",terminal_promises:["COMPLETE","INCOMPLETE"],components:{},phase:"implementing",original_prompt:"issue 42",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
   > "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json"
 WORKTREE_TRANSCRIPT="$WORKTREE_LINKED/transcript.jsonl"
 printf '%s\n' \
@@ -583,18 +584,20 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-echo -n "  Linked-worktree Stop hook resumes state scoped to that worktree... "
+echo -n "  Stop hook separates the session checkout from a linked workflow target... "
 rm -f "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json"
 jq -n \
-  --arg worktree "$WORKTREE_LINKED" \
-  '{schema_version:2,owner_workflow:"start-issue",loop_name:"start-issue-43",iteration:1,max_iterations:50,completion_promise:"COMPLETE",terminal_promises:["COMPLETE","INCOMPLETE"],components:{},phase:"implementing",original_prompt:"issue 43",session_id:"owner-session",worktree_path:$worktree}' \
+  --arg owner "$WORKTREE_MAIN" \
+  --arg target "$WORKTREE_LINKED" \
+  '{schema_version:2,owner_workflow:"start-issue",loop_name:"start-issue-43",iteration:1,max_iterations:50,completion_promise:"COMPLETE",terminal_promises:["COMPLETE","INCOMPLETE"],components:{},phase:"implementing",original_prompt:"issue 43",session_id:"owner-session",session_worktree_path:$owner,worktree_path:$target}' \
   > "$WORKTREE_MAIN/.local/state/start-issue-43.loop.local.json"
+WORKTREE_TRANSCRIPT="$WORKTREE_MAIN/transcript.jsonl"
 printf '%s\n' \
   '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: start-issue-43"}]}}' \
   '{"role":"assistant","message":{"content":[{"type":"text","text":"<done>COMPLETE</done>"}]}}' \
   > "$WORKTREE_TRANSCRIPT"
 WORKTREE_OUTPUT=$(
-  cd "$WORKTREE_LINKED"
+  cd "$WORKTREE_MAIN"
   jq -n --arg transcript "$WORKTREE_TRANSCRIPT" --arg session "owner-session" \
     '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
@@ -615,7 +618,7 @@ for NO_TARGET_PHASE in reviewing pushing; do
   jq -n \
     --arg worktree "$WORKTREE_MAIN" \
     --arg phase "$NO_TARGET_PHASE" \
-    '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:$phase,original_prompt:"ship",session_id:"owner-session",worktree_path:$worktree}' \
+    '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:$phase,original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
     > "$NO_TARGET_STATE"
   NO_TARGET_OUTPUT=$(
     cd "$WORKTREE_MAIN"
@@ -636,7 +639,7 @@ fi
 echo -n "  Stop hook preserves targetless recovery state owned by another session... "
 jq -n \
   --arg worktree "$WORKTREE_MAIN" \
-  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"foreign-session",worktree_path:$worktree}' \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"foreign-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
   > "$NO_TARGET_STATE"
 FOREIGN_NO_TARGET_BEFORE=$(cksum "$NO_TARGET_STATE")
 FOREIGN_NO_TARGET_OUTPUT=$(
@@ -659,7 +662,7 @@ for CLEAN_WAIT_PHASE in ci-watch bot-watching merging; do
   jq -n \
     --arg worktree "$WORKTREE_MAIN" \
     --arg phase "$CLEAN_WAIT_PHASE" \
-    '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:$phase,original_prompt:"ship",session_id:"owner-session",worktree_path:$worktree}' \
+    '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:$phase,original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
     > "$NO_TARGET_STATE"
   CLEAN_WAIT_OUTPUT=$(
     cd "$WORKTREE_MAIN"
@@ -690,7 +693,7 @@ STAGED_TARGET_TRANSCRIPT="$STAGED_TARGET_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$STAGED_TARGET_STATE")"
 jq -n \
   --arg worktree "$STAGED_TARGET_ROOT" \
-  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",worktree_path:$worktree}' \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
   > "$STAGED_TARGET_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$STAGED_TARGET_TRANSCRIPT"
 STAGED_TARGET_OUTPUT=$(
@@ -723,7 +726,7 @@ UNPUSHED_TRANSCRIPT="$UNPUSHED_WORKTREE/transcript.jsonl"
 mkdir -p "$(dirname "$UNPUSHED_STATE")"
 jq -n \
   --arg worktree "$UNPUSHED_WORKTREE" \
-  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",worktree_path:$worktree}' \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
   > "$UNPUSHED_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$UNPUSHED_TRANSCRIPT"
 UNPUSHED_OUTPUT=$(
@@ -739,6 +742,41 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
+echo -n "  Stop hook uses the persisted nonstandard base branch... "
+NONSTANDARD_FIXTURE=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-nonstandard-base.XXXXXX")
+NONSTANDARD_REMOTE="$NONSTANDARD_FIXTURE/remote.git"
+NONSTANDARD_WORKTREE="$NONSTANDARD_FIXTURE/worktree"
+git init --bare -q "$NONSTANDARD_REMOTE"
+git init -b develop -q "$NONSTANDARD_WORKTREE"
+git -C "$NONSTANDARD_WORKTREE" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: initialize nonstandard base'
+git -C "$NONSTANDARD_WORKTREE" remote add origin "$NONSTANDARD_REMOTE"
+git -C "$NONSTANDARD_WORKTREE" push -qu origin develop
+git -C "$NONSTANDARD_WORKTREE" checkout -qb feature
+git -C "$NONSTANDARD_WORKTREE" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
+  commit --allow-empty -qm 'test: create fully pushed feature'
+git -C "$NONSTANDARD_WORKTREE" push -qu -u origin feature
+NONSTANDARD_STATE="$NONSTANDARD_WORKTREE/.local/state/ship.loop.local.json"
+NONSTANDARD_TRANSCRIPT="$NONSTANDARD_WORKTREE/transcript.jsonl"
+mkdir -p "$(dirname "$NONSTANDARD_STATE")"
+jq -n \
+  --arg worktree "$NONSTANDARD_WORKTREE" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",base_branch:"develop",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
+  > "$NONSTANDARD_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$NONSTANDARD_TRANSCRIPT"
+NONSTANDARD_OUTPUT=$(
+  cd "$NONSTANDARD_WORKTREE"
+  jq -n --arg transcript "$NONSTANDARD_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if printf '%s\n' "$NONSTANDARD_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   [ -e "$NONSTANDARD_STATE" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
 git -C "$WORKTREE_LINKED" -c user.name='Hook Tests' -c user.email='hooks@example.com' \
   commit --allow-empty -qm 'test: create repository target'
 RETRY_STATE="$WORKTREE_MAIN/.local/state/ship.loop.local.json"
@@ -747,7 +785,7 @@ RETRY_TRANSCRIPT="$WORKTREE_LINKED/retry.jsonl"
 echo -n "  Stop hook accepts a non-default branch ahead of the default branch... "
 jq -n \
   --arg worktree "$WORKTREE_LINKED" \
-  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",worktree_path:$worktree}' \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
   > "$RETRY_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$RETRY_TRANSCRIPT"
 NONDEFAULT_TARGET_OUTPUT=$(
@@ -767,7 +805,7 @@ echo -n "  Stop hook resets the retry cap after content-only progress... "
 printf '%s\n' 'first revision' > "$WORKTREE_LINKED/progress.txt"
 jq -n \
   --arg worktree "$WORKTREE_LINKED" \
-  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",worktree_path:$worktree}' \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
   > "$RETRY_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$RETRY_TRANSCRIPT"
 for _ in 1 2; do
@@ -803,7 +841,7 @@ SELF_STATE_TRANSCRIPT="$SELF_STATE_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$SELF_STATE_FILE")"
 jq -n \
   --arg worktree "$SELF_STATE_ROOT" \
-  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",worktree_path:$worktree}' \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
   > "$SELF_STATE_FILE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$SELF_STATE_TRANSCRIPT"
 for _ in 1 2; do
@@ -840,7 +878,7 @@ fi
 echo -n "  Stop hook caps identical blocks and includes recovery details... "
 jq -n \
   --arg worktree "$WORKTREE_LINKED" \
-  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",worktree_path:$worktree}' \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$worktree,worktree_path:$worktree}' \
   > "$RETRY_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$RETRY_TRANSCRIPT"
 RETRY_FIRST=""
