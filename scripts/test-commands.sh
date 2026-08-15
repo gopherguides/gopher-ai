@@ -15,6 +15,7 @@ bash "$ROOT_DIR/scripts/test-ship-ollama-model.sh"
 bash "$ROOT_DIR/scripts/test-review-deep-actions.sh"
 bash "$ROOT_DIR/scripts/test-decision-gates.sh"
 bash "$ROOT_DIR/scripts/test-github-rest.sh"
+bash "$ROOT_DIR/scripts/test-gopher-ai-review-action.sh"
 
 # Find all command .md files
 COMMAND_FILES=$(find "$ROOT_DIR/plugins" "$ROOT_DIR/shared" -path "*/commands/*.md" -type f 2>/dev/null | sort)

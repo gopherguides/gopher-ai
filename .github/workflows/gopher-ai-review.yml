@@ -1,0 +1,51 @@
+name: Gopher AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: gopher-ai-review-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: AI Code Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Gopher AI review
+        id: review
+        uses: ./.github/actions/gopher-ai-review
+        with:
+          api-key: ${{ secrets.GOPHER_AI_API_KEY }}
+          github-token: ${{ github.token }}
+
+      - name: Publish review status in job summary
+        if: always()
+        env:
+          FILE_COUNT: ${{ steps.review.outputs.file-count || '0' }}
+          HAS_ISSUES: ${{ steps.review.outputs.has-issues || 'false' }}
+          REVIEWED_HEAD: ${{ steps.review.outputs.reviewed-head || github.event.pull_request.head.sha }}
+          SKIP_REASON: ${{ steps.review.outputs.skip-reason || 'none' }}
+          SUMMARY: ${{ steps.review.outputs.summary || 'review did not complete' }}
+        run: |
+          {
+            echo '## Gopher AI Code Review'
+            echo "- Summary: **$SUMMARY**"
+            echo "- Files reviewed: **$FILE_COUNT**"
+            echo "- Skip reason: **$SKIP_REASON**"
+            echo "- Issues found: **$HAS_ISSUES**"
+            echo "- Reviewed head: **$REVIEWED_HEAD**"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f .gopher-ai-review/status.md ]; then
+            echo >> "$GITHUB_STEP_SUMMARY"
+            sed -n '1,160p' .gopher-ai-review/status.md >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,0 +1,153 @@
+name: Gopher AI Code Review
+description: AI-powered Go code review using Gopher Guides best practices
+author: Gopher Guides
+
+branding:
+  icon: check-circle
+  color: blue
+
+inputs:
+  api-key:
+    description: Gopher AI API key
+    required: true
+  api-url:
+    description: Gopher AI review API endpoint
+    required: false
+    default: https://gopherguides.com/api/gopher-ai/review
+  focus:
+    description: Optional review focus
+    required: false
+    default: ""
+  github-token:
+    description: GitHub token for reading pull requests and publishing review status
+    required: true
+  retry-delay-seconds:
+    description: Delay before the single bounded retry
+    required: false
+    default: "2"
+
+outputs:
+  summary:
+    description: One-line review summary
+    value: ${{ steps.review.outputs.summary || steps.check-go.outputs.summary || steps.diff.outputs.summary }}
+  file-count:
+    description: Number of Go files reviewed
+    value: ${{ steps.review.outputs.file_count || steps.check-go.outputs.file_count || '0' }}
+  skip-reason:
+    description: Concrete reason the review did not complete
+    value: ${{ steps.review.outputs.skip_reason || steps.check-go.outputs.skip_reason || steps.diff.outputs.skip_reason }}
+  has-issues:
+    description: Whether the review found issues
+    value: ${{ steps.review.outputs.has_issues || steps.check-go.outputs.has_issues || 'false' }}
+  reviewed-head:
+    description: Pull request head evaluated by this action
+    value: ${{ github.event.pull_request.head.sha || github.sha }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check for eligible Go files
+      id: check-go
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPOSITORY: ${{ github.repository }}
+        REVIEWED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        STATUS_DIR: ${{ github.workspace }}/.gopher-ai-review
+      run: |
+        set -euo pipefail
+        mkdir -p "$STATUS_DIR"
+        CHANGED_FILES=$(gh api --paginate "repos/$REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" --jq '.[].filename')
+        GO_FILES=$(printf '%s\n' "$CHANGED_FILES" | awk '/\.go$/ && !/_test\.go$/ && !/_templ\.go$/ && !/_gen\.go$/')
+        FILE_COUNT=$(printf '%s\n' "$GO_FILES" | awk 'NF { count++ } END { print count + 0 }')
+        printf 'file_count=%s\n' "$FILE_COUNT" >> "$GITHUB_OUTPUT"
+        printf 'reviewed_head=%s\n' "$REVIEWED_HEAD" >> "$GITHUB_OUTPUT"
+
+        if [ "$FILE_COUNT" -eq 0 ]; then
+          printf '%s\n' \
+            'summary=Gopher AI review skipped: no eligible Go files' \
+            'has_issues=false' \
+            'skip_reason=no-eligible-go-files' >> "$GITHUB_OUTPUT"
+          {
+            echo '## Gopher AI Code Review'
+            echo
+            echo 'Review skipped: no eligible Go files changed.'
+            echo
+            echo 'No retry is needed for this head.'
+          } > "$STATUS_DIR/status.md"
+          exit 0
+        fi
+
+        printf 'go_files<<EOF\n%s\nEOF\n' "$GO_FILES" >> "$GITHUB_OUTPUT"
+
+    - name: Get pull request diff
+      if: steps.check-go.outputs.skip_reason != 'no-eligible-go-files'
+      id: diff
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPOSITORY: ${{ github.repository }}
+        STATUS_DIR: ${{ github.workspace }}/.gopher-ai-review
+      run: |
+        set -euo pipefail
+        mkdir -p "$STATUS_DIR"
+        if ! gh pr diff "$PR_NUMBER" --repo "$REPOSITORY" > "$GITHUB_WORKSPACE/pr.diff"; then
+          {
+            echo '## Gopher AI Code Review'
+            echo
+            echo 'Review failed: the pull request diff could not be fetched.'
+            echo
+            echo 'No API retry occurred because the review request could not be created.'
+          } > "$STATUS_DIR/status.md"
+          printf '%s\n' \
+            'summary=Gopher AI review failed: diff unavailable' \
+            'skip_reason=diff-unavailable' >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+
+    - name: Call Gopher AI API
+      if: steps.check-go.outputs.skip_reason != 'no-eligible-go-files'
+      id: review
+      shell: bash
+      env:
+        GOPHER_AI_API_KEY: ${{ inputs.api-key }}
+        GOPHER_AI_API_URL: ${{ inputs.api-url }}
+        GOPHER_AI_DIFF_PATH: ${{ github.workspace }}/pr.diff
+        GOPHER_AI_FOCUS: ${{ inputs.focus }}
+        GOPHER_AI_RETRY_DELAY_SECONDS: ${{ inputs.retry-delay-seconds }}
+        REVIEW_STATUS_DIR: ${{ github.workspace }}/.gopher-ai-review
+      run: ${{ github.action_path }}/review-api.sh
+
+    - name: Upsert exact-head review status
+      if: always() && github.event.pull_request.head.repo.fork != true && github.actor != 'dependabot[bot]'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPOSITORY: ${{ github.repository }}
+        REVIEWED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        STATUS_DIR: ${{ github.workspace }}/.gopher-ai-review
+      run: |
+        set -euo pipefail
+        MARKER='<!-- gopher-ai-review-summary -->'
+        STATUS_FILE="$STATUS_DIR/status.md"
+        if [ ! -f "$STATUS_FILE" ]; then
+          mkdir -p "$STATUS_DIR"
+          {
+            echo '## Gopher AI Code Review'
+            echo
+            echo 'Review failed before a detailed status could be recorded.'
+          } > "$STATUS_FILE"
+        fi
+
+        BODY=$(printf '%s\n%s\n\n- Head SHA: %s\n' "$MARKER" "$(<"$STATUS_FILE")" "$REVIEWED_HEAD")
+        COMMENT_ID=$(gh api --paginate "repos/$REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+          | jq -s --arg marker "$MARKER" '[add[] | select((.body // "") | contains($marker))] | sort_by(.updated_at, .id) | last | .id // empty')
+
+        if [ -n "$COMMENT_ID" ]; then
+          gh api --method PATCH "repos/$REPOSITORY/issues/comments/$COMMENT_ID" -f body="$BODY" >/dev/null
+        else
+          gh api --method POST "repos/$REPOSITORY/issues/$PR_NUMBER/comments" -f body="$BODY" >/dev/null
+        fi
