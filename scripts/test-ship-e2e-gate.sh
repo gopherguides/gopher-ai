@@ -370,6 +370,11 @@ rm -rf "$DIRTY_HEAD_SHIFT_TMP"
 
 HEADLESS_TMP=$(mktemp -d "${TMPDIR:-/tmp}/ship-headless-e2e-XXXXXX")
 mkdir -p "$HEADLESS_TMP/.local/state" "$HEADLESS_TMP/hooks" "$HEADLESS_TMP/lib"
+git -C "$HEADLESS_TMP" init -b main -q
+git -C "$HEADLESS_TMP" -c user.name='Ship Tests' -c user.email='ship@example.com' \
+  commit --allow-empty -qm 'test: initialize headless recovery'
+printf '%s\n' 'validated change' > "$HEADLESS_TMP/validated.txt"
+git -C "$HEADLESS_TMP" add validated.txt
 cp "$STOP_HOOK" "$HEADLESS_TMP/hooks/stop-hook.sh"
 cp "$LOOP_LIB" "$HEADLESS_TMP/lib/loop-state.sh"
 cat > "$HEADLESS_TMP/.local/state/ship.loop.local.json" <<'EOF'
