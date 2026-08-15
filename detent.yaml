@@ -97,6 +97,29 @@ agent:
             enabled: true
             max_drafts_per_run: 1
 codex:
+    # Allowlist added 2026-08-14: detent#1787 ships elicitation approval
+    # DEFAULT EMPTY, so without this block every github connector mutation
+    # an agent attempts is declined as "user rejected MCP tool call" and the
+    # PR deliverable fails (the Aug 12-14 stranded-branch incidents). Scope is
+    # deliberately the workflow's own deliverable on this repo only.
+    deliverable_elicitation_allowlist:
+      - server: codex_apps
+        tool: github.create_pull_request
+        repository: gopherguides/gopher-ai
+      - server: codex_apps
+        tool: github.update_pull_request
+        repository: gopherguides/gopher-ai
+      # Workpad comments and lane-label transitions are ALSO deliverable
+      # mutations: the Detent protocol requires them before implementation.
+      # Verified 2026-08-14 on gopherguides/corp: every implement session died
+      # at workpad creation with "user rejected MCP tool call" on these two
+      # tools (40 clean-diff no_progress attempts across corp#343/#473).
+      - server: codex_apps
+        tool: github.add_comment_to_issue
+        repository: gopherguides/gopher-ai
+      - server: codex_apps
+        tool: github.update_issue
+        repository: gopherguides/gopher-ai
     # Deliberately unpinned: the Codex CLI default manages the model, so this
     # survives provider model retirements and picks up generation upgrades
     # automatically. Telemetry resolves the effective model from the session
@@ -113,7 +136,12 @@ gate:
     kind: command
     run: >-
         bash -lc './scripts/test-commands.sh && ./scripts/test-hooks.sh && ./scripts/test-ship-e2e-gate.sh && ./scripts/check-shared-sync.sh && shellcheck agent-skills/scripts/*.sh && for skill_dir in agent-skills/skills/*/; do skill_name=$(basename "$skill_dir"); skill_file="$skill_dir/SKILL.md"; test -f "$skill_file"; lines=$(wc -l < "$skill_file"); test "$lines" -lt 500; name=$(sed -n "/^---$/,/^---$/p" "$skill_file" | awk "/^name:/ {print \$2; exit}"); test "$name" = "$skill_name"; rg -q "^description:" "$skill_file"; done && ruby -ryaml -e "YAML.load_file(ARGV[0])" agent-skills/config/severity.yaml && (cd agent-skills/examples/demo-repo && go build -o /tmp/gopher-ai-demo . && go test ./...)'
-    require_automated_review: false
+    # Flipped 2026-08-15 (operator, with corp): the gate waits for the
+    # automated review (chatgpt-codex-connector) instead of promoting past it;
+    # actionable review feedback routes to Rework via auto_promote instead of
+    # landing on a human. If no review arrives, the bounded gate wait expires
+    # and the issue falls through per gate_wait semantics -- no infinite wait.
+    require_automated_review: true
     required_status_checks: []
     ci_failure_action: rework
     transient_ci_retry_limit: 2
