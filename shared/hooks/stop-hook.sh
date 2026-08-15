@@ -301,8 +301,13 @@ repository_state_fingerprint() {
         fi
         printf '%s\0%s\0' "$entry_type" "$relative_entry"
         if [ "$entry_type" = "file" ]; then
-          entry_metadata=$(stat -f '%z:%m' "$filesystem_entry" 2>/dev/null || \
-            stat -c '%s:%Y' "$filesystem_entry" 2>/dev/null || true)
+          if entry_metadata=$(stat -c '%s:%Y' -- "$filesystem_entry" 2>/dev/null); then
+            :
+          elif entry_metadata=$(stat -f '%z:%m' "$filesystem_entry" 2>/dev/null); then
+            :
+          else
+            entry_metadata=""
+          fi
           printf '%s\0' "$entry_metadata"
           entry_size="${entry_metadata%%:*}"
           case "$entry_size" in
