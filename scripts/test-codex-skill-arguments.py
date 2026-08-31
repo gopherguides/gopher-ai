@@ -102,6 +102,24 @@ def run_codex(env, cwd, *args):
 
 
 def assert_static_contract():
+    argument_contract = " ".join(
+        (WORKFLOW_ROOT / "lib/skill-arguments.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    composed_rule = "caller-provided `SKILL_ARGS`"
+    empty_value_rule = "including an explicitly empty value"
+    compatibility_rule = "trimmed compatibility payload"
+    for rule in (composed_rule, empty_value_rule, compatibility_rule):
+        if rule not in argument_contract:
+            raise AssertionError(f"shared argument contract is missing: {rule}")
+    if argument_contract.index(composed_rule) > argument_contract.index(
+        compatibility_rule
+    ):
+        raise AssertionError(
+            "composed workflow arguments must take precedence over host binding"
+        )
+
     discovered = set()
     for skill_file in (WORKFLOW_ROOT / "skills").glob("*/SKILL.md"):
         text = skill_file.read_text(encoding="utf-8")
