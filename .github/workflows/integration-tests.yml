@@ -31,6 +31,9 @@ jobs:
       - name: Probe qualified go-workflow skill names
         run: python3 ./scripts/test-codex-skill-names.py
 
+      - name: Probe explicit go-workflow skill arguments
+        run: python3 ./scripts/test-codex-skill-arguments.py
+
   test-installation:
     runs-on: ubuntu-latest
     steps:

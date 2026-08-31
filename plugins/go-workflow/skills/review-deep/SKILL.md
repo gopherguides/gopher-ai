@@ -16,9 +16,15 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving review
 coverage or post-review actions.
 
+Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:review-deep` by
+reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+<claude-skill-arguments>
+$ARGUMENTS
+</claude-skill-arguments>
+
 ## Step 0: Parse Arguments
 
-Parse `$ARGUMENTS` to extract:
+Parse `SKILL_ARGS` to extract:
 
 - Bare numeric value: PR number (e.g., `$go-workflow:review-deep 42`)
 - `--issue <N>`: Use specific issue as context (no PR required)
@@ -42,7 +48,7 @@ SCOPE_HINT=""
 FIX_CHANGES=true
 COMMIT_CHANGES=true
 PUSH_CHANGES=auto
-ARGS="$ARGUMENTS"
+ARGS="$SKILL_ARGS"
 
 while [ -n "$ARGS" ]; do
   case "$ARGS" in

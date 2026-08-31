@@ -14,9 +14,14 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
 choice.
 
+Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:start-issue` by reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+<claude-skill-arguments>
+$ARGUMENTS
+</claude-skill-arguments>
+
 ## Empty Arguments
 
-If `$ARGUMENTS` is empty or not provided, explain:
+If `SKILL_ARGS` is empty or not provided, explain:
 
 > This skill starts work on a GitHub issue, automatically detecting whether it's
 > a bug fix or new feature and following the appropriate workflow.
@@ -85,10 +90,10 @@ fresh `$go-workflow:start-issue` invocation:
 Strip optional flags and extract the issue number:
 
 ```bash
-ISSUE_NUM=$(echo "$ARGUMENTS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g; s/--no-agents//g' | tr -d ' ')
-HAS_SKIP=$(echo "$ARGUMENTS" | grep -q '\-\-skip-coverage' && echo "true" || echo "false")
-COV_THRESH=$(echo "$ARGUMENTS" | grep -oE '\-\-coverage-threshold [0-9]+' | awk '{print $2}')
-NO_AGENTS=$(echo "$ARGUMENTS" | grep -q '\-\-no-agents' && echo "true" || echo "false")
+ISSUE_NUM=$(echo "$SKILL_ARGS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g; s/--no-agents//g' | tr -d ' ')
+HAS_SKIP=$(echo "$SKILL_ARGS" | grep -q '\-\-skip-coverage' && echo "true" || echo "false")
+COV_THRESH=$(echo "$SKILL_ARGS" | grep -oE '\-\-coverage-threshold [0-9]+' | awk '{print $2}')
+NO_AGENTS=$(echo "$SKILL_ARGS" | grep -q '\-\-no-agents' && echo "true" || echo "false")
 if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then
   echo "Error: Issue number must be numeric."
   echo "Claude Code: /go-workflow:start-issue <number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
@@ -101,7 +106,7 @@ echo "Issue: $ISSUE_NUM | skip-coverage: $HAS_SKIP | coverage-threshold: ${COV_T
 The output above shows the parsed issue number and flag values.
 
 **CRITICAL: From this point forward, use `$ISSUE_NUM` (the numeric issue number
-shown above) everywhere you would use `$ARGUMENTS`.** The raw `$ARGUMENTS` may
+shown above) everywhere you would use `SKILL_ARGS`.** The raw `SKILL_ARGS` may
 contain flags and MUST NOT be passed to `gh issue view`, branch names, worktree
 names, or state file paths.
 

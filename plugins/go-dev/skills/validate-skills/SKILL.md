@@ -13,7 +13,7 @@ When working on `.md` command or skill files that contain fenced bash/shell code
 - **Shell pitfalls**: Unquoted variables, deprecated syntax, SC2015 `A && B || C` (`shellcheck`)
 - **Portability issues**: macOS vs Linux differences (`mktemp` templates, `sed -i`, `grep -P`, `readlink -f`, `date` flags)
 - **Unsafe commands**: RED-tier commands (`rm`, `sudo`, `eval`, pipe-to-shell) flagged as warnings
-- **Template variable handling**: Blocks with unresolvable plugin variables (`$CLAUDE_PLUGIN_ROOT`, `$ARGUMENTS`, `$MODEL`) are skipped for execution but still syntax-checked
+- **Template variable handling**: Blocks with unresolvable plugin variables (`$CLAUDE_PLUGIN_ROOT`, `$ARGUMENTS`, `$SKILL_ARGS`, `$MODEL`) are skipped for execution but still syntax-checked
 - **Execution failures**: GREEN-tier read-only commands that fail at runtime (broken `jq` filters, invalid `grep` patterns, `mktemp` template errors)
 
 ## Common Pitfalls in Plugin Markdown

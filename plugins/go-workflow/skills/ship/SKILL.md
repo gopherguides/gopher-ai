@@ -14,6 +14,12 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
 choice.
 
+Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:ship` by
+reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+<claude-skill-arguments>
+$ARGUMENTS
+</claude-skill-arguments>
+
 Load the shared GitHub REST helpers before any GitHub workflow operation:
 
 ```bash
@@ -192,7 +198,7 @@ fi
 
 ## 1. Parse Arguments
 
-Parse `$ARGUMENTS` to extract:
+Parse `SKILL_ARGS` to extract:
 
 - `--llm <value>`: `codex` (default), `gemini`, `ollama`, `fable` (Claude subagent — no external CLI; prefer when the diff was written by Codex so a different model family reviews it)
 - `--passes <n>`: max LLM review passes (default: 3)
@@ -205,7 +211,7 @@ Parse `$ARGUMENTS` to extract:
 
 Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`,
 `COVERAGE_THRESHOLD` (default `60`), `GEMINI_TIER`, and `LLM_EXPLICIT`.
-`LLM_EXPLICIT=true` only when `$ARGUMENTS` contains `--llm`; otherwise it is
+`LLM_EXPLICIT=true` only when `SKILL_ARGS` contains `--llm`; otherwise it is
 `false`.
 
 Persist arguments to the resolved workflow object so the

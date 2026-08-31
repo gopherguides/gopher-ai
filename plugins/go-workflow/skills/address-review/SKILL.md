@@ -14,6 +14,12 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
 choice.
 
+Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:address-review` by
+reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+<claude-skill-arguments>
+$ARGUMENTS
+</claude-skill-arguments>
+
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
 ```
@@ -22,7 +28,7 @@ source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
 
 Replies to review comments and any new commit messages describe what behavior changed and why, not file paths or line numbers. A reviewer reading the reply six months later, after the file in question has moved, must still understand what was fixed.
 
-**If `$ARGUMENTS` is empty or not provided:**
+**If `SKILL_ARGS` is empty or not provided:**
 
 Auto-detect PR from current branch:
 
@@ -48,14 +54,14 @@ claim.
 
 ---
 
-**If PR number is available (from `$ARGUMENTS` or auto-detected):**
+**If PR number is available (from `SKILL_ARGS` or auto-detected):**
 
 ## Parse Arguments
 
 ```bash
 WATCH_MODE=true
 PR_ARG=""
-for arg in $ARGUMENTS; do
+for arg in $SKILL_ARGS; do
   case "$arg" in
     --no-watch) WATCH_MODE=false ;;
     *) PR_ARG="$arg" ;;

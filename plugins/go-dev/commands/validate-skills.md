@@ -108,7 +108,7 @@ Parse **ALL commands on each line** — including chained commands separated by 
 Before executing, scan each block for **plugin runtime variables** that can't be resolved outside the plugin context. The literal list is:
 
 ```bash
-grep -qE '\$\{?(CLAUDE_PLUGIN_ROOT|ARGUMENTS|MODEL|TARGET_PATH|STAGED|DRY_RUN|REVIEW_JSON|DIFF|FINDINGS|LLM_CHOICE)\}?' "$TMPDIR/block-NNN.sh"
+grep -qE '\$\{?(CLAUDE_PLUGIN_ROOT|ARGUMENTS|SKILL_ARGS|MODEL|TARGET_PATH|STAGED|DRY_RUN|REVIEW_JSON|DIFF|FINDINGS|LLM_CHOICE)\}?' "$TMPDIR/block-NNN.sh"
 ```
 
 Standard shell variables (`$HOME`, `$PATH`, `$PWD`, `$USER`, `$TMPDIR`) and locally-assigned variables are NOT runtime variables. If the block contains plugin runtime variables → skip execution; report `info` "Block contains plugin runtime variables — skipped execution."
