@@ -51,15 +51,32 @@ ACTION_SCALAR_PATTERN = re.compile(
     r'''^(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)$''',
     re.IGNORECASE,
 )
-ACTION_VALUE_PATTERN = re.compile(
-    r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
-    r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)\1$''',
-    re.IGNORECASE,
-)
 FALSE_VALUE_PATTERN = re.compile(
     r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*(?:false|"false"|'false')$'''
 )
 LIST_ITEM_PATTERN = re.compile(r"^(\s*)-(?:\s+|$)")
+SCALAR_PREFIX_PATTERN = re.compile(
+    r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
+)
+DOUBLE_QUOTED_ESCAPES = {
+    "0": "\0",
+    "a": "\a",
+    "b": "\b",
+    "t": "\t",
+    "n": "\n",
+    "v": "\v",
+    "f": "\f",
+    "r": "\r",
+    "e": "\x1b",
+    " ": " ",
+    '"': '"',
+    "/": "/",
+    "\\": "\\",
+    "N": "\x85",
+    "_": "\xa0",
+    "L": "\u2028",
+    "P": "\u2029",
+}
 
 
 def normalize_workflow_line(line):
@@ -67,6 +84,85 @@ def normalize_workflow_line(line):
     if match:
         return f"{match.group(1)}{match.group(2)}"
     return line
+
+
+def decode_double_quoted_scalar(value):
+    decoded = []
+    index = 1
+    while index < len(value):
+        character = value[index]
+        if character == '"':
+            suffix = value[index + 1 :].strip()
+            if suffix and not suffix.startswith("#"):
+                return None
+            return "".join(decoded)
+        if character != "\\":
+            decoded.append(character)
+            index += 1
+            continue
+        index += 1
+        if index >= len(value):
+            return None
+        escape = value[index]
+        if escape in DOUBLE_QUOTED_ESCAPES:
+            decoded.append(DOUBLE_QUOTED_ESCAPES[escape])
+            index += 1
+            continue
+        lengths = {"x": 2, "u": 4, "U": 8}
+        length = lengths.get(escape)
+        if length is None:
+            return None
+        digits = value[index + 1 : index + 1 + length]
+        if len(digits) != length or not re.fullmatch(r"[0-9A-Fa-f]+", digits):
+            return None
+        try:
+            decoded.append(chr(int(digits, 16)))
+        except ValueError:
+            return None
+        index += length + 1
+    return None
+
+
+def decode_single_quoted_scalar(value):
+    decoded = []
+    index = 1
+    while index < len(value):
+        character = value[index]
+        if character != "'":
+            decoded.append(character)
+            index += 1
+            continue
+        if index + 1 < len(value) and value[index + 1] == "'":
+            decoded.append("'")
+            index += 2
+            continue
+        suffix = value[index + 1 :].strip()
+        if suffix and not suffix.startswith("#"):
+            return None
+        return "".join(decoded)
+    return None
+
+
+def decode_yaml_scalar(value):
+    value = SCALAR_PREFIX_PATTERN.sub("", value.strip(), count=1)
+    if not value:
+        return None
+    if value.startswith('"'):
+        return decode_double_quoted_scalar(value)
+    if value.startswith("'"):
+        return decode_single_quoted_scalar(value)
+    return re.split(r"\s+#", value, maxsplit=1)[0].rstrip()
+
+
+def parse_action_value(value):
+    scalar = decode_yaml_scalar(value)
+    if scalar is None:
+        return None
+    match = ACTION_SCALAR_PATTERN.match(scalar)
+    if not match:
+        return None
+    action, action_ref = match.groups()
+    return action.lower(), action_ref
 
 
 def split_flow_text(value, delimiter):
@@ -239,10 +335,19 @@ def parse_action(line):
     if flow_step:
         indentation, entries = flow_step
         uses_value = flow_mapping_value(entries, "uses")
-        match = None if uses_value is None else ACTION_VALUE_PATTERN.match(uses_value)
-        if match:
-            _, action, action_ref = match.groups()
-            return indentation, True, action.lower(), action_ref, True
+        parsed_value = None if uses_value is None else parse_action_value(uses_value)
+        if parsed_value:
+            action, action_ref = parsed_value
+            return indentation, True, action, action_ref, True
+
+    uses_context = block_uses_context(line)
+    if uses_context:
+        match = BLOCK_USES_KEY_PATTERN.match(line)
+        parsed_value = parse_action_value(line[match.end() :])
+        if parsed_value:
+            action, action_ref = parsed_value
+            indentation, list_marker, _, _, _ = uses_context
+            return indentation, list_marker, action, action_ref, False
 
     return None
 
@@ -322,11 +427,42 @@ def parse_explicit_action(lines, start):
     if not explicit_value:
         return None
     indentation, list_marker, value = explicit_value
-    match = ACTION_VALUE_PATTERN.match(value)
-    if not match:
+    parsed_value = parse_action_value(value)
+    if not parsed_value:
         return None
-    _, action, action_ref = match.groups()
-    return indentation, list_marker, action.lower(), action_ref, False
+    action, action_ref = parsed_value
+    return indentation, list_marker, action, action_ref, False
+
+
+def unparsed_action_reference(lines, start, line):
+    explicit_value = explicit_uses_value(lines, start)
+    if explicit_value:
+        indentation, list_marker, value = explicit_value
+        uses_context = indentation, list_marker, "", "", False
+        if not action_is_step_key(lines, start, uses_context):
+            return None
+        fallback_line = f"uses: {value}"
+    else:
+        flow_step = flow_step_mapping(line)
+        if flow_step:
+            uses_value = flow_mapping_value(flow_step[1], "uses")
+            if uses_value is None:
+                return None
+            fallback_line = f"uses: {uses_value}"
+        else:
+            uses_context = block_uses_context(line)
+            if not uses_context or not action_is_step_key(
+                lines, start, uses_context
+            ):
+                return None
+            fallback_line = line
+
+    reference = find_action_reference(fallback_line)
+    if reference:
+        return "reference", reference
+    if USES_ALIAS_PATTERN.search(fallback_line):
+        return "alias", None
+    return None
 
 
 def parser_failures():
@@ -353,6 +489,14 @@ def parser_failures():
             "actions/checkout",
             "v4",
         ),
+        r'      - uses: "actions\u002fcheckout@v4"': (
+            "actions/checkout",
+            "v4",
+        ),
+        r'      - { uses: "actions\x2fsetup-go@v6" }': (
+            "actions/setup-go",
+            "v6",
+        ),
     }
     failures = []
     for line, expected in cases.items():
@@ -368,6 +512,23 @@ def parser_failures():
         failures.append("action fallback missed unrecognized syntax fixture")
     if not USES_ALIAS_PATTERN.search("      - uses: *checkout"):
         failures.append("action fallback missed alias fixture")
+    unrecognized_lines = [
+        "    steps:",
+        "      - name: Checkout",
+        "        uses: actions/checkout@v4,",
+    ]
+    if unparsed_action_reference(
+        unrecognized_lines, 2, unrecognized_lines[2]
+    ) != ("reference", ("actions/checkout", "v4")):
+        failures.append("action fallback missed direct step fixture")
+    noise_lines = [
+        "    steps:",
+        "      - run: echo uses: actions/checkout@v4",
+        "      # old example uses: actions/checkout@v4",
+    ]
+    for index in range(1, len(noise_lines)):
+        if unparsed_action_reference(noise_lines, index, noise_lines[index]):
+            failures.append("action fallback promoted non-step text fixture")
     nested_flow_line = (
         '      - { run: echo "$uses", env: { uses: actions/checkout@v4 } }'
     )
@@ -730,35 +891,17 @@ def main():
                 )
                 scanned_lines = normalized_lines
             if not parsed:
-                fallback_line = candidate_line
-                explicit_value = explicit_uses_value(scanned_lines, index)
-                if explicit_value:
-                    indentation, list_marker, value = explicit_value
-                    uses_context = indentation, list_marker, "", "", False
-                    if not action_is_step_key(scanned_lines, index, uses_context):
-                        continue
-                    fallback_line = f"uses: {value}"
-                flow_step = flow_step_mapping(candidate_line)
-                if not explicit_value and flow_step:
-                    uses_value = flow_mapping_value(flow_step[1], "uses")
-                    if uses_value is None:
-                        continue
-                    fallback_line = f"uses: {uses_value}"
-                elif not explicit_value:
-                    uses_context = block_uses_context(candidate_line)
-                    if uses_context and not action_is_step_key(
-                        scanned_lines, index, uses_context
-                    ):
-                        continue
-                reference = find_action_reference(fallback_line)
-                if reference:
-                    action, action_ref = reference
+                unparsed = unparsed_action_reference(
+                    scanned_lines, index, candidate_line
+                )
+                if unparsed and unparsed[0] == "reference":
+                    action, action_ref = unparsed[1]
                     location = f"{path.relative_to(ROOT)}:{index + 1}"
                     failures.append(
                         f"{location}: unrecognized action step syntax for "
                         f"{action}@{action_ref}"
                     )
-                elif USES_ALIAS_PATTERN.search(fallback_line):
+                elif unparsed and unparsed[0] == "alias":
                     location = f"{path.relative_to(ROOT)}:{index + 1}"
                     failures.append(f"{location}: action aliases are not supported")
                 continue
