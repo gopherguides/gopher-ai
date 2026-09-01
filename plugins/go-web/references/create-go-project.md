@@ -231,6 +231,17 @@ After selecting a deployment platform that runs the app as a server (Railway, Fl
 
 ---
 
+## Security Validation
+
+Before creating any files, validate the project name:
+
+1. **Check for path traversal**: If `$SKILL_ARGS` contains `/`, `..`, or starts with `.`, display error: "Project name cannot contain path separators or relative paths"
+2. **Check for valid characters**: If `$SKILL_ARGS` contains characters other than `a-z`, `A-Z`, `0-9`, `-`, or `_`, display error: "Project name must contain only alphanumeric characters, hyphens, and underscores"
+3. **Check for reserved names**: If `$SKILL_ARGS` is empty or matches system directories, display error
+4. **Check for an existing target**: If `./$SKILL_ARGS` already exists, stop before creating or modifying any files and display error: "Project target already exists; choose a new project name"
+
+Only proceed if validation passes.
+
 ## Persistent Loop Protocol
 
 On Claude Code, initialize the persistent loop to ensure project creation completes fully.
@@ -244,17 +255,6 @@ else
   "<PLUGIN_ROOT>/scripts/setup-loop.sh" "create-go-project-$SKILL_ARGS" "COMPLETE"
 fi
 ```
-
-## Security Validation
-
-Before creating any files, validate the project name:
-
-1. **Check for path traversal**: If `$SKILL_ARGS` contains `/`, `..`, or starts with `.`, display error: "Project name cannot contain path separators or relative paths"
-2. **Check for valid characters**: If `$SKILL_ARGS` contains characters other than `a-z`, `A-Z`, `0-9`, `-`, or `_`, display error: "Project name must contain only alphanumeric characters, hyphens, and underscores"
-3. **Check for reserved names**: If `$SKILL_ARGS` is empty or matches system directories, display error
-4. **Check for an existing target**: If `./$SKILL_ARGS` already exists, stop before creating or modifying any files and display error: "Project target already exists; choose a new project name"
-
-Only proceed if validation passes.
 
 ## Template Library
 

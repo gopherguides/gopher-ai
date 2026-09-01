@@ -364,6 +364,10 @@ else
     "shared creation workflow must define the generated project location"
   require_literal "$CREATE_WORKFLOW" 'If `./$SKILL_ARGS` already exists, stop before creating or modifying any files' \
     "shared creation workflow must reject an existing project target"
+  require_before "$CREATE_WORKFLOW" \
+    '## Security Validation' \
+    '## Persistent Loop Protocol' \
+    "shared creation workflow must validate the target before initializing loop state"
   require_literal "$CREATE_WORKFLOW" '`SKILL_ARGS` must already contain the project name' \
     "shared creation workflow must require a portable argument binding"
   reject_literal "$CREATE_WORKFLOW" '$ARGUMENTS' \
