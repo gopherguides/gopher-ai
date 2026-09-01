@@ -53,6 +53,12 @@ FORMAL_REVIEWS=$(cd "$WORKTREE_PATH" && github_pr_reviews "$PR_NUM") || {
 }
 FORMAL_REVIEWERS=$(jq -r '.[].user.login // empty' <<< "$FORMAL_REVIEWS")
 
+ISSUE_COMMENT_PAGES=$(gh api --paginate --slurp "repos/$REPO_SLUG/issues/$PR_NUM/comments?per_page=100") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=issue-comment-api-failure
+}
+ISSUE_COMMENT_REVIEWERS=$(jq -r '.[][] | .user.login // empty' <<< "$ISSUE_COMMENT_PAGES")
+
 THREAD_RESULT=$(cd "$WORKTREE_PATH" && gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
@@ -77,18 +83,25 @@ THREAD_REVIEWERS=$(jq -r '
   .data.repository.pullRequest.reviewThreads.nodes[]?.comments.nodes[]?.author.login // empty
 ' <<< "$THREAD_RESULT")
 
-ACTUAL_REVIEWERS=$(printf '%s\n%s\n' "$FORMAL_REVIEWERS" "$THREAD_REVIEWERS" | jq -Rsc '
+if printf '%s\n' "$ISSUE_COMMENT_REVIEWERS" | grep -qx 'chatgpt-codex-connector\[bot\]'; then
+  THREAD_REVIEWERS=$(printf '%s\n' "$THREAD_REVIEWERS" | sed 's/^chatgpt-codex-connector$/chatgpt-codex-connector[bot]/')
+fi
+
+ACTUAL_REVIEWERS=$(printf '%s\n%s\n%s\n' "$FORMAL_REVIEWERS" "$ISSUE_COMMENT_REVIEWERS" "$THREAD_REVIEWERS" | jq -Rsc '
   split("\n") | map(select(length > 0)) | unique | .[]
 ')
 
 echo "Actual reviewers on PR: $ACTUAL_REVIEWERS"
 ```
 
-If PR metadata, formal reviews, or review threads cannot be loaded, follow the
+If PR metadata, formal reviews, issue comments, or review threads cannot be loaded, follow the
 top-level **Hard Invariant Failure** procedure. An API failure must not produce
 an empty reviewer set.
 
-Cross-reference this list with the Step 3 reviewer list. Only proceed with reviewers that appear in BOTH.
+Cross-reference this list with the Step 3 reviewer list. When the canonical
+Codex issue-comment author was discovered, treat its GraphQL thread alias
+`chatgpt-codex-connector` as `chatgpt-codex-connector[bot]` in both lists.
+Only proceed with reviewers that appear in both normalized lists.
 
 If the reviewer list is empty (no reviewers left feedback), skip this entire step.
 

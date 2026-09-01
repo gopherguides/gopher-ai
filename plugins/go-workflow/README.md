@@ -104,7 +104,7 @@ re-review only when discovered among the pull request's actual reviewers.
 - `chatgpt-codex-connector[bot]` → `@codex review`
 - `coderabbitai[bot]` → `@coderabbitai full review`
 - `greptileai` → `@greptileai`
-- `copilot-pull-request-review[bot]` → Re-request through GitHub Reviewers
+- `copilot-pull-request-review[bot]` → Manual re-request through GitHub Reviewers
 
 **To disable auto bot re-review**, add to your project's CLAUDE.md:
 ```markdown
