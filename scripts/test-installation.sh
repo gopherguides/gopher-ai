@@ -8,6 +8,26 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MARKETPLACE="$ROOT_DIR/.claude-plugin/marketplace.json"
 ERRORS=0
 
+line_absence_status() {
+  local checker="$1"
+  local expected_line="$2"
+  local file="$3"
+  local checker_status
+
+  if ! command -v "$checker" >/dev/null 2>&1; then
+    return 2
+  fi
+  if "$checker" -Fqx -- "$expected_line" "$file"; then
+    return 1
+  else
+    checker_status=$?
+  fi
+  if [ "$checker_status" -eq 1 ]; then
+    return 0
+  fi
+  return 2
+}
+
 echo "=== Plugin Installation Tests ==="
 
 # Test 1: marketplace.json exists and is valid JSON
@@ -1238,6 +1258,7 @@ rm -rf "$TMP_HOME"
 echo -n "SessionStart hook works with shasum fallback (no sha256sum)... "
 # Stock macOS doesn't have sha256sum — only shasum. This test simulates that
 # environment by hiding sha256sum from PATH and verifying cleanup still works.
+SHASUM_CALLER_PATH="$PATH"
 TMP_HOME=$(mktemp -d)
 TMP_PLUGIN=$(mktemp -d)/go-workflow
 mkdir -p "$TMP_HOME/.codex/skills" "$TMP_PLUGIN/hooks" "$TMP_PLUGIN/.claude-plugin"
@@ -1281,6 +1302,7 @@ else
   fi
   rm -rf "$TMP_BIN"
 fi
+PATH="$SHASUM_CALLER_PATH"
 rm -rf "$TMP_HOME" "$(dirname "$TMP_PLUGIN")"
 
 echo -n "regen-legacy-hashes.sh refuses to run on a shallow clone... "
@@ -1307,6 +1329,18 @@ else
   echo "SKIP (could not create shallow test clone)"
 fi
 rm -rf "$TMP_REPO"
+
+echo -n "squash-hash absence check fails closed without checker... "
+set +e
+line_absence_status gopher-ai-missing-checker "example" "$MARKETPLACE" >/dev/null 2>&1
+MISSING_CHECKER_STATUS=$?
+set -e
+if [ "$MISSING_CHECKER_STATUS" -eq 2 ]; then
+  echo "OK"
+else
+  echo "FAIL (missing checker returned $MISSING_CHECKER_STATUS instead of 2)"
+  ERRORS=$((ERRORS + 1))
+fi
 
 echo -n "regen-legacy-hashes.sh excludes squash-discarded skill blobs... "
 FIXTURE_TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
@@ -1337,20 +1371,28 @@ git -C "$FIXTURE_REPO" commit -qam "final"
 if ! "$FIXTURE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >/dev/null 2>&1; then
   echo "FAIL (regen failed for feature branch)"
   ERRORS=$((ERRORS + 1))
-elif rg -q "^${INTERMEDIATE_HASH} example$" "$FIXTURE_REPO/scripts/legacy-skill-hashes.txt"; then
-  echo "FAIL (manifest included an intermediate branch-only skill hash)"
-  ERRORS=$((ERRORS + 1))
 else
-  git -C "$FIXTURE_REPO" add scripts/legacy-skill-hashes.txt plugins/go-workflow/hooks/legacy-skill-hashes.txt
-  git -C "$FIXTURE_REPO" commit -qm "manifest"
-  git -C "$FIXTURE_REPO" switch -q main
-  git -C "$FIXTURE_REPO" merge --squash -q feature >/dev/null 2>&1
-  git -C "$FIXTURE_REPO" commit -qm "squash feature"
-  if "$FIXTURE_REPO/scripts/regen-legacy-hashes.sh" --check >/dev/null 2>&1; then
-    echo "OK"
-  else
-    echo "FAIL (feature manifest did not match the squash result)"
+  HASH_ABSENCE_STATUS=0
+  line_absence_status grep "${INTERMEDIATE_HASH} example" \
+    "$FIXTURE_REPO/scripts/legacy-skill-hashes.txt" || HASH_ABSENCE_STATUS=$?
+  if [ "$HASH_ABSENCE_STATUS" -eq 1 ]; then
+    echo "FAIL (manifest included an intermediate branch-only skill hash)"
     ERRORS=$((ERRORS + 1))
+  elif [ "$HASH_ABSENCE_STATUS" -ne 0 ]; then
+    echo "FAIL (could not verify the intermediate branch-only skill hash was absent)"
+    ERRORS=$((ERRORS + 1))
+  else
+    git -C "$FIXTURE_REPO" add scripts/legacy-skill-hashes.txt plugins/go-workflow/hooks/legacy-skill-hashes.txt
+    git -C "$FIXTURE_REPO" commit -qm "manifest"
+    git -C "$FIXTURE_REPO" switch -q main
+    git -C "$FIXTURE_REPO" merge --squash -q feature >/dev/null 2>&1
+    git -C "$FIXTURE_REPO" commit -qm "squash feature"
+    if "$FIXTURE_REPO/scripts/regen-legacy-hashes.sh" --check >/dev/null 2>&1; then
+      echo "OK"
+    else
+      echo "FAIL (feature manifest did not match the squash result)"
+      ERRORS=$((ERRORS + 1))
+    fi
   fi
 fi
 rm -rf "$TMP_REPO"
