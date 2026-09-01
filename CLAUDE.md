@@ -87,10 +87,12 @@ The `shared/` directory contains code used by multiple plugins:
   - Checks for required env vars (GITHUB_TOKEN, OPENAI_API_KEY) contextually
   - Blocks execution if required tools are missing (golangci-lint, templ, gh, node)
   - Warns on uncommitted changes before tests; blocks releases with dirty git state
-- **PostToolUse hook** (`post-tool-use.sh`): Error detection and auto-retry after tool execution:
+- **PostToolUse hook** (`post-tool-use.sh`): Error detection after tool execution:
   - Detects Go compilation errors, lint failures, permission denied
-  - Auto-retries network timeouts (up to 3 retries with linear backoff)
-  - Auto-retries rate limits (up to 3 retries with exponential backoff: 30s, 60s, 120s)
+  - Codex observes local Bash only; hosted WebFetch and WebSearch bypass this local hook in Codex but remain matched for Claude
+  - Codex transient failures receive model-visible safe retry guidance instead of automatic retries
+  - Claude auto-retries network timeouts (up to 3 retries with linear backoff)
+  - Claude auto-retries rate limits (up to 3 retries with exponential backoff: 30s, 60s, 120s)
   - Summarizes long output (>200 lines)
 **When editing `shared/`**: The pre-commit hook automatically syncs changes to plugins. If you need to sync manually:
 

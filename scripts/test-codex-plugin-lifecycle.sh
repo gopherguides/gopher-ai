@@ -14,9 +14,14 @@ TEST_HOME="$TEST_ROOT/home"
 CODEX_HOME="$TEST_HOME/.codex"
 FIRST_WORKSPACE="$TEST_ROOT/first-workspace"
 SECOND_WORKSPACE="$TEST_ROOT/second-workspace"
+THIRD_WORKSPACE="$TEST_ROOT/third-workspace"
 LOG_DIR="$TEST_ROOT/logs"
 PORT_FILE="$TEST_ROOT/server.port"
 ACTIVE_PIDS=""
+PROBE_COMMAND="printf '%s\n' 'probe.go:1:1: undefined: lifecycleProbe' >&2; exit 1"
+PROBE_PROMPT="Run the lifecycle-post-tool-use-probe sentinel with the shell tool."
+HOOK_INPUT_CAPTURE="$LOG_DIR/post-tool-use.input.json"
+HOOK_OUTPUT_CAPTURE="$LOG_DIR/post-tool-use.output.json"
 
 fail() {
     printf 'FAIL: %s\n' "$*" >&2
@@ -41,7 +46,7 @@ dump_diagnostics() {
         done
     fi
     local workspace
-    for workspace in "$FIRST_WORKSPACE" "$SECOND_WORKSPACE"; do
+    for workspace in "$FIRST_WORKSPACE" "$SECOND_WORKSPACE" "$THIRD_WORKSPACE"; do
         if [[ -f "$workspace/.local/state/loop-debug.log" ]]; then
             printf '\n--- %s stop-hook log ---\n' "$(basename "$workspace")" >&2
             sed -n '1,120p' "$workspace/.local/state/loop-debug.log" >&2
@@ -81,6 +86,7 @@ mkdir -p \
     "$CODEX_HOME" \
     "$FIRST_WORKSPACE" \
     "$SECOND_WORKSPACE" \
+    "$THIRD_WORKSPACE" \
     "$LOG_DIR"
 
 for plugin_dir in "$ROOT_DIR"/plugins/*; do
@@ -89,6 +95,29 @@ for plugin_dir in "$ROOT_DIR"/plugins/*; do
 done
 cp "$ROOT_DIR/.agents/plugins/marketplace.json" \
     "$FIXTURE_WORK/.agents/plugins/marketplace.json"
+
+POST_TOOL_USE_CAPTURE="$FIXTURE_WORK/plugins/go-workflow/hooks/post-tool-use-capture.sh"
+cat > "$POST_TOOL_USE_CAPTURE" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+HOOK_ROOT="$(cd "$(dirname "$0")" && pwd)"
+INPUT_PATH="${CODEX_LIFECYCLE_HOOK_INPUT:?}"
+OUTPUT_PATH="${CODEX_LIFECYCLE_HOOK_OUTPUT:?}"
+cat > "$INPUT_PATH"
+set +e
+"$HOOK_ROOT/post-tool-use.sh" < "$INPUT_PATH" > "$OUTPUT_PATH"
+status=$?
+set -e
+cat "$OUTPUT_PATH"
+exit "$status"
+EOF
+chmod +x "$POST_TOOL_USE_CAPTURE"
+jq '(.hooks.PostToolUse[0].hooks[0].command) = "${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-use-capture.sh"' \
+    "$FIXTURE_WORK/plugins/go-workflow/hooks/hooks.json" \
+    > "$FIXTURE_WORK/plugins/go-workflow/hooks/hooks.json.tmp"
+mv "$FIXTURE_WORK/plugins/go-workflow/hooks/hooks.json.tmp" \
+    "$FIXTURE_WORK/plugins/go-workflow/hooks/hooks.json"
 
 set_fixture_version() {
     local version="$1"
@@ -169,6 +198,8 @@ run_codex() {
         HOME="$TEST_HOME" \
         CODEX_HOME="$CODEX_HOME" \
         OPENAI_API_KEY=dummy \
+        CODEX_LIFECYCLE_HOOK_INPUT="${CODEX_LIFECYCLE_HOOK_INPUT:-}" \
+        CODEX_LIFECYCLE_HOOK_OUTPUT="${CODEX_LIFECYCLE_HOOK_OUTPUT:-}" \
         codex "$@"
 }
 
@@ -201,6 +232,11 @@ printf 'first=%s\n' "$FIRST_ROOT" > "$LOG_DIR/roots.log"
 start_session() {
     local label="$1"
     local workspace="$2"
+    local prompt="${3:-Reply with exactly lifecycle-ok and do not use tools.}"
+    local hook_input="${4:-}"
+    local hook_output="${5:-}"
+    CODEX_LIFECYCLE_HOOK_INPUT="$hook_input" \
+    CODEX_LIFECYCLE_HOOK_OUTPUT="$hook_output" \
     run_codex exec \
         --cd "$workspace" \
         --skip-git-repo-check \
@@ -209,7 +245,7 @@ start_session() {
         --json \
         -c 'model_provider="lifecycle"' \
         -c "model_providers.lifecycle={ name = \"Lifecycle\", base_url = \"$RESPONSES_BASE_URL\", env_key = \"OPENAI_API_KEY\", wire_api = \"responses\", supports_websockets = false }" \
-        "Reply with exactly lifecycle-ok and do not use tools." \
+        "$prompt" \
         </dev/null \
         > "$LOG_DIR/$label.stdout" 2> "$LOG_DIR/$label.stderr" &
     SESSION_PID=$!
@@ -244,10 +280,11 @@ assert_session() {
     local label="$1"
     local workspace="$2"
     local version="$3"
+    local expected_reply="${4:-lifecycle-ok}"
     local combined="$LOG_DIR/$label.combined"
     sed -n '1,240p' "$LOG_DIR/$label.stdout" > "$combined"
     sed -n '1,240p' "$LOG_DIR/$label.stderr" >> "$combined"
-    grep -q 'lifecycle-ok' "$combined" || fail "$label session did not complete the minimal turn"
+    grep -Fq "$expected_reply" "$combined" || fail "$label session did not complete the expected turn"
     if grep -Eiq '(SessionStart|Stop) hook \(failed\)|hook exited with code [1-9][0-9]*|hook.*(not found|No such file)|exit(ed)? (with )?(code )?127' "$combined"; then
         fail "$label session reported a hook failure"
     fi
@@ -311,5 +348,50 @@ wait_for_session_request "$SERVER_STATE/2.requested" "$SECOND_SESSION_PID" "post
 : > "$SERVER_STATE/2.release"
 finish_session "$SECOND_SESSION_PID" second
 assert_session second "$SECOND_WORKSPACE" "$SECOND_VERSION"
+
+start_session probe "$THIRD_WORKSPACE" "$PROBE_PROMPT" "$HOOK_INPUT_CAPTURE" "$HOOK_OUTPUT_CAPTURE"
+PROBE_SESSION_PID=$SESSION_PID
+wait_for_session_request "$SERVER_STATE/3.requested" "$PROBE_SESSION_PID" "probe Responses request"
+: > "$SERVER_STATE/3.release"
+wait_for_session_request "$HOOK_INPUT_CAPTURE" "$PROBE_SESSION_PID" "PostToolUse input capture"
+wait_for_session_request "$HOOK_OUTPUT_CAPTURE" "$PROBE_SESSION_PID" "PostToolUse output capture"
+wait_for_session_request "$SERVER_STATE/4.requested" "$PROBE_SESSION_PID" "probe function output request"
+
+jq -e --arg command "$PROBE_COMMAND" '
+    .hook_event_name == "PostToolUse" and
+    .tool_name == "Bash" and
+    (.tool_use_id | type == "string" and length > 0) and
+    .tool_input.command == $command and
+    (.tool_response | type == "string" and contains("lifecycleProbe")) and
+    (has("tool_output") | not)
+' "$HOOK_INPUT_CAPTURE" >/dev/null \
+    || fail "PostToolUse input did not match the Codex hook payload"
+
+jq -e '
+    type == "object" and
+    .decision == "block" and
+    ((.reason // "") | test("[^[:space:]]")) and
+    (.reason | test("compilation"; "i")) and
+    (.reason | contains("probe.go:1:1: undefined: lifecycleProbe")) and
+    (has("retry") | not) and
+    ((keys - ["continue", "decision", "hookSpecificOutput", "reason", "stopReason", "systemMessage"]) | length == 0) and
+    (((.hookSpecificOutput // {}) | keys - ["additionalContext", "hookEventName"]) | length == 0)
+' "$HOOK_OUTPUT_CAPTURE" >/dev/null \
+    || fail "PostToolUse output was not supported Codex blocking JSON"
+
+jq -e '
+    ([.. | objects | select(
+        (.type? == "function_call_output" or .type? == "custom_tool_call_output") and
+        .call_id? == "post-tool-use-probe" and
+        ((.output? // "") | tostring | test("compilation"; "i")) and
+        ((.output? // "") | tostring | contains("probe.go:1:1: undefined: lifecycleProbe"))
+    )] | length == 1) and
+    ([.. | strings] | join("\n") | test("compilation"; "i"))
+' "$SERVER_STATE/4.request.json" >/dev/null \
+    || fail "follow-up request did not contain the tool result and hook steering"
+
+: > "$SERVER_STATE/4.release"
+finish_session "$PROBE_SESSION_PID" probe
+assert_session probe "$THIRD_WORKSPACE" "$SECOND_VERSION" "lifecycle-hook-ok"
 
 printf 'Codex %s plugin lifecycle smoke test passed.\n' "$ACTUAL_CODEX_VERSION"
