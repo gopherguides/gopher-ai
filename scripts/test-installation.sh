@@ -1076,35 +1076,13 @@ else
   echo "OK"
 fi
 
-echo -n "legacy-skill-hashes.txt matches git history exactly... "
-if [ ! -f "$ROOT_DIR/scripts/legacy-skill-hashes.txt" ]; then
-  echo "FAIL (manifest missing — run scripts/regen-legacy-hashes.sh)"
-  ERRORS=$((ERRORS + 1))
+echo -n "legacy-skill-hashes.txt matches squash-merge history exactly... "
+if OUTPUT=$("$ROOT_DIR/scripts/regen-legacy-hashes.sh" --check 2>&1); then
+  echo "OK"
 else
-  EXPECTED=$(cd "$ROOT_DIR" && git rev-list --objects HEAD 2>/dev/null \
-      | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
-      | while read -r blob path; do
-          skill_name=$(basename "$(dirname "$path")")
-          h=$(cd "$ROOT_DIR" && git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')
-          [ -n "$h" ] && echo "$h $skill_name"
-        done | sort -u)
-  ACTUAL=$(awk '/^[[:space:]]*#/{next} /^[[:space:]]*$/{next} {print}' "$ROOT_DIR/scripts/legacy-skill-hashes.txt" | sort -u)
-  # Exact equality — the manifest is the ownership oracle for `--cleanup`,
-  # so an extra (hash, skill_name) pair would expand what gets deleted.
-  # Both missing and extra pairs are failures.
-  MISSING=$(comm -23 <(echo "$EXPECTED") <(echo "$ACTUAL"))
-  EXTRA=$(comm -13 <(echo "$EXPECTED") <(echo "$ACTUAL"))
-  if [ -n "$MISSING" ] || [ -n "$EXTRA" ]; then
-    echo "FAIL"
-    [ -n "$MISSING" ] && echo "  missing $(echo "$MISSING" | wc -l | tr -d ' ') pair(s) — run scripts/regen-legacy-hashes.sh"
-    [ -n "$EXTRA" ] && {
-      echo "  $(echo "$EXTRA" | wc -l | tr -d ' ') extra pair(s) not in git history (potential ownership-oracle pollution):"
-      echo "$EXTRA" | head -3 | sed 's/^/    /'
-    }
-    ERRORS=$((ERRORS + 1))
-  else
-    echo "OK ($(echo "$ACTUAL" | wc -l | tr -d ' ') pairs)"
-  fi
+  echo "FAIL"
+  printf '%s\n' "$OUTPUT" | sed -n '1,12p'
+  ERRORS=$((ERRORS + 1))
 fi
 
 echo -n "Bootstrap honors GOPHER_AI_ARCHIVE_URL override... "
@@ -1286,6 +1264,53 @@ if git clone --depth=1 --no-local --quiet "$ROOT_DIR" "$TMP_REPO/repo" 2>/dev/nu
   fi
 else
   echo "SKIP (could not create shallow test clone)"
+fi
+rm -rf "$TMP_REPO"
+
+echo -n "regen-legacy-hashes.sh excludes squash-discarded skill blobs... "
+FIXTURE_TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+case "$FIXTURE_TMP_BASE/" in
+  "$ROOT_DIR/"*)
+    export GIT_CEILING_DIRECTORIES="$FIXTURE_TMP_BASE${GIT_CEILING_DIRECTORIES:+:$GIT_CEILING_DIRECTORIES}"
+    ;;
+esac
+TMP_REPO=$(/usr/bin/mktemp -d "${FIXTURE_TMP_BASE%/}/gopher-ai-squash-hashes.XXXXXX")
+FIXTURE_REPO="$TMP_REPO/repo"
+mkdir -p \
+  "$FIXTURE_REPO/scripts" \
+  "$FIXTURE_REPO/plugins/example/skills/example" \
+  "$FIXTURE_REPO/plugins/go-workflow/hooks"
+cp "$ROOT_DIR/scripts/regen-legacy-hashes.sh" "$FIXTURE_REPO/scripts/"
+git -C "$FIXTURE_REPO" init -q -b main
+git -C "$FIXTURE_REPO" config user.email test@example.com
+git -C "$FIXTURE_REPO" config user.name "Installation Test"
+printf '%s\n' 'base version' > "$FIXTURE_REPO/plugins/example/skills/example/SKILL.md"
+git -C "$FIXTURE_REPO" add .
+git -C "$FIXTURE_REPO" commit -qm "base"
+git -C "$FIXTURE_REPO" switch -qc feature
+printf '%s\n' 'intermediate version' > "$FIXTURE_REPO/plugins/example/skills/example/SKILL.md"
+INTERMEDIATE_HASH=$(sha256sum "$FIXTURE_REPO/plugins/example/skills/example/SKILL.md" | awk '{print $1}')
+git -C "$FIXTURE_REPO" commit -qam "intermediate"
+printf '%s\n' 'final version' > "$FIXTURE_REPO/plugins/example/skills/example/SKILL.md"
+git -C "$FIXTURE_REPO" commit -qam "final"
+if ! "$FIXTURE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >/dev/null 2>&1; then
+  echo "FAIL (regen failed for feature branch)"
+  ERRORS=$((ERRORS + 1))
+elif rg -q "^${INTERMEDIATE_HASH} example$" "$FIXTURE_REPO/scripts/legacy-skill-hashes.txt"; then
+  echo "FAIL (manifest included an intermediate branch-only skill hash)"
+  ERRORS=$((ERRORS + 1))
+else
+  git -C "$FIXTURE_REPO" add scripts/legacy-skill-hashes.txt plugins/go-workflow/hooks/legacy-skill-hashes.txt
+  git -C "$FIXTURE_REPO" commit -qm "manifest"
+  git -C "$FIXTURE_REPO" switch -q main
+  git -C "$FIXTURE_REPO" merge --squash -q feature >/dev/null 2>&1
+  git -C "$FIXTURE_REPO" commit -qm "squash feature"
+  if "$FIXTURE_REPO/scripts/regen-legacy-hashes.sh" --check >/dev/null 2>&1; then
+    echo "OK"
+  else
+    echo "FAIL (feature manifest did not match the squash result)"
+    ERRORS=$((ERRORS + 1))
+  fi
 fi
 rm -rf "$TMP_REPO"
 
