@@ -15,6 +15,7 @@ Known plugin runtime variables (match these literally):
 ```
 $CLAUDE_PLUGIN_ROOT, ${CLAUDE_PLUGIN_ROOT}
 $ARGUMENTS, ${ARGUMENTS}
+$SKILL_ARGS, ${SKILL_ARGS}
 $MODEL, ${MODEL}
 $TARGET_PATH, ${TARGET_PATH}
 $STAGED, ${STAGED}

@@ -16,6 +16,12 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
 choice.
 
+Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:complete-issue` by
+reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+<claude-skill-arguments>
+$ARGUMENTS
+</claude-skill-arguments>
+
 ```bash
 source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
 ```
@@ -40,7 +46,7 @@ subagents.
 ISSUE_NUM=""
 FLAGS=""
 SKIP_NEXT=false
-for arg in $ARGUMENTS; do
+for arg in $SKILL_ARGS; do
   if [ "$SKIP_NEXT" = "true" ]; then
     FLAGS="$FLAGS $arg"
     SKIP_NEXT=false
@@ -107,7 +113,7 @@ initialize_workflow_state "$STATE_FILE" "$START_ISSUE_STATE_PATH"
 ```
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/start-issue/SKILL.md` and execute its workflow
-directly, treating `$ISSUE_NUM $FLAGS` as its `$ARGUMENTS`. Do not call the
+directly, treating `$ISSUE_NUM $FLAGS` as its `SKILL_ARGS`. Do not call the
 Skill tool. Read `phases.md` for the full sub-step list (fetch issue, create
 worktree, detect type, explore, design, TDD, verify, coverage, security review,
 commit/push/PR, watch CI).
@@ -255,7 +261,7 @@ initialize_workflow_state "$STATE_FILE" "$E2E_VERIFY_STATE_PATH"
 ```
 
 Read `${CLAUDE_PLUGIN_ROOT}/skills/e2e-verify/SKILL.md` and execute its workflow
-directly, treating `$PR_NUM fix-and-ship` as its `$ARGUMENTS`. Do not call the
+directly, treating `$PR_NUM fix-and-ship` as its `SKILL_ARGS`. Do not call the
 Skill tool. This runs the full workflow in `fix-and-ship` mode (rebase, build,
 address review, E2E browser tests, post results, add the `run-full-ci` label,
 watch CI, and execute the ship workflow).

@@ -11,7 +11,7 @@ caller-owned child path.
 initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
 
 if [ -z "$(get_loop_field "$STATE_FILE" "pass" "$WORKFLOW_STATE_PATH")" ]; then
-  set_loop_field "$STATE_FILE" "args" "$ARGUMENTS" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "args" "$SKILL_ARGS" "$WORKFLOW_STATE_PATH"
   set_loop_field "$STATE_FILE" "llm" "$LLM_CHOICE" "$WORKFLOW_STATE_PATH"
   set_loop_field "$STATE_FILE" "llm_explicit" "$LLM_EXPLICIT" "$WORKFLOW_STATE_PATH"
   set_loop_json_field "$STATE_FILE" "pass" 0 "$WORKFLOW_STATE_PATH"
@@ -53,7 +53,7 @@ routing and subsequent steps depend on these exact names.
 
 | Field | Type | Set by | Meaning |
 |-------|------|--------|---------|
-| `args` | string | Step 1 | Original `$ARGUMENTS` for re-parsing on re-entry |
+| `args` | string | Step 1 | Original `SKILL_ARGS` for re-parsing on re-entry |
 | `llm` | string | Step 1 | `codex` / `gemini` / `ollama` |
 | `llm_explicit` | string | Step 1 | `"true"` only when the invocation explicitly selected `--llm`; protects user backend intent |
 | `pass` | int | Step 8 | Current LLM review pass; incremented after each commit cycle |

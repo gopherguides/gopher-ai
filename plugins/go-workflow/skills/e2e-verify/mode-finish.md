@@ -108,10 +108,10 @@ The ship skill is user-only. Do not call it with the Skill tool. Read
 `${CLAUDE_PLUGIN_ROOT}/skills/ship/SKILL.md` and execute its instructions
 directly.
 
-- **`ship` mode** → Treat an empty string as the ship workflow's `$ARGUMENTS`
+- **`ship` mode** → Treat an empty string as the ship workflow's `SKILL_ARGS`
   so it runs the full coverage and E2E gates.
 - **`fix-and-ship` mode** → Treat an empty string as the ship workflow's
-  `$ARGUMENTS`. Ship must run its changed-source coverage gate; the earlier
+  `SKILL_ARGS`. Ship must run its changed-source coverage gate; the earlier
   browser result may be reused only through ship's explicit verified-result
   path.
 

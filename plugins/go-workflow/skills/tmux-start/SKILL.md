@@ -14,9 +14,15 @@ cross-platform capability-binding rules.
 Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving target or
 secret-copy intent.
 
+Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:tmux-start` by
+reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+<claude-skill-arguments>
+$ARGUMENTS
+</claude-skill-arguments>
+
 ## Empty Arguments
 
-If `$ARGUMENTS` is empty or not provided, explain:
+If `SKILL_ARGS` is empty or not provided, explain:
 
 This skill creates or reuses a worktree, opens a new tmux window, launches
 Claude Code, and sends `/go-workflow:start-issue` automatically.
@@ -42,7 +48,7 @@ and stop before creating a worktree or tmux window.
 
 ## Issue Number
 
-Use `$ARGUMENTS` as the issue number. The script validates that it is numeric
+Use `SKILL_ARGS` as the issue number. The script validates that it is numeric
 and that the issue exists.
 
 ## Environment Files
@@ -65,13 +71,13 @@ or tmux creation when structured input is unavailable.
 If copying environment files was explicitly authorized:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$ARGUMENTS" --copy-env
+"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$SKILL_ARGS" --copy-env
 ```
 
 Otherwise:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$ARGUMENTS" --no-copy-env
+"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$SKILL_ARGS" --no-copy-env
 ```
 
 The script validates prerequisites, creates or reuses the standard issue
