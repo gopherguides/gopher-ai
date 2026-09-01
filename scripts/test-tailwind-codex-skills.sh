@@ -94,6 +94,7 @@ for contract in \
   assert_contains "$ADAPTER" "$contract"
 done
 assert_contains "$ADAPTER" 'optimize binds it to `<OPTIMIZE_TARGET>`'
+assert_contains "$ADAPTER" 'its explicit project path to `<INIT_TARGET>`.'
 assert_contains "$ADAPTER" 'back to the current directory. Never broaden a target-scoped operation to the'
 
 DARK_MODE_GUIDANCE=(
@@ -145,6 +146,16 @@ assert_contains "$MIGRATE_COMMAND" 'Replace only the three legacy `@tailwind bas
 assert_contains "$MIGRATE_COMMAND" "CSS's legal import region"
 assert_contains "$MIGRATE_COMMAND" 'Preserve every custom import, `@layer` block, `@apply` rule, at-rule,'
 assert_contains "$MIGRATE_COMMAND" 'apply the verified in-place merge'
+assert_contains "$MIGRATE_COMMAND" '### Direct Theme Namespace Replacements'
+assert_contains "$MIGRATE_COMMAND" '--color-*: initial;'
+assert_contains "$MIGRATE_COMMAND" 'Do not reset namespaces that appear only'
+assert_contains "$MIGRATE_COMMAND" '@config "<RELATIVE_CONFIG_PATH>";'
+assert_contains "$MIGRATE_COMMAND" '### Safelist Preservation'
+assert_contains "$MIGRATE_COMMAND" '@source inline("<LITERAL_CLASS>");'
+assert_contains "$MIGRATE_COMMAND" 'v4 brace expansion only after'
+assert_contains "$MIGRATE_COMMAND" 'regular expressions, pattern'
+assert_contains "$MIGRATE_COMMAND" 'do not remove the'
+assert_contains "$MIGRATE_COMMAND" 'while any parsed field remained unresolved or referenced by `@config`'
 assert_not_matches "$MIGRATE_COMMAND" 'tailwindcss -i \./src/input\.css'
 for integration in CLI PostCSS; do
   assert_contains "$MIGRATE_COMMAND" "### $integration Verification"
@@ -154,16 +165,24 @@ done
 assert_contains "$MIGRATE_COMMAND" 'Use only the migration completion criteria for the selected integration.'
 
 INIT_COMMAND="$PLUGIN_DIR/commands/init.md"
+INIT_SKILL="$PLUGIN_DIR/skills/init/SKILL.md"
 for integration in CLI Vite PostCSS; do
   assert_contains "$INIT_COMMAND" "### $integration Verification"
   assert_contains "$INIT_COMMAND" "### $integration Completion Criteria"
   assert_contains "$INIT_COMMAND" "### $integration Next Steps"
 done
-assert_contains "$INIT_COMMAND" 'Use only the completion criteria for the selected integration.'
+assert_contains "$INIT_COMMAND" 'Use only the completion criteria for the selected integration, together with'
 assert_contains "$INIT_COMMAND" 'Bind the selected CSS entry path to `<CSS_ENTRY>`'
 assert_contains "$INIT_COMMAND" 'derive a distinct sibling output path and bind it to `<CSS_OUTPUT>`'
 assert_contains "$INIT_COMMAND" '"css": "tailwindcss -i <CSS_ENTRY> -o <CSS_OUTPUT> --minify"'
 assert_contains "$INIT_COMMAND" '<PUBLIC_CSS_URL>'
+assert_contains "$INIT_COMMAND" '## Initialization Operation Root'
+assert_contains "$INIT_COMMAND" 'requested project path to `<INIT_TARGET>` as one concrete normalized'
+assert_contains "$INIT_COMMAND" 'every project shell command below with its working directory set to'
+assert_contains "$INIT_COMMAND" 'Every discovery and package-manager command used `<INIT_TARGET>` as its working directory'
+assert_contains "$INIT_COMMAND" 'No file in the invocation directory changed unless it is `<INIT_TARGET>`'
+assert_contains "$INIT_SKILL" 'one normalized `<INIT_TARGET>`.'
+assert_contains "$INIT_SKILL" 'every discovery, package-manager command, write, and validation.'
 assert_not_matches "$INIT_COMMAND" 'tailwindcss -i \./css/input\.css'
 
 for package_command in 'pnpm add -D' 'yarn add -D' 'bun add -d'; do
@@ -200,6 +219,21 @@ assert_contains "$OPTIMIZE_COMMAND" '"<GENERATED_CSS>"'
 assert_not_matches "$OPTIMIZE_COMMAND" '-i[[:space:]]+input\.css'
 assert_not_matches "$OPTIMIZE_COMMAND" '/tmp/'
 assert_not_matches "$OPTIMIZE_COMMAND" 'class="\[\^"\]\*".*[[:space:]]\.[[:space:]]+2>/dev/null'
+assert_contains "$OPTIMIZE_COMMAND" "Bind \`<SUPPORTED_SOURCE_EXTENSIONS>\` once to the project's complete source set"
+for source_extension in js jsx ts tsx html htm templ vue svelte astro php blade.php erb hbs md mdx ejs twig liquid njk nunjucks pug jade haml slim razor cshtml; do
+  assert_contains "$OPTIMIZE_COMMAND" "$source_extension"
+done
+assert_contains "$OPTIMIZE_COMMAND" 'This baseline is not an allowlist.'
+assert_contains "$OPTIMIZE_COMMAND" 'every other text source selected by an `@source` rule or the'
+assert_contains "$OPTIMIZE_COMMAND" 'Never omit a target-associated source merely because its extension is absent'
+assert_contains "$OPTIMIZE_COMMAND" 'rather than rediscovering files. Recognize both'
+assert_contains "$OPTIMIZE_COMMAND" '`class` and `className` values in these forms:'
+assert_contains "$OPTIMIZE_COMMAND" 'double-quoted literals:'
+assert_contains "$OPTIMIZE_COMMAND" 'single-quoted literals:'
+assert_contains "$OPTIMIZE_COMMAND" 'interpolation-free backtick literals'
+assert_contains "$OPTIMIZE_COMMAND" 'literal containing `${...}` as a dynamic class expression'
+assert_contains "$OPTIMIZE_COMMAND" 'not "unused"'
+assert_contains "$OPTIMIZE_COMMAND" 'Dynamic class expressions requiring review'
 
 OPTIMIZE_SKILL="$PLUGIN_DIR/skills/optimize/SKILL.md"
 assert_contains "$OPTIMIZE_SKILL" 'argument-hint: "[path] [--report|--fix|--verbose]"'

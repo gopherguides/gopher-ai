@@ -104,10 +104,10 @@ Do not create a lockfile for a different package manager.
 
 ## Step 2: Parse v3 Configuration
 
-Read the config file. Extract: content configuration (becomes `@source`
-directives), `theme.extend` (becomes `@theme` CSS variables), `darkMode`
-(becomes a custom variant and selector), `important`, and `plugins` (check v4
-compatibility).
+Read the config file without evaluating untrusted JavaScript. Extract: content
+configuration (becomes `@source` directives), direct `theme` namespace
+replacements, `theme.extend`, `safelist`, `darkMode` (becomes a custom variant
+and selector), `important`, and `plugins` (check v4 compatibility).
 
 Support both v3 content forms:
 
@@ -119,6 +119,66 @@ Support both v3 content forms:
   project invocation root as the effective base.
 - Treat raw-content objects separately from file globs; report them for manual
   conversion rather than dropping them or passing them to `@source` as paths.
+
+### Direct Theme Namespace Replacements
+
+Distinguish direct `theme.<namespace>` values from
+`theme.extend.<namespace>`. A direct v3 namespace replaces Tailwind's defaults;
+it is not an extension. Reproduce that replacement by resetting the complete
+matching v4 namespace before emitting its translated values. For example:
+
+```css
+@theme {
+  --color-*: initial;
+  --color-brand: #3b82f6;
+}
+```
+
+Use the corresponding v4 namespace wildcard for every direct replacement,
+such as `--color-*`, `--font-*`, `--spacing-*`, `--radius-*`, or
+`--breakpoint-*`. An empty direct namespace still emits its reset. When both a
+direct namespace and `theme.extend` target the same namespace, emit one reset,
+then the direct values, then the extension values so the final variables match
+v3 merge and override semantics. Do not reset namespaces that appear only
+under `theme.extend`.
+
+Translate a direct namespace only when every key and value can be represented
+losslessly as v4 theme variables. If a computed value, function, imported
+object, or unsupported namespace cannot be translated losslessly, do not emit
+a partial reset for that namespace. Add this directive using a path rebased
+from `<CSS_ENTRY>`, retain the configuration at its original path, and record
+the namespace as unresolved:
+
+```css
+@config "<RELATIVE_CONFIG_PATH>";
+```
+
+Do not remove or rename a configuration referenced by `@config`. Do not report
+the migration as complete until every unresolved direct theme replacement is
+preserved by a verified alternative.
+
+### Safelist Preservation
+
+Parse every v3 `safelist` entry independently of content-file matches. For each
+literal class string, emit an escaped v4 inline source that represents the
+same complete class:
+
+```css
+@source inline("<LITERAL_CLASS>");
+```
+
+A finite statically enumerable group may use v4 brace expansion only after
+expanding it and proving that its class and variant set exactly equals the v3
+safelist entries. Do not guess an expansion for regular expressions, pattern
+objects, computed entries, or variant generation that cannot be enumerated
+losslessly.
+
+When any safelist entry cannot be translated losslessly, retain the v3
+configuration, add its rebased `@config` directive if not already present, and
+report the unsupported safelist entry as unresolved. Retaining `@config` does
+not make unsupported v4 safelist semantics equivalent, so do not remove the
+configuration or report the migration complete until generated utility
+coverage is preserved by an explicit v4 alternative.
 
 **Plugin compatibility:**
 
@@ -183,8 +243,12 @@ Convert the parsed configuration to v4 CSS:
 /* Rebased from content array relative to <CSS_ENTRY> */
 @source "<REBASED_CONTENT_PATH>";
 
-/* From theme.extend */
+/* Literal v3 safelist entry */
+@source inline("<LITERAL_CLASS>");
+
+/* Direct theme.colors replacement followed by theme.extend */
 @theme {
+  --color-*: initial;
   --color-primary: oklch(0.59 0.2 250);   /* #3b82f6 */
   --color-secondary: oklch(0.55 0.02 250); /* #64748b */
 
@@ -229,8 +293,9 @@ During the merge:
    or non-import at-rule, without moving existing content. Remove the other
    legacy directive spans. If the entry already has the equivalent Tailwind
    import, remove the legacy spans without adding a second import.
-2. Insert the converted `@source`, `@theme`, `@custom-variant`, dark selector,
-   and `@plugin` configuration adjacent to that import. Merge generated
+2. Insert the converted `@source`, `@source inline()`, `@theme`, `@config`,
+   `@custom-variant`, dark selector, and `@plugin` configuration adjacent to
+   that import. Merge generated
    declarations into compatible existing v4 blocks and preserve existing
    declarations. Deduplicate exact directives; if an existing declaration has
    the same name but a different value, stop and ask which value is
@@ -335,7 +400,13 @@ export default {
 
 With `--check`, report the recommended disposition and available alternatives
 without renaming or deleting the existing file. With `--keep-config`, keep the
-file unchanged as required by the Preservation Flags section. Otherwise, use
+file unchanged as required by the Preservation Flags section.
+
+Before offering any disposition, check direct theme replacements, safelist
+entries, plugins, and every other parsed configuration field for unresolved
+semantics. If any field is unresolved or `<CSS_ENTRY>` contains `@config`, keep
+the configuration unchanged at its original path, report why it remains
+required, and do not offer deletion or rename. Otherwise, use
 `AskUserQuestion`: "Migration complete. What should we do with `tailwind.config.js`?"
 
 | Option | Description |
@@ -350,6 +421,13 @@ With `--check`, verify that the proposed CSS contains the v4 import and theme
 directives, the proposed package set targets v4, and the final repository
 status matches the initial status. Do not run the CSS build because it may
 overwrite generated output.
+
+Verify that each direct theme namespace has the required wildcard reset and
+that its resolved variables reproduce the v3 namespace. Verify that every
+literal safelist entry is represented by an equivalent `@source inline()` and,
+when builds are allowed, generates the expected utility. Treat any unresolved
+theme or safelist conversion as a migration blocker even when the build exits
+successfully.
 
 Without `--check`, run only the verification path for the selected integration.
 
@@ -396,6 +474,7 @@ dependencies were changed. Otherwise, use the completion report below.
 - [postcss.config.js] — updated (if applicable)
 - X custom colors → @theme variables
 - Y content paths → @source directives
+- W safelist entries → @source inline() directives
 - Z plugins → @plugin directives
 - Dark mode → class-based custom variant plus `.dark` overrides
 - tailwind.config.js — removed (or kept per user choice)
@@ -406,6 +485,7 @@ dependencies were changed. Otherwise, use the completion report below.
 - [ ] Test dark mode toggle
 - [ ] Check responsive breakpoints
 - [ ] Verify plugins work correctly
+- [ ] Resolve any retained direct theme namespace or safelist conversion
 ```
 
 Use only the next steps for the selected integration.
@@ -442,10 +522,11 @@ these are TRUE:
 
 1. The v3 configuration and affected CSS files were parsed and analyzed
 2. Proposed CSS, dependency, script, PostCSS, and old-config changes were shown
-3. The preview report identifies unresolved plugin or color conversions
+3. The preview report identifies unresolved plugin, theme namespace, safelist, or color conversions
 4. Proposed `@source` paths preserve the v3 content matches from the selected CSS entry
 5. Boolean or selector-form `important` behavior is preserved or identified as an unresolved choice
-6. No project files, dependencies, or generated CSS changed
+6. Direct theme resets and literal safelist inline sources preserve v3 semantics or are identified as unresolved
+7. No project files, dependencies, or generated CSS changed
 
 Without `--check`, follow the selected integration path. Use only the migration completion criteria for the selected integration.
 
@@ -463,6 +544,9 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 8. Requested `--backup` and `--keep-config` behavior completed before destructive changes
 9. Generated `@source` directives preserve every v3 content match relative to the selected CSS entry
 10. v3 `important` behavior is preserved and verified
+11. Every direct theme namespace replacement is translated with its reset semantics or remains unresolved with the config retained
+12. Every safelist entry is translated losslessly to `@source inline()` or remains unresolved with the config retained
+13. The old configuration was not removed or renamed while any parsed field remained unresolved or referenced by `@config`
 
 ### PostCSS Migration Completion Criteria
 
@@ -480,6 +564,9 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 10. Requested `--backup` and `--keep-config` behavior completed before destructive changes
 11. Generated `@source` directives preserve every v3 content match relative to the selected CSS entry
 12. v3 `important` behavior is preserved and verified
+13. Every direct theme namespace replacement is translated with its reset semantics or remains unresolved with the config retained
+14. Every safelist entry is translated losslessly to `@source inline()` or remains unresolved with the config retained
+15. The old configuration was not removed or renamed while any parsed field remained unresolved or referenced by `@config`
 
 ```
 <done>COMPLETE</done>

@@ -40,6 +40,21 @@ project or package root to `<PROJECT_ROOT>` for build configuration and local
 dependency lookup, but never use `<PROJECT_ROOT>` as a replacement discovery
 target.
 
+Bind `<SUPPORTED_SOURCE_EXTENSIONS>` once to the project's complete source set
+and use it for target validation, directory discovery, `@source` verification,
+`<TEMPLATE_FILES>`, class inventory, reporting, and fixes. The baseline set is:
+
+`js`, `jsx`, `ts`, `tsx`, `html`, `htm`, `templ`, `vue`, `svelte`, `astro`,
+`php`, `blade.php`, `erb`, `hbs`, `md`, `mdx`, `ejs`, `twig`, `liquid`, `njk`,
+`nunjucks`, `pug`, `jade`, `haml`, `slim`, `razor`, and `cshtml`.
+
+This baseline is not an allowlist. Tailwind scans non-ignored plain-text source
+files, so add every other text source selected by an `@source` rule or the
+chosen build integration. Exclude CSS, binary files, lockfiles,
+`node_modules`, and ignored paths using Tailwind's source-detection rules.
+Never omit a target-associated source merely because its extension is absent
+from the baseline.
+
 When `<OPTIMIZE_TARGET>` is a directory, limit CSS entries, generated
 artifacts, and templates to that subtree. When it is a CSS file, bind that file
 directly to `<CSS_ENTRY>` and derive `<TEMPLATE_FILES>` only from its `@source`
@@ -142,10 +157,14 @@ Most Tailwind projects ship < 10 KB CSS gzipped.
 ## Step 3: Analyze Source Coverage
 
 ```bash
-fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte "<OPTIMIZE_TARGET>" 2>/dev/null | wc -l
-fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte "<OPTIMIZE_TARGET>" 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn
+fd -e js -e jsx -e ts -e tsx -e html -e htm -e templ -e vue -e svelte -e astro -e php -e erb -e hbs -e md -e mdx -e ejs -e twig -e liquid -e njk -e nunjucks -e pug -e jade -e haml -e slim -e razor -e cshtml "<OPTIMIZE_TARGET>" 2>/dev/null | wc -l
+fd -e js -e jsx -e ts -e tsx -e html -e htm -e templ -e vue -e svelte -e astro -e php -e erb -e hbs -e md -e mdx -e ejs -e twig -e liquid -e njk -e nunjucks -e pug -e jade -e haml -e slim -e razor -e cshtml "<OPTIMIZE_TARGET>" 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn
 grep '@source' "<CSS_ENTRY>"
 ```
+
+Use those commands for the baseline inventory, then add any other target-scoped
+plain-text sources selected by `@source` or the build integration before
+binding `<TEMPLATE_FILES>`.
 
 For a file target, replace the discovery commands with direct inspection of
 the bound `<CSS_ENTRY>` or `<TEMPLATE_FILES>` described above. In all cases,
@@ -155,7 +174,7 @@ set below.
 For each `@source` pattern, verify files are found:
 
 ```bash
-fd -e js -e jsx "<RESOLVED_SOURCE_DIRECTORY>" 2>/dev/null | wc -l
+fd -e js -e jsx -e ts -e tsx -e html -e htm -e templ -e vue -e svelte -e astro -e php -e erb -e hbs -e md -e mdx -e ejs -e twig -e liquid -e njk -e nunjucks -e pug -e jade -e haml -e slim -e razor -e cshtml "<RESOLVED_SOURCE_DIRECTORY>" 2>/dev/null | wc -l
 ```
 
 | Issue | Symptom | Fix |
@@ -170,19 +189,47 @@ Use the generated CSS selected in Step 2. If no generated CSS is safely
 available, skip the generated-class comparison, record the limitation, and
 continue with template class inventory.
 
+Tailwind scans source files as plain text and does not evaluate interpolation.
+Build the static class inventory from every file in `<TEMPLATE_FILES>` without
+executing project code. Pass `"<TEMPLATE_FILES>"` as the exact bound input set
+to the chosen read-only parser rather than rediscovering files. Recognize both
+`class` and `className` values in these forms:
+
+- double-quoted literals: `class="..."` and `className="..."`
+- single-quoted literals: `class='...'` and `className='...'`
+- interpolation-free backtick literals, including JSX expression wrappers:
+  ``className={`...`}``
+- JSX/TSX expression wrappers around static quoted strings, such as
+  `className={'...'}`
+
+Split only decoded static literal values on whitespace and write their unique
+tokens to `<TEMP_DIR>/used-classes.txt`. Also retain statically recognizable
+utility candidates elsewhere in JavaScript or template source because
+Tailwind's scanner is not limited to class attributes.
+
+Report every concatenation, conditional expression, helper call, or backtick
+literal containing `${...}` as a dynamic class expression requiring manual
+review. Do not treat fragments of a dynamic expression as literal classes. If
+any unresolved dynamic expression exists, exclude it from used and unused
+counts and label the CSS-only difference as "not observed in static source",
+not "unused". Do not make an unused-class conclusion for the affected source
+scope until its dynamic candidates are enumerated or safelisted.
+
+After building the static inventory, compare it with generated CSS:
+
 ```bash
-# Used classes in templates
-grep -oh 'class="[^"]*"' "<TEMPLATE_FILES>" 2>/dev/null | \
-  sed 's/class="//g' | sed 's/"//g' | tr ' ' '\n' | sort -u > "<TEMP_DIR>/used-classes.txt"
 
 # Class names in generated CSS
 grep -oE '\.[a-zA-Z][a-zA-Z0-9_-]*' "<GENERATED_CSS>" | sed 's/\.//' | sort -u > "<TEMP_DIR>/css-classes.txt"
 
-# CSS-only (potentially unused)
+# CSS-only (unused only when no unresolved dynamic expressions exist)
 comm -23 "<TEMP_DIR>/css-classes.txt" "<TEMP_DIR>/used-classes.txt" | head -50
 ```
 
-**Note:** Some "unused" classes may be: dynamically generated (`bg-${color}-500`); used by JavaScript; from third-party libraries; or base/reset styles (intentionally included).
+**Note:** Some CSS-only classes may be used by third-party libraries or be
+intentional base/reset styles. Dynamic expressions such as `bg-${color}-500`
+are a reported limitation, never evidence that the corresponding CSS is
+unused.
 
 ## Step 5: CSS Variable Analysis
 
@@ -255,7 +302,8 @@ applying changes, then report that project-build timing separately.
 |--------|-------|
 | Unique classes in templates | XXX |
 | Classes in generated CSS | XXX |
-| Potentially unused | XXX |
+| CSS classes not observed in static source | XXX |
+| Dynamic class expressions requiring review | XXX |
 
 ### CSS Variables / Build Performance
 
@@ -296,10 +344,12 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
 1. Bundle size measured wherever a local CLI or existing generated CSS made it safely available; every unavailable metric has a recorded limitation
 2. Source coverage analyzed for the complete target-scoped `<TEMPLATE_FILES>` set
-3. Optimization report generated
-4. The report identifies the concrete `<OPTIMIZE_TARGET>` and excludes unrelated projects
-5. If `--fix`: safe optimizations applied only to the selected target integration
-6. No missing build dependency was installed solely for analysis
+3. Every supported source extension used the same complete discovery and analysis set
+4. Static `class` and `className` literals in all supported quote forms were inventoried
+5. Dynamic expressions were reported and excluded from unused-class conclusions
+6. The report identifies the concrete `<OPTIMIZE_TARGET>` and excludes unrelated projects
+7. If `--fix`: safe optimizations applied only to the selected target integration
+8. No missing build dependency was installed solely for analysis
 
 ```
 <done>COMPLETE</done>

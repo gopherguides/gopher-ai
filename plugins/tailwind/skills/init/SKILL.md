@@ -7,6 +7,10 @@ disable-model-invocation: true
 
 # Initialize Tailwind CSS v4
 
+Bind the requested project path, or the invocation directory when omitted, to
+one normalized `<INIT_TARGET>`. The command workflow must use that operation
+root for every discovery, package-manager command, write, and validation.
+
 ## Plugin Resource Resolution
 
 `<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root

@@ -16,7 +16,8 @@ Initialize Tailwind CSS v4 in the current directory.
 
 **v4 key changes:** no `tailwind.config.js` (configure in CSS via `@theme`); single `@import "tailwindcss";`; auto-detects templates (`@source` only for custom paths).
 
-Proceed with initialization in the current directory.
+Proceed after binding the current directory as the initialization operation
+root described below.
 
 ---
 
@@ -24,11 +25,30 @@ Proceed with initialization in the current directory.
 
 Initialize Tailwind CSS v4 in: `$ARGUMENTS`.
 
+## Initialization Operation Root
+
+Parse at most one positional project path from the invocation arguments. Bind
+the requested project path to `<INIT_TARGET>` as one concrete normalized
+absolute directory. When no path was provided, bind the invocation's current
+directory. Stop before any mutation when the path does not exist, is not a
+directory, or extra positional arguments remain. Bind `<INIT_TARGET>` once and
+do not re-derive or broaden it later.
+
+Treat `<INIT_TARGET>` as the operation root for the entire workflow. Execute
+every project shell command below with its working directory set to
+`<INIT_TARGET>`, including discovery, package-manager commands, integration
+configuration, and validation. Resolve every relative read and write path,
+including `package.json`, lockfiles, CSS entries, build configuration, and
+`.gitignore`, against `<INIT_TARGET>`. Do not inspect, install into, write to,
+or validate the invocation directory unless it is the same normalized path.
+
 ## Loop Initialization
 
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-init" "COMPLETE"; fi`
 
 ## Step 1: Validate Environment
+
+Run this environment check with `<INIT_TARGET>` as its working directory:
 
 ```bash
 node --version 2>/dev/null || echo "NOT_INSTALLED"
@@ -41,6 +61,8 @@ If Node.js missing:
 Stop and ask the user to install first.
 
 ## Step 2: Detect Project Type
+
+Run all discovery commands with `<INIT_TARGET>` as their working directory:
 
 ```bash
 ls package.json 2>/dev/null
@@ -81,6 +103,8 @@ Use the selected manager for every dependency and script command:
 | Bun | `bun add -d <PACKAGES>` | `bun run <SCRIPT>` |
 
 Do not create a lockfile for a different package manager.
+Run the selected package manager with `<INIT_TARGET>` as its working directory
+so its manifest and lockfile updates cannot land in another project.
 
 If existing Tailwind detected, ask via `AskUserQuestion`:
 
@@ -179,6 +203,9 @@ Create with v4 syntax:
 
 Replace every placeholder with a concrete path relative to the directory
 containing `<CSS_ENTRY>`, and verify each path resolves to the intended files.
+Bind `<CSS_ENTRY>`, `<CSS_OUTPUT>`, and every integration configuration path
+inside `<INIT_TARGET>`; do not create or modify a path outside the operation
+root.
 
 ## Step 6: Configure Selected Integration
 
@@ -221,6 +248,8 @@ output. Do not add example paths that the selected CLI script does not write.
 ## Step 8: Verify Selected Integration
 
 Run only the verification path for the selected integration.
+Run every verification command with `<INIT_TARGET>` as its working directory
+and validate only artifacts associated with that target.
 
 ### CLI Verification
 
@@ -254,6 +283,8 @@ Use only the next steps for the selected integration.
 
 ```
 Tailwind CSS v4 Initialized
+
+Initialization target: <INIT_TARGET>
 
 Files created/modified:
 - [CSS entry file path]
@@ -305,8 +336,16 @@ Next steps:
 
 ## Completion Criteria
 
-Use only the completion criteria for the selected integration. DO NOT output
-`<done>COMPLETE</done>` until every item in that integration's list is TRUE.
+Use only the completion criteria for the selected integration, together with
+the Target Scope criteria. DO NOT output `<done>COMPLETE</done>` until every
+applicable item is TRUE.
+
+### Target Scope Completion Criteria
+
+1. `<INIT_TARGET>` is one concrete normalized absolute directory
+2. Every discovery and package-manager command used `<INIT_TARGET>` as its working directory
+3. Every project read, write, integration edit, and validation stayed within `<INIT_TARGET>`
+4. No file in the invocation directory changed unless it is `<INIT_TARGET>`
 
 ### CLI Completion Criteria
 

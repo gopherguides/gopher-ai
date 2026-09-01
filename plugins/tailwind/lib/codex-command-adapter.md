@@ -21,8 +21,9 @@ Treat every `$ARGUMENTS` or `${ARGUMENTS}` reference in the command body as a
 reference to `SKILL_ARGS`. Preserve whitespace and never read arguments from a
 shell environment variable.
 
-The selected command body must parse and consume every bound target. Audit
-binds it to `<AUDIT_TARGET>` and optimize binds it to `<OPTIMIZE_TARGET>`.
+The selected command body must parse and consume every bound target. Init binds
+its explicit project path to `<INIT_TARGET>`. Audit binds it to
+`<AUDIT_TARGET>` and optimize binds it to `<OPTIMIZE_TARGET>`.
 Target-scoped discovery, analysis, reporting, and fixes must use the matching
 binding consistently. When an explicit or implicit target exists, never fall
 back to the current directory. Never broaden a target-scoped operation to the
