@@ -129,6 +129,8 @@ QUOTED_OPERATOR_FILE="$FIXTURE_ROOT/quoted-operator.md"
 CASE_FILE="$FIXTURE_ROOT/case.md"
 MUTATING_OPTION_FILE="$FIXTURE_ROOT/mutating-option.md"
 OUTPUT_LIMIT_FILE="$FIXTURE_ROOT/output-limit.md"
+CONTROL_FLOW_FILE="$FIXTURE_ROOT/control-flow.md"
+FAILED_EXECUTION_FILE="$FIXTURE_ROOT/failed-execution.md"
 EXECUTABLE_PATH_FILE="$FIXTURE_ROOT/executable-path.md"
 PATH_ASSIGNMENT_FILE="$FIXTURE_ROOT/path-assignment.md"
 PATH_INLINE_FILE="$FIXTURE_ROOT/path-inline.md"
@@ -208,6 +210,24 @@ EOF
 cat > "$OUTPUT_LIMIT_FILE" <<'EOF'
 ```bash
 cat /dev/zero
+```
+EOF
+
+cat > "$CONTROL_FLOW_FILE" <<'EOF'
+```bash
+if true; then
+  printf '%s\n' valid
+fi
+while false; do
+  printf '%s\n' unreachable
+done
+```
+EOF
+
+cat > "$FAILED_EXECUTION_FILE" <<'EOF'
+```bash
+printf '%s\n' codex-validator-sensitive-output
+false
 ```
 EOF
 
@@ -408,6 +428,26 @@ assert any(
     and "64 KiB output limit" in finding["finding"]
     for finding in report["findings"]
 )
+PY
+
+CONTROL_FLOW_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json control-flow.md)
+FAILED_EXECUTION_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json failed-execution.md)
+python3 - "$CONTROL_FLOW_JSON" "$FAILED_EXECUTION_JSON" <<'PY'
+import json
+import sys
+
+control_flow = json.loads(sys.argv[1])
+failed_execution = json.loads(sys.argv[2])
+assert not any(
+    finding["layer"] == "classification"
+    for finding in control_flow["findings"]
+)
+assert any(
+    finding["layer"] == "execution"
+    and "failed with status 1" in finding["finding"]
+    for finding in failed_execution["findings"]
+)
+assert "codex-validator-sensitive-output" not in sys.argv[2]
 PY
 
 EXECUTABLE_PATH_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json executable-path.md)

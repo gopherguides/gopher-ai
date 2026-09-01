@@ -384,7 +384,7 @@ def command_tokens(segment):
         return []
     while True:
         previous = text
-        text = re.sub(r"^(?:if|then|elif|else|while|until|do|!)\s+", "", text)
+        text = re.sub(r"^(?:if|then|elif|else|while|until|do|!)(?:\s+|$)", "", text)
         if text == previous:
             break
     if not text or re.match(r"^(?:fi|done|esac|for|select|case|function|\{|\})\b", text):
@@ -546,8 +546,6 @@ def execution_findings(block, script_path, tier, execution_root):
         except ProcessLookupError:
             pass
         output_size = os.fstat(captured.fileno()).st_size
-        captured.seek(0)
-        output = captured.read(EXECUTION_OUTPUT_LIMIT).decode("utf-8", errors="replace")
     if timed_out:
         return [
             finding(
@@ -570,13 +568,12 @@ def execution_findings(block, script_path, tier, execution_root):
         ]
     if returncode == 0:
         return []
-    output = clean_process_output(output, script_path)
     return [
         finding(
             block,
             "warning",
             "execution",
-            f"GREEN-tier execution failed with status {returncode}: {output}",
+            f"GREEN-tier execution failed with status {returncode}",
             "Correct the example or move it to a syntax-check-only classification.",
         )
     ]
