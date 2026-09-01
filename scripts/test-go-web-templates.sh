@@ -5,6 +5,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE_DIR="$ROOT_DIR/plugins/go-web/templates"
+CONVERSION_COMMAND="$ROOT_DIR/plugins/go-web/commands/convert-to-go-project.md"
+CONVERSION_SKILL="$ROOT_DIR/plugins/go-web/skills/convert-to-go-project/SKILL.md"
+CONVERSION_WORKFLOW="$ROOT_DIR/plugins/go-web/references/convert-to-go-project.md"
+CONVERSION_WORKFLOW_ROUTE='Read `${CLAUDE_PLUGIN_ROOT}/references/convert-to-go-project.md`'
 FIXTURE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-go-web-XXXXXX")
 ERRORS=0
 
@@ -238,13 +242,52 @@ require_literal "$TEMPLATE_DIR/ci/ci.yml" 'TEST_DATABASE_URL: "postgresql://test
 require_literal "$TEMPLATE_DIR/ci/ci.yml" 'TEST_DATABASE_URL: "root:test@tcp(localhost:3306)/testdb"' \
   "MySQL CI fixture must run database tests with test-only configuration"
 
-for command in create-go-project convert-to-go-project; do
-  command_file="$ROOT_DIR/plugins/go-web/commands/$command.md"
-  require_literal "$command_file" "app/testutil.<db>.go" \
-    "$command must select the database-specific test helper"
-  reject_literal "$command_file" "app/testutil.go" \
-    "$command must not select the generic SQLite helper"
-done
+CREATE_COMMAND="$ROOT_DIR/plugins/go-web/commands/create-go-project.md"
+require_literal "$CREATE_COMMAND" "app/testutil.<db>.go" \
+  "create-go-project must select the database-specific test helper"
+reject_literal "$CREATE_COMMAND" "app/testutil.go" \
+  "create-go-project must not select the generic SQLite helper"
+
+if [ ! -f "$CONVERSION_WORKFLOW" ]; then
+  fail "missing shared convert-to-go-project workflow"
+else
+  require_literal "$CONVERSION_WORKFLOW" \
+    '| Express.js / Fastify / other Node HTTP | `${CLAUDE_PLUGIN_ROOT}/references/migrations/express.md` |' \
+    "shared conversion workflow must route Node HTTP frameworks to the Express migration guide"
+  require_literal "$CONVERSION_WORKFLOW" \
+    '| Django / Flask / FastAPI | `${CLAUDE_PLUGIN_ROOT}/references/migrations/django-flask.md` |' \
+    "shared conversion workflow must route Python frameworks to the Django and Flask migration guide"
+  require_literal "$CONVERSION_WORKFLOW" \
+    '| Laravel / other PHP | `${CLAUDE_PLUGIN_ROOT}/references/migrations/laravel.md` |' \
+    "shared conversion workflow must route PHP frameworks to the Laravel migration guide"
+  require_literal "$CONVERSION_WORKFLOW" \
+    '| Next.js / React SPA | `${CLAUDE_PLUGIN_ROOT}/references/migrations/nextjs.md` |' \
+    "shared conversion workflow must route React frameworks to the Next.js migration guide"
+  require_literal "$CONVERSION_WORKFLOW" \
+    '| `go.mod` | Go (existing) | Already Go - extend rather than convert |' \
+    "shared conversion workflow must extend existing Go projects rather than replace them"
+  require_literal "$CONVERSION_WORKFLOW" \
+    '`${CLAUDE_PLUGIN_ROOT}/references/migrations/client-side-templui.md`' \
+    "shared conversion workflow must route client-side interactivity to the templUI migration guide"
+  require_literal "$CONVERSION_WORKFLOW" '`${CLAUDE_PLUGIN_ROOT}/templates/`' \
+    "shared conversion workflow must use the plugin template library"
+  require_literal "$CONVERSION_WORKFLOW" '`${CLAUDE_PLUGIN_ROOT}/templates/README.md`' \
+    "shared conversion workflow must use the plugin template manifest"
+  require_literal "$CONVERSION_WORKFLOW" "app/testutil.<db>.go" \
+    "shared conversion workflow must select the database-specific test helper"
+  reject_literal "$CONVERSION_WORKFLOW" "app/testutil.go" \
+    "shared conversion workflow must not select the generic SQLite helper"
+fi
+
+require_literal "$CONVERSION_COMMAND" "$CONVERSION_WORKFLOW_ROUTE" \
+  "convert-to-go-project command must route to the shared conversion workflow"
+
+if [ ! -f "$CONVERSION_SKILL" ]; then
+  fail "missing convert-to-go-project Codex skill"
+else
+  require_literal "$CONVERSION_SKILL" "$CONVERSION_WORKFLOW_ROUTE" \
+    "convert-to-go-project skill must route to the shared conversion workflow"
+fi
 
 require_literal "$TEMPLATE_DIR/README.md" "app/testutil.<db>.go" \
   "template manifest must document database-specific test helpers"
