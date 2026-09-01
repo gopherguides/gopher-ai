@@ -121,6 +121,8 @@ assert_contains "$MIGRATE_COMMAND" '## Read-only Preview (`--check`)'
 assert_contains "$MIGRATE_COMMAND" 'Do not edit files, install or remove dependencies, rename or delete configuration, or run a build that overwrites generated CSS.'
 assert_contains "$MIGRATE_COMMAND" '### Preview Completion Criteria'
 assert_contains "$MIGRATE_COMMAND" 'No project files, dependencies, or generated CSS changed'
+assert_contains "$MIGRATE_COMMAND" '| `@tailwindcss/forms` | Preserve/install the package; add `@plugin "@tailwindcss/forms";` |'
+assert_contains "$MIGRATE_COMMAND" 'Do not uninstall packages referenced by generated `@plugin` directives.'
 for integration in CLI PostCSS; do
   assert_contains "$MIGRATE_COMMAND" "### $integration Verification"
   assert_contains "$MIGRATE_COMMAND" "### $integration Migration Completion Criteria"
@@ -135,5 +137,12 @@ for integration in CLI Vite PostCSS; do
   assert_contains "$INIT_COMMAND" "### $integration Next Steps"
 done
 assert_contains "$INIT_COMMAND" 'Use only the completion criteria for the selected integration.'
+
+OPTIMIZE_COMMAND="$PLUGIN_DIR/commands/optimize.md"
+assert_contains "$OPTIMIZE_COMMAND" '### Local CLI Measurement'
+assert_contains "$OPTIMIZE_COMMAND" 'npx --no-install @tailwindcss/cli'
+assert_contains "$OPTIMIZE_COMMAND" '### Existing Generated CSS Measurement'
+assert_contains "$OPTIMIZE_COMMAND" 'Do not install `@tailwindcss/cli` solely for measurement.'
+assert_contains "$OPTIMIZE_COMMAND" 'record the measurement limitation and continue'
 
 printf 'Tailwind Codex workflow skill tests passed.\n'

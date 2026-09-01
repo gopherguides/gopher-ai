@@ -39,16 +39,47 @@ ls **/output.css dist/**/*.css build/**/*.css public/**/*.css 2>/dev/null
 
 ## Step 2: Measure Bundle Size
 
-```bash
-# Dev build (no minification)
-npx @tailwindcss/cli -i input.css -o /tmp/dev-output.css 2>&1
-wc -c /tmp/dev-output.css
+Use the first safe measurement path available.
 
-# Prod build (minified) + gzip estimate
-npx @tailwindcss/cli -i input.css -o /tmp/prod-output.css --minify 2>&1
-wc -c /tmp/prod-output.css
-gzip -c /tmp/prod-output.css | wc -c
+### Local CLI Measurement
+
+Check for a project-local Tailwind CLI before invoking it:
+
+```bash
+ls node_modules/.bin/tailwindcss 2>/dev/null
 ```
+
+When it exists, choose a unique directory under the active temporary directory,
+replace `<TEMP_DIR>` below with that concrete path, and write both measurements
+there rather than into the project:
+
+```bash
+npx --no-install @tailwindcss/cli -i input.css -o "<TEMP_DIR>/dev-output.css" 2>&1
+wc -c "<TEMP_DIR>/dev-output.css"
+
+npx --no-install @tailwindcss/cli -i input.css -o "<TEMP_DIR>/prod-output.css" --minify 2>&1
+wc -c "<TEMP_DIR>/prod-output.css"
+gzip -c "<TEMP_DIR>/prod-output.css" | wc -c
+```
+
+Do not install `@tailwindcss/cli` solely for measurement.
+
+### Existing Generated CSS Measurement
+
+When the project uses Vite or PostCSS without a local Tailwind CLI, inspect
+existing generated CSS artifacts without rebuilding or overwriting them:
+
+```bash
+fd -e css . dist build public .next 2>/dev/null
+wc -c "<GENERATED_CSS>"
+gzip -c "<GENERATED_CSS>" | wc -c
+```
+
+Use project configuration and file names to distinguish development and
+production artifacts. If only one generated artifact exists, report the
+available size and mark the other measurement unavailable. If no local CLI or
+generated CSS is available, record the measurement limitation and continue
+with source coverage and configuration analysis.
 
 **Size benchmarks (gzipped):**
 
@@ -83,6 +114,10 @@ fd -e js -e jsx ./src 2>/dev/null | wc -l   # for @source "./src/**/*.{js,jsx}"
 
 ## Step 4: Find Unused Classes
 
+Use the generated CSS selected in Step 2. If no generated CSS is safely
+available, skip the generated-class comparison, record the limitation, and
+continue with template class inventory.
+
 ```bash
 # Used classes in templates
 grep -ohr 'class="[^"]*"' --include="*.html" --include="*.templ" --include="*.jsx" --include="*.tsx" . 2>/dev/null | \
@@ -98,6 +133,10 @@ comm -23 /tmp/css-classes.txt /tmp/used-classes.txt | head -50
 **Note:** Some "unused" classes may be: dynamically generated (`bg-${color}-500`); used by JavaScript; from third-party libraries; or base/reset styles (intentionally included).
 
 ## Step 5: CSS Variable Analysis
+
+Run generated-CSS checks only against the artifact selected in Step 2. If none
+is available, report these metrics as unavailable rather than building over a
+project output file.
 
 ```bash
 grep -c -- '--' output.css
@@ -115,9 +154,17 @@ grep -oE '--color-[a-z]+-[0-9]+' output.css | sort -u | wc -l
 
 ## Step 6: Build Performance
 
+When a local Tailwind CLI is available, time a build into the temporary
+directory selected in Step 2:
+
 ```bash
-time npx @tailwindcss/cli -i input.css -o output.css --minify 2>&1
+time npx --no-install @tailwindcss/cli -i input.css -o "<TEMP_DIR>/timed-output.css" --minify 2>&1
 ```
+
+Without a local CLI, do not run a read-only Vite or PostCSS build that may
+overwrite project artifacts. Record build timing as unavailable. With `--fix`,
+run and time the selected integration's existing verification command after
+applying changes, then report that project-build timing separately.
 
 | Build time | Assessment |
 |------------|------------|
@@ -160,6 +207,10 @@ time npx @tailwindcss/cli -i input.css -o output.css --minify 2>&1
 
 [Per the categories above]
 
+### Measurement Limitations
+
+[Unavailable measurements and the missing local artifact or tool that prevented them]
+
 ### Recommendations
 
 **High Priority:** [Critical]
@@ -184,10 +235,11 @@ Auto-apply: add missing `@source` for uncovered template directories; replace `*
 
 DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
-1. Bundle size measured (dev and prod)
+1. Bundle size measured wherever a local CLI or existing generated CSS made it safely available; every unavailable metric has a recorded limitation
 2. Source coverage analyzed
 3. Optimization report generated
 4. If `--fix`: safe optimizations applied
+5. No missing build dependency was installed solely for analysis
 
 ```
 <done>COMPLETE</done>

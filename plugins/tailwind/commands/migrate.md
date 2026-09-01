@@ -73,10 +73,13 @@ Read the config file. Extract: `content` array (becomes `@source` directives), `
 
 | v3 Plugin | v4 Status |
 |-----------|-----------|
-| `@tailwindcss/forms` | Built-in (not needed) |
-| `@tailwindcss/typography` | `@plugin "@tailwindcss/typography"` |
+| `@tailwindcss/forms` | Preserve/install the package; add `@plugin "@tailwindcss/forms";` |
+| `@tailwindcss/typography` | Preserve/install the package; add `@plugin "@tailwindcss/typography";` |
 | `@tailwindcss/container-queries` | Built-in (not needed) |
 | `@tailwindcss/aspect-ratio` | Built-in (not needed) |
+
+Preserve plugin options when converting them. For example, migrate the forms
+plugin's `strategy` option into an `@plugin` block instead of dropping it.
 
 ## Step 3: Generate v4 CSS Configuration
 
@@ -105,8 +108,11 @@ Convert the parsed configuration to v4 CSS:
 .dark { /* override theme colors here if needed */ }
 
 /* Plugins */
+@plugin "@tailwindcss/forms";
 @plugin "@tailwindcss/typography";
 ```
+
+Emit only the plugin directives detected in the v3 configuration.
 
 For hex → oklch conversion, use https://oklch.com/. Common conversions:
 
@@ -169,6 +175,16 @@ Scripts:
 npm uninstall tailwindcss autoprefixer
 npm install -D tailwindcss@latest @tailwindcss/postcss@latest postcss
 ```
+
+For every v3 plugin converted to an `@plugin` directive, preserve its package
+in `devDependencies` and install a compatible version if it is missing. When
+`@tailwindcss/forms` is detected and `--check` is not present, use:
+
+```bash
+npm install -D @tailwindcss/forms@latest
+```
+
+With `--check`, report that package action without running it. Do not uninstall packages referenced by generated `@plugin` directives.
 
 ## Step 6: Handle PostCSS Config
 
@@ -310,6 +326,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 4. CLI build scripts added to `package.json`
 5. `npm run css` succeeds and generates non-empty output CSS
 6. No `@tailwind` directives remain in CSS files
+7. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
 
 ### PostCSS Migration Completion Criteria
 
@@ -323,6 +340,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 6. Existing PostCSS-backed build succeeds with zero errors
 7. No CLI-only `css` script was added solely for migration verification
 8. No `@tailwind` directives remain in CSS files
+9. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
 
 ```
 <done>COMPLETE</done>
