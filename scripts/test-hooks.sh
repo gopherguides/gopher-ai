@@ -129,6 +129,8 @@ run_runtime_location_tests() {
   local cache_clear_pid cache_clear_writer_pid clear_attempt
   local cache_fenced cache_fenced_output cache_fenced_ready cache_fenced_release cache_fenced_result
   local cache_fenced_writer_pid
+  local cache_orphan_fence cache_orphan_fence_output
+  local cache_release_race cache_release_result
   local cache_missing_args_dir cache_missing_key_dir
   local cache_compatibility_work cache_compatibility_xdg cache_compatibility_target cache_compatibility_legacy
   local cache_compatibility_default_output cache_compatibility_legacy_output
@@ -137,6 +139,7 @@ run_runtime_location_tests() {
   local default_cache_valid=false override_cache_valid=false compatibility_cache_valid=false
   local abandoned_cache_valid=false cache_clear_race_valid=false cache_clear_race_status=true
   local cache_clear_waited=false cache_fenced_valid=false cache_fenced_status=true
+  local cache_orphan_fence_valid=false cache_release_race_valid=false cache_release_status=true
   local corrupt_cache_valid=false parallel_cache_valid=false parallel_status=true reused_cache_valid=false writer writer_pid
   cache_fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-guides-cache.XXXXXX")
   cache_home="$cache_fixture/home"
@@ -154,6 +157,9 @@ run_runtime_location_tests() {
   cache_fenced_ready="$cache_fixture/fenced/writer-ready"
   cache_fenced_release="$cache_fixture/fenced/writer-release"
   cache_fenced_result="$cache_fixture/fenced/writer-fenced"
+  cache_orphan_fence="$cache_fixture/orphan-fence/cache.json"
+  cache_release_race="$cache_fixture/release-race/cache.json"
+  cache_release_result="$cache_fixture/release-race/replacement-preserved"
   cache_parallel="$cache_fixture/parallel/cache.json"
   cache_parallel_bin="$cache_fixture/parallel-bin"
   cache_parallel_barrier="$cache_fixture/parallel-barrier"
@@ -170,6 +176,7 @@ run_runtime_location_tests() {
   mkdir -p "$cache_home" "$cache_bin" "$cache_parallel_bin" "$cache_parallel_barrier" \
     "$cache_fixture/work" "$(dirname "$cache_corrupt")" "$(dirname "$cache_abandoned")" \
     "$(dirname "$cache_reused")" "$(dirname "$cache_clear_race")" "$(dirname "$cache_fenced")" \
+    "$(dirname "$cache_orphan_fence")" "$(dirname "$cache_release_race")" \
     "$(dirname "$cache_compatibility_legacy")"
   printf '%s\n' '#!/bin/sh' 'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' > "$cache_bin/curl"
   chmod +x "$cache_bin/curl"
@@ -248,6 +255,18 @@ run_runtime_location_tests() {
        "$cache_abandoned" >/dev/null 2>&1 &&
      [ ! -e "${cache_abandoned}.lock" ]; then
     abandoned_cache_valid=true
+  fi
+  printf '%s\n' 99999999 > "${cache_orphan_fence}.lock"
+  mkdir "${cache_orphan_fence}.lock.reclaim"
+  if cache_orphan_fence_output=$(PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
+       GOPHER_GUIDES_CACHE_FILE="$cache_orphan_fence" HOME="$cache_home" \
+       "$cache_api" audit '{}') &&
+     [ "$cache_orphan_fence_output" = '{"result":"ok"}' ] &&
+     jq -e 'length == 1 and to_entries[0].value.endpoint == "audit"' \
+       "$cache_orphan_fence" >/dev/null 2>&1 &&
+     [ ! -e "${cache_orphan_fence}.lock" ] &&
+     [ ! -e "${cache_orphan_fence}.lock.reclaim" ]; then
+    cache_orphan_fence_valid=true
   fi
   cache_reused_created=$(( $(date +%s) - 11 ))
   cache_reused_nonce=$RANDOM
@@ -377,6 +396,38 @@ run_runtime_location_tests() {
      [ "$cache_fenced_output" = "Gopher Guides cache cleared: $cache_fenced" ]; then
     cache_fenced_valid=true
   fi
+  (
+    source "$cache_lock"
+    cache_lock_configure "$cache_release_race"
+    cache_lock_acquire
+    release_owner="$CACHE_LOCK_OWNER"
+    mkdir "$CACHE_LOCK_RECLAIM_DIR"
+    printf '%s %s %s\n' "$$" "$(date +%s)" "$RANDOM" > "$CACHE_LOCK_RECLAIM_DIR/owner"
+    cache_lock_release &
+    release_pid=$!
+    sleep 0.2
+    release_waited=false
+    if kill -0 "$release_pid" 2>/dev/null &&
+       [ "$(cat "$CACHE_LOCK_FILE" 2>/dev/null)" = "$release_owner" ]; then
+      release_waited=true
+    fi
+    rm -f "$CACHE_LOCK_FILE" "$CACHE_LOCK_HEARTBEAT_FILE" "$CACHE_LOCK_HEARTBEAT_TEMP"
+    replacement_owner="$$ $(date +%s) $RANDOM"
+    printf '%s\n' "$replacement_owner" > "$CACHE_LOCK_FILE"
+    rm -f "$CACHE_LOCK_RECLAIM_DIR/owner"
+    rmdir "$CACHE_LOCK_RECLAIM_DIR"
+    wait "$release_pid" 2>/dev/null || cache_release_status=false
+    if [ "$release_waited" = true ] &&
+       [ "$(cat "$CACHE_LOCK_FILE" 2>/dev/null)" = "$replacement_owner" ]; then
+      : > "$cache_release_result"
+    fi
+    kill "$CACHE_LOCK_HEARTBEAT_PID" 2>/dev/null || true
+    wait "$CACHE_LOCK_HEARTBEAT_PID" 2>/dev/null || true
+    rm -f "$CACHE_LOCK_FILE" "$CACHE_LOCK_HEARTBEAT_FILE" "$CACHE_LOCK_HEARTBEAT_TEMP"
+  ) || cache_release_status=false
+  if [ "$cache_release_status" = true ] && [ -f "$cache_release_result" ]; then
+    cache_release_race_valid=true
+  fi
   mkdir -p "$(dirname "$cache_legacy_file")"
   printf '%s\n' '{"legacy":true}' > "$cache_legacy_file"
   printf '%s\n' '{"keep":true}' > "$cache_unrelated_file"
@@ -404,6 +455,8 @@ run_runtime_location_tests() {
      [ "$abandoned_cache_valid" = true ] &&
      [ "$cache_clear_race_valid" = true ] &&
      [ "$cache_fenced_valid" = true ] &&
+     [ "$cache_orphan_fence_valid" = true ] &&
+     [ "$cache_release_race_valid" = true ] &&
      [ "$corrupt_cache_valid" = true ] &&
      [ "$parallel_cache_valid" = true ] &&
      [ "$reused_cache_valid" = true ] &&
