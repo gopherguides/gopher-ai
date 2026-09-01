@@ -163,7 +163,11 @@ def parse_action_value(value):
 
 def scalar_is_false(value):
     scalar = decode_yaml_scalar(value)
-    return scalar is not None and scalar.casefold() == "false"
+    if scalar is None:
+        return False
+    return scalar.casefold() == "false" or bool(
+        re.fullmatch(r"\$\{\{\s*false\s*}}", scalar, re.IGNORECASE)
+    )
 
 
 def split_flow_text(value, delimiter):
@@ -913,6 +917,15 @@ def cache_parser_failures():
             [
                 "      - uses: actions/setup-node@v7",
                 "        with:",
+                "          package-manager-cache: ${{ false }}",
+            ],
+            0,
+            True,
+        ),
+        (
+            [
+                "      - uses: actions/setup-node@v7",
+                "        with:",
                 "          package-manager-cache: >-",
                 "            false",
             ],
@@ -1176,7 +1189,7 @@ def yaml_mapping_values(node, key):
 
 
 def yaml_scalar_is_false(node):
-    return isinstance(node, yaml.ScalarNode) and node.value.strip().casefold() == "false"
+    return isinstance(node, yaml.ScalarNode) and scalar_is_false(node.value)
 
 
 def scan_yaml_action_step(path, step):
@@ -1289,7 +1302,7 @@ jobs:
 
     alias_source = """
 node-inputs: &node-inputs
-  package-manager-cache: false
+  package-manager-cache: ${{ false }}
 jobs:
   test:
     steps:
