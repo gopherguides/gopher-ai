@@ -357,9 +357,11 @@ def flow_step_mapping(line):
     return None
 
 
-def flow_mapping_value(entries, key):
+def flow_mapping_value(entries, key, case_insensitive=False):
     for entry_key, value in entries:
-        if entry_key == key:
+        if entry_key == key or (
+            case_insensitive and entry_key.casefold() == key.casefold()
+        ):
             return value
     return None
 
@@ -917,7 +919,7 @@ def cache_parser_failures():
             [
                 "      - uses: actions/setup-node@v7",
                 "        with:",
-                "          package-manager-cache: ${{ false }}",
+                "          PACKAGE-MANAGER-CACHE: ${{ false }}",
             ],
             0,
             True,
@@ -1178,13 +1180,20 @@ def dependency_callsite_failures():
     return failures
 
 
-def yaml_mapping_values(node, key):
+def yaml_mapping_values(node, key, case_insensitive=False):
     if not isinstance(node, yaml.MappingNode):
         return []
     return [
         value
         for candidate, value in node.value
-        if isinstance(candidate, yaml.ScalarNode) and candidate.value == key
+        if isinstance(candidate, yaml.ScalarNode)
+        and (
+            candidate.value == key
+            or (
+                case_insensitive
+                and candidate.value.casefold() == key.casefold()
+            )
+        )
     ]
 
 
@@ -1217,7 +1226,7 @@ def scan_yaml_action_step(path, step):
         cache_disabled = False
         for with_node in yaml_mapping_values(step, "with"):
             for cache_node in yaml_mapping_values(
-                with_node, "package-manager-cache"
+                with_node, "package-manager-cache", case_insensitive=True
             ):
                 cache_disabled = cache_disabled or yaml_scalar_is_false(cache_node)
         if not cache_disabled:
@@ -1302,7 +1311,7 @@ jobs:
 
     alias_source = """
 node-inputs: &node-inputs
-  package-manager-cache: ${{ false }}
+  PACKAGE-MANAGER-CACHE: ${{ false }}
 jobs:
   test:
     steps:
@@ -1397,7 +1406,7 @@ def step_cache_status(lines, start, indentation, list_marker):
                 input_indentation = current_indentation
             if current_indentation != input_indentation:
                 continue
-            if input_entry[2] == "package-manager-cache":
+            if input_entry[2].casefold() == "package-manager-cache":
                 input_value = input_entry[3]
                 if is_block_scalar_value(input_value):
                     input_value = block_scalar_value(
@@ -1422,7 +1431,9 @@ def flow_mapping_cache_status(value):
     entries = parse_flow_mapping(value)
     if entries is None:
         return "missing"
-    cache_value = flow_mapping_value(entries, "package-manager-cache")
+    cache_value = flow_mapping_value(
+        entries, "package-manager-cache", case_insensitive=True
+    )
     return "disabled" if cache_value and scalar_is_false(cache_value) else "missing"
 
 
