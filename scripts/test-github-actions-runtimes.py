@@ -73,6 +73,16 @@ def cache_parser_failures():
             [
                 "      - name: Set up Node",
                 "        uses: actions/setup-node@v7",
+                "        with:",
+                "          # package-manager-cache: false",
+            ],
+            1,
+            False,
+        ),
+        (
+            [
+                "      - name: Set up Node",
+                "        uses: actions/setup-node@v7",
                 "        env:",
                 "          package-manager-cache: false",
             ],
@@ -113,6 +123,23 @@ def cache_parser_failures():
         )
         if actual != expected:
             failures.append(f"cache parser failed fixture at uses line {uses_index + 1}")
+
+    generator_lines = [
+        normalize_workflow_line(line)
+        for line in (
+            "  #     - uses: actions/setup-node@v7",
+            "  #       with:",
+            "  #         package-manager-cache: false",
+        )
+    ]
+    generator_match = ACTION_PATTERN.match(generator_lines[0])
+    if not step_has_cache_disabled(
+        generator_lines,
+        0,
+        len(generator_match.group(1)),
+        bool(generator_match.group(2)),
+    ):
+        failures.append("cache parser missed commented generator fixture")
     return failures
 
 
@@ -175,9 +202,14 @@ def main():
     discovered = 0
 
     for path in workflow_files():
-        lines = [normalize_workflow_line(line) for line in path.read_text().splitlines()]
+        lines = path.read_text().splitlines()
+        normalized_lines = [normalize_workflow_line(line) for line in lines]
         for index, line in enumerate(lines):
             match = ACTION_PATTERN.match(line)
+            scanned_lines = lines
+            if not match and PLUGIN_TEMPLATES in path.parents:
+                match = ACTION_PATTERN.match(normalized_lines[index])
+                scanned_lines = normalized_lines
             if not match:
                 continue
 
@@ -187,7 +219,7 @@ def main():
             if action_ref not in SUPPORTED_REFS[action]:
                 failures.append(f"{location}: unsupported {action}@{action_ref}")
             if action == "actions/setup-node" and not step_has_cache_disabled(
-                lines, index, len(indentation), bool(list_marker)
+                scanned_lines, index, len(indentation), bool(list_marker)
             ):
                 failures.append(
                     f"{location}: setup-node must set package-manager-cache: false"
