@@ -161,12 +161,17 @@ file_contains() {
 ADDRESS_REVIEW_BOT_REGISTRY="$ROOT_DIR/plugins/go-workflow/skills/address-review/bot-registry.md"
 ADDRESS_REVIEW_DISCOVERY="$ROOT_DIR/plugins/go-workflow/skills/address-review/setup-and-discovery.md"
 GO_WORKFLOW_README="$ROOT_DIR/plugins/go-workflow/README.md"
-CODEX_CONNECTOR_REGISTRY_ROW='| `chatgpt-codex-connector[bot]` | Current-head `codex-pull-request-review-summary` issue comment has a connector-authored `+1` reaction and no unresolved inline comments from the connector | Current-head summary has unresolved inline comments from the connector | `@codex review` |'
+CODEX_CONNECTOR_REGISTRY_ROW='| `chatgpt-codex-connector[bot]` | Current-head `codex-pull-request-review-summary` issue comment has either a connector-authored `+1` reaction or a clean-result comment, and no unresolved inline comments from the connector | Current-head summary has unresolved inline comments from the connector | `@codex review` |'
 
 echo -n "Address-review registers current-head Codex connector re-review... "
 if ! file_contains "$CODEX_CONNECTOR_REGISTRY_ROW" "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'PR_HEAD_SHA' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'repos/$REPO_SLUG/issues/comments/$COMMENT_ID/reactions' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'Didn’t find any major issues' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'Reviewed commit:' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'CODEX_REACTION_APPROVED' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'CODEX_CLEAN_RESULT_APPROVED' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains '[ "$CODEX_UNRESOLVED_THREADS" -eq 0 ]' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'ISSUE_COMMENT_AUTHORS' "$ADDRESS_REVIEW_DISCOVERY" ||
    ! file_contains 'chatgpt-codex-connector[bot]' "$ADDRESS_REVIEW_DISCOVERY" ||
    ! file_contains 'chatgpt-codex-connector' "$ADDRESS_REVIEW_DISCOVERY" ||
@@ -175,6 +180,43 @@ if ! file_contains "$CODEX_CONNECTOR_REGISTRY_ROW" "$ADDRESS_REVIEW_BOT_REGISTRY
    ! file_contains '`chatgpt-codex-connector[bot]`' "$GO_WORKFLOW_README" ||
    ! file_contains 'Manual re-request through GitHub Reviewers' "$GO_WORKFLOW_README"; then
   echo "FAIL (Codex connector detection, trigger, or signal contract missing)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+codex_connector_approved() {
+  local summary_body="$1"
+  local reactions="$2"
+  local head_sha="$3"
+  local unresolved_threads="$4"
+  local reviewed_commit reaction_approved clean_result_approved
+
+  reviewed_commit=$(sed -n 's/.*Reviewed commit:[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$summary_body" | head -1)
+  reaction_approved=$(jq -r 'any(.[]; .content == "+1" and .user.login == "chatgpt-codex-connector[bot]")' <<< "$reactions")
+  clean_result_approved=false
+  if grep -Fq 'Didn’t find any major issues' <<< "$summary_body"; then
+    clean_result_approved=true
+  fi
+
+  [ -n "$reviewed_commit" ] &&
+    [[ "$head_sha" == "$reviewed_commit"* ]] &&
+    [ "$unresolved_threads" -eq 0 ] &&
+    { [ "$reaction_approved" = true ] || [ "$clean_result_approved" = true ]; }
+}
+
+echo -n "Codex connector approval requires a clean current-head result... "
+CODEX_TEST_HEAD="0123456789abcdef0123456789abcdef01234567"
+CODEX_CLEAN_SUMMARY=$'<!-- codex-pull-request-review-summary -->\nDidn’t find any major issues\nReviewed commit: `0123456`'
+CODEX_WRONG_HEAD_SUMMARY=$'<!-- codex-pull-request-review-summary -->\nDidn’t find any major issues\nReviewed commit: `abcdef0`'
+CODEX_REACTION_SUMMARY=$'<!-- codex-pull-request-review-summary -->\nReviewed commit: `0123456`'
+CODEX_NO_REACTIONS='[]'
+CODEX_PLUS_ONE='[{"content":"+1","user":{"login":"chatgpt-codex-connector[bot]"}}]'
+if ! codex_connector_approved "$CODEX_CLEAN_SUMMARY" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
+   codex_connector_approved "$CODEX_WRONG_HEAD_SUMMARY" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
+   codex_connector_approved "$CODEX_CLEAN_SUMMARY" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 1 ||
+   ! codex_connector_approved "$CODEX_REACTION_SUMMARY" "$CODEX_PLUS_ONE" "$CODEX_TEST_HEAD" 0; then
+  echo "FAIL (clean-result, wrong-head, unresolved-thread, or reaction path regressed)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"

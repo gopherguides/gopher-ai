@@ -6,7 +6,7 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 
 | Login | Approval Signal | Has Issues Signal | Re-review Trigger |
 |---|---|---|---|
-| `chatgpt-codex-connector[bot]` | Current-head `codex-pull-request-review-summary` issue comment has a connector-authored `+1` reaction and no unresolved inline comments from the connector | Current-head summary has unresolved inline comments from the connector | `@codex review` |
+| `chatgpt-codex-connector[bot]` | Current-head `codex-pull-request-review-summary` issue comment has either a connector-authored `+1` reaction or a clean-result comment, and no unresolved inline comments from the connector | Current-head summary has unresolved inline comments from the connector | `@codex review` |
 | `coderabbitai[bot]` | Formal `APPROVED` review state (requires `request_changes_workflow` in `.coderabbit.yaml`) | `CHANGES_REQUESTED` review with inline comments | `@coderabbitai full review` |
 | `greptileai` | Greptile status check passes + no inline comments posted | Inline comments on specific file changes | `@greptileai` |
 | `copilot-pull-request-review[bot]` | `COMMENTED` review with no inline file comments ("did not comment on any files") | `COMMENTED` review with inline suggestions | Re-request review button in PR sidebar _(no `@` mention trigger)_ |
@@ -19,11 +19,48 @@ Reference table of known review bots. Used ONLY for matching against bots actual
   `codex-pull-request-review-summary`. Confirm the commit displayed in that
   summary is the prefix of `PR_HEAD_SHA`, then load
   `repos/$REPO_SLUG/issues/comments/$COMMENT_ID/reactions`. A
-  connector-authored `+1` reaction plus no unresolved inline comments from the
-  connector is current-head approval. Unresolved connector inline comments
-  while that summary targets `PR_HEAD_SHA` are actionable findings. A running
-  summary, missing `+1`, or summary for another commit is pending or stale and
-  cannot satisfy approval. Re-trigger with `@codex review`.
+  connector-authored `+1` reaction or a summary body containing
+  `Didn’t find any major issues` is a clean-result signal. The clean-result
+  form must contain `Reviewed commit:` followed by a commit prefix matching
+  `PR_HEAD_SHA`. Either signal counts as current-head approval only when the
+  summary targets `PR_HEAD_SHA` and the connector has no unresolved inline
+  comments. Unresolved connector inline comments while that summary targets
+  `PR_HEAD_SHA` are actionable findings. A running summary, a clean-result
+  summary without matching reviewed-commit evidence, or a summary for another
+  commit is pending or stale and cannot satisfy approval. Re-trigger with
+  `@codex review`.
+
+Evaluate the two approval forms independently, then apply the shared
+current-head and unresolved-thread requirements:
+
+```bash
+CODEX_REVIEWED_COMMIT=$(sed -n 's/.*Reviewed commit:[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$CODEX_SUMMARY_BODY" | head -1)
+CODEX_CURRENT_HEAD=false
+if [ -n "$CODEX_REVIEWED_COMMIT" ] && [[ "$PR_HEAD_SHA" == "$CODEX_REVIEWED_COMMIT"* ]]; then
+  CODEX_CURRENT_HEAD=true
+fi
+
+CODEX_REACTION_APPROVED=$(jq -r '
+  any(.[];
+    .content == "+1" and
+    .user.login == "chatgpt-codex-connector[bot]")
+' <<< "$CODEX_REACTIONS")
+CODEX_CLEAN_RESULT_APPROVED=false
+if grep -Fq 'Didn’t find any major issues' <<< "$CODEX_SUMMARY_BODY"; then
+  CODEX_CLEAN_RESULT_APPROVED=true
+fi
+CODEX_UNRESOLVED_THREADS=$(jq '[
+  .data.repository.pullRequest.reviewThreads.nodes[]?
+  | select(.isResolved == false)
+  | select(any(.comments.nodes[]?; .author.login == "chatgpt-codex-connector"))
+] | length' <<< "$THREAD_RESULT")
+
+if [ "$CODEX_CURRENT_HEAD" = true ] &&
+   [ "$CODEX_UNRESOLVED_THREADS" -eq 0 ] &&
+   { [ "$CODEX_REACTION_APPROVED" = true ] || [ "$CODEX_CLEAN_RESULT_APPROVED" = true ]; }; then
+  echo "Codex connector approved the current head"
+fi
+```
 - **CodeRabbit**: Only bot that uses formal GitHub review states. Use `github_pr_reviews "$PR_NUM"`, select the newest `coderabbitai[bot]` review by `submitted_at`, and treat `APPROVED` as done.
 - **Greptile**: Uses a **status check** (not review states). Use `github_check_snapshot "$PR_HEAD_SHA"`; a successful Greptile item plus no new inline comments means Greptile is satisfied.
 - **Copilot**: Always posts `COMMENTED` formal reviews (never `APPROVED` or `CHANGES_REQUESTED`). Inspect its REST formal reviews. If its newest body says it "did not comment on any files" or has no inline comments, it found no issues. It cannot be re-triggered via comment; use the re-request review button in the GitHub PR sidebar.
