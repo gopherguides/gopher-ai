@@ -170,7 +170,8 @@ if ! file_contains "$CODEX_CONNECTOR_REGISTRY_ROW" "$ADDRESS_REVIEW_BOT_REGISTRY
    ! file_contains "Didn't find any major issues" "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'Reviewed commit:' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'CODEX_CLEAN_RESULT_BODY' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
-   ! file_contains 'test("Didn[\u0027’]t find any major issues")' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains '| select(.body | test("Didn[' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 't find any major issues"))' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'independently from the persistent summary' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'CODEX_REACTION_APPROVED' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'CODEX_CLEAN_RESULT_APPROVED' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
