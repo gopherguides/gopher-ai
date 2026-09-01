@@ -110,13 +110,13 @@ GEMINI_SECTION=$(section_text "$SECOND_OPINION" '## Gemini CLI' '## Codex')
 CODEX_SECTION=$(section_text "$SECOND_OPINION" '## Codex' '## Claude Code')
 CLAUDE_SECTION=$(section_text "$SECOND_OPINION" '## Claude Code' '## When NOT to Suggest')
 
-for command in codex ollama llm-compare; do
+for command in ollama llm-compare; do
   printf '%s\n' "$GEMINI_SECTION" | matches "(^|[[:space:]\`])/$command([[:space:]\`]|$)" ||
     fail "Gemini second-opinion guidance omits /$command"
 done
-printf '%s\n' "$GEMINI_SECTION" | matches '/gopher-ai-llm-tools[.]codex' ||
+printf '%s\n' "$GEMINI_SECTION" | matches '/gopher-ai-llm-tools[.]ollama' ||
   fail "Gemini second-opinion guidance omits the extension conflict route"
-if printf '%s\n' "$GEMINI_SECTION" | matches '[$]llm-tools:|/codex:'; then
+if printf '%s\n' "$GEMINI_SECTION" | matches '[$]llm-tools:|(^|[[:space:]`])/codex|gopher-ai-llm-tools[.]codex'; then
   fail "Gemini second-opinion guidance suggests another surface's command"
 fi
 
