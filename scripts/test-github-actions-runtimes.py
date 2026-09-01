@@ -16,8 +16,9 @@ SUPPORTED_REFS = {
     "actions/setup-node": {"v7"},
 }
 BLOCK_ACTION_PATTERN = re.compile(
-    r'''^(\s*)(-\s+)?uses:\s*(["']?)(actions/(?:checkout|setup-go|setup-node))'''
-    r'''@([^\s#"']+)\3(?:\s*(?:#.*)?)$'''
+    r'''^(\s*)(-\s+)?(["']?)uses\3\s*:\s*(["']?)'''
+    r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#"']+)\4'''
+    r'''(?:\s*(?:#.*)?)$'''
 )
 FLOW_ACTION_PATTERN = re.compile(
     r'''^(\s*)-\s*\{.*?(["']?)uses\2\s*:\s*(["']?)'''
@@ -29,6 +30,10 @@ FLOW_WITH_PATTERN = re.compile(
 FLOW_CACHE_PATTERN = re.compile(
     r'''(?:^|,)\s*(?:package-manager-cache|"package-manager-cache"|'''
     r'''\'package-manager-cache\')\s*:\s*(?:false|"false"|'false')\s*(?=,|$)'''
+)
+ACTION_USES_PATTERN = re.compile(
+    r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*(["']?)'''
+    r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)\2'''
 )
 
 
@@ -42,7 +47,7 @@ def normalize_workflow_line(line):
 def parse_action(line):
     match = BLOCK_ACTION_PATTERN.match(line)
     if match:
-        indentation, list_marker, _, action, action_ref = match.groups()
+        indentation, list_marker, _, _, action, action_ref = match.groups()
         return indentation, bool(list_marker), action, action_ref, False
 
     match = FLOW_ACTION_PATTERN.match(line)
@@ -51,6 +56,11 @@ def parse_action(line):
         return indentation, True, action, action_ref, True
 
     return None
+
+
+def find_action_reference(line):
+    match = ACTION_USES_PATTERN.search(line)
+    return None if match is None else (match.group(3), match.group(4))
 
 
 def parser_failures():
@@ -62,6 +72,8 @@ def parser_failures():
             "v4",
         ),
         "        uses: 'actions/setup-node@v4'": ("actions/setup-node", "v4"),
+        '      - "uses": actions/checkout@v4': ("actions/checkout", "v4"),
+        "        'uses': actions/setup-go@v6": ("actions/setup-go", "v6"),
         "  #     - uses: actions/setup-go@v6": ("actions/setup-go", "v6"),
         "      - { uses: actions/checkout@v4 }": ("actions/checkout", "v4"),
         '      - { name: Checkout, "uses": "actions/checkout@v4" }': (
@@ -75,6 +87,12 @@ def parser_failures():
         actual = None if parsed is None else (parsed[2], parsed[3])
         if actual != expected:
             failures.append(f"action parser missed fixture: {line}")
+
+    fallback_line = "          uses: actions/checkout@v4,"
+    if parse_action(fallback_line) is not None:
+        failures.append("action parser unexpectedly accepted fallback fixture")
+    if find_action_reference(fallback_line) != ("actions/checkout", "v4"):
+        failures.append("action fallback missed unrecognized syntax fixture")
     return failures
 
 
@@ -253,10 +271,20 @@ def main():
         for index, line in enumerate(lines):
             parsed = parse_action(line)
             scanned_lines = lines
+            candidate_line = line
             if not parsed and PLUGIN_TEMPLATES in path.parents:
-                parsed = parse_action(normalized_lines[index])
+                candidate_line = normalized_lines[index]
+                parsed = parse_action(candidate_line)
                 scanned_lines = normalized_lines
             if not parsed:
+                reference = find_action_reference(candidate_line)
+                if reference:
+                    action, action_ref = reference
+                    location = f"{path.relative_to(ROOT)}:{index + 1}"
+                    failures.append(
+                        f"{location}: unrecognized action step syntax for "
+                        f"{action}@{action_ref}"
+                    )
                 continue
 
             discovered += 1
