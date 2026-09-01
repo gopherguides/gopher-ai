@@ -414,6 +414,26 @@ def block_scalar_content_indices(lines):
     return content_indices
 
 
+def block_scalar_value(lines, start, key_indentation):
+    content = []
+    for line in lines[start + 1 :]:
+        if not line.strip():
+            content.append("")
+            continue
+        indentation = len(line) - len(line.lstrip())
+        if indentation <= key_indentation:
+            break
+        content.append(line)
+    nonempty_indents = [
+        len(line) - len(line.lstrip()) for line in content if line.strip()
+    ]
+    if not nonempty_indents:
+        return None
+    content_indentation = min(nonempty_indents)
+    values = [line[content_indentation:] if line else "" for line in content]
+    return " ".join(value.strip() for value in values).strip()
+
+
 def enclosing_steps_index(lines, start):
     scalar_content = block_scalar_content_indices(lines)
     for candidate in range(start - 1, -1, -1):
@@ -868,6 +888,16 @@ def cache_parser_failures():
         ),
         (
             [
+                "      - uses: actions/setup-node@v7",
+                "        with:",
+                "          package-manager-cache: >-",
+                "            false",
+            ],
+            0,
+            True,
+        ),
+        (
+            [
                 "      -",
                 "        uses: actions/setup-node@v7",
                 "        with:",
@@ -1128,7 +1158,8 @@ def step_cache_status(lines, start, indentation, list_marker):
             continue
 
         input_indentation = None
-        for line in lines[index + 1 : step_end]:
+        for input_index in range(index + 1, step_end):
+            line = lines[input_index]
             key_match = re.match(r"^(\s*)\S", line)
             if key_match and len(key_match.group(1)) <= step_key_indentation:
                 break
@@ -1140,10 +1171,14 @@ def step_cache_status(lines, start, indentation, list_marker):
                 input_indentation = current_indentation
             if current_indentation != input_indentation:
                 continue
-            if input_entry[2] == "package-manager-cache" and scalar_is_false(
-                input_entry[3]
-            ):
-                return "disabled"
+            if input_entry[2] == "package-manager-cache":
+                input_value = input_entry[3]
+                if is_block_scalar_value(input_value):
+                    input_value = block_scalar_value(
+                        lines, input_index, current_indentation
+                    )
+                if input_value is not None and scalar_is_false(input_value):
+                    return "disabled"
     return "missing"
 
 
