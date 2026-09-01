@@ -19,6 +19,8 @@ THIRD_WORKSPACE="$TEST_ROOT/third-workspace"
 LOG_DIR="$TEST_ROOT/logs"
 PORT_FILE="$TEST_ROOT/server.port"
 ACTIVE_PIDS=""
+ACTIVE_PGIDS=""
+OWNED_PID=""
 PROBE_COMMAND="printf '%s\n' 'probe.go:1:1: undefined: lifecycleProbe' >&2; exit 1"
 PROBE_PROMPT="Run the lifecycle-post-tool-use-probe sentinel with the shell tool."
 HOOK_INPUT_CAPTURE="$LOG_DIR/post-tool-use.input.json"
@@ -43,6 +45,65 @@ unregister_pid() {
         fi
     done
     ACTIVE_PIDS="$retained_pids"
+}
+
+register_pgid() {
+    ACTIVE_PGIDS="$ACTIVE_PGIDS $1"
+}
+
+unregister_pgid() {
+    local removed_pgid="$1"
+    local retained_pgids=""
+    local pgid
+    for pgid in $ACTIVE_PGIDS; do
+        if [[ "$pgid" != "$removed_pgid" ]]; then
+            retained_pgids="$retained_pgids $pgid"
+        fi
+    done
+    ACTIVE_PGIDS="$retained_pgids"
+}
+
+start_owned_process() {
+    python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@" &
+    OWNED_PID=$!
+    register_pid "$OWNED_PID"
+    register_pgid "$OWNED_PID"
+}
+
+terminate_process_group() {
+    local pgid="$1"
+    local attempts="${2:-50}"
+    local attempt
+    if ! kill -0 -- "-$pgid" 2>/dev/null; then
+        return 0
+    fi
+    kill -TERM -- "-$pgid" 2>/dev/null || true
+    for attempt in $(seq 1 "$attempts"); do
+        if ! kill -0 -- "-$pgid" 2>/dev/null; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    kill -KILL -- "-$pgid" 2>/dev/null || true
+    for attempt in $(seq 1 10); do
+        if ! kill -0 -- "-$pgid" 2>/dev/null; then
+            return 1
+        fi
+        sleep 0.1
+    done
+    return 1
+}
+
+terminate_active_process_groups() {
+    local timed_out=false
+    local pgid
+    for pgid in $ACTIVE_PGIDS; do
+        if ! terminate_process_group "$pgid"; then
+            timed_out=true
+        fi
+    done
+    ACTIVE_PGIDS=""
+    [[ "$timed_out" == false ]]
 }
 
 terminate_active_processes() {
@@ -72,36 +133,6 @@ terminate_active_processes() {
     done
     ACTIVE_PIDS=""
     [[ "$timed_out" == false ]]
-}
-
-wait_for_clone_tree_quiescence() {
-    local codex_root="$1"
-    local attempts="${2:-100}"
-    local required_quiet_samples="${3:-10}"
-    local attempt clone_root current_snapshot previous_snapshot="" quiet_samples=0
-    [[ -d "$codex_root/.tmp" ]] || return 0
-    for attempt in $(seq 1 "$attempts"); do
-        current_snapshot=$(
-            {
-                for clone_root in "$codex_root"/.tmp/plugins-clone-*; do
-                    [[ -e "$clone_root" ]] || continue
-                    printf '%s\n' "$clone_root"
-                    LC_ALL=C ls -laR "$clone_root" 2>/dev/null || true
-                done
-            } | cksum
-        )
-        if [[ "$current_snapshot" == "$previous_snapshot" ]]; then
-            quiet_samples=$((quiet_samples + 1))
-            if [[ "$quiet_samples" -ge "$required_quiet_samples" ]]; then
-                return 0
-            fi
-        else
-            previous_snapshot="$current_snapshot"
-            quiet_samples=0
-        fi
-        sleep 0.1
-    done
-    return 1
 }
 
 remove_test_root() {
@@ -146,11 +177,11 @@ cleanup() {
     local status=$?
     trap - EXIT INT TERM
     local cleanup_failure=""
-    if ! terminate_active_processes; then
-        cleanup_failure="owned lifecycle processes did not drain within 5 seconds"
+    if ! terminate_active_process_groups; then
+        cleanup_failure="owned lifecycle process groups did not drain within 5 seconds"
     fi
-    if ! wait_for_clone_tree_quiescence "$CODEX_HOME"; then
-        cleanup_failure="${cleanup_failure:+$cleanup_failure; }Codex plugin clone workers did not drain within 10 seconds"
+    if ! terminate_active_processes; then
+        cleanup_failure="${cleanup_failure:+$cleanup_failure; }owned lifecycle processes did not drain within 5 seconds"
     fi
     if [[ -n "$cleanup_failure" ]]; then
         printf 'FAIL: %s\n' "$cleanup_failure" >&2
@@ -167,7 +198,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-for command_name in cksum codex curl git jq python3; do
+for command_name in codex curl git jq python3; do
     command -v "$command_name" >/dev/null 2>&1 || fail "missing required command: $command_name"
 done
 
@@ -193,51 +224,54 @@ mkdir -p \
     "$THIRD_WORKSPACE" \
     "$LOG_DIR"
 
-assert_clone_tree_drain() {
-    local fixture_root="$TEST_ROOT/clone-drain-regression"
-    local clone_root="$fixture_root/.tmp/plugins-clone-late"
-    local started_marker="$fixture_root/started"
-    local finished_marker="$fixture_root/finished"
-    local writer_pid
-    mkdir -p "$fixture_root/.tmp"
-    (
+wait_for_marker() {
+    local marker="$1"
+    local attempt
+    for attempt in $(seq 1 50); do
+        [[ -f "$marker" ]] && return 0
         sleep 0.1
-        mkdir -p "$clone_root/plugins"
-        : > "$started_marker"
-        sleep 0.3
-        rm -rf -- "$clone_root"
-        : > "$finished_marker"
-    ) &
-    writer_pid=$!
-    register_pid "$writer_pid"
-    wait_for_clone_tree_quiescence "$fixture_root" \
-        || fail "late clone-tree writer did not drain"
-    wait "$writer_pid"
-    unregister_pid "$writer_pid"
-    [[ -f "$started_marker" && -f "$finished_marker" ]] \
-        || fail "clone-tree drain returned before the late writer completed"
-    local mutation_stop="$fixture_root/mutation-stop"
-    local mutation_pid mutation=0
-    mkdir -p "$fixture_root/.tmp/plugins-clone-mutating"
-    (
-        while [[ ! -f "$mutation_stop" ]]; do
-            mutation=$((mutation + 1))
-            : > "$fixture_root/.tmp/plugins-clone-mutating/entry-$mutation"
-            sleep 0.05
-        done
-    ) &
-    mutation_pid=$!
-    register_pid "$mutation_pid"
-    if wait_for_clone_tree_quiescence "$fixture_root" 5 2; then
-        fail "clone-tree drain accepted an active writer"
+    done
+    return 1
+}
+
+assert_process_group_drain() {
+    local fixture_root="$TEST_ROOT/process-group-regression"
+    local paused_marker="$fixture_root/paused-started"
+    local resistant_marker="$fixture_root/resistant-started"
+    local paused_pid resistant_pid
+    mkdir -p "$fixture_root"
+    start_owned_process bash -c '
+        trap "exit 0" TERM
+        mkdir -p "$1/.tmp/plugins-clone-paused/plugins"
+        : > "$1/paused-started"
+        sleep 30 &
+        wait
+    ' _ "$fixture_root"
+    paused_pid="$OWNED_PID"
+    wait_for_marker "$paused_marker" || fail "paused process-group fixture did not start"
+    terminate_process_group "$paused_pid" \
+        || fail "paused owned process group did not drain after TERM"
+    wait "$paused_pid" 2>/dev/null || true
+    unregister_pid "$paused_pid"
+    unregister_pgid "$paused_pid"
+    start_owned_process bash -c '
+        trap "" TERM
+        mkdir -p "$1/.tmp/plugins-clone-resistant/plugins"
+        : > "$1/resistant-started"
+        while :; do sleep 1; done
+    ' _ "$fixture_root"
+    resistant_pid="$OWNED_PID"
+    wait_for_marker "$resistant_marker" || fail "resistant process-group fixture did not start"
+    if terminate_process_group "$resistant_pid" 2; then
+        fail "process-group drain accepted a TERM-resistant writer"
     fi
-    : > "$mutation_stop"
-    wait "$mutation_pid"
-    unregister_pid "$mutation_pid"
+    wait "$resistant_pid" 2>/dev/null || true
+    unregister_pid "$resistant_pid"
+    unregister_pgid "$resistant_pid"
     rm -rf -- "$fixture_root"
 }
 
-assert_clone_tree_drain
+assert_process_group_drain
 
 for plugin_dir in "$ROOT_DIR"/plugins/*; do
     [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
@@ -324,6 +358,9 @@ wait_for_session_request() {
         if ! kill -0 "$pid" 2>/dev/null; then
             wait "$pid" 2>/dev/null || true
             unregister_pid "$pid"
+            if ! kill -0 -- "-$pid" 2>/dev/null; then
+                unregister_pgid "$pid"
+            fi
             fail "$description process exited before contacting the Responses server"
         fi
         sleep 0.1
@@ -344,26 +381,25 @@ for attempt in $(seq 1 100); do
     sleep 0.1
 done
 
-run_codex() {
-    env \
+run_installer() {
+    local installer_pid installer_status
+    start_owned_process env \
         HOME="$TEST_HOME" \
         CODEX_HOME="$CODEX_HOME" \
-        OPENAI_API_KEY=dummy \
-        CODEX_LIFECYCLE_HOOK_INPUT="${CODEX_LIFECYCLE_HOOK_INPUT:-}" \
-        CODEX_LIFECYCLE_HOOK_OUTPUT="${CODEX_LIFECYCLE_HOOK_OUTPUT:-}" \
-        codex "$@"
-}
-
-run_installer() {
-    (
-        cd "$TEST_ROOT"
-        env \
-            HOME="$TEST_HOME" \
-            CODEX_HOME="$CODEX_HOME" \
-            GOPHER_AI_REPO="$MARKETPLACE_URL" \
-            GOPHER_AI_REF=main \
-            bash "$ROOT_DIR/scripts/install-codex.sh" --user
-    )
+        GOPHER_AI_REPO="$MARKETPLACE_URL" \
+        GOPHER_AI_REF=main \
+        bash -c 'cd "$1" && exec bash "$2" --user' \
+        _ "$TEST_ROOT" "$ROOT_DIR/scripts/install-codex.sh"
+    installer_pid="$OWNED_PID"
+    set +e
+    wait "$installer_pid"
+    installer_status=$?
+    set -e
+    unregister_pid "$installer_pid"
+    if ! kill -0 -- "-$installer_pid" 2>/dev/null; then
+        unregister_pgid "$installer_pid"
+    fi
+    return "$installer_status"
 }
 
 if ! run_installer > "$LOG_DIR/installer-first.stdout" 2> "$LOG_DIR/installer-first.stderr"; then
@@ -387,9 +423,13 @@ start_session() {
     local hook_input="${4:-}"
     local hook_output="${5:-}"
     local sandbox_mode="${6:-read-only}"
-    CODEX_LIFECYCLE_HOOK_INPUT="$hook_input" \
-    CODEX_LIFECYCLE_HOOK_OUTPUT="$hook_output" \
-    run_codex exec \
+    start_owned_process env \
+        HOME="$TEST_HOME" \
+        CODEX_HOME="$CODEX_HOME" \
+        OPENAI_API_KEY=dummy \
+        CODEX_LIFECYCLE_HOOK_INPUT="$hook_input" \
+        CODEX_LIFECYCLE_HOOK_OUTPUT="$hook_output" \
+        codex exec \
         --cd "$workspace" \
         --skip-git-repo-check \
         --dangerously-bypass-hook-trust \
@@ -399,9 +439,8 @@ start_session() {
         -c "model_providers.lifecycle={ name = \"Lifecycle\", base_url = \"$RESPONSES_BASE_URL\", env_key = \"OPENAI_API_KEY\", wire_api = \"responses\", supports_websockets = false }" \
         "$prompt" \
         </dev/null \
-        > "$LOG_DIR/$label.stdout" 2> "$LOG_DIR/$label.stderr" &
-    SESSION_PID=$!
-    register_pid "$SESSION_PID"
+        > "$LOG_DIR/$label.stdout" 2> "$LOG_DIR/$label.stderr"
+    SESSION_PID="$OWNED_PID"
 }
 
 finish_session() {
@@ -412,7 +451,7 @@ finish_session() {
         sleep 60
         if kill -0 "$pid" 2>/dev/null; then
             : > "$timeout_marker"
-            kill "$pid" 2>/dev/null || true
+            kill -TERM -- "-$pid" 2>/dev/null || true
         fi
     ) &
     local watchdog_pid=$!
@@ -423,6 +462,9 @@ finish_session() {
     status=$?
     set -e
     unregister_pid "$pid"
+    if ! kill -0 -- "-$pid" 2>/dev/null; then
+        unregister_pgid "$pid"
+    fi
     kill "$watchdog_pid" 2>/dev/null || true
     wait "$watchdog_pid" 2>/dev/null || true
     unregister_pid "$watchdog_pid"
