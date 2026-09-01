@@ -16,12 +16,14 @@ SUPPORTED_REFS = {
     "actions/setup-node": {"v7"},
 }
 BLOCK_ACTION_PATTERN = re.compile(
-    r'''^(\s*)(-\s+)?(["']?)uses\3\s*:\s*(["']?)'''
+    r'''^(\s*)(-\s+)?(["']?)uses\3\s*:\s*'''
+    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
     r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#"']+)\4'''
     r'''(?:\s*(?:#.*)?)$'''
 )
 FLOW_ACTION_PATTERN = re.compile(
-    r'''^(\s*)-\s*\{.*?(["']?)uses\2\s*:\s*(["']?)'''
+    r'''^(\s*)-\s*\{.*?(["']?)uses\2\s*:\s*'''
+    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
     r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,}"']+)\3(?=\s*[,}])'''
 )
 FLOW_WITH_PATTERN = re.compile(
@@ -29,11 +31,20 @@ FLOW_WITH_PATTERN = re.compile(
 )
 FLOW_CACHE_PATTERN = re.compile(
     r'''(?:^|,)\s*(?:package-manager-cache|"package-manager-cache"|'''
-    r'''\'package-manager-cache\')\s*:\s*(?:false|"false"|'false')\s*(?=,|$)'''
+    r'''\'package-manager-cache\')\s*:\s*'''
+    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(?:false|"false"|'false')\s*(?=,|$)'''
 )
 ACTION_USES_PATTERN = re.compile(
-    r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*(["']?)'''
+    r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*'''
+    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
     r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)\2'''
+)
+USES_ALIAS_PATTERN = re.compile(
+    r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*\*[A-Za-z0-9_-]+'''
+)
+INLINE_WITH_PATTERN = re.compile(
+    r'''^(\s*)(["']?)with\2\s*:\s*'''
+    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*\{([^{}]*)\}\s*(?:#.*)?$'''
 )
 
 
@@ -74,6 +85,11 @@ def parser_failures():
         "        uses: 'actions/setup-node@v4'": ("actions/setup-node", "v4"),
         '      - "uses": actions/checkout@v4': ("actions/checkout", "v4"),
         "        'uses': actions/setup-go@v6": ("actions/setup-go", "v6"),
+        "      - uses: &checkout actions/checkout@v4": (
+            "actions/checkout",
+            "v4",
+        ),
+        "      - uses: !!str actions/setup-go@v6": ("actions/setup-go", "v6"),
         "  #     - uses: actions/setup-go@v6": ("actions/setup-go", "v6"),
         "      - { uses: actions/checkout@v4 }": ("actions/checkout", "v4"),
         '      - { name: Checkout, "uses": "actions/checkout@v4" }': (
@@ -93,6 +109,8 @@ def parser_failures():
         failures.append("action parser unexpectedly accepted fallback fixture")
     if find_action_reference(fallback_line) != ("actions/checkout", "v4"):
         failures.append("action fallback missed unrecognized syntax fixture")
+    if not USES_ALIAS_PATTERN.search("      - uses: *checkout"):
+        failures.append("action fallback missed alias fixture")
     return failures
 
 
@@ -123,6 +141,16 @@ def cache_parser_failures():
                 '        "with":',
                 '          "package-manager-cache": "false"',
                 '        "uses": actions/setup-node@v7',
+            ],
+            3,
+            True,
+        ),
+        (
+            [
+                "      - name: Set up Node",
+                "        with: &inputs",
+                "          package-manager-cache: &disabled false",
+                "        uses: actions/setup-node@v7",
             ],
             3,
             True,
@@ -183,6 +211,14 @@ def cache_parser_failures():
             0,
             False,
         ),
+        (
+            [
+                "      - uses: &setup-node actions/setup-node@v7",
+                "        with: { package-manager-cache: false }",
+            ],
+            0,
+            True,
+        ),
     )
     failures = []
     for lines, uses_index, expected in cases:
@@ -237,8 +273,17 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
             break
 
     for index in range(step_start, step_end):
+        inline_with_match = INLINE_WITH_PATTERN.match(lines[index])
+        if (
+            inline_with_match
+            and len(inline_with_match.group(1)) == step_key_indentation
+        ):
+            return bool(FLOW_CACHE_PATTERN.search(inline_with_match.group(3)))
+
         with_match = re.match(
-            r'''^(\s*)(["']?)with\2\s*:\s*(?:#.*)?$''', lines[index]
+            r'''^(\s*)(["']?)with\2\s*:\s*'''
+            r'''(?:(?:&|!)[^\s,\[\]{}]+\s*)*(?:#.*)?$''',
+            lines[index],
         )
         if not with_match or len(with_match.group(1)) != step_key_indentation:
             continue
@@ -260,6 +305,7 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
                 continue
             if re.match(
                 r'''^\s*(["']?)package-manager-cache\1\s*:\s*'''
+                r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
                 r'''(?:false|"false"|'false')\s*(?:#.*)?$''',
                 line,
             ):
@@ -303,6 +349,9 @@ def main():
                         f"{location}: unrecognized action step syntax for "
                         f"{action}@{action_ref}"
                     )
+                elif USES_ALIAS_PATTERN.search(candidate_line):
+                    location = f"{path.relative_to(ROOT)}:{index + 1}"
+                    failures.append(f"{location}: action aliases are not supported")
                 continue
 
             discovered += 1
