@@ -1085,21 +1085,56 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-echo -n "Bootstrap honors GOPHER_AI_ARCHIVE_URL override... "
 # Regression test for #146 review finding: setting GOPHER_AI_ARCHIVE_URL must
 # bypass the git-clone preference so callers can test PR tarballs / mirrors.
 # This test runs install-codex.sh from a path WITHOUT scripts/build-universal.sh
 # (so bootstrap_repo() runs), points GOPHER_AI_ARCHIVE_URL at a local tarball,
 # and asserts the script logs "Bootstrap source: curl <archive>" — proving the
 # archive path ran rather than the default git-clone path.
-TMP_HOME=$(mktemp -d)
-TMP_SCRIPT_DIR=$(mktemp -d)
-TMP_ARCHIVE_DIR=$(mktemp -d)
+BOOTSTRAP_SENTINEL_DETENT_DIR_EXISTED=false
+BOOTSTRAP_SENTINEL_TMP_DIR_EXISTED=false
+if [ -d "$ROOT_DIR/.detent" ]; then
+  BOOTSTRAP_SENTINEL_DETENT_DIR_EXISTED=true
+fi
+if [ -d "$ROOT_DIR/.detent/tmp" ]; then
+  BOOTSTRAP_SENTINEL_TMP_DIR_EXISTED=true
+fi
+mkdir -p "$ROOT_DIR/.detent/tmp"
+BOOTSTRAP_TEMP_BASE="${TMPDIR:-${TMP:-${TEMP:-$ROOT_DIR/.detent/tmp}}}"
+BOOTSTRAP_TEMP_BASE="${BOOTSTRAP_TEMP_BASE%/}"
+BOOTSTRAP_TEMP_ROOT=$(mktemp -d "$BOOTSTRAP_TEMP_BASE/gopher-ai-bootstrap-archive.XXXXXX")
+TMP_HOME="$BOOTSTRAP_TEMP_ROOT/home"
+TMP_SCRIPT_DIR="$BOOTSTRAP_TEMP_ROOT/script"
+TMP_ARCHIVE_DIR="$BOOTSTRAP_TEMP_ROOT/archive"
+BOOTSTRAP_ARCHIVE_SENTINEL="gopher-ai-bootstrap-archive-sentinel.${BOOTSTRAP_TEMP_ROOT##*/}"
+mkdir -p "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
+printf '%s\n' 'must not be archived' > "$ROOT_DIR/.detent/tmp/$BOOTSTRAP_ARCHIVE_SENTINEL"
 cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_SCRIPT_DIR/install-codex.sh"
-cp -R "$ROOT_DIR" "$TMP_ARCHIVE_DIR/gopher-ai-main"
+git -C "$ROOT_DIR" archive --format=tar --prefix=gopher-ai-main/ HEAD | tar -xf - -C "$TMP_ARCHIVE_DIR"
 tar -czf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" -C "$TMP_ARCHIVE_DIR" gopher-ai-main
+BOOTSTRAP_ARCHIVE_MEMBERS=$(tar -tzf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz")
+BOOTSTRAP_ARCHIVE_ERRORS=""
+if [ -e "$TMP_ARCHIVE_DIR/gopher-ai-main/.detent/tmp/$BOOTSTRAP_ARCHIVE_SENTINEL" ]; then
+  BOOTSTRAP_ARCHIVE_ERRORS="$BOOTSTRAP_ARCHIVE_ERRORS\n  staged source contains .detent/tmp/$BOOTSTRAP_ARCHIVE_SENTINEL"
+fi
+if printf '%s\n' "$BOOTSTRAP_ARCHIVE_MEMBERS" | awk -v sentinel="$BOOTSTRAP_ARCHIVE_SENTINEL" '$0 == "gopher-ai-main/.detent/tmp/" sentinel { found=1 } END { exit found ? 0 : 1 }'; then
+  BOOTSTRAP_ARCHIVE_ERRORS="$BOOTSTRAP_ARCHIVE_ERRORS\n  tarball contains .detent/tmp/$BOOTSTRAP_ARCHIVE_SENTINEL"
+fi
+BOOTSTRAP_ARCHIVE_PREFIX_ERRORS=$(printf '%s\n' "$BOOTSTRAP_ARCHIVE_MEMBERS" | awk '$0 !~ /^gopher-ai-main\// || $0 ~ /^gopher-ai-main\/gopher-ai-main\// { print }')
+if [ -n "$BOOTSTRAP_ARCHIVE_PREFIX_ERRORS" ]; then
+  BOOTSTRAP_ARCHIVE_ERRORS="$BOOTSTRAP_ARCHIVE_ERRORS\n  tarball does not have exactly one gopher-ai-main/ prefix"
+fi
+echo -n "Bootstrap archive excludes workspace temp fixtures... "
+if [ -n "$BOOTSTRAP_ARCHIVE_ERRORS" ]; then
+  echo "FAIL"
+  printf '%b\n' "$BOOTSTRAP_ARCHIVE_ERRORS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
 mkdir -p "$TMP_HOME/.codex/skills"
-LOG_FILE=$(mktemp)
+LOG_FILE="$BOOTSTRAP_TEMP_ROOT/install.log"
+echo -n "Bootstrap honors GOPHER_AI_ARCHIVE_URL override... "
 if HOME="$TMP_HOME" GOPHER_AI_ARCHIVE_URL="file://$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" \
    bash "$TMP_SCRIPT_DIR/install-codex.sh" --cleanup --yes >"$LOG_FILE" 2>&1; then
   # Strict assertion: the bootstrap log line must show the archive path was used,
@@ -1120,8 +1155,14 @@ else
   sed -n '1,30p' "$LOG_FILE"
   ERRORS=$((ERRORS + 1))
 fi
-rm -rf "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
-rm -f "$LOG_FILE"
+rm -f "$ROOT_DIR/.detent/tmp/$BOOTSTRAP_ARCHIVE_SENTINEL"
+rm -rf "$BOOTSTRAP_TEMP_ROOT"
+if [ "$BOOTSTRAP_SENTINEL_TMP_DIR_EXISTED" = false ]; then
+  rmdir "$ROOT_DIR/.detent/tmp" 2>/dev/null || true
+fi
+if [ "$BOOTSTRAP_SENTINEL_DETENT_DIR_EXISTED" = false ]; then
+  rmdir "$ROOT_DIR/.detent" 2>/dev/null || true
+fi
 
 echo -n "SessionStart hook auto-cleans legacy Codex skills... "
 TMP_HOME=$(mktemp -d)
