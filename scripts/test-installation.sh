@@ -229,6 +229,8 @@ CODEX_GO_WORKFLOW_SKILL="$ROOT_DIR/dist/codex/plugins/go-workflow/skills/start-i
 CODEX_GOPHER_GUIDES_SKILL="$ROOT_DIR/dist/codex/plugins/gopher-guides/skills/gopher-guides/SKILL.md"
 GEMINI_GO_WORKFLOW_SKILL="$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/skills/start-issue/SKILL.md"
 GEMINI_GOPHER_GUIDES_SKILL="$ROOT_DIR/dist/gemini/gopher-ai-gopher-guides/skills/gopher-guides/SKILL.md"
+GEMINI_GO_DEV_ROUTER="$ROOT_DIR/dist/gemini/gopher-ai-go-dev/skills/explain/SKILL.md"
+GEMINI_GO_DEV_COMMAND="$ROOT_DIR/dist/gemini/gopher-ai-go-dev/commands/explain.toml"
 BUILT_RESOURCE_FAILURE=""
 for codex_skill in "$CODEX_GO_WORKFLOW_SKILL" "$CODEX_GOPHER_GUIDES_SKILL"; do
   if [ ! -f "$codex_skill" ]; then
@@ -255,6 +257,10 @@ if [ -z "$BUILT_RESOURCE_FAILURE" ]; then
     BUILT_RESOURCE_FAILURE="Codex artifacts omit representative bundled resources"
   elif [ ! -f "$GEMINI_GO_WORKFLOW_SKILL" ] || [ ! -f "$GEMINI_GOPHER_GUIDES_SKILL" ]; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts omit representative skills"
+  elif [ -e "$GEMINI_GO_DEV_ROUTER" ]; then
+    BUILT_RESOURCE_FAILURE="Gemini artifacts include a Codex command router"
+  elif [ ! -f "$GEMINI_GO_DEV_COMMAND" ]; then
+    BUILT_RESOURCE_FAILURE="Gemini artifacts omit the routed command"
   elif grep -Fq '<PLUGIN_ROOT>' "$GEMINI_GO_WORKFLOW_SKILL" "$GEMINI_GOPHER_GUIDES_SKILL"; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts retain unresolved plugin-root notation"
   elif ! grep -Fq '$HOME/.gemini/extensions/gopher-ai-go-workflow/lib/driver-interaction.md' "$GEMINI_GO_WORKFLOW_SKILL" ||
@@ -644,6 +650,9 @@ else
   fi
   for asset in \
     "gopher-ai-go-workflow/lib/ship/local-review.md" \
+    "gopher-ai-go-dev/commands/bench.md" \
+    "gopher-ai-go-dev/lib/codex-command-adapter.md" \
+    "gopher-ai-go-dev/scripts/validate-skills.py" \
     "gopher-ai-llm-tools/prompts/codex-review.md" \
     "gopher-ai-go-web/templates/deploy/Dockerfile" \
     "gopher-ai-go-web/references/convert-to-go-project.md"; do

@@ -1,45 +1,35 @@
 ---
 name: validate-skills
-description: "Validate bash and shell code blocks embedded in plugin commands and skills .md files. Catches syntax errors, undefined variables, unclosed quotes, missing semicolons. Use when editing files under plugins/*/commands/*.md or plugins/*/skills/*/SKILL.md, when creating a new command or skill in this repo, or when CI fails on a markdown bash-block syntax check."
+description: "Validates fenced bash, sh, shell, and zsh blocks in plugin Markdown with syntax checks, conservative command classification, guarded execution, and portability review. Use after editing command or skill Markdown or when its shell validation fails."
+argument-hint: "[file|directory] [--json]"
 ---
 
 # Validate Skills
 
-When working on `.md` command or skill files that contain fenced bash/shell code blocks, suggest running `/validate-skills` to catch issues before they ship.
+Use `$go-dev:validate-skills [file|directory] [--json]` to validate one file,
+one directory, or the default plugin command and skill Markdown paths.
 
-## What It Catches
+## Plugin Resource Resolution
 
-- **Syntax errors**: Unclosed quotes, mismatched if/fi, invalid redirections (`bash -n`)
-- **Shell pitfalls**: Unquoted variables, deprecated syntax, SC2015 `A && B || C` (`shellcheck`)
-- **Portability issues**: macOS vs Linux differences (`mktemp` templates, `sed -i`, `grep -P`, `readlink -f`, `date` flags)
-- **Unsafe commands**: RED-tier commands (`rm`, `sudo`, `eval`, pipe-to-shell) flagged as warnings
-- **Template variable handling**: Blocks with unresolvable plugin variables (`$CLAUDE_PLUGIN_ROOT`, `$ARGUMENTS`, `$SKILL_ARGS`, `$MODEL`) are skipped for execution but still syntax-checked
-- **Execution failures**: GREEN-tier read-only commands that fail at runtime (broken `jq` filters, invalid `grep` patterns, `mktemp` template errors)
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root
+before every resource read or command:
 
-## Common Pitfalls in Plugin Markdown
+- **Codex:** Start from the directory containing the absolute selected
+  `SKILL.md` path, then ascend two directories (`skills/<name>` to plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
 
-### macOS vs Linux
-- `mktemp /tmp/foo.XXXXXX.md` — template characters must be at end on macOS, use `mktemp /tmp/foo-XXXXXX` + rename
-- `sed -i '' 's/old/new/' file` (macOS) vs `sed -i 's/old/new/' file` (Linux) — use `sed -i.bak` for portability
-- `grep -P` not available on macOS — use `grep -E` instead
-- `readlink -f` not available on macOS — use `realpath` or `cd ... && pwd`
-- `date -d` (Linux) vs `date -j -f` (macOS)
+Read both shared workflow files completely before acting:
 
-### Shell Safety
-- `A && B || C` is NOT if/else — if B fails, C still runs (ShellCheck SC2015)
-- Unquoted `$VAR` splits on whitespace and expands globs — always quote: `"$VAR"`
-- `[ -z $VAR ]` fails if VAR is empty — use `[ -z "$VAR" ]`
+1. `<PLUGIN_ROOT>/lib/codex-command-adapter.md`
+2. `<PLUGIN_ROOT>/commands/validate-skills.md`
 
-### External Tool Output
-- Never assume tool output is pure JSON — check for banners, headers, progress bars
-- `curl` may return HTML error pages on failure — check HTTP status codes
-- `gh` CLI output format changes between versions — prefer `--json` + `--jq`
+Resolve `<PLUGIN_ROOT>/scripts/validate-skills.py`, pass the adapter-bound
+`SKILL_ARGS` as distinct arguments without evaluating them, and execute the
+helper. With `--json`, return its stdout unchanged so the result remains one
+JSON object. Propagate its exit status.
 
-## Usage
+Use these references when interpreting findings or changing validator rules:
 
-```
-/validate-skills                              # Validate all plugin .md files
-/validate-skills plugins/go-dev/commands/     # Validate a directory
-/validate-skills path/to/command.md           # Validate a specific file
-/validate-skills --json                       # Output structured JSON
-```
+- `<PLUGIN_ROOT>/lib/validate-skills/classification.md`
+- `<PLUGIN_ROOT>/lib/validate-skills/execution.md`
+- `<PLUGIN_ROOT>/lib/validate-skills/ai-review.md`

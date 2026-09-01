@@ -12,7 +12,7 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | **OpenAI Codex CLI** | 6 plugins; capabilities vary | Repository-backed, user-wide, or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
-Shipped surface: 36 Claude Code commands across 7 plugins; 21 Codex skills across 6 plugins; 8 optional Codex MCP tools.
+Shipped surface: 36 Claude Code commands across 7 plugins; 29 Codex skills across 6 plugins; 8 optional Codex MCP tools.
 
 See the [platform capability matrix](docs/platform-capabilities.md) for exact
 qualified names and workflows that are not yet available on Codex.
@@ -178,13 +178,25 @@ The `address-review` skill automates PR review handling:
 
 ### go-dev
 
-Go-specific development tools with idiomatic best practices.
+Go-specific development tools with idiomatic best practices. Claude Code uses
+slash commands; Codex uses the exact qualified skill names below.
 
-| Command | Description |
-|---------|-------------|
-| `/test-gen <target>` | Generate comprehensive Go tests with table-driven patterns |
-| `/lint-fix [path]` | Auto-fix Go linting issues with golangci-lint |
-| `/explain <target>` | Deep-dive explanation of Go code with diagrams |
+| Workflow | Claude Code | Codex |
+|----------|-------------|-------|
+| Benchmarks | `/go-dev:bench <target>` | `$go-dev:bench <target>` |
+| Build repair | `/go-dev:build-fix [log-path]` | `$go-dev:build-fix [log-path]` |
+| Code explanation | `/go-dev:explain <target> [--json]` | `$go-dev:explain <target> [--json]` |
+| Lint repair | `/go-dev:lint-fix [path] [--check]` | `$go-dev:lint-fix [path] [--check]` |
+| Profiling workflow | `/go-dev:profile <target>` | `$go-dev:profile <target>` |
+| Refactoring cleanup | `/go-dev:refactor-clean [path] [--dry-run]` | `$go-dev:refactor-clean [path] [--dry-run]` |
+| Test generation | `/go-dev:test-gen <target> [--json]` | `$go-dev:test-gen <target> [--json]` |
+| Skill validation | `/go-dev:validate-skills [file\|directory] [--json]` | `$go-dev:validate-skills [file\|directory] [--json]` |
+| Full verification | `/go-dev:verify [path]` | `$go-dev:verify [path]` |
+
+The advisory `go` and `go-profiling-optimization` skills remain available on
+both platforms. In Codex, invoke them explicitly as `$go-dev:go` and
+`$go-dev:go-profiling-optimization`. The `cancel-loop` command remains
+Claude-only because it controls Claude persistent-loop hooks.
 
 ### productivity
 

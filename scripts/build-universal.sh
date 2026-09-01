@@ -92,7 +92,7 @@ gopher-ai is a Go-focused development toolkit distributed as both Claude Code pl
 | Plugin | Description | Skills |
 |--------|-------------|--------|
 | `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review |
-| `go-dev` | Go development tools and best practices | go-best-practices, go-profiling-optimization, systematic-debugging, validate-skills |
+| `go-dev` | Go development tools and best practices | bench, build-fix, explain, go, go-profiling-optimization, lint-fix, profile, refactor-clean, test-gen, validate-skills, verify |
 | `gopher-guides` | Gopher Guides training materials | gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | second-opinion, gemini-image |
 | `go-web` | Go web scaffolding (Templ + HTMX) | templui, htmx |
@@ -230,6 +230,9 @@ build_gemini() {
         if [[ -d "${plugin_dir}skills/" ]]; then
             for skill_dir in "${plugin_dir}skills/"*/; do
                 if [[ -f "${skill_dir}SKILL.md" ]]; then
+                    if grep -Fq 'lib/codex-command-adapter.md' "${skill_dir}SKILL.md"; then
+                        continue
+                    fi
                     skill_name=$(basename "$skill_dir")
                     mkdir -p "$ext_dir/skills/$skill_name"
                     cp "${skill_dir}"*.md "$ext_dir/skills/$skill_name/"
@@ -255,6 +258,7 @@ build_gemini() {
             for cmd_file in "${plugin_dir}commands/"*.md; do
                 if [[ -f "$cmd_file" ]]; then
                     cmd_name=$(basename "$cmd_file" .md)
+                    cp "$cmd_file" "$ext_dir/commands/"
                     convert_command_to_toml "$cmd_file" "$cmd_name" > "$ext_dir/commands/${cmd_name}.toml"
                 fi
             done

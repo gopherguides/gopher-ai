@@ -13,7 +13,7 @@ The Codex plugin set currently includes `go-workflow`, `go-dev`, `gopher-guides`
 | Plugin | Description | Skills |
 |--------|-------------|--------|
 | `go-workflow` | Issue-to-PR workflow automation | start-issue, worktree, cancel-loop, commit, create-pr, ship, address-review, review-deep, complete-issue, e2e-verify, tmux-start |
-| `go-dev` | Go development tools and best practices | go, go-profiling-optimization, validate-skills |
+| `go-dev` | Go development tools and best practices | bench, build-fix, explain, go, go-profiling-optimization, lint-fix, profile, refactor-clean, test-gen, validate-skills, verify |
 | `gopher-guides` | Gopher Guides training materials | gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | second-opinion, gemini-image |
 | `go-web` | Go web scaffolding (Templ + HTMX) | templui, htmx, convert-to-go-project |
