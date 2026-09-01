@@ -360,6 +360,10 @@ fi
 for nested_reference in "${CREATE_NESTED_REFERENCES[@]}"; do
   require_literal "$nested_reference" '<PLUGIN_ROOT>' \
     "shared creation reference must use the portable plugin root: $nested_reference"
+  require_literal "$nested_reference" 'If the caller has not bound it, resolve it directly' \
+    "shared creation reference must support callers without a bound plugin root: $nested_reference"
+  require_literal "$nested_reference" 'ascend two directories' \
+    "shared creation reference must resolve the plugin root from a Codex skill: $nested_reference"
   reject_literal "$nested_reference" '${CLAUDE_PLUGIN_ROOT}' \
     "shared creation reference must not depend on a Claude-only plugin root: $nested_reference"
 done
