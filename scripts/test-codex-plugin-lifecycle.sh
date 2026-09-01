@@ -73,25 +73,34 @@ start_owned_process() {
 terminate_process_group() {
     local pgid="$1"
     local attempts="${2:-50}"
-    local attempt
+    local timeout_marker="$TEST_ROOT/process-group-$pgid.timeout"
+    local watchdog_pid
     if ! kill -0 -- "-$pgid" 2>/dev/null; then
         return 0
     fi
+    (
+        local attempt
+        for attempt in $(seq 1 "$attempts"); do
+            if ! kill -0 -- "-$pgid" 2>/dev/null; then
+                exit 0
+            fi
+            sleep 0.1
+        done
+        if kill -0 -- "-$pgid" 2>/dev/null; then
+            : > "$timeout_marker"
+            kill -KILL -- "-$pgid" 2>/dev/null || true
+        fi
+    ) &
+    watchdog_pid=$!
     kill -TERM -- "-$pgid" 2>/dev/null || true
-    for attempt in $(seq 1 "$attempts"); do
-        if ! kill -0 -- "-$pgid" 2>/dev/null; then
-            return 0
-        fi
+    wait "$pgid" 2>/dev/null || true
+    unregister_pid "$pgid"
+    while kill -0 -- "-$pgid" 2>/dev/null && [[ ! -f "$timeout_marker" ]]; do
         sleep 0.1
     done
-    kill -KILL -- "-$pgid" 2>/dev/null || true
-    for attempt in $(seq 1 10); do
-        if ! kill -0 -- "-$pgid" 2>/dev/null; then
-            return 1
-        fi
-        sleep 0.1
-    done
-    return 1
+    kill "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
+    [[ ! -f "$timeout_marker" ]]
 }
 
 terminate_active_process_groups() {
