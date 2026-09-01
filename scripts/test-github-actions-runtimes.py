@@ -1205,43 +1205,34 @@ def scan_parsed_yaml(path, source=None):
 
     failures = []
     discovered = 0
-    visited = set()
+    step_collections = []
+    if WORKFLOWS in path.parents:
+        for jobs_node in yaml_mapping_values(root, "jobs"):
+            if not isinstance(jobs_node, yaml.MappingNode):
+                continue
+            for _, job_node in jobs_node.value:
+                step_collections.extend(yaml_mapping_values(job_node, "steps"))
+    elif COMPOSITE_ACTIONS in path.parents:
+        for runs_node in yaml_mapping_values(root, "runs"):
+            step_collections.extend(yaml_mapping_values(runs_node, "steps"))
 
-    def visit(node):
-        nonlocal discovered
-        if id(node) in visited:
-            return
-        visited.add(id(node))
-        if isinstance(node, yaml.MappingNode):
-            for steps_node in yaml_mapping_values(node, "steps"):
-                if not isinstance(steps_node, yaml.SequenceNode):
-                    location = (
-                        f"{path.relative_to(ROOT)}:"
-                        f"{steps_node.start_mark.line + 1}"
-                    )
-                    failures.append(f"{location}: steps must be a sequence")
-                    continue
-                for step in steps_node.value:
-                    if not isinstance(step, yaml.MappingNode):
-                        location = (
-                            f"{path.relative_to(ROOT)}:"
-                            f"{step.start_mark.line + 1}"
-                        )
-                        failures.append(
-                            f"{location}: action step aliases must resolve to mappings"
-                        )
-                        continue
-                    step_failures, step_discovered = scan_yaml_action_step(path, step)
-                    failures.extend(step_failures)
-                    discovered += step_discovered
-            for key, value in node.value:
-                visit(key)
-                visit(value)
-        elif isinstance(node, yaml.SequenceNode):
-            for value in node.value:
-                visit(value)
-
-    visit(root)
+    for steps_node in step_collections:
+        if not isinstance(steps_node, yaml.SequenceNode):
+            location = (
+                f"{path.relative_to(ROOT)}:{steps_node.start_mark.line + 1}"
+            )
+            failures.append(f"{location}: steps must be a sequence")
+            continue
+        for step in steps_node.value:
+            if not isinstance(step, yaml.MappingNode):
+                location = f"{path.relative_to(ROOT)}:{step.start_mark.line + 1}"
+                failures.append(
+                    f"{location}: action step aliases must resolve to mappings"
+                )
+                continue
+            step_failures, step_discovered = scan_yaml_action_step(path, step)
+            failures.extend(step_failures)
+            discovered += step_discovered
     return failures, discovered
 
 
@@ -1268,7 +1259,7 @@ jobs:
 """,
     )
     failures = []
-    fixture_path = ROOT / "runtime-policy-fixture.yml"
+    fixture_path = WORKFLOWS / "runtime-policy-fixture.yml"
     for source in cases:
         findings, discovered = scan_parsed_yaml(fixture_path, source)
         if discovered != 1 or not any(
@@ -1289,6 +1280,24 @@ jobs:
     findings, discovered = scan_parsed_yaml(fixture_path, alias_source)
     if findings or discovered != 1:
         failures.append("semantic YAML parser missed input alias fixture")
+    unrelated_steps_source = """
+on:
+  workflow_call:
+    inputs:
+      steps:
+        type: string
+jobs:
+  test:
+    env:
+      steps: hello
+    steps:
+      - uses: actions/checkout@v7
+"""
+    findings, discovered = scan_parsed_yaml(
+        fixture_path, unrelated_steps_source
+    )
+    if findings or discovered != 1:
+        failures.append("semantic YAML parser promoted unrelated steps fixture")
     return failures
 
 
