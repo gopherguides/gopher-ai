@@ -4,6 +4,7 @@ GITHUB_CHECKS_FAILED=1
 GITHUB_CHECKS_REGISTRATION_TIMEOUT=2
 GITHUB_CHECKS_API_ERROR=3
 GITHUB_CHECKS_HEAD_SHIFT=4
+GITHUB_CHECKS_TERMINAL_TIMEOUT=5
 
 github_pr() {
   local pr_number="${1:?PR number is required}"
@@ -119,6 +120,7 @@ github_watch_pr_checks() {
   local registration_attempts="${GITHUB_CHECK_REGISTRATION_ATTEMPTS:-12}"
   local stability_polls="${GITHUB_CHECK_STABILITY_POLLS:-2}"
   local poll_seconds="${GITHUB_CHECK_POLL_SECONDS:-10}"
+  local terminal_attempts="${GITHUB_CHECK_TERMINAL_ATTEMPTS:-60}"
   local pr_json
   local current_sha
   local snapshot=""
@@ -130,6 +132,8 @@ github_watch_pr_checks() {
   local signature
   local stable_signature=""
   local stable_count=0
+  local terminal_attempt=1
+  local pending_checks
 
   if ! pr_json=$(github_pr "$pr_number"); then
     return "$GITHUB_CHECKS_API_ERROR"
@@ -179,6 +183,27 @@ github_watch_pr_checks() {
       stable_count=0
     fi
 
+    if [ "$terminal_attempt" -ge "$terminal_attempts" ]; then
+      if ! pr_json=$(github_pr "$pr_number"); then
+        return "$GITHUB_CHECKS_API_ERROR"
+      fi
+      current_sha=$(jq -er '.head.sha' <<< "$pr_json") || return "$GITHUB_CHECKS_API_ERROR"
+      if [ "$current_sha" != "$expected_sha" ]; then
+        return "$GITHUB_CHECKS_HEAD_SHIFT"
+      fi
+
+      pending_checks=$(jq -r '.items[] | select(.terminal == false) | "\(.name): \(.state)"' <<< "$snapshot") || return "$GITHUB_CHECKS_API_ERROR"
+      printf 'Timed out waiting for PR #%s checks at %s to reach a stable terminal state after %s polls.\n' \
+        "$pr_number" "$expected_sha" "$terminal_attempts" >&2
+      if [ -n "$pending_checks" ]; then
+        printf 'Pending checks:\n%s\n' "$pending_checks" >&2
+      else
+        printf 'No checks are pending, but the terminal check set did not stabilize.\n' >&2
+      fi
+      return "$GITHUB_CHECKS_TERMINAL_TIMEOUT"
+    fi
+
+    terminal_attempt=$((terminal_attempt + 1))
     sleep "$poll_seconds"
     if ! snapshot=$(github_check_snapshot "$expected_sha"); then
       return "$GITHUB_CHECKS_API_ERROR"

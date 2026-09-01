@@ -32,6 +32,16 @@ assert_status() {
   fi
 }
 
+assert_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local label="$3"
+
+  if [[ "$haystack" != *"$needle"* ]]; then
+    fail "$label (missing '$needle')"
+  fi
+}
+
 printf '=== GitHub REST Helper Tests ===\n'
 
 if [ ! -f "$REST_LIB" ]; then
@@ -166,6 +176,40 @@ failure_status=$?
 set -e
 assert_status "$GITHUB_CHECKS_FAILED" "$failure_status" "terminal check failures use the failure status"
 assert_equal "2" "$(printf '%s' "$failure_output" | jq '[.items[] | select(.terminal and (.successful | not))] | length')" "all terminal failures are reported together"
+
+terminal_wait_state=$(mktemp "${TMPDIR:-/tmp}/github-rest-terminal-wait-XXXXXX")
+printf '0\n' > "$terminal_wait_state"
+set +e
+terminal_timeout_output=$(
+  gh() {
+    if [[ "$*" == *"pulls/41"* ]]; then
+      printf '%s\n' '{"number":41,"head":{"sha":"head-sha"}}'
+    elif [[ "$*" == *"check-runs"* ]]; then
+      local count
+      count=$(cat "$terminal_wait_state")
+      count=$((count + 1))
+      printf '%s\n' "$count" > "$terminal_wait_state"
+      if [ "$count" -le 2 ]; then
+        printf '%s\n' '[{"check_runs":[{"id":1,"name":"unit","status":"in_progress","conclusion":null,"app":{"slug":"actions"}}]}]'
+      else
+        return 1
+      fi
+    elif [[ "$*" == *"/status"* ]]; then
+      printf '%s\n' '{"statuses":[{"id":7,"context":"legacy","state":"pending"}]}'
+    else
+      return 1
+    fi
+  }
+  sleep() { :; }
+  GITHUB_CHECK_TERMINAL_ATTEMPTS=2 github_watch_pr_checks 41 "head-sha" 2>&1
+)
+terminal_timeout_status=$?
+set -e
+rm -f "$terminal_wait_state"
+assert_equal "5" "${GITHUB_CHECKS_TERMINAL_TIMEOUT:-}" "terminal wait timeout exposes a distinct status"
+assert_status 5 "$terminal_timeout_status" "permanently pending checks hit the terminal wait bound"
+assert_contains "$terminal_timeout_output" "unit: in_progress" "terminal wait timeout reports the pending check-run"
+assert_contains "$terminal_timeout_output" "legacy: pending" "terminal wait timeout reports the pending commit status"
 
 late_state=$(mktemp "${TMPDIR:-/tmp}/github-rest-late-XXXXXX")
 printf '0\n' > "$late_state"
