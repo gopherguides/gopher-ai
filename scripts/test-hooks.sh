@@ -93,13 +93,13 @@ fi
 POST_TOOL_USE_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-post-tool-use.XXXXXX")
 POST_TOOL_USE_HOOK="$ROOT_DIR/plugins/go-workflow/hooks/post-tool-use.sh"
 
-printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"Process exited with code 1\nFinal output:\nmain.go:12:3: undefined: missingName"}' \
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"main.go:12:3: undefined: missingName\n"}' \
   > "$POST_TOOL_USE_ROOT/codex-compilation.json"
 printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"","stderr":"dial tcp 192.0.2.1:443: i/o timeout","exit_code":1}}' \
   > "$POST_TOOL_USE_ROOT/codex-timeout.json"
 printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"golangci-lint returned an error","exit_code":1}}' \
   > "$POST_TOOL_USE_ROOT/codex-lint.json"
-printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"Process exited with code 1\nFinal output:\nopen protected.txt: permission denied"}' \
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"","stderr":"open protected.txt: permission denied","exit_code":1}}' \
   > "$POST_TOOL_USE_ROOT/codex-permission.json"
 printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"build completed","exit_code":0}}' \
   > "$POST_TOOL_USE_ROOT/codex-normal.json"
@@ -152,15 +152,16 @@ is_supported_codex_post_tool_use_response() {
   ' >/dev/null 2>&1
 }
 
-echo -n "  Codex PostToolUse reads string tool_response compilation failures... "
+echo -n "  Codex PostToolUse preserves status-unknown string diagnostics as context... "
 CODEX_COMPILE_OUTPUT=$(run_post_tool_use_fixture \
   "$POST_TOOL_USE_ROOT/codex-compilation.json" \
   "$POST_TOOL_USE_ROOT/codex-compilation.stderr")
 if printf '%s\n' "$CODEX_COMPILE_OUTPUT" | is_supported_codex_post_tool_use_response &&
    printf '%s\n' "$CODEX_COMPILE_OUTPUT" | jq -e '
-     .decision == "block" and
-     (.reason | test("compilation"; "i")) and
-     (.reason | contains("main.go:12:3: undefined: missingName"))
+     (has("decision") | not) and
+     (.hookSpecificOutput.additionalContext | test("compilation"; "i")) and
+     (.hookSpecificOutput.additionalContext | test("status.*unavailable"; "i")) and
+     (.hookSpecificOutput.additionalContext | contains("main.go:12:3: undefined: missingName"))
    ' >/dev/null 2>&1; then
   echo "OK"
 else

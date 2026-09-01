@@ -364,22 +364,23 @@ jq -e --arg command "$PROBE_COMMAND" '
     .tool_name == "Bash" and
     (.tool_use_id | type == "string" and length > 0) and
     .tool_input.command == $command and
-    (.tool_response | type == "string" and contains("lifecycleProbe") and test("exited with code 1"; "i")) and
+    (.tool_response | type == "string" and contains("lifecycleProbe")) and
     (has("tool_output") | not)
 ' "$HOOK_INPUT_CAPTURE" >/dev/null \
     || fail "PostToolUse input did not match the Codex hook payload"
 
 jq -e '
     type == "object" and
-    .decision == "block" and
-    ((.reason // "") | test("[^[:space:]]")) and
-    (.reason | test("compilation"; "i")) and
-    (.reason | contains("probe.go:1:1: undefined: lifecycleProbe")) and
+    (has("decision") | not) and
     (has("retry") | not) and
     ((keys - ["continue", "decision", "hookSpecificOutput", "reason", "stopReason", "systemMessage"]) | length == 0) and
-    (((.hookSpecificOutput // {}) | keys - ["additionalContext", "hookEventName"]) | length == 0)
+    (((.hookSpecificOutput // {}) | keys - ["additionalContext", "hookEventName"]) | length == 0) and
+    .hookSpecificOutput.hookEventName == "PostToolUse" and
+    (.hookSpecificOutput.additionalContext | test("compilation"; "i")) and
+    (.hookSpecificOutput.additionalContext | test("status.*unavailable"; "i")) and
+    (.hookSpecificOutput.additionalContext | contains("probe.go:1:1: undefined: lifecycleProbe"))
 ' "$HOOK_OUTPUT_CAPTURE" >/dev/null \
-    || fail "PostToolUse output was not supported Codex blocking JSON"
+    || fail "PostToolUse output was not supported Codex diagnostic context"
 
 jq -e '
     ([.. | objects | select(

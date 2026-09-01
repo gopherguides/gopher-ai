@@ -54,23 +54,29 @@ detect_permission_error() {
   printf '%s\n' "$TOOL_OUTPUT" | grep -qiE 'permission denied|403 Forbidden|EACCES|not authorized'
 }
 
-codex_command_failed() {
-  printf '%s\n' "$HOOK_INPUT" | jq -e '
+codex_command_status() {
+  printf '%s\n' "$HOOK_INPUT" | jq -r '
     .tool_response |
     if type == "object" then
       if (.exit_code? // .exitCode?) != null then
-        (((.exit_code? // .exitCode?) | tonumber? // 0) != 0)
-      elif has("success") then
-        .success == false
+        if (((.exit_code? // .exitCode?) | tonumber? // 0) != 0) then "failed" else "succeeded" end
+      elif has("success") and (.success | type == "boolean") then
+        if .success then "succeeded" else "failed" end
       else
-        false
+        "unknown"
       end
     elif type == "string" then
-      test("(^|\\n)[[:space:]]*(Process|Command) exited with code [1-9][0-9]*[[:space:]]*(\\n|$)"; "i")
+      if test("(^|\\n)[[:space:]]*(Process|Command) exited with code [1-9][0-9]*[[:space:]]*(\\n|$)"; "i") then
+        "failed"
+      elif test("(^|\\n)[[:space:]]*(Process|Command) exited with code 0[[:space:]]*(\\n|$)"; "i") then
+        "succeeded"
+      else
+        "unknown"
+      end
     else
-      false
+      "unknown"
     end
-  ' >/dev/null 2>&1
+  ' 2>/dev/null
 }
 
 emit_codex_block() {
@@ -99,39 +105,58 @@ emit_codex_context() {
     }'
 }
 
-if [ "$PLATFORM" = "codex" ]; then
-  CODEX_COMMAND_FAILED=false
-  if codex_command_failed; then
-    CODEX_COMMAND_FAILED=true
+emit_codex_diagnostic() {
+  local failed_reason="$1"
+  local unknown_reason="$2"
+  local guidance="$3"
+  if [ "$CODEX_COMMAND_STATUS" = failed ]; then
+    emit_codex_block "$failed_reason" "$guidance"
+    return
   fi
+  local output_excerpt="${TOOL_OUTPUT:0:4000}"
+  local context
+  context=$(printf '%s\n\n%s\n\nCommand output excerpt:\n%s' \
+    "$unknown_reason" \
+    "Treat this as context only. Confirm that the command failed before retrying it or changing code." \
+    "$output_excerpt")
+  emit_codex_context "$context"
+}
 
-  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_network_timeout; then
-    emit_codex_block \
+if [ "$PLATFORM" = "codex" ]; then
+  CODEX_COMMAND_STATUS=$(codex_command_status) || CODEX_COMMAND_STATUS=unknown
+
+  if [ "$CODEX_COMMAND_STATUS" != succeeded ] && detect_network_timeout; then
+    emit_codex_diagnostic \
       "Network timeout detected after the Bash command ran." \
+      "The Bash output matches a network-timeout diagnostic, but command completion status is unavailable." \
       "Do not retry automatically. Retry only after assessing whether repeating the command is safe and idempotent and whether the prior attempt may have produced side effects."
     exit 0
   fi
-  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_rate_limit; then
-    emit_codex_block \
+  if [ "$CODEX_COMMAND_STATUS" != succeeded ] && detect_rate_limit; then
+    emit_codex_diagnostic \
       "Rate limit detected after the Bash command ran." \
+      "The Bash output matches a rate-limit diagnostic, but command completion status is unavailable." \
       "Do not retry automatically. Retry only after assessing whether repeating the command is safe and idempotent and whether the prior attempt may have produced side effects."
     exit 0
   fi
-  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_compilation_error; then
-    emit_codex_block \
+  if [ "$CODEX_COMMAND_STATUS" != succeeded ] && detect_compilation_error; then
+    emit_codex_diagnostic \
       "Go compilation error detected." \
+      "The Bash output matches a Go compilation diagnostic, but command completion status is unavailable." \
       "Fix the reported compilation errors before proceeding."
     exit 0
   fi
-  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_lint_error; then
-    emit_codex_block \
+  if [ "$CODEX_COMMAND_STATUS" != succeeded ] && detect_lint_error; then
+    emit_codex_diagnostic \
       "Lint failures detected." \
+      "The Bash output matches a lint-failure diagnostic, but command completion status is unavailable." \
       "Review and fix the reported lint failures before committing."
     exit 0
   fi
-  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_permission_error; then
-    emit_codex_block \
+  if [ "$CODEX_COMMAND_STATUS" != succeeded ] && detect_permission_error; then
+    emit_codex_diagnostic \
       "Permission denied by the Bash command." \
+      "The Bash output matches a permission-denied diagnostic, but command completion status is unavailable." \
       "Check credentials and access rights before proceeding."
     exit 0
   fi
