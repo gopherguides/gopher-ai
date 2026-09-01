@@ -164,7 +164,10 @@ GO_WORKFLOW_README="$ROOT_DIR/plugins/go-workflow/README.md"
 echo -n "Address-review registers current-head Codex connector re-review... "
 if ! file_contains '`chatgpt-codex-connector[bot]`' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains '`@codex review`' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
-   ! file_contains 'commit_id == PR_HEAD_SHA' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'codex-pull-request-review-summary' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'PR_HEAD_SHA' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'reactions' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'connector-authored `+1`' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'no unresolved inline comments' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'unresolved inline comments' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'only when discovered' "$GO_WORKFLOW_README" ||
