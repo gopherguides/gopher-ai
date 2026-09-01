@@ -405,10 +405,10 @@ if ! validate_composition_contract "$ROOT_DIR"; then
 elif ! (
   source "$ROOT_DIR/plugins/go-workflow/lib/loop-state.sh"
   COMPOSITION_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-composition-state.XXXXXX") || exit 1
-  COMPOSITION_CLEANUP_ROOT=$COMPOSITION_ROOT
+  COMPOSITION_CLEANUP_ROOT=$(cd "$COMPOSITION_ROOT" && pwd -P) || exit 1
   trap 'rm -rf "$COMPOSITION_CLEANUP_ROOT"' EXIT
-  cd "$COMPOSITION_ROOT" || exit 1
-  COMPOSITION_ROOT=$(pwd -P) || exit 1
+  cd "$COMPOSITION_CLEANUP_ROOT" || exit 1
+  COMPOSITION_ROOT=$COMPOSITION_CLEANUP_ROOT
   [ "$(resolve_loop_owner_root)" = "$COMPOSITION_ROOT" ]
   mkdir -p "$COMPOSITION_ROOT/.local/state"
   STATE_FILE="$COMPOSITION_ROOT/.local/state/complete-issue-302.loop.local.json"
