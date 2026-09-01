@@ -1,6 +1,12 @@
 # Clerk Authentication Integration
 
-Loaded on demand by /go-web:create-go-project and /go-web:convert-to-go-project when the user selects Clerk. Complete file templates live in `${CLAUDE_PLUGIN_ROOT}/templates/auth/` — Read each one, replace `{{PROJECT_NAME}}` with the project module name, and Write it to its target path.
+## Plugin Resource Contract
+
+`<PLUGIN_ROOT>` denotes the concrete absolute path to the `go-web` plugin directory. On Claude
+Code, bind it to the injected plugin root. On Codex, inherit the root resolved by the calling
+skill.
+
+Loaded on demand by /go-web:create-go-project and /go-web:convert-to-go-project when the user selects Clerk. Complete file templates live in `<PLUGIN_ROOT>/templates/auth/` — Read each one, replace `{{PROJECT_NAME}}` with the project module name, and Write it to its target path.
 
 ## File Templates to Copy
 
@@ -181,4 +187,3 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 - https://clerk.com/docs/js-frontend/getting-started/quickstart
 - https://clerk.com/docs/js-frontend/reference/components/authentication/sign-in
 - https://clerk.com/docs/guides/development/customize-redirect-urls
-

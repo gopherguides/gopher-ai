@@ -14,6 +14,11 @@ CREATE_SKILL="$ROOT_DIR/plugins/go-web/skills/create-go-project/SKILL.md"
 CREATE_WORKFLOW="$ROOT_DIR/plugins/go-web/references/create-go-project.md"
 CREATE_COMMAND_WORKFLOW_ROUTE='Read `${CLAUDE_PLUGIN_ROOT}/references/create-go-project.md`'
 CREATE_SKILL_WORKFLOW_ROUTE='Read `<PLUGIN_ROOT>/references/create-go-project.md`'
+CREATE_NESTED_REFERENCES=(
+  "$ROOT_DIR/plugins/go-web/references/clerk-integration.md"
+  "$ROOT_DIR/plugins/go-web/references/deployment/nixpacks.md"
+  "$ROOT_DIR/plugins/go-web/references/deployment/dockerfile.md"
+)
 FIXTURE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-go-web-XXXXXX")
 ERRORS=0
 
@@ -351,6 +356,13 @@ else
   require_literal "$CREATE_WORKFLOW" "On Codex, do not emit a completion marker" \
     "shared creation workflow must not emit Claude completion markers on Codex"
 fi
+
+for nested_reference in "${CREATE_NESTED_REFERENCES[@]}"; do
+  require_literal "$nested_reference" '<PLUGIN_ROOT>' \
+    "shared creation reference must use the portable plugin root: $nested_reference"
+  reject_literal "$nested_reference" '${CLAUDE_PLUGIN_ROOT}' \
+    "shared creation reference must not depend on a Claude-only plugin root: $nested_reference"
+done
 
 require_literal "$CREATE_COMMAND" "$CREATE_COMMAND_WORKFLOW_ROUTE" \
   "create-go-project command must route to the shared creation workflow"
