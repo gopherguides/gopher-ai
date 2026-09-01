@@ -43,6 +43,8 @@ mkdir -p "$(dirname "$CACHE_FILE")"
 LOCK_FILE="${CACHE_FILE}.lock"
 LOCK_CANDIDATE="${LOCK_FILE}.$$"
 RECLAIM_DIR="${LOCK_FILE}.reclaim"
+LOCK_OWNER=""
+LOCK_STALE_SECONDS=10
 CACHE_TEMP=""
 
 release_cache_lock() {
@@ -50,18 +52,37 @@ release_cache_lock() {
     rm -f "$CACHE_TEMP"
   fi
   rm -f "$LOCK_CANDIDATE"
-  if [ -f "$LOCK_FILE" ] && [ "$(cat "$LOCK_FILE" 2>/dev/null)" = "$$" ]; then
+  if [ -n "$LOCK_OWNER" ] && [ -f "$LOCK_FILE" ] &&
+     [ "$(cat "$LOCK_FILE" 2>/dev/null)" = "$LOCK_OWNER" ]; then
     rm -f "$LOCK_FILE"
   fi
 }
 
+cache_lock_owner() {
+  printf '%s %s %s\n' "$$" "$(date +%s)" "$RANDOM"
+}
+
 cache_lock_is_abandoned() {
+  local lock_age
+  local lock_created
+  local lock_owner
   local lock_pid
-  lock_pid=$(cat "$LOCK_FILE" 2>/dev/null || true)
+  local now
+  lock_owner=$(cat "$LOCK_FILE" 2>/dev/null || true)
+  lock_pid=${lock_owner%% *}
   case "$lock_pid" in
     ''|*[!0-9]*) return 0 ;;
   esac
-  ! kill -0 "$lock_pid" 2>/dev/null
+  [ "$lock_owner" != "$lock_pid" ] || return 0
+  lock_created=${lock_owner#"$lock_pid "}
+  lock_created=${lock_created%% *}
+  case "$lock_created" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  kill -0 "$lock_pid" 2>/dev/null || return 0
+  now=$(date +%s)
+  lock_age=$((now - lock_created))
+  [ "$lock_age" -lt 0 ] || [ "$lock_age" -ge "$LOCK_STALE_SECONDS" ]
 }
 
 reclaim_abandoned_cache_lock() {
@@ -75,11 +96,12 @@ reclaim_abandoned_cache_lock() {
 
 acquire_cache_lock() {
   local attempt=0
-  printf '%s\n' "$$" > "$LOCK_CANDIDATE"
+  LOCK_OWNER=$(cache_lock_owner)
+  printf '%s\n' "$LOCK_OWNER" > "$LOCK_CANDIDATE"
   while ! ln "$LOCK_CANDIDATE" "$LOCK_FILE" 2>/dev/null; do
     reclaim_abandoned_cache_lock || true
     attempt=$((attempt + 1))
-    if [ "$attempt" -ge 200 ]; then
+    if [ "$attempt" -ge 240 ]; then
       echo "Error: Timed out waiting for the Gopher Guides cache lock" >&2
       return 1
     fi
