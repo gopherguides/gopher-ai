@@ -195,6 +195,86 @@ def split_flow_text(value, delimiter):
     return parts
 
 
+def strip_yaml_comment(value):
+    quote = None
+    index = 0
+    while index < len(value):
+        character = value[index]
+        if quote:
+            if quote == '"' and character == "\\":
+                index += 2
+                continue
+            if quote == "'" and character == "'" and index + 1 < len(value):
+                if value[index + 1] == "'":
+                    index += 2
+                    continue
+            if character == quote:
+                quote = None
+        elif character in "\"'":
+            quote = character
+        elif character == "#" and (index == 0 or value[index - 1].isspace()):
+            return value[:index].rstrip()
+        index += 1
+    return value.rstrip()
+
+
+def joined_flow_step(lines, start):
+    match = re.match(r"^(\s*)-\s*", lines[start])
+    if not match or not lines[start][match.end() :].lstrip().startswith("{"):
+        return None
+
+    fragments = []
+    depth = 0
+    quote = None
+    for index in range(start, len(lines)):
+        fragment = strip_yaml_comment(lines[index])
+        fragments.append(fragment.rstrip() if index == start else fragment.strip())
+        character_index = 0
+        while character_index < len(fragment):
+            character = fragment[character_index]
+            if quote:
+                if quote == '"' and character == "\\":
+                    character_index += 2
+                    continue
+                if (
+                    quote == "'"
+                    and character == "'"
+                    and character_index + 1 < len(fragment)
+                    and fragment[character_index + 1] == "'"
+                ):
+                    character_index += 2
+                    continue
+                if character == quote:
+                    quote = None
+            elif character in "\"'":
+                quote = character
+            elif character in "[{":
+                depth += 1
+            elif character in "]}":
+                depth -= 1
+                if depth < 0:
+                    return None
+            character_index += 1
+        if depth == 0 and quote is None:
+            return " ".join(part for part in fragments if part), index
+    return None
+
+
+def flow_step_lines(lines):
+    joined = {}
+    continuations = set()
+    for start in range(len(lines)):
+        if start in continuations:
+            continue
+        result = joined_flow_step(lines, start)
+        if not result:
+            continue
+        line, end = result
+        joined[start] = line
+        continuations.update(range(start + 1, end + 1))
+    return joined, continuations
+
+
 def flow_key(value):
     decoded = decode_yaml_scalar(value)
     return value.strip() if decoded is None else decoded
@@ -391,7 +471,7 @@ def parse_action(line):
         parsed_value = None if uses_value is None else parse_action_value(uses_value)
         if parsed_value:
             action, action_ref = parsed_value
-            return indentation, True, action, action_ref, True
+            return indentation, True, action, action_ref, line
 
     uses_context = block_uses_context(line)
     if uses_context:
@@ -639,6 +719,25 @@ def parser_failures():
     quoted_flow_step = flow_step_mapping(quoted_flow_line)
     if quoted_flow_step is None or flow_mapping_value(quoted_flow_step[1], "uses"):
         failures.append("flow parser promoted quoted uses fixture")
+    multiline_flow_lines = [
+        "    steps:",
+        "      - {",
+        "          name: Checkout,",
+        "          uses: actions/checkout@v4",
+        "        }",
+    ]
+    joined_flow = joined_flow_step(multiline_flow_lines, 1)
+    multiline_action = None if joined_flow is None else parse_action(joined_flow[0])
+    if multiline_action is None or multiline_action[2:4] != (
+        "actions/checkout",
+        "v4",
+    ):
+        failures.append("action parser missed multiline flow fixture")
+    elif not action_is_step_key(multiline_flow_lines, 1, multiline_action):
+        failures.append("action parser misplaced multiline flow fixture")
+    _, multiline_continuations = flow_step_lines(multiline_flow_lines)
+    if multiline_continuations != {2, 3, 4}:
+        failures.append("flow parser missed multiline continuation fixture")
     block_lines = [
         "    steps:",
         "      - name: Example",
@@ -888,6 +987,19 @@ def cache_parser_failures():
     generator_action = parse_action(generator_lines[0])
     if not action_has_cache_disabled(generator_lines, 0, generator_action):
         failures.append("cache parser missed commented generator fixture")
+    multiline_flow_lines = [
+        "    steps:",
+        "      - {",
+        "          uses: actions/setup-node@v7,",
+        "          with: { package-manager-cache: false }",
+        "        }",
+    ]
+    joined_flow = joined_flow_step(multiline_flow_lines, 1)
+    parsed = None if joined_flow is None else parse_action(joined_flow[0])
+    if parsed is None or not action_has_cache_disabled(
+        multiline_flow_lines, 1, parsed
+    ):
+        failures.append("cache parser missed multiline flow fixture")
     return failures
 
 
@@ -983,9 +1095,9 @@ def flow_mapping_has_cache_disabled(value):
 
 
 def action_has_cache_disabled(lines, start, parsed):
-    indentation, list_marker, _, _, flow_mapping = parsed
-    if flow_mapping:
-        return flow_step_has_cache_disabled(lines[start])
+    indentation, list_marker, _, _, flow_mapping_line = parsed
+    if flow_mapping_line:
+        return flow_step_has_cache_disabled(flow_mapping_line)
     return step_has_cache_disabled(lines, start, len(indentation), list_marker)
 
 
@@ -1002,18 +1114,32 @@ def main():
             if PLUGIN_TEMPLATES in path.parents
             else set()
         )
+        joined_flow_lines, flow_continuations = flow_step_lines(lines)
+        if PLUGIN_TEMPLATES in path.parents:
+            normalized_flow_lines, normalized_flow_continuations = flow_step_lines(
+                normalized_lines
+            )
+        else:
+            normalized_flow_lines, normalized_flow_continuations = {}, set()
         for index, line in enumerate(lines):
-            if index in scalar_content or index in normalized_scalar_content:
+            if (
+                index in scalar_content
+                or index in normalized_scalar_content
+                or index in flow_continuations
+                or index in normalized_flow_continuations
+            ):
                 continue
+            candidate_line = joined_flow_lines.get(index, line)
             parsed = (
-                parse_action(line)
+                parse_action(candidate_line)
                 or parse_block_scalar_action(lines, index)
                 or parse_explicit_action(lines, index)
             )
             scanned_lines = lines
-            candidate_line = line
             if not parsed and PLUGIN_TEMPLATES in path.parents:
-                candidate_line = normalized_lines[index]
+                candidate_line = normalized_flow_lines.get(
+                    index, normalized_lines[index]
+                )
                 parsed = (
                     parse_action(candidate_line)
                     or parse_block_scalar_action(normalized_lines, index)
