@@ -46,6 +46,13 @@ INLINE_WITH_PATTERN = re.compile(
     r'''^(\s*)(["']?)with\2\s*:\s*'''
     r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*\{([^{}]*)\}\s*(?:#.*)?$'''
 )
+BLOCK_SCALAR_USES_PATTERN = re.compile(
+    r'''^(\s*)(-\s+)?(["']?)uses\3\s*:\s*'''
+    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*[>|][0-9+-]*\s*(?:#.*)?$'''
+)
+ACTION_SCALAR_PATTERN = re.compile(
+    r'''^(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)$'''
+)
 
 
 def normalize_workflow_line(line):
@@ -72,6 +79,31 @@ def parse_action(line):
 def find_action_reference(line):
     match = ACTION_USES_PATTERN.search(line)
     return None if match is None else (match.group(3), match.group(4))
+
+
+def parse_block_scalar_action(lines, start):
+    match = BLOCK_SCALAR_USES_PATTERN.match(lines[start])
+    if not match:
+        return None
+
+    indentation, list_marker, _ = match.groups()
+    key_indentation = len(indentation) + (2 if list_marker else 0)
+    content = []
+    for line in lines[start + 1 :]:
+        if not line.strip():
+            continue
+        content_match = re.match(r"^(\s*)(.*)$", line)
+        if len(content_match.group(1)) <= key_indentation:
+            break
+        content.append(content_match.group(2).strip())
+
+    if len(content) != 1:
+        return None
+    action_match = ACTION_SCALAR_PATTERN.match(content[0])
+    if not action_match:
+        return None
+    action, action_ref = action_match.groups()
+    return indentation, bool(list_marker), action, action_ref, False
 
 
 def parser_failures():
@@ -111,6 +143,16 @@ def parser_failures():
         failures.append("action fallback missed unrecognized syntax fixture")
     if not USES_ALIAS_PATTERN.search("      - uses: *checkout"):
         failures.append("action fallback missed alias fixture")
+    block_scalar_lines = [
+        "      - uses: >-",
+        "          actions/checkout@v4",
+    ]
+    block_scalar_action = parse_block_scalar_action(block_scalar_lines, 0)
+    if block_scalar_action is None or block_scalar_action[2:4] != (
+        "actions/checkout",
+        "v4",
+    ):
+        failures.append("action parser missed block scalar fixture")
     return failures
 
 
@@ -219,10 +261,22 @@ def cache_parser_failures():
             0,
             True,
         ),
+        (
+            [
+                "      - uses: >-",
+                "          actions/setup-node@v7",
+                "        with:",
+                "          package-manager-cache: false",
+            ],
+            0,
+            True,
+        ),
     )
     failures = []
     for lines, uses_index, expected in cases:
-        parsed = parse_action(lines[uses_index])
+        parsed = parse_action(lines[uses_index]) or parse_block_scalar_action(
+            lines, uses_index
+        )
         actual = action_has_cache_disabled(lines, uses_index, parsed)
         if actual != expected:
             failures.append(f"cache parser failed fixture at uses line {uses_index + 1}")
@@ -333,12 +387,14 @@ def main():
         lines = path.read_text().splitlines()
         normalized_lines = [normalize_workflow_line(line) for line in lines]
         for index, line in enumerate(lines):
-            parsed = parse_action(line)
+            parsed = parse_action(line) or parse_block_scalar_action(lines, index)
             scanned_lines = lines
             candidate_line = line
             if not parsed and PLUGIN_TEMPLATES in path.parents:
                 candidate_line = normalized_lines[index]
-                parsed = parse_action(candidate_line)
+                parsed = parse_action(candidate_line) or parse_block_scalar_action(
+                    normalized_lines, index
+                )
                 scanned_lines = normalized_lines
             if not parsed:
                 reference = find_action_reference(candidate_line)
