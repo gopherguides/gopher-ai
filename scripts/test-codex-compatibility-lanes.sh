@@ -7,8 +7,9 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKFLOW="$ROOT_DIR/.github/workflows/integration-tests.yml"
 LIFECYCLE_TEST="$ROOT_DIR/scripts/test-codex-plugin-lifecycle.sh"
 
-ruby -ryaml - "$WORKFLOW" <<'RUBY'
+ruby -ryaml - "$WORKFLOW" "$LIFECYCLE_TEST" <<'RUBY'
 workflow = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: true)
+lifecycle_source = File.read(ARGV.fetch(1))
 job = workflow.dig("jobs", "test-codex-plugin-lifecycle")
 abort "missing Codex lifecycle job" unless job
 
@@ -52,13 +53,14 @@ expected_probes = [
 runs = steps.map { |step| step["run"] }.compact
 missing_probes = expected_probes - runs
 abort "Codex matrix job omits probes: #{missing_probes.join(', ')}" unless missing_probes.empty?
-RUBY
 
-rg -q '^EXPECTED_CODEX_VERSION="\$\{CODEX_LIFECYCLE_EXPECTED_VERSION:-\}"$' "$LIFECYCLE_TEST" \
-    || { printf 'lifecycle test still defaults to a hard-coded Codex version\n' >&2; exit 1; }
-rg -Fq "ACTUAL_CODEX_VERSION=\"\$(awk '\$1 == \"codex-cli\" { print \$2; exit }' <<< \"\$CODEX_VERSION_OUTPUT\")\"" "$LIFECYCLE_TEST" \
-    || { printf 'lifecycle test does not tolerate warnings before the Codex version\n' >&2; exit 1; }
-rg -q "^printf 'Codex CLI version: %s\\\\n' \"\\\$ACTUAL_CODEX_VERSION\"$" "$LIFECYCLE_TEST" \
-    || { printf 'lifecycle test does not print the resolved Codex version\n' >&2; exit 1; }
+expected_source = [
+  'EXPECTED_CODEX_VERSION="${CODEX_LIFECYCLE_EXPECTED_VERSION:-}"',
+  'ACTUAL_CODEX_VERSION="$(awk \'$1 == "codex-cli" { print $2; exit }\' <<< "$CODEX_VERSION_OUTPUT")"',
+  'printf \'Codex CLI version: %s\\n\' "$ACTUAL_CODEX_VERSION"',
+]
+missing_source = expected_source.reject { |line| lifecycle_source.lines(chomp: true).include?(line) }
+abort "Codex lifecycle version contract is incomplete" unless missing_source.empty?
+RUBY
 
 printf 'Codex compatibility lane tests passed.\n'
