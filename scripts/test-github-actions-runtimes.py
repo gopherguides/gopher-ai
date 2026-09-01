@@ -1146,6 +1146,25 @@ def coverage_failures():
     ]
 
 
+def dependency_callsite_failures():
+    callers = (
+        ROOT / "detent.yaml",
+        ROOT / "plugins" / "productivity" / "commands" / "release.md",
+    )
+    failures = []
+    for path in callers:
+        command_lines = [
+            line for line in path.read_text().splitlines() if "test-commands.sh" in line
+        ]
+        if not command_lines or any(
+            "requirements-test.txt" not in line for line in command_lines
+        ):
+            failures.append(
+                f"test dependency is not provisioned by {path.relative_to(ROOT)}"
+            )
+    return failures
+
+
 def yaml_mapping_values(node, key):
     if not isinstance(node, yaml.MappingNode):
         return []
@@ -1410,6 +1429,7 @@ def main():
         parser_failures()
         + cache_parser_failures()
         + coverage_failures()
+        + dependency_callsite_failures()
         + yaml_parser_failures()
     )
     discovered = 0
