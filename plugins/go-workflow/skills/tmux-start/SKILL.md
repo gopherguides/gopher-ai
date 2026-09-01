@@ -24,8 +24,9 @@ $ARGUMENTS
 
 If `SKILL_ARGS` is empty or not provided, explain:
 
-This skill creates or reuses a worktree, opens a new tmux window, launches
-Claude Code, and sends `/go-workflow:start-issue` automatically.
+This skill creates or reuses a worktree, opens a new tmux window, launches the
+active assistant surface, and sends its qualified `start-issue` invocation
+automatically.
 
 **Claude Code:** `/go-workflow:tmux-start <issue-number>`.
 
@@ -68,22 +69,35 @@ or tmux creation when structured input is unavailable.
 
 ## Start tmux Workflow
 
+Bind `SURFACE` from the active assistant before invoking the script. Claude
+Code binds `claude`; Codex binds `codex`. Do not infer the surface from
+installed executables or environment variables.
+
+```bash
+SURFACE="<claude-or-codex>"
+```
+
 If copying environment files was explicitly authorized:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$SKILL_ARGS" --copy-env
+"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --copy-env
 ```
 
 Otherwise:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$SKILL_ARGS" --no-copy-env
+"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --no-copy-env
 ```
 
 The script validates prerequisites, creates or reuses the standard issue
 worktree, registers worktree state, opens or switches to the issue tmux window,
-launches Claude Code, waits for a prompt or stable launch marker, and sends
-`/go-workflow:start-issue <issue-number>`.
+launches the bound assistant, waits for a Claude or Codex prompt or stable
+launch marker, and sends `/go-workflow:start-issue <issue-number>` for Claude
+or `$go-workflow:start-issue <issue-number>` for Codex. Direct script callers
+that omit `--surface` retain the Claude default.
 
-Set `GOPHER_AI_TMUX_CLAUDE_CMD` before invocation to override the default
-Claude launch command (`claude --dangerously-skip-permissions`).
+Set `GOPHER_AI_TMUX_ASSISTANT_CMD` or pass `--assistant-cmd` to override the
+launch command for either surface. The neutral override takes precedence over
+`GOPHER_AI_TMUX_CLAUDE_CMD` and `--claude-cmd`, which remain supported for
+Claude compatibility. Defaults are `claude --dangerously-skip-permissions`
+and `codex --dangerously-bypass-approvals-and-sandbox`.
