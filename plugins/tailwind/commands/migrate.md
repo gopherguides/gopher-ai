@@ -104,7 +104,21 @@ Do not create a lockfile for a different package manager.
 
 ## Step 2: Parse v3 Configuration
 
-Read the config file. Extract: `content` array (becomes `@source` directives), `theme.extend` (becomes `@theme` CSS variables), `darkMode` (becomes a custom variant and selector), `plugins` (check v4 compatibility).
+Read the config file. Extract: content configuration (becomes `@source`
+directives), `theme.extend` (becomes `@theme` CSS variables), `darkMode`
+(becomes a custom variant and selector), `important`, and `plugins` (check v4
+compatibility).
+
+Support both v3 content forms:
+
+- For `content: [...]`, use the array entries and the project invocation root
+  as their effective base.
+- For `content: { files: [...], relative: true }`, parse `content.files` and
+  use the directory containing the v3 configuration as the effective base.
+- For object-form content with `content.relative` false or absent, use the
+  project invocation root as the effective base.
+- Treat raw-content objects separately from file globs; report them for manual
+  conversion rather than dropping them or passing them to `@source` as paths.
 
 **Plugin compatibility:**
 
@@ -138,6 +152,28 @@ example, with `src/index.css` and a project-root v3 base,
 
 Enumerate the files matched before and after rebasing. Do not write or report a
 migration as complete unless the generated `@source` directives resolve to the same files as the v3 content patterns.
+
+### Boolean `important`
+
+When the v3 configuration sets `important: true`, preserve that behavior by
+using this import instead of the normal import:
+
+```css
+@import "tailwindcss" important;
+```
+
+When `important` is false or absent, keep `@import "tailwindcss";`.
+
+### Selector-form `important`
+
+A v3 selector value such as `important: "#app"` scopes utilities instead of
+adding `!important`, and v4 has no equivalent selector option on the Tailwind
+import. Do not translate a selector value to the boolean `important` import.
+In normal migration mode, stop before deleting the old configuration and ask
+whether to adopt the broader boolean behavior or leave selector scoping as a
+documented manual migration item. In `--check`, report the unresolved choice
+without changing files. Do not complete until the selected alternative is
+implemented and its cascade behavior is verified.
 
 Convert the parsed configuration to v4 CSS:
 
@@ -372,7 +408,8 @@ these are TRUE:
 2. Proposed CSS, dependency, script, PostCSS, and old-config changes were shown
 3. The preview report identifies unresolved plugin or color conversions
 4. Proposed `@source` paths preserve the v3 content matches from the selected CSS entry
-5. No project files, dependencies, or generated CSS changed
+5. Boolean or selector-form `important` behavior is preserved or identified as an unresolved choice
+6. No project files, dependencies, or generated CSS changed
 
 Without `--check`, follow the selected integration path. Use only the migration completion criteria for the selected integration.
 
@@ -389,6 +426,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 7. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
 8. Requested `--backup` and `--keep-config` behavior completed before destructive changes
 9. Generated `@source` directives preserve every v3 content match relative to the selected CSS entry
+10. v3 `important` behavior is preserved and verified
 
 ### PostCSS Migration Completion Criteria
 
@@ -405,6 +443,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 9. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
 10. Requested `--backup` and `--keep-config` behavior completed before destructive changes
 11. Generated `@source` directives preserve every v3 content match relative to the selected CSS entry
+12. v3 `important` behavior is preserved and verified
 
 ```
 <done>COMPLETE</done>

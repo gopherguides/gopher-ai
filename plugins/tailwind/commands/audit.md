@@ -31,6 +31,13 @@ Parse arguments:
 - `--report` — generate detailed markdown report
 - `--focus=<area>` — focus on specific area (consistency / performance / practices / v4)
 
+Bind the requested path to `<AUDIT_TARGET>` as a concrete normalized path. If
+no path was provided, bind the current directory. Resolve the containing
+project root to `<PROJECT_ROOT>` for configuration checks. If the target is a
+file, analyze that file directly; if it is a directory, discover every
+supported file beneath it. Stop with a clear error when the target does not
+exist.
+
 ## Loop Initialization
 
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-audit" "COMPLETE"; fi`
@@ -38,9 +45,13 @@ Parse arguments:
 ## Step 1: Discover Template Files
 
 ```bash
-fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -e astro -e php -e blade.php -e erb -e hbs -d 5 2>/dev/null | head -100
-fd -e css -d 5 2>/dev/null | head -20
+fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -e astro -e php -e blade.php -e erb -e hbs "<AUDIT_TARGET>" 2>/dev/null
+fd -e css "<AUDIT_TARGET>" 2>/dev/null
 ```
+
+Retain the complete discovered file set for every category, report, and
+auto-fix step. Do not truncate discovery output. When `<AUDIT_TARGET>` is a
+file, use it as the complete set when its extension is supported.
 
 ## Step 2: Audit Categories
 
@@ -85,7 +96,7 @@ Bad:  "hover:bg-gray-50 flex bg-white p-4 text-sm shadow-sm w-full gap-4 items-c
 **Component extraction** — find class combinations that appear 3+ times:
 
 ```bash
-grep -ohr 'class="[^"]*"' --include="*.html" --include="*.templ" --include="*.jsx" | sort | uniq -c | sort -rn | head -20
+grep -ohr 'class="[^"]*"' --include="*.html" --include="*.templ" --include="*.jsx" "<AUDIT_TARGET>" | sort | uniq -c | sort -rn
 ```
 
 Repeated patterns become `@layer components` rules:
@@ -116,9 +127,9 @@ Repeated patterns become `@layer components` rules:
 | `darkMode: 'class'` | `@custom-variant dark (...)` plus `.dark { }` overrides |
 
 ```bash
-ls tailwind.config.* 2>/dev/null               # if found, recommend /tailwind-migrate
-grep -l '@import.*tailwindcss' *.css */*.css 2>/dev/null   # should find one
-grep -l '@tailwind' *.css */*.css 2>/dev/null              # should be empty
+ls "<PROJECT_ROOT>"/tailwind.config.* 2>/dev/null
+grep -rl '@import.*tailwindcss' --include="*.css" "<AUDIT_TARGET>" 2>/dev/null
+grep -rl '@tailwind' --include="*.css" "<AUDIT_TARGET>" 2>/dev/null
 ```
 
 ## v3 Migration Guard
@@ -138,7 +149,8 @@ they do not alter migration state.
 ```
 ## Tailwind CSS Audit Report
 
-**Project:** [path]
+**Project:** [project root]
+**Audit target:** [concrete target]
 **Files scanned:** X templates, Y CSS files
 
 ### Summary
@@ -174,6 +186,7 @@ they do not alter migration state.
 Auto-apply: remove duplicate utilities (keep last), convert inline styles, and
 reorder classes to convention. On confirmed v4 projects, apply only v4-to-v4
 syntax corrections that do not require dependency or configuration changes.
+Limit every change to the complete discovered file set under `<AUDIT_TARGET>`.
 
 **Do NOT auto-fix:** component extraction (naming requires user input); color choices (subjective); arbitrary values (may be intentional).
 
@@ -200,7 +213,7 @@ Remaining issues: X (require manual review)
 
 DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
-1. All template files scanned
+1. Every supported file in the complete discovered file set scanned
 2. Audit report generated
 3. If `--fix` provided: permitted auto-fixes applied and v3 migration findings left unchanged
 4. Summary displayed
