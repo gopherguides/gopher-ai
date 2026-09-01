@@ -40,19 +40,44 @@ esac
 
 # Create cache dir
 mkdir -p "$(dirname "$CACHE_FILE")"
-LOCK_DIR="${CACHE_FILE}.lock"
+LOCK_FILE="${CACHE_FILE}.lock"
+LOCK_CANDIDATE="${LOCK_FILE}.$$"
+RECLAIM_DIR="${LOCK_FILE}.reclaim"
 CACHE_TEMP=""
 
 release_cache_lock() {
   if [ -n "$CACHE_TEMP" ]; then
     rm -f "$CACHE_TEMP"
   fi
-  rmdir "$LOCK_DIR" 2>/dev/null || true
+  rm -f "$LOCK_CANDIDATE"
+  if [ -f "$LOCK_FILE" ] && [ "$(cat "$LOCK_FILE" 2>/dev/null)" = "$$" ]; then
+    rm -f "$LOCK_FILE"
+  fi
+}
+
+cache_lock_is_abandoned() {
+  local lock_pid
+  lock_pid=$(cat "$LOCK_FILE" 2>/dev/null || true)
+  case "$lock_pid" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  ! kill -0 "$lock_pid" 2>/dev/null
+}
+
+reclaim_abandoned_cache_lock() {
+  cache_lock_is_abandoned || return 1
+  mkdir "$RECLAIM_DIR" 2>/dev/null || return 1
+  if cache_lock_is_abandoned; then
+    rm -f "$LOCK_FILE"
+  fi
+  rmdir "$RECLAIM_DIR" 2>/dev/null || true
 }
 
 acquire_cache_lock() {
   local attempt=0
-  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+  printf '%s\n' "$$" > "$LOCK_CANDIDATE"
+  while ! ln "$LOCK_CANDIDATE" "$LOCK_FILE" 2>/dev/null; do
+    reclaim_abandoned_cache_lock || true
     attempt=$((attempt + 1))
     if [ "$attempt" -ge 200 ]; then
       echo "Error: Timed out waiting for the Gopher Guides cache lock" >&2
@@ -60,6 +85,7 @@ acquire_cache_lock() {
     fi
     sleep 0.05
   done
+  rm -f "$LOCK_CANDIDATE"
 }
 
 # Generate cache key from endpoint + data
@@ -126,7 +152,7 @@ else
 fi
 mv "$CACHE_TEMP" "$CACHE_FILE"
 CACHE_TEMP=""
-rmdir "$LOCK_DIR"
+rm -f "$LOCK_FILE"
 trap - EXIT HUP INT TERM
 
 echo "$RESPONSE"
