@@ -39,11 +39,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Full history is required: the "legacy-skill-hashes.txt matches git
-          # history exactly" test compares the committed manifest against
-          # `git rev-list --objects --all`. Shallow checkouts only see current
-          # commits, so the test would (correctly) flag every historical pair
-          # in the manifest as "extra" and fail.
+          # Full history is required: the legacy skill ownership check compares
+          # the committed manifest with base-branch history plus the PR's final
+          # skill tree, matching the repository's squash-merge result.
           fetch-depth: 0
 
       - name: Test plugin installation
