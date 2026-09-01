@@ -15,7 +15,9 @@ clear_cache_file() {
   cache_lock_acquire
   trap cache_lock_release EXIT
   trap 'exit 1' HUP INT TERM
+  cache_lock_begin_mutation
   rm -f -- "$cache_file"
+  cache_lock_end_mutation
   cache_lock_release
   trap - EXIT HUP INT TERM
 }

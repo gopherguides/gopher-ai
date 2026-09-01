@@ -8,6 +8,7 @@ CACHE_LOCK_HEARTBEAT_FILE=""
 CACHE_LOCK_HEARTBEAT_TEMP=""
 CACHE_LOCK_HEARTBEAT_PID=""
 CACHE_LOCK_HEARTBEAT_STALE_SECONDS=5
+CACHE_LOCK_MUTATION_ACTIVE=false
 
 cache_lock_configure() {
   local cache_file="${1:?Cache file is required}"
@@ -18,9 +19,11 @@ cache_lock_configure() {
   CACHE_LOCK_HEARTBEAT_TEMP="${CACHE_LOCK_HEARTBEAT_FILE}.$$"
   CACHE_LOCK_OWNER=""
   CACHE_LOCK_HEARTBEAT_PID=""
+  CACHE_LOCK_MUTATION_ACTIVE=false
 }
 
 cache_lock_release() {
+  cache_lock_end_mutation
   if [ -n "$CACHE_LOCK_HEARTBEAT_PID" ]; then
     kill "$CACHE_LOCK_HEARTBEAT_PID" 2>/dev/null || true
     wait "$CACHE_LOCK_HEARTBEAT_PID" 2>/dev/null || true
@@ -33,6 +36,32 @@ cache_lock_release() {
   fi
   CACHE_LOCK_OWNER=""
   CACHE_LOCK_HEARTBEAT_PID=""
+}
+
+cache_lock_end_mutation() {
+  if [ "$CACHE_LOCK_MUTATION_ACTIVE" = true ]; then
+    rmdir "$CACHE_LOCK_RECLAIM_DIR" 2>/dev/null || true
+    CACHE_LOCK_MUTATION_ACTIVE=false
+  fi
+}
+
+cache_lock_begin_mutation() {
+  local attempt=0
+  while ! mkdir "$CACHE_LOCK_RECLAIM_DIR" 2>/dev/null; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 240 ]; then
+      echo "Error: Timed out waiting for the Gopher Guides cache mutation fence" >&2
+      return 1
+    fi
+    sleep 0.05
+  done
+  CACHE_LOCK_MUTATION_ACTIVE=true
+  if [ -z "$CACHE_LOCK_OWNER" ] || [ ! -f "$CACHE_LOCK_FILE" ] ||
+     [ "$(cat "$CACHE_LOCK_FILE" 2>/dev/null)" != "$CACHE_LOCK_OWNER" ]; then
+    cache_lock_end_mutation
+    echo "Error: Lost ownership of the Gopher Guides cache lock" >&2
+    return 1
+  fi
 }
 
 cache_lock_owner() {

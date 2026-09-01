@@ -115,8 +115,10 @@ else
   jq -n --arg key "$CACHE_KEY" --argjson entry "$CACHE_ENTRY" \
     '{($key): $entry}' > "$CACHE_TEMP"
 fi
+cache_lock_begin_mutation
 mv "$CACHE_TEMP" "$CACHE_FILE"
 CACHE_TEMP=""
+cache_lock_end_mutation
 cache_lock_release
 trap - EXIT HUP INT TERM
 
