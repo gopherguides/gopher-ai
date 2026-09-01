@@ -73,6 +73,27 @@ def cache_parser_failures():
             [
                 "      - name: Set up Node",
                 "        uses: actions/setup-node@v7",
+                "        env:",
+                "          package-manager-cache: false",
+            ],
+            1,
+            False,
+        ),
+        (
+            [
+                "      - name: Set up Node",
+                "        uses: actions/setup-node@v7",
+                "        with:",
+                "          cache-dependency-path:",
+                "            package-manager-cache: false",
+            ],
+            1,
+            False,
+        ),
+        (
+            [
+                "      - name: Set up Node",
+                "        uses: actions/setup-node@v7",
                 "      - name: Unrelated step",
                 "        with:",
                 "          package-manager-cache: false",
@@ -110,6 +131,7 @@ def workflow_files():
 def step_has_cache_disabled(lines, start, indentation, list_marker):
     step_start = start
     step_indentation = indentation
+    step_key_indentation = indentation + 2 if list_marker else indentation
     if not list_marker:
         for index in range(start - 1, -1, -1):
             match = re.match(r"^(\s*)-\s+", lines[index])
@@ -118,12 +140,33 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
                 step_indentation = len(match.group(1))
                 break
 
-    for index, line in enumerate(lines[step_start:], start=step_start):
+    step_end = len(lines)
+    for index, line in enumerate(lines[step_start + 1 :], start=step_start + 1):
         match = re.match(r"^(\s*)-\s+", line)
-        if index > step_start and match and len(match.group(1)) <= step_indentation:
+        if match and len(match.group(1)) <= step_indentation:
+            step_end = index
             break
-        if re.match(r"^\s+package-manager-cache:\s*false\s*(?:#.*)?$", line):
-            return True
+
+    for index in range(step_start, step_end):
+        with_match = re.match(r"^(\s*)with:\s*(?:#.*)?$", lines[index])
+        if not with_match or len(with_match.group(1)) != step_key_indentation:
+            continue
+
+        input_indentation = None
+        for line in lines[index + 1 : step_end]:
+            key_match = re.match(r"^(\s*)\S", line)
+            if key_match and len(key_match.group(1)) <= step_key_indentation:
+                break
+            input_match = re.match(r"^(\s*)[A-Za-z0-9_-]+:\s*", line)
+            if not input_match:
+                continue
+            current_indentation = len(input_match.group(1))
+            if input_indentation is None:
+                input_indentation = current_indentation
+            if current_indentation != input_indentation:
+                continue
+            if re.match(r"^\s*package-manager-cache:\s*false\s*(?:#.*)?$", line):
+                return True
     return False
 
 
