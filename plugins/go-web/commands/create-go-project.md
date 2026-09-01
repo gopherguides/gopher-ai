@@ -6,5 +6,7 @@ allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(go:*)", "Bash(git:*)", "Bash(npm:
 
 # Create Go Project
 
+Bind `<PLUGIN_ROOT>` in the shared workflow to `${CLAUDE_PLUGIN_ROOT}`.
+
 Read `${CLAUDE_PLUGIN_ROOT}/references/create-go-project.md` completely and follow it,
 passing `$ARGUMENTS` as the project name.

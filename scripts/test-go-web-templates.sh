@@ -12,7 +12,8 @@ CONVERSION_WORKFLOW_ROUTE='Read `${CLAUDE_PLUGIN_ROOT}/references/convert-to-go-
 CREATE_COMMAND="$ROOT_DIR/plugins/go-web/commands/create-go-project.md"
 CREATE_SKILL="$ROOT_DIR/plugins/go-web/skills/create-go-project/SKILL.md"
 CREATE_WORKFLOW="$ROOT_DIR/plugins/go-web/references/create-go-project.md"
-CREATE_WORKFLOW_ROUTE='Read `${CLAUDE_PLUGIN_ROOT}/references/create-go-project.md`'
+CREATE_COMMAND_WORKFLOW_ROUTE='Read `${CLAUDE_PLUGIN_ROOT}/references/create-go-project.md`'
+CREATE_SKILL_WORKFLOW_ROUTE='Read `<PLUGIN_ROOT>/references/create-go-project.md`'
 FIXTURE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-go-web-XXXXXX")
 ERRORS=0
 
@@ -327,10 +328,12 @@ require_literal "$TEMPLATE_DIR/ci/ci.yml" 'TEST_DATABASE_URL: "root:test@tcp(loc
 if [ ! -f "$CREATE_WORKFLOW" ]; then
   fail "missing shared create-go-project workflow"
 else
-  require_literal "$CREATE_WORKFLOW" '`${CLAUDE_PLUGIN_ROOT}/templates/`' \
+  require_literal "$CREATE_WORKFLOW" '`<PLUGIN_ROOT>/templates/`' \
     "shared creation workflow must use the plugin template library"
-  require_literal "$CREATE_WORKFLOW" '`${CLAUDE_PLUGIN_ROOT}/templates/README.md`' \
+  require_literal "$CREATE_WORKFLOW" '`<PLUGIN_ROOT>/templates/README.md`' \
     "shared creation workflow must use the plugin template manifest"
+  reject_literal "$CREATE_WORKFLOW" '${CLAUDE_PLUGIN_ROOT}' \
+    "shared creation workflow must not depend on a Claude-only plugin root"
   require_literal "$CREATE_WORKFLOW" "app/testutil.<db>.go" \
     "shared creation workflow must select the database-specific test helper"
   reject_literal "$CREATE_WORKFLOW" "app/testutil.go" \
@@ -341,15 +344,21 @@ else
     "shared creation workflow must define the generated project location"
   require_literal "$CREATE_WORKFLOW" "go build -o" \
     "shared creation workflow must verify the generated project build"
+  require_literal "$CREATE_WORKFLOW" "On Codex, skip loop initialization" \
+    "shared creation workflow must not initialize Claude loop state on Codex"
+  require_literal "$CREATE_WORKFLOW" "On Codex, do not emit a completion marker" \
+    "shared creation workflow must not emit Claude completion markers on Codex"
 fi
 
-require_literal "$CREATE_COMMAND" "$CREATE_WORKFLOW_ROUTE" \
+require_literal "$CREATE_COMMAND" "$CREATE_COMMAND_WORKFLOW_ROUTE" \
   "create-go-project command must route to the shared creation workflow"
 
 if [ ! -f "$CREATE_SKILL" ]; then
   fail "missing create-go-project Codex skill"
 else
-  require_literal "$CREATE_SKILL" "$CREATE_WORKFLOW_ROUTE" \
+  require_literal "$CREATE_SKILL" "ascend two directories" \
+    "create-go-project skill must resolve its concrete plugin root on Codex"
+  require_literal "$CREATE_SKILL" "$CREATE_SKILL_WORKFLOW_ROUTE" \
     "create-go-project skill must route to the shared creation workflow"
 fi
 

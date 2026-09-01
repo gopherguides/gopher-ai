@@ -1,5 +1,11 @@
 # Create Go Project
 
+## Plugin Resource Contract
+
+The caller must bind `<PLUGIN_ROOT>` to the concrete absolute path of the `go-web` plugin
+directory before reading resources or running commands. Do not treat `<PLUGIN_ROOT>` as a
+literal path.
+
 ## Cross-Platform Interaction
 
 When the workflow needs a user choice, use the active surface's native structured-input
@@ -219,16 +225,17 @@ After selecting a deployment platform that runs the app as a server (Railway, Fl
 
 ---
 
-## Loop Initialization
+## Persistent Loop Protocol
 
-Initialize persistent loop to ensure project creation completes fully:
+On Claude Code, initialize the persistent loop to ensure project creation completes fully.
+On Codex, skip loop initialization and complete the workflow in the current invocation.
 
 ```bash
-if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then
+if [ ! -x "<PLUGIN_ROOT>/scripts/setup-loop.sh" ]; then
   echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart the active agent."
   exit 1
 else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "create-go-project-$ARGUMENTS" "COMPLETE"
+  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "create-go-project-$ARGUMENTS" "COMPLETE"
 fi
 ```
 
@@ -245,8 +252,8 @@ Only proceed if validation passes.
 ## Template Library
 
 All static file templates for this command live in the plugin template library at
-`${CLAUDE_PLUGIN_ROOT}/templates/`. The manifest listing every template and its target path is
-`${CLAUDE_PLUGIN_ROOT}/templates/README.md`.
+`<PLUGIN_ROOT>/templates/`. The manifest listing every template and its target path is
+`<PLUGIN_ROOT>/templates/README.md`.
 
 **How to use a template:** Read the template file, replace every occurrence of the placeholder
 `{{PROJECT_NAME}}` with `$ARGUMENTS`, and Write the result to the target path inside
@@ -269,7 +276,7 @@ Copy each template (Read template → replace `{{PROJECT_NAME}}` → Write targe
 this order (dependencies matter). `<db>` is the selected database: `postgres`, `sqlite`, or
 `mysql`.
 
-| Template (`${CLAUDE_PLUGIN_ROOT}/templates/`) | Target in `./$ARGUMENTS/` | Notes |
+| Template (`<PLUGIN_ROOT>/templates/`) | Target in `./$ARGUMENTS/` | Notes |
 |---|---|---|
 | core/go.mod | go.mod | Add the database driver and service SDK requires (see below) |
 | core/gitignore | .gitignore | |
@@ -365,7 +372,7 @@ Admin route handlers.
 
 #### static/css/input.css (templUI variant)
 
-Use `${CLAUDE_PLUGIN_ROOT}/templates/css/input-templui.css` (already listed in the core files
+Use `<PLUGIN_ROOT>/templates/css/input-templui.css` (already listed in the core files
 table). It adds `@source "../../components/**/*.templ"` and the full set of templUI CSS
 variables (including sidebar variables), and uses the Tailwind CSS v4 `@custom-variant dark`
 syntax (NOT `@variant dark`).
@@ -382,7 +389,7 @@ Also uncomment `e.Static("/assets", "assets")` in `internal/handler/handler.go`.
 #### templates/layouts/base.templ (templUI head changes)
 
 When using templUI components, you MUST include their Script() templates in the `<head>`.
-Read `${CLAUDE_PLUGIN_ROOT}/templates/templ/base-templui-head.templ` for the exact imports and
+Read `<PLUGIN_ROOT>/templates/templ/base-templui-head.templ` for the exact imports and
 Script() calls to apply to `templates/layouts/base.templ`.
 
 | Component | Requires Script() from |
@@ -408,9 +415,9 @@ Script() calls to apply to `templates/layouts/base.templ`.
 
 ### Clerk Integration Files (if selected)
 
-If the user selected Clerk, read `${CLAUDE_PLUGIN_ROOT}/references/clerk-integration.md` and
+If the user selected Clerk, read `<PLUGIN_ROOT>/references/clerk-integration.md` and
 follow it completely. It covers the CRITICAL Clerk CDN rules, the file templates under
-`${CLAUDE_PLUGIN_ROOT}/templates/auth/`, and the required updates to `.envrc`, config,
+`<PLUGIN_ROOT>/templates/auth/`, and the required updates to `.envrc`, config,
 middleware/CSP, layouts, and routes. If Clerk was NOT selected, skip this entirely and do not
 read that file.
 
@@ -421,14 +428,14 @@ Based on the deployment platform and build method selected, load ONLY the matchi
 | Selection | Action |
 |---|---|
 | Vercel + Neon | Create `vercel.json`, `api/index.go`, and a `public/` directory |
-| Nixpacks (Railway, Coolify, Dokploy, self-hosted) | Read `${CLAUDE_PLUGIN_ROOT}/references/deployment/nixpacks.md` |
-| Dockerfile (Fly.io, self-hosted, or user preference) | Read `${CLAUDE_PLUGIN_ROOT}/references/deployment/dockerfile.md` |
+| Nixpacks (Railway, Coolify, Dokploy, self-hosted) | Read `<PLUGIN_ROOT>/references/deployment/nixpacks.md` |
+| Dockerfile (Fly.io, self-hosted, or user preference) | Read `<PLUGIN_ROOT>/references/deployment/dockerfile.md` |
 | Plain binary (self-hosted, no containers) | No additional files — the Makefile already covers `make dev`, `make build`, and `make run`; deploy the binary directly (systemd, supervisor, or a shell script) |
 
 ### Project Documentation
 
 Create a `CLAUDE.md` in the project root following the content guide in
-`${CLAUDE_PLUGIN_ROOT}/templates/docs/claude-md-guide.md`.
+`<PLUGIN_ROOT>/templates/docs/claude-md-guide.md`.
 
 ---
 
@@ -554,7 +561,7 @@ For each identified entity, replace the generic `examples` scaffolding with real
 
 For a complete worked example of all six files (a Notes app: migration, queries, handler,
 routes, templ pages, and tests), read
-`${CLAUDE_PLUGIN_ROOT}/references/crud-implementation-example.md` and adapt it to the actual
+`<PLUGIN_ROOT>/references/crud-implementation-example.md` and adapt it to the actual
 domain entities.
 
 ### Verify Implementation
@@ -645,7 +652,9 @@ Display deployment instructions based on the platform the user selected earlier.
 
 ## Completion Criteria
 
-**DO NOT output `<done>COMPLETE</done>` until ALL of these conditions are TRUE:**
+On Claude Code, do not output `<done>COMPLETE</done>` until all of these conditions are true.
+On Codex, do not emit a completion marker; return the final summary only after all criteria are
+true.
 
 1. All project files are created (go.mod, main.go, handlers, templates, etc.)
 2. Git repository is initialized with initial commit
@@ -654,7 +663,7 @@ Display deployment instructions based on the platform the user selected earlier.
 5. `go build ./cmd/server` succeeds without errors
 6. Server starts successfully (health endpoint responds)
 
-**When ALL criteria are met, output exactly:**
+**On Claude Code, when all criteria are met, output exactly:**
 
 ```
 <done>COMPLETE</done>
