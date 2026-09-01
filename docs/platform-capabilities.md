@@ -5,7 +5,7 @@ The canonical machine-readable inventory is
 capability is unavailable on that platform today, not that an installed plugin
 provides an equivalent workflow by another name.
 
-Shipped surface: 36 Claude Code commands across 7 plugins; 32 Codex skills across 6 plugins; 8 optional Codex MCP tools.
+Shipped surface: 36 Claude Code commands across 7 plugins; 33 Codex skills across 6 plugins; 8 optional Codex MCP tools.
 
 ## Current matrix
 
