@@ -47,6 +47,20 @@ A second opinion is most valuable from a different model family than the one
 that wrote the code. Bind the active assistant surface before suggesting an
 invocation.
 
+## Gemini CLI
+
+Offer only commands packaged by the active `gopher-ai-llm-tools` extension:
+
+- `/codex <specific question>` asks OpenAI Codex.
+- `/ollama <specific question>` asks an installed Ollama model. Treat it as
+  local only after verifying that `OLLAMA_HOST` resolves to a loopback host.
+- `/llm-compare <specific question>` compares the available providers.
+
+If a bare command conflicts with a user or project command, use the
+extension-prefixed form shown by `/commands list`, such as
+`/gopher-ai-llm-tools.codex`. Never suggest command syntax from another
+assistant surface on Gemini CLI.
+
 ## Codex
 
 Offer only installed Codex skills:

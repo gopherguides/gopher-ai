@@ -106,8 +106,19 @@ fi
 frontmatter "$OLLAMA_SKILL" | matches 'configured Ollama endpoint' ||
   fail "Ollama skill description omits endpoint-aware privacy"
 
+GEMINI_SECTION=$(section_text "$SECOND_OPINION" '## Gemini CLI' '## Codex')
 CODEX_SECTION=$(section_text "$SECOND_OPINION" '## Codex' '## Claude Code')
 CLAUDE_SECTION=$(section_text "$SECOND_OPINION" '## Claude Code' '## When NOT to Suggest')
+
+for command in codex ollama llm-compare; do
+  printf '%s\n' "$GEMINI_SECTION" | matches "(^|[[:space:]\`])/$command([[:space:]\`]|$)" ||
+    fail "Gemini second-opinion guidance omits /$command"
+done
+printf '%s\n' "$GEMINI_SECTION" | matches '/gopher-ai-llm-tools[.]codex' ||
+  fail "Gemini second-opinion guidance omits the extension conflict route"
+if printf '%s\n' "$GEMINI_SECTION" | matches '[$]llm-tools:|/codex:'; then
+  fail "Gemini second-opinion guidance suggests another surface's command"
+fi
 
 printf '%s\n' "$CODEX_SECTION" | matches '[$]llm-tools:gemini' || fail "Codex second-opinion guidance omits Gemini"
 printf '%s\n' "$CODEX_SECTION" | matches '[$]llm-tools:ollama' || fail "Codex second-opinion guidance omits Ollama"
