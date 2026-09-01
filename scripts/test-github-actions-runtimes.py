@@ -55,6 +55,7 @@ ACTION_VALUE_PATTERN = re.compile(
 FALSE_VALUE_PATTERN = re.compile(
     r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*(?:false|"false"|'false')$'''
 )
+LIST_ITEM_PATTERN = re.compile(r"^(\s*)-(?:\s+|$)")
 
 
 def normalize_workflow_line(line):
@@ -194,7 +195,7 @@ def enclosing_steps_index(lines, start):
             if indentation < steps_indentation:
                 enclosed = False
                 break
-            if indentation == steps_indentation and not re.match(r"^\s*-\s+", line):
+            if indentation == steps_indentation and not LIST_ITEM_PATTERN.match(line):
                 enclosed = False
                 break
         if enclosed:
@@ -210,7 +211,7 @@ def action_is_step_key(lines, start, parsed):
     steps_indentation = len(lines[steps_index]) - len(lines[steps_index].lstrip())
     list_indents = []
     for line in lines[steps_index + 1 : start + 1]:
-        match = re.match(r"^(\s*)-\s+", line)
+        match = LIST_ITEM_PATTERN.match(line)
         if match and len(match.group(1)) >= steps_indentation:
             list_indents.append(len(match.group(1)))
     if not list_indents:
@@ -351,6 +352,16 @@ def parser_failures():
     nested_alias = block_uses_context("          uses: *checkout")
     if nested_alias is None or action_is_step_key(block_lines, 3, nested_alias):
         failures.append("action parser promoted nested block alias fixture")
+    bare_item_lines = [
+        "    steps:",
+        "      -",
+        "        uses: actions/checkout@v4",
+    ]
+    bare_item_action = parse_action(bare_item_lines[2])
+    if bare_item_action is None or not action_is_step_key(
+        bare_item_lines, 2, bare_item_action
+    ):
+        failures.append("action parser missed bare sequence fixture")
     block_scalar_lines = [
         "      - uses: >-",
         "          actions/checkout@v4",
@@ -373,6 +384,16 @@ def cache_parser_failures():
                 "          package-manager-cache: false",
             ],
             0,
+            True,
+        ),
+        (
+            [
+                "      -",
+                "        uses: actions/setup-node@v7",
+                "        with:",
+                "          package-manager-cache: false",
+            ],
+            1,
             True,
         ),
         (
@@ -521,7 +542,7 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
     step_key_indentation = indentation + 2 if list_marker else indentation
     if not list_marker:
         for index in range(start - 1, -1, -1):
-            match = re.match(r"^(\s*)-\s+", lines[index])
+            match = LIST_ITEM_PATTERN.match(lines[index])
             if match and len(match.group(1)) < indentation:
                 step_start = index
                 step_indentation = len(match.group(1))
@@ -529,7 +550,7 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
 
     step_end = len(lines)
     for index, line in enumerate(lines[step_start + 1 :], start=step_start + 1):
-        match = re.match(r"^(\s*)-\s+", line)
+        match = LIST_ITEM_PATTERN.match(line)
         if match and len(match.group(1)) <= step_indentation:
             step_end = index
             break
