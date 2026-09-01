@@ -60,6 +60,10 @@ configuration, and the v3 Tailwind configuration. Use a
 Record every source-to-backup mapping. If any backup fails, stop before making
 changes.
 
+For a workspace member, `package.json` means the requested member manifest and
+the active lockfile means the verified owning workspace lockfile. Do not back
+up or modify unrelated package manifests.
+
 With `--check --backup`, report the backup paths that a normal migration would
 create without writing them.
 
@@ -84,11 +88,24 @@ If no config found:
 
 ## Package Manager Selection
 
-Read the `packageManager` field in `package.json` and inspect
+Bind the directory containing the selected v3 configuration and its application
+integration to `<MIGRATION_TARGET>`. Starting there, walk only ancestor
+directories and inspect package-manager ownership evidence without writing.
+Find the nearest ancestor whose workspace configuration, such as `package.json`
+`workspaces` or `pnpm-workspace.yaml`, actually includes `<MIGRATION_TARGET>`.
+Bind that verified owner to `<PACKAGE_ROOT>` and the requested member's concrete
+package name or root-relative path to `<WORKSPACE_MEMBER>`. For a standalone
+project, `<PACKAGE_ROOT>` and `<MIGRATION_TARGET>` are the same directory.
+
+At `<PACKAGE_ROOT>`, read the `packageManager` field and inspect
 `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, and `bun.lockb`.
-Use the declared manager when it agrees with the lockfile. Otherwise, use the
-single lockfile already present. If the signals conflict, ask which manager is
-authoritative and stop before changing dependencies. If neither signal exists,
+Use the declared manager when it agrees with the owning lockfile. Otherwise,
+use the single owning lockfile already present. Treat competing ownership
+roots, a member declaration that disagrees with its owning root, multiple
+manager lockfiles, or a workspace that does not clearly include the migration
+target as conflicting signals. Ask which root and manager are authoritative
+and stop before changing dependencies. If no ownership evidence exists at the
+target or any ancestor, bind `<PACKAGE_ROOT>` to `<MIGRATION_TARGET>` and
 default to npm.
 
 Use the selected manager consistently:
@@ -101,14 +118,21 @@ Use the selected manager consistently:
 | Bun | `bun remove <PACKAGES>` | `bun add -d <PACKAGES>` | `bun run <SCRIPT>` |
 
 Do not create a lockfile for a different package manager.
+When `<PACKAGE_ROOT>` equals `<MIGRATION_TARGET>`, run the selected package
+manager there normally. For a workspace member, run every dependency and
+script command from `<PACKAGE_ROOT>` with that manager's explicit member
+selector bound to `<WORKSPACE_MEMBER>`. Never run an unscoped dependency or
+script command at the workspace root for a member migration. Verify that only
+the requested member manifest and owning lockfile receive dependency changes;
+never create a member-level or different-ancestor lockfile.
 
 ## Step 2: Parse v3 Configuration
 
 Read the config file without evaluating untrusted JavaScript. Extract: content
 configuration (becomes `@source` directives), direct `theme` namespace
 replacements, `theme.extend`, `safelist`, `prefix`, `separator`, `corePlugins`,
-`darkMode` (becomes a custom variant and selector), `important`, and `plugins`
-(check v4 compatibility).
+`presets`, `darkMode` (becomes a custom variant and selector), `important`, and
+`plugins` (check v4 compatibility).
 
 Support both v3 content forms:
 
@@ -120,6 +144,29 @@ Support both v3 content forms:
   project invocation root as the effective base.
 - Treat raw-content objects separately from file globs and apply the lossless
   conversion gate below. Never drop them or pass them to `@source` as paths.
+
+### Preset Chain Preservation
+
+Parse `presets` independently and preserve their declared order and override
+precedence. Recursively resolve a preset only when every link is a statically
+readable local object or data file that can be inspected without executing
+JavaScript. Feed every inherited content, theme, plugin, core-plugin, prefix,
+separator, safelist, dark-mode, important, and nested-preset value through the
+same lossless conversion gates as the project config.
+
+Do not partially migrate a preset chain. Treat an external package export,
+function, computed import, conditional value, cycle, unreadable link, or any
+inherited field that cannot be resolved and converted losslessly as an
+unresolved preset chain. Retain the v3 configuration and every local preset
+file unchanged, report the first unresolved link and all affected inherited
+fields, and block migration completion and config removal. Retaining or
+loading the JavaScript config is not proof that all preset semantics survived
+the v4 conversion.
+
+Before clearing the blocker, compare the fully resolved effective v3
+configuration with the proposed v4 configuration and verify the generated
+utility and behavior sets, including preset-provided plugins and disabled core
+features. A successful build alone is insufficient.
 
 ### Raw Content Preservation
 
@@ -475,6 +522,11 @@ added, or changed. Do not run a package manager or edit `package.json`.
 
 Without `--check`, apply the matching integration method below.
 
+Apply every dependency and script change to the requested member manifest.
+When it is a workspace member, use the selected manager's explicit
+`<WORKSPACE_MEMBER>` selector from `<PACKAGE_ROOT>` so the owning lockfile is
+updated without changing an unrelated package or creating a member lockfile.
+
 **CLI method (recommended for most projects):**
 
 Remove `tailwindcss` and any PostCSS packages used exclusively by the old
@@ -534,11 +586,12 @@ With `--check`, report the recommended disposition and available alternatives
 without renaming or deleting the existing file. With `--keep-config`, keep the
 file unchanged as required by the Preservation Flags section.
 
-Before offering any disposition, check direct theme replacements, safelist
-entries, raw content, prefix, core plugins, plugins, and every other parsed configuration
-field for unresolved semantics. If any field is unresolved or `<CSS_ENTRY>` contains `@config`, keep
-the configuration unchanged at its original path, report why it remains
-required, and do not offer deletion or rename. Otherwise, use
+Before offering any disposition, check preset chains, direct theme
+replacements, safelist entries, raw content, prefix, separator, core plugins,
+plugins, and every other parsed configuration field for unresolved semantics.
+If any field or preset link is unresolved or `<CSS_ENTRY>` contains `@config`,
+keep the configuration and all referenced local preset files unchanged, report
+why they remain required, and do not offer deletion or rename. Otherwise, use
 `AskUserQuestion`: "Migration complete. What should we do with `tailwind.config.js`?"
 
 | Option | Description |
@@ -573,6 +626,11 @@ expected utilities, and omits representative preflight reset behavior. For any
 other disabled core plugin, keep the migration unresolved until equivalent
 generated behavior is demonstrated; a successful v4 build is insufficient.
 
+Verify the recursively resolved effective preset configuration matches the
+proposed v4 configuration and generated behavior. Keep any unreadable,
+external, computed, cyclic, partial, or behaviorally mismatched preset chain
+as an unresolved blocker even when the selected build succeeds.
+
 Without `--check`, run only the verification path for the selected integration.
 
 ### CLI Verification
@@ -580,10 +638,11 @@ Without `--check`, run only the verification path for the selected integration.
 Run the configured CLI build and confirm its output file exists and is
 non-empty:
 
-Run the `css` script with the selected package manager, for example
-`npm run css`, `pnpm run css`, `yarn run css`, or `bun run css`, and inspect the
-first 20 output lines. Confirm the concrete `<CSS_OUTPUT>` exists and is
-non-empty.
+Run the `css` script with the selected package manager, for example `npm run
+css`, `pnpm run css`, `yarn run css`, or `bun run css`. For a workspace member,
+run it from `<PACKAGE_ROOT>` with the explicit `<WORKSPACE_MEMBER>` selector.
+Inspect the first 20 output lines. Confirm the concrete `<CSS_OUTPUT>` exists
+and is non-empty and belongs to `<MIGRATION_TARGET>`.
 
 ### PostCSS Verification
 
@@ -620,8 +679,9 @@ dependencies were changed. Otherwise, use the completion report below.
 - Y content paths → @source directives
 - W safelist entries → @source inline() directives
 - R raw content entries → verified @source inline() directives
-- Prefix → prefix() import modifier plus migrated utility tokens
+- Prefix/separator → import modifier plus migrated utility tokens
 - Core plugins → split imports without preflight, or retained unresolved config
+- Presets → recursively resolved and migrated, or retained unresolved chain
 - Z plugins → @plugin directives
 - Dark mode → class-based custom variant plus `.dark` overrides
 - tailwind.config.js — removed (or kept per user choice)
@@ -671,14 +731,15 @@ these are TRUE:
 
 1. The v3 configuration and affected CSS files were parsed and analyzed
 2. Proposed CSS, dependency, script, PostCSS, and old-config changes were shown
-3. The preview report identifies unresolved plugin, core plugin, theme namespace, safelist, raw content, prefix, separator, or color conversions
+3. The preview report identifies unresolved preset, plugin, core plugin, theme namespace, safelist, raw content, prefix, separator, or color conversions
 4. Proposed `@source` paths preserve the v3 content matches from every independently built CSS entry
 5. Boolean or selector-form `important` behavior is preserved or identified as an unresolved choice
 6. Direct theme resets and literal safelist inline sources preserve v3 semantics or are identified as unresolved
 7. Raw content, prefix, and separator semantics are preserved or identified as unresolved blockers
 8. Disabled core-plugin behavior is preserved or identified as an unresolved blocker
 9. Every independently built entry would receive equivalent converted configuration while preserving its entry-specific CSS and order
-10. No project files, dependencies, or generated CSS changed
+10. Package-manager ownership and workspace-member scoping were resolved without mutation
+11. No project files, dependencies, or generated CSS changed
 
 Without `--check`, follow the selected integration path. Use only the migration completion criteria for the selected integration.
 
@@ -704,6 +765,8 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 16. `corePlugins.preflight: false` uses verified split imports without preflight, and every other disabled core plugin remains unresolved with the config retained
 17. Every custom-separator token is rewritten to v4 colon form with generated equivalence verified, or remains unresolved with the config retained
 18. Every independently built CSS entry contains equivalent converted configuration, preserves its entry-specific CSS and order, and passes its actual build
+19. Every preset chain is fully resolved and migrated with equivalent generated behavior, or remains unresolved with the config and local preset files retained
+20. Workspace dependency and script commands explicitly target `<WORKSPACE_MEMBER>` from `<PACKAGE_ROOT>`, or the standalone project owns its manager locally
 
 ### PostCSS Migration Completion Criteria
 
@@ -729,6 +792,8 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 18. `corePlugins.preflight: false` uses verified split imports without preflight, and every other disabled core plugin remains unresolved with the config retained
 19. Every custom-separator token is rewritten to v4 colon form with generated equivalence verified, or remains unresolved with the config retained
 20. Every independently built CSS entry contains equivalent converted configuration, preserves its entry-specific CSS and order, and passes its actual build
+21. Every preset chain is fully resolved and migrated with equivalent generated behavior, or remains unresolved with the config and local preset files retained
+22. Workspace dependency and script commands explicitly target `<WORKSPACE_MEMBER>` from `<PACKAGE_ROOT>`, or the standalone project owns its manager locally
 
 ```
 <done>COMPLETE</done>
