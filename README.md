@@ -213,6 +213,10 @@ Standup reports and git productivity helpers.
 
 Go best practices guidance powered by Gopher Guides training materials.
 
+| Workflow | Claude Code | Codex |
+|----------|-------------|-------|
+| Clear response cache | `/gopher-guides:clear-cache` | `$gopher-guides:clear-cache` |
+
 **API Endpoints** (all platforms via REST):
 - `/api/gopher-ai/practices` - Get prescriptive guidance on Go topics
 - `/api/gopher-ai/audit` - Audit Go code against best practices

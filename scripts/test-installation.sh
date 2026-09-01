@@ -227,12 +227,14 @@ ARCHIVE_MTIME=946684800
 echo -n "Codex and Gemini builds resolve shared skill resources... "
 CODEX_GO_WORKFLOW_SKILL="$ROOT_DIR/dist/codex/plugins/go-workflow/skills/start-issue/SKILL.md"
 CODEX_GOPHER_GUIDES_SKILL="$ROOT_DIR/dist/codex/plugins/gopher-guides/skills/gopher-guides/SKILL.md"
+CODEX_GOPHER_GUIDES_CLEAR_SKILL="$ROOT_DIR/dist/codex/plugins/gopher-guides/skills/clear-cache/SKILL.md"
 GEMINI_GO_WORKFLOW_SKILL="$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/skills/start-issue/SKILL.md"
 GEMINI_GOPHER_GUIDES_SKILL="$ROOT_DIR/dist/gemini/gopher-ai-gopher-guides/skills/gopher-guides/SKILL.md"
+GEMINI_GOPHER_GUIDES_CLEAR_SKILL="$ROOT_DIR/dist/gemini/gopher-ai-gopher-guides/skills/clear-cache/SKILL.md"
 GEMINI_GO_DEV_ROUTER="$ROOT_DIR/dist/gemini/gopher-ai-go-dev/skills/explain/SKILL.md"
 GEMINI_GO_DEV_COMMAND="$ROOT_DIR/dist/gemini/gopher-ai-go-dev/commands/explain.toml"
 BUILT_RESOURCE_FAILURE=""
-for codex_skill in "$CODEX_GO_WORKFLOW_SKILL" "$CODEX_GOPHER_GUIDES_SKILL"; do
+for codex_skill in "$CODEX_GO_WORKFLOW_SKILL" "$CODEX_GOPHER_GUIDES_SKILL" "$CODEX_GOPHER_GUIDES_CLEAR_SKILL"; do
   if [ ! -f "$codex_skill" ]; then
     BUILT_RESOURCE_FAILURE="missing ${codex_skill#"$ROOT_DIR"/}"
     break
@@ -253,18 +255,23 @@ if [ -z "$BUILT_RESOURCE_FAILURE" ]; then
     BUILT_RESOURCE_FAILURE="Codex artifacts contain Claude-only executable resource paths"
   elif [ ! -f "$ROOT_DIR/dist/codex/plugins/go-workflow/lib/driver-interaction.md" ] ||
        [ ! -x "$ROOT_DIR/dist/codex/plugins/go-workflow/scripts/setup-loop.sh" ] ||
-       [ ! -x "$ROOT_DIR/dist/codex/plugins/gopher-guides/scripts/cache-api.sh" ]; then
+       [ ! -x "$ROOT_DIR/dist/codex/plugins/gopher-guides/scripts/cache-api.sh" ] ||
+       [ ! -x "$ROOT_DIR/dist/codex/plugins/gopher-guides/scripts/clear-cache.sh" ]; then
     BUILT_RESOURCE_FAILURE="Codex artifacts omit representative bundled resources"
-  elif [ ! -f "$GEMINI_GO_WORKFLOW_SKILL" ] || [ ! -f "$GEMINI_GOPHER_GUIDES_SKILL" ]; then
+  elif [ ! -f "$GEMINI_GO_WORKFLOW_SKILL" ] ||
+       [ ! -f "$GEMINI_GOPHER_GUIDES_SKILL" ] ||
+       [ ! -f "$GEMINI_GOPHER_GUIDES_CLEAR_SKILL" ] ||
+       [ ! -x "$ROOT_DIR/dist/gemini/gopher-ai-gopher-guides/scripts/clear-cache.sh" ]; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts omit representative skills"
   elif [ -e "$GEMINI_GO_DEV_ROUTER" ]; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts include a Codex command router"
   elif [ ! -f "$GEMINI_GO_DEV_COMMAND" ]; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts omit the routed command"
-  elif grep -Fq '<PLUGIN_ROOT>' "$GEMINI_GO_WORKFLOW_SKILL" "$GEMINI_GOPHER_GUIDES_SKILL"; then
+  elif grep -Fq '<PLUGIN_ROOT>' "$GEMINI_GO_WORKFLOW_SKILL" "$GEMINI_GOPHER_GUIDES_SKILL" "$GEMINI_GOPHER_GUIDES_CLEAR_SKILL"; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts retain unresolved plugin-root notation"
   elif ! grep -Fq '$HOME/.gemini/extensions/gopher-ai-go-workflow/lib/driver-interaction.md' "$GEMINI_GO_WORKFLOW_SKILL" ||
-       ! grep -Fq '$HOME/.gemini/extensions/gopher-ai-gopher-guides/scripts/cache-api.sh' "$GEMINI_GOPHER_GUIDES_SKILL"; then
+       ! grep -Fq '$HOME/.gemini/extensions/gopher-ai-gopher-guides/scripts/cache-api.sh' "$GEMINI_GOPHER_GUIDES_SKILL" ||
+       ! grep -Fq '$HOME/.gemini/extensions/gopher-ai-gopher-guides/scripts/clear-cache.sh' "$GEMINI_GOPHER_GUIDES_CLEAR_SKILL"; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts lack installed extension resource paths"
   fi
 fi
