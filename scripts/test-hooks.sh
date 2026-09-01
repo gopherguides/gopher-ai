@@ -128,12 +128,13 @@ run_runtime_location_tests() {
   local cache_compatibility_work cache_compatibility_xdg cache_compatibility_target cache_compatibility_legacy
   local cache_compatibility_default_output cache_compatibility_legacy_output
   local cache_legacy_file cache_unrelated_file legacy_unrelated_file
-  local cache_lock_smoke cache_lock_smoke_output
+  local cache_lock_smoke cache_lock_smoke_output cache_lock_portable_output
   local cache_clear_race cache_clear_race_bin cache_clear_race_output cache_clear_race_ready
   local cache_clear_race_release cache_clear_writer_output cache_clear_writer_pid clear_attempt
   local clear_cache_command default_clear_output expected_default_clear_output override_clear_output
   local default_cache_valid=false override_cache_valid=false compatibility_cache_valid=false
-  local cache_lock_smoke_valid=false cache_clear_race_valid=false cache_clear_race_status=true
+  local cache_lock_smoke_valid=false cache_lock_portable_valid=false
+  local cache_clear_race_valid=false cache_clear_race_status=true
   local corrupt_cache_valid=false parallel_cache_valid=false parallel_status=true writer writer_pid
 
   cache_fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-guides-cache.XXXXXX")
@@ -189,6 +190,12 @@ run_runtime_location_tests() {
   if cache_lock_smoke_output=$("$cache_lock" "$cache_lock_smoke" sh -c 'printf native-lock') &&
      [ "$cache_lock_smoke_output" = native-lock ]; then
     cache_lock_smoke_valid=true
+  fi
+  if cache_lock_portable_output=$(GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
+       "$cache_lock" "$cache_lock_smoke" sh -c 'printf portable-lock') &&
+     [ "$cache_lock_portable_output" = portable-lock ] &&
+     [ ! -d "${cache_lock_smoke}.directory" ]; then
+    cache_lock_portable_valid=true
   fi
 
   if GOPHER_GUIDES_API_KEY=test \
@@ -328,6 +335,7 @@ run_runtime_location_tests() {
   if [ ! -e "$cache_missing_args_dir" ] &&
      [ ! -e "$cache_missing_key_dir" ] &&
      [ "$cache_lock_smoke_valid" = true ] &&
+     [ "$cache_lock_portable_valid" = true ] &&
      [ "$default_cache_valid" = true ] &&
      [ "$override_cache_valid" = true ] &&
      [ "$compatibility_cache_valid" = true ] &&
