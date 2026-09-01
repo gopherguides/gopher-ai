@@ -4,6 +4,15 @@ import pathlib
 import re
 import sys
 
+try:
+    import yaml
+except ModuleNotFoundError:
+    print(
+        "PyYAML is required; install requirements-test.txt",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
@@ -1137,6 +1146,152 @@ def coverage_failures():
     ]
 
 
+def yaml_mapping_values(node, key):
+    if not isinstance(node, yaml.MappingNode):
+        return []
+    return [
+        value
+        for candidate, value in node.value
+        if isinstance(candidate, yaml.ScalarNode) and candidate.value == key
+    ]
+
+
+def yaml_scalar_is_false(node):
+    return isinstance(node, yaml.ScalarNode) and node.value.strip().casefold() == "false"
+
+
+def scan_yaml_action_step(path, step):
+    failures = []
+    discovered = 0
+    for uses_node in yaml_mapping_values(step, "uses"):
+        if not isinstance(uses_node, yaml.ScalarNode):
+            continue
+        uses_value = uses_node.value.strip()
+        match = re.fullmatch(
+            r"(actions/(?:checkout|setup-go|setup-node))@(.+)",
+            uses_value,
+            re.IGNORECASE,
+        )
+        if not match:
+            continue
+        action, action_ref = match.groups()
+        action = action.lower()
+        discovered += 1
+        location = f"{path.relative_to(ROOT)}:{uses_node.start_mark.line + 1}"
+        if action_ref not in SUPPORTED_REFS[action]:
+            failures.append(f"{location}: unsupported {action}@{action_ref}")
+        if action != "actions/setup-node":
+            continue
+        cache_disabled = False
+        for with_node in yaml_mapping_values(step, "with"):
+            for cache_node in yaml_mapping_values(
+                with_node, "package-manager-cache"
+            ):
+                cache_disabled = cache_disabled or yaml_scalar_is_false(cache_node)
+        if not cache_disabled:
+            failures.append(
+                f"{location}: setup-node must set package-manager-cache: false"
+            )
+    return failures, discovered
+
+
+def scan_parsed_yaml(path, source=None):
+    try:
+        root = yaml.compose(path.read_text() if source is None else source)
+    except yaml.YAMLError as error:
+        return [f"{path.relative_to(ROOT)}: invalid YAML: {error}"], 0
+    if root is None:
+        return [], 0
+
+    failures = []
+    discovered = 0
+    visited = set()
+
+    def visit(node):
+        nonlocal discovered
+        if id(node) in visited:
+            return
+        visited.add(id(node))
+        if isinstance(node, yaml.MappingNode):
+            for steps_node in yaml_mapping_values(node, "steps"):
+                if not isinstance(steps_node, yaml.SequenceNode):
+                    location = (
+                        f"{path.relative_to(ROOT)}:"
+                        f"{steps_node.start_mark.line + 1}"
+                    )
+                    failures.append(f"{location}: steps must be a sequence")
+                    continue
+                for step in steps_node.value:
+                    if not isinstance(step, yaml.MappingNode):
+                        location = (
+                            f"{path.relative_to(ROOT)}:"
+                            f"{step.start_mark.line + 1}"
+                        )
+                        failures.append(
+                            f"{location}: action step aliases must resolve to mappings"
+                        )
+                        continue
+                    step_failures, step_discovered = scan_yaml_action_step(path, step)
+                    failures.extend(step_failures)
+                    discovered += step_discovered
+            for key, value in node.value:
+                visit(key)
+                visit(value)
+        elif isinstance(node, yaml.SequenceNode):
+            for value in node.value:
+                visit(value)
+
+    visit(root)
+    return failures, discovered
+
+
+def yaml_parser_failures():
+    cases = (
+        """
+jobs:
+  test:
+    steps:
+      -   name: Checkout
+          uses: actions/checkout@v4
+""",
+        """
+jobs:
+  test:
+    steps:
+      - uses:
+          actions/checkout@v4
+""",
+        """
+jobs:
+  test:
+    steps: [ { uses: actions/checkout@v4 } ]
+""",
+    )
+    failures = []
+    fixture_path = ROOT / "runtime-policy-fixture.yml"
+    for source in cases:
+        findings, discovered = scan_parsed_yaml(fixture_path, source)
+        if discovered != 1 or not any(
+            "unsupported actions/checkout@v4" in finding
+            for finding in findings
+        ):
+            failures.append("semantic YAML parser missed action fixture")
+
+    alias_source = """
+node-inputs: &node-inputs
+  package-manager-cache: false
+jobs:
+  test:
+    steps:
+      - uses: actions/setup-node@v7
+        with: *node-inputs
+"""
+    findings, discovered = scan_parsed_yaml(fixture_path, alias_source)
+    if findings or discovered != 1:
+        failures.append("semantic YAML parser missed input alias fixture")
+    return failures
+
+
 def unsupported_steps_collections(lines):
     scalar_content = block_scalar_content_indices(lines)
     unsupported = []
@@ -1242,10 +1397,20 @@ def action_has_cache_disabled(lines, start, parsed):
 
 
 def main():
-    failures = parser_failures() + cache_parser_failures() + coverage_failures()
+    failures = (
+        parser_failures()
+        + cache_parser_failures()
+        + coverage_failures()
+        + yaml_parser_failures()
+    )
     discovered = 0
 
     for path in workflow_files():
+        if WORKFLOWS in path.parents or COMPOSITE_ACTIONS in path.parents:
+            yaml_failures, yaml_discovered = scan_parsed_yaml(path)
+            failures.extend(yaml_failures)
+            discovered += yaml_discovered
+            continue
         lines = path.read_text().splitlines()
         normalized_lines = [normalize_workflow_line(line) for line in lines]
         policy_lines = (
