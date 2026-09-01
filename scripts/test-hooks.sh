@@ -18,6 +18,7 @@ run_runtime_location_tests() {
   local pre_tool_hook="$ROOT_DIR/plugins/go-workflow/hooks/pre-tool-use.sh"
   local cleanup_hook="$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh"
   local cache_api="$ROOT_DIR/plugins/gopher-guides/scripts/cache-api.sh"
+  local cache_lock="$ROOT_DIR/plugins/gopher-guides/scripts/cache-lock.sh"
   local clear_cache="$ROOT_DIR/plugins/gopher-guides/commands/clear-cache.md"
   local clear_cache_script="$ROOT_DIR/plugins/gopher-guides/scripts/clear-cache.sh"
 
@@ -123,7 +124,7 @@ run_runtime_location_tests() {
   local cache_fixture cache_home cache_xdg cache_override cache_bin cache_default_file
   local cache_parallel cache_parallel_bin cache_parallel_barrier cache_parallel_pids
   local cache_corrupt cache_corrupt_output
-  local cache_abandoned cache_abandoned_output cache_reused cache_reused_output
+  local cache_abandoned cache_abandoned_output cache_reused cache_reused_created cache_reused_nonce cache_reused_output
   local cache_clear_race cache_clear_race_output cache_clear_race_ready cache_clear_race_release
   local cache_clear_pid cache_clear_writer_pid clear_attempt
   local cache_missing_args_dir cache_missing_key_dir
@@ -241,7 +242,10 @@ run_runtime_location_tests() {
      [ ! -e "${cache_abandoned}.lock" ]; then
     abandoned_cache_valid=true
   fi
-  printf '%s\n' "$$" > "${cache_reused}.lock"
+  cache_reused_created=$(( $(date +%s) - 11 ))
+  cache_reused_nonce=$RANDOM
+  printf '%s %s %s\n' "$$" "$cache_reused_created" "$cache_reused_nonce" > "${cache_reused}.lock"
+  printf '%s %s %s %s\n' "$$" "$cache_reused_created" "$cache_reused_nonce" "$cache_reused_created" > "${cache_reused}.lock.heartbeat"
   if cache_reused_output=$(PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
        GOPHER_GUIDES_CACHE_FILE="$cache_reused" HOME="$cache_home" \
        "$cache_api" examples '{}') &&
@@ -271,16 +275,16 @@ run_runtime_location_tests() {
   fi
   printf '%s\n' '{"old":true}' > "$cache_clear_race"
   (
-    writer_candidate="${cache_clear_race}.lock.writer"
-    printf '%s %s %s\n' "$$" "$(( $(date +%s) - 11 ))" "$RANDOM" > "$writer_candidate"
-    ln "$writer_candidate" "${cache_clear_race}.lock"
+    source "$cache_lock"
+    cache_lock_configure "$cache_clear_race"
+    cache_lock_acquire
     : > "$cache_clear_race_ready"
     while [ ! -e "$cache_clear_race_release" ]; do
       sleep 0.01
     done
     printf '%s\n' '{"writer":true}' > "${cache_clear_race}.tmp.writer"
     mv "${cache_clear_race}.tmp.writer" "$cache_clear_race"
-    rm -f "${cache_clear_race}.lock" "$writer_candidate"
+    cache_lock_release
   ) &
   cache_clear_writer_pid=$!
   while [ ! -e "$cache_clear_race_ready" ] && kill -0 "$cache_clear_writer_pid" 2>/dev/null; do
