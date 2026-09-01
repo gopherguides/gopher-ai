@@ -4,31 +4,44 @@ Multi-LLM integration for second opinions and task delegation.
 
 ## Installation
 
+Claude Code:
+
 ```bash
 /plugin install llm-tools@gopher-ai
 ```
 
-Or install via marketplace:
+Codex, after registering the repository-backed `gopher-ai` marketplace:
+
 ```bash
-/plugin marketplace add gopherguides/gopher-ai
+codex plugin add llm-tools@gopher-ai
 ```
 
-## Commands
+## Provider Workflows
 
-| Command | Description |
-|---------|-------------|
-| `/llm-tools:codex <prompt>` | Delegate tasks to Codex with official-plugin routing and CLI fallback |
-| `/gemini <prompt>` | Query Google Gemini for analysis |
-| `/ollama <prompt>` | Use local models (data stays on your machine) |
-| `/llm-compare <prompt>` | Compare responses from multiple LLMs |
-| `/convert <from> <to>` | Convert between formats (JSON→TS, SQL→Prisma, etc.) |
-| `/review-loop [options]` | Iterative LLM review loop: review, fix, verify, repeat until clean |
+Claude Code uses slash commands. Codex exposes the two cross-model provider
+paths as explicit qualified skills.
 
-## Skills (Auto-invoked)
+| Workflow | Claude Code | Codex |
+|----------|-------------|-------|
+| Gemini delegation | `/llm-tools:gemini <prompt>` | `$llm-tools:gemini <prompt>` |
+| Ollama delegation | `/llm-tools:ollama <prompt>` | `$llm-tools:ollama <prompt>` |
+| Gemini image generation | `/llm-tools:gemini-image <prompt>` | `$llm-tools:gemini-image <prompt>` |
+| Claude-to-Codex delegation | `/llm-tools:codex <prompt>` | Intentionally unsupported; the active assistant is already Codex |
+| Multi-provider comparison | `/llm-tools:llm-compare <prompt>` | Intentionally unsupported |
+| Format conversion | `/llm-tools:convert <from> <to>` | Intentionally unsupported as a dedicated skill |
+| Persistent review loop | `/llm-tools:review-loop [options]` | Intentionally unsupported |
+
+`$llm-tools:gemini` and `$llm-tools:ollama` are explicit-only. They are never
+selected implicitly because provider choice and data boundaries belong to the
+user.
+
+## Advisory Skill
 
 ### Second Opinion
 
-Suggests getting another LLM's perspective for complex decisions or when you want to validate an approach.
+Suggests getting another LLM's perspective for complex decisions or when you
+want to validate an approach. Its recommendations are surface-aware: Codex sees
+only qualified Codex skills, while Claude Code sees slash commands.
 
 ## Requirements
 
@@ -45,7 +58,7 @@ npm install -g @google/gemini-cli
 brew install ollama
 ```
 
-## Interactive Codex in Claude Code
+## Claude Code: Interactive Codex
 
 For interactive Codex review and delegation inside Claude Code, install OpenAI's official Codex plugin:
 
@@ -66,8 +79,14 @@ llm-tools omits `-m` for Codex calls by default, so Codex CLI chooses its provid
 
 ## Privacy Note
 
-- `/ollama` keeps all data local on your machine
-- `/codex` and `/gemini` send data to their respective cloud services
+- Ollama privacy depends on `OLLAMA_HOST`. Only verified loopback endpoints are
+  treated as local; any other destination is disclosed and requires explicit
+  confirmation before sending prompt data.
+- Gemini sends prompts to Google. An explicit Codex invocation authorizes only
+  its attached prompt; adding code, diffs, file contents, logs, or session
+  context requires a separate disclosure and explicit confirmation.
+- Claude Code's Codex and Gemini commands send data to their respective cloud
+  services.
 
 ## License
 

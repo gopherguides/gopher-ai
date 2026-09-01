@@ -43,31 +43,58 @@ Suggest a second opinion when you detect:
 
 ## How to Suggest
 
-When conditions are met, offer specific options:
+A second opinion is most valuable from a different model family than the one
+that wrote the code. Bind the active assistant surface before suggesting an
+invocation.
 
-> This involves [type of decision]. Would you like a second opinion from another LLM?
->
-> - `/codex:review` - Get OpenAI's analysis via the official Codex Claude Code plugin when installed
-> - `/llm-tools:codex review <scope>` - Use gopher-ai's Codex CLI fallback when the official plugin is missing or declined
-> - `/gemini <specific question>` - Ask Google Gemini
-> - `/ollama <question>` - Use a local model (keeps data private)
-> - `/llm-tools:review-loop --llm fable` - Fresh-context Claude subagent review (no external CLI, no extra cost)
-> - `/llm-compare <question>` - Compare multiple models
+## Gemini CLI
 
-**Cross-model rule:** a second opinion is most valuable from a different model family than the one that wrote the code. If Claude wrote it, suggest codex/gemini/ollama first. If Codex wrote it (wtcodex flows), suggest the fable review. Never invoke Fable via `claude -p` — headless print mode bills metered API usage, not the subscription; use the subagent path (or a tmux-driven interactive Claude window when orchestrating from Codex).
+Offer only commands packaged by the active `gopher-ai-llm-tools` extension:
 
-**Codex routing rule:** in Claude Code, prefer `/codex:review`, `/codex:adversarial-review`, or `/codex:rescue` from `codex@openai-codex` when that official plugin is installed. If it is not installed, use `/llm-tools:codex ...`; that command warns, prints the official plugin install steps, and can proceed with the existing Codex CLI fallback.
+- `/ollama <specific question>` asks an installed Ollama model. Treat it as
+  local only after verifying that `OLLAMA_HOST` resolves to a loopback host.
+- `/llm-compare <specific question>` compares the available providers.
 
-**Tailor the suggestion to the context:**
+If a bare command conflicts with a user or project command, use the
+extension-prefixed form shown by `/commands list`, such as
+`/gopher-ai-llm-tools.ollama`. Never suggest command syntax from another
+assistant surface on Gemini CLI.
 
-For security-sensitive code:
-> Since this involves authentication logic, you might want a second security review. Try `/codex:adversarial-review` if the official Codex plugin is installed, `/llm-tools:codex review` for the CLI fallback, or `/ollama` (keeps code local) for another perspective.
+## Codex
 
-For architectural decisions:
-> This is a significant architectural choice. Different models sometimes weigh trade-offs differently. Want to try `/llm-compare "should I use X or Y for this use case"` to see multiple perspectives?
+Offer only installed Codex skills:
 
-For complex algorithms:
-> This algorithm has some complexity. A second set of eyes might catch edge cases. Try `/codex:rescue explain the edge cases in this algorithm` if the official Codex plugin is installed, or `/llm-tools:codex explain the edge cases in this algorithm` for the CLI fallback.
+- `$llm-tools:gemini <specific question>` asks Google Gemini. Explain that the
+  prompt goes to a cloud provider and that adding code or repository context
+  requires explicit confirmation.
+- `$llm-tools:ollama <specific question>` asks an installed Ollama model. Its
+  privacy boundary depends on the configured Ollama endpoint; the provider
+  skill verifies loopback destinations or confirms a non-loopback transfer.
+
+For security-sensitive or proprietary code, present Ollama only with that
+endpoint check. For architectural decisions, offer either provider and let the
+user choose; do not invoke one implicitly.
+
+## Claude Code
+
+Offer the command that fits the request:
+
+- `/codex:review` gets OpenAI analysis through the official Codex Claude Code
+  plugin when installed.
+- `/llm-tools:codex review <scope>` uses the Codex CLI fallback when the
+  official plugin is missing or declined.
+- `/gemini <specific question>` asks Google Gemini.
+- `/ollama <specific question>` asks a local model.
+- `/llm-tools:review-loop --llm fable` requests a fresh-context Claude review.
+- `/llm-compare <specific question>` compares multiple providers.
+
+In Claude Code, prefer `/codex:review`, `/codex:adversarial-review`, or
+`/codex:rescue` from `codex@openai-codex` when that official plugin is
+installed. Keep scripted pipelines on the existing CLI flow.
+
+For security-sensitive code, explicitly mention the local `/ollama` option.
+For a focused challenge review, use `/codex:adversarial-review` when available.
+For complex reasoning or rescue work, use `/codex:rescue` when available.
 
 ## When NOT to Suggest
 
@@ -81,20 +108,8 @@ Do not suggest second opinions when:
 
 ## Privacy Consideration
 
-Always mention `/ollama` as an option when the code might be sensitive:
-
-> For proprietary code, `/ollama` keeps everything local - your code never leaves your machine.
-
-## Integration with Other Commands
-
-When suggesting, be specific about which command fits best:
-
-| Situation | Best Command |
-|-----------|--------------|
-| Code review | `/codex:review` when installed; otherwise `/llm-tools:codex review` |
-| Challenge review | `/codex:adversarial-review` when installed; otherwise `/llm-tools:codex review --ask` |
-| Code written by Codex | `/llm-tools:review-loop --llm fable` (cross-model: Claude reviews Codex's work) |
-| Quick question | `/gemini <question>` |
-| Sensitive/private code | `/ollama <question>` |
-| Want multiple views | `/llm-compare <question>` |
-| Complex reasoning task | `/codex:rescue` when installed; otherwise `/llm-tools:codex` or `/ollama` with larger models |
+Before sending code or repository context to a non-local provider, identify
+the provider and the material that would leave the machine, then obtain
+explicit confirmation. Never include secrets or unrelated files. Ollama is
+local only when its effective `OLLAMA_HOST` is a verified loopback endpoint;
+model downloads remain a separate user decision.

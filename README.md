@@ -12,7 +12,7 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | **OpenAI Codex CLI** | 6 plugins; capabilities vary | Repository-backed, user-wide, or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
-Shipped surface: 36 Claude Code commands across 7 plugins; 29 Codex skills across 6 plugins; 8 optional Codex MCP tools.
+Shipped surface: 36 Claude Code commands across 7 plugins; 31 Codex skills across 6 plugins; 8 optional Codex MCP tools.
 
 See the [platform capability matrix](docs/platform-capabilities.md) for exact
 qualified names and workflows that are not yet available on Codex.
@@ -223,17 +223,25 @@ Requires `GOPHER_GUIDES_API_KEY` environment variable.
 
 ### llm-tools
 
-Multi-LLM integration for second opinions and task delegation.
+Multi-LLM integration for second opinions and task delegation. The
+`second-opinion` skill recommends invocations that exist on the active client.
 
-For interactive Codex use in Claude Code, llm-tools prefers OpenAI's official `codex@openai-codex` plugin when installed and falls back to the built-in Codex CLI flow when it is missing or declined. Both paths share `~/.codex` auth/config; scripted gopher-ai review pipelines continue to use the CLI flow for structured automation.
+| Workflow | Claude Code | Codex |
+|----------|-------------|-------|
+| Gemini delegation | `/llm-tools:gemini <prompt>` | `$llm-tools:gemini <prompt>` |
+| Ollama delegation | `/llm-tools:ollama <prompt>` | `$llm-tools:ollama <prompt>` |
+| Gemini image generation | `/llm-tools:gemini-image <prompt>` | `$llm-tools:gemini-image <prompt>` |
+| Claude-to-Codex delegation | `/llm-tools:codex <prompt>` | Intentionally unsupported; the active assistant is already Codex |
+| Multi-provider comparison | `/llm-tools:llm-compare <prompt>` | Intentionally unsupported |
+| Persistent review loop | `/llm-tools:review-loop [options]` | Intentionally unsupported |
+| Format conversion | `/llm-tools:convert <from> <to>` | Intentionally unsupported as a dedicated skill |
 
-| Command | Description |
-|---------|-------------|
-| `/llm-tools:codex <prompt>` | Delegate tasks to Codex with official-plugin routing and CLI fallback |
-| `/gemini <prompt>` | Query Google Gemini for analysis |
-| `/ollama <prompt>` | Use local models (data stays on your machine) |
-| `/llm-compare <prompt>` | Compare responses from multiple LLMs |
-| `/convert <from> <to>` | Convert between formats (JSON→TS, SQL→Prisma, etc.) |
+Only Claude Code uses OpenAI's official `codex@openai-codex` plugin routing.
+Codex provider skills never recommend those Claude-only commands. Gemini is a
+cloud boundary: adding code, diffs, or repository context requires explicit
+confirmation after the payload is disclosed. Ollama privacy depends on
+`OLLAMA_HOST`: only verified loopback endpoints are treated as local, and any
+other destination requires disclosure and explicit confirmation.
 
 ### go-web
 
