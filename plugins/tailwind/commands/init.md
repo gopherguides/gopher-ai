@@ -1,7 +1,7 @@
 ---
 argument-hint: "[project-path]"
 description: "Initialize Tailwind CSS v4 in an existing project"
-allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(node:*)", "Bash(npm:*)", "Bash(npx:*)", "Bash(ls:*)", "Bash(fd:*)", "Bash(grep:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__install_tailwind", "mcp__tailwindcss__get_tailwind_config_guide"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(node:*)", "Bash(npm:*)", "Bash(pnpm:*)", "Bash(yarn:*)", "Bash(bun:*)", "Bash(ls:*)", "Bash(fd:*)", "Bash(grep:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__install_tailwind", "mcp__tailwindcss__get_tailwind_config_guide"]
 ---
 
 # Initialize Tailwind CSS v4
@@ -44,6 +44,7 @@ Stop and ask the user to install first.
 
 ```bash
 ls package.json 2>/dev/null
+ls package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb 2>/dev/null
 ls vite.config.* next.config.* nuxt.config.* astro.config.* 2>/dev/null
 ls go.mod 2>/dev/null
 fd -e templ -d 3 2>/dev/null | head -3
@@ -60,6 +61,26 @@ ls tailwind.config.* 2>/dev/null
 | `go.mod` + `*.templ` | Go + Templ |
 | `package.json` only | Generic Node |
 | None | Plain HTML/CSS |
+
+## Package Manager Selection
+
+Read the `packageManager` field in `package.json` and inspect
+`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, and `bun.lockb`.
+Use the declared manager when it agrees with the lockfile. Otherwise, use the
+single lockfile already present. If the signals conflict, ask which manager is
+authoritative and stop before changing dependencies. If neither signal exists,
+default to npm.
+
+Use the selected manager for every dependency and script command:
+
+| Manager | Add development dependencies | Run a script |
+|---------|------------------------------|--------------|
+| npm | `npm install -D <PACKAGES>` | `npm run <SCRIPT>` |
+| pnpm | `pnpm add -D <PACKAGES>` | `pnpm run <SCRIPT>` |
+| Yarn | `yarn add -D <PACKAGES>` | `yarn run <SCRIPT>` |
+| Bun | `bun add -d <PACKAGES>` | `bun run <SCRIPT>` |
+
+Do not create a lockfile for a different package manager.
 
 If existing Tailwind detected, ask via `AskUserQuestion`:
 
@@ -85,16 +106,14 @@ If existing Tailwind detected, ask via `AskUserQuestion`:
 
 ## Step 4: Install Dependencies
 
-```bash
-# CLI (recommended)
-npm install -D tailwindcss @tailwindcss/cli
+Use the selected package manager's add-development-dependencies command with
+the package set for the selected integration:
 
-# Vite
-npm install -D tailwindcss @tailwindcss/vite
-
-# PostCSS
-npm install -D tailwindcss @tailwindcss/postcss postcss
-```
+| Integration | Packages |
+|-------------|----------|
+| CLI | `tailwindcss @tailwindcss/cli` |
+| Vite | `tailwindcss @tailwindcss/vite` |
+| PostCSS | `tailwindcss @tailwindcss/postcss postcss` |
 
 ## Step 5: Create CSS Entry File
 
@@ -161,8 +180,8 @@ Adjust `@source` paths based on where templates are located.
 ```json
 {
   "scripts": {
-    "css": "npx @tailwindcss/cli -i ./css/input.css -o ./css/output.css --minify",
-    "css:watch": "npx @tailwindcss/cli -i ./css/input.css -o ./css/output.css --watch"
+    "css": "tailwindcss -i ./css/input.css -o ./css/output.css --minify",
+    "css:watch": "tailwindcss -i ./css/input.css -o ./css/output.css --watch"
   }
 }
 ```
@@ -200,18 +219,13 @@ Run only the verification path for the selected integration.
 
 Run the configured build and confirm the output file exists and is non-empty:
 
-```bash
-npm run css
-```
+Run the `css` script with the selected package manager, for example
+`npm run css`, `pnpm run css`, `yarn run css`, or `bun run css`.
 
 ### Vite Verification
 
 Ensure the CSS entry file is imported from the application entry point, then
-run the project's existing Vite build:
-
-```bash
-npm run build
-```
+run the project's existing Vite build with the selected package manager.
 
 Confirm the build succeeds and processes the Tailwind CSS entry without
 errors. Do not add CLI-only `css` scripts or a standalone output path.
@@ -241,6 +255,7 @@ Files created/modified:
 
 Verification:
 - [Selected integration and successful verification command]
+- Package manager: [npm, pnpm, Yarn, or Bun]
 
 Docs: https://tailwindcss.com/docs
 ```
@@ -249,7 +264,7 @@ Docs: https://tailwindcss.com/docs
 
 ```text
 Next steps:
-1. npm run css:watch
+1. Run the `css:watch` script with the selected package manager
 2. Include in HTML: <link href="/css/output.css" rel="stylesheet">
 3. Use classes: <div class="flex items-center gap-4 p-4 bg-primary text-primary-foreground">…
 4. Customize theme via @theme { ... } in the CSS file
@@ -260,7 +275,7 @@ Next steps:
 ```text
 Next steps:
 1. Import the CSS entry file from the application entry point
-2. Run the existing Vite development command, usually npm run dev
+2. Run the existing Vite development command with the selected package manager
 3. Use classes: <div class="flex items-center gap-4 p-4 bg-primary text-primary-foreground">…
 4. Customize theme via @theme { ... } in the CSS file
 ```
@@ -291,7 +306,7 @@ Use only the completion criteria for the selected integration. DO NOT output
 1. Dependencies installed
 2. CSS entry file created with `@import "tailwindcss"`
 3. Build scripts added to `package.json`
-4. `npm run css` (or equivalent) succeeds with zero errors
+4. The selected package manager's `css` script succeeds with zero errors
 5. Output CSS is generated
 
 ### Vite Completion Criteria

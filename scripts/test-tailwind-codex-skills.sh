@@ -123,6 +123,10 @@ assert_contains "$MIGRATE_COMMAND" '### Preview Completion Criteria'
 assert_contains "$MIGRATE_COMMAND" 'No project files, dependencies, or generated CSS changed'
 assert_contains "$MIGRATE_COMMAND" '| `@tailwindcss/forms` | Preserve/install the package; add `@plugin "@tailwindcss/forms";` |'
 assert_contains "$MIGRATE_COMMAND" 'Do not uninstall packages referenced by generated `@plugin` directives.'
+assert_contains "$MIGRATE_COMMAND" '## Preservation Flags'
+assert_contains "$MIGRATE_COMMAND" 'When `--backup` is present and `--check` is absent'
+assert_contains "$MIGRATE_COMMAND" 'When `--keep-config` is present'
+assert_contains "$MIGRATE_COMMAND" 'Do not ask how to dispose of the old configuration'
 for integration in CLI PostCSS; do
   assert_contains "$MIGRATE_COMMAND" "### $integration Verification"
   assert_contains "$MIGRATE_COMMAND" "### $integration Migration Completion Criteria"
@@ -138,11 +142,28 @@ for integration in CLI Vite PostCSS; do
 done
 assert_contains "$INIT_COMMAND" 'Use only the completion criteria for the selected integration.'
 
+for package_command in 'pnpm add -D' 'yarn add -D' 'bun add -d'; do
+  assert_contains "$INIT_COMMAND" "$package_command"
+  assert_contains "$MIGRATE_COMMAND" "$package_command"
+done
+for package_file in package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb; do
+  assert_contains "$INIT_COMMAND" "$package_file"
+  assert_contains "$MIGRATE_COMMAND" "$package_file"
+done
+for package_workflow in "$INIT_COMMAND" "$MIGRATE_COMMAND"; do
+  assert_contains "$package_workflow" '## Package Manager Selection'
+  assert_contains "$package_workflow" 'Do not create a lockfile for a different package manager.'
+  assert_not_matches "$package_workflow" 'npx[[:space:]]+@tailwindcss/cli'
+done
+
 OPTIMIZE_COMMAND="$PLUGIN_DIR/commands/optimize.md"
 assert_contains "$OPTIMIZE_COMMAND" '### Local CLI Measurement'
-assert_contains "$OPTIMIZE_COMMAND" 'npx --no-install @tailwindcss/cli'
+assert_contains "$OPTIMIZE_COMMAND" 'node_modules/@tailwindcss/cli/package.json'
+assert_contains "$OPTIMIZE_COMMAND" 'node "<LOCAL_CLI_ENTRY>"'
+assert_contains "$OPTIMIZE_COMMAND" 'Verify that the resolved entry remains inside'
 assert_contains "$OPTIMIZE_COMMAND" '### Existing Generated CSS Measurement'
 assert_contains "$OPTIMIZE_COMMAND" 'Do not install `@tailwindcss/cli` solely for measurement.'
 assert_contains "$OPTIMIZE_COMMAND" 'record the measurement limitation and continue'
+assert_not_matches "$OPTIMIZE_COMMAND" 'npx[[:space:]]'
 
 printf 'Tailwind Codex workflow skill tests passed.\n'

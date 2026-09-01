@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--check]"
 description: "Migrate Tailwind CSS v3 configuration to v4 CSS-based config"
-allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(npm:*)", "Bash(ls:*)", "Bash(grep:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_config_guide"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(npm:*)", "Bash(pnpm:*)", "Bash(yarn:*)", "Bash(bun:*)", "Bash(ls:*)", "Bash(grep:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_config_guide"]
 ---
 
 # Migrate Tailwind CSS v3 to v4
@@ -50,6 +50,22 @@ Do not edit files, install or remove dependencies, rename or delete configuratio
 Without `--check`, perform the migration and use the Migration Completion
 Criteria.
 
+## Preservation Flags
+
+When `--backup` is present and `--check` is absent, create backups before the
+first mutation. Back up every file that the migration will modify or remove,
+including affected CSS, `package.json`, the active lockfile, PostCSS
+configuration, and the v3 Tailwind configuration. Use a
+`.tailwind-v3.bak` suffix and a numbered suffix when that path already exists.
+Record every source-to-backup mapping. If any backup fails, stop before making
+changes.
+
+With `--check --backup`, report the backup paths that a normal migration would
+create without writing them.
+
+When `--keep-config` is present, keep the old Tailwind configuration unchanged
+after migration and state that v4 does not auto-detect it. Do not ask how to dispose of the old configuration. With `--check --keep-config`, record that disposition in the preview without changing the file.
+
 ## Loop Initialization
 
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-migrate" "COMPLETE"; fi`
@@ -59,11 +75,32 @@ Criteria.
 ```bash
 ls tailwind.config.js tailwind.config.ts tailwind.config.cjs tailwind.config.mjs 2>/dev/null
 grep '"tailwindcss"' package.json 2>/dev/null
+ls package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb 2>/dev/null
 ```
 
 If no config found:
 
 > No `tailwind.config.*` file found. Options: (1) project may already use v4 (CSS-based config); (2) use `/tailwind-init` to set up v4 from scratch; (3) check if config is in a non-standard location.
+
+## Package Manager Selection
+
+Read the `packageManager` field in `package.json` and inspect
+`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, and `bun.lockb`.
+Use the declared manager when it agrees with the lockfile. Otherwise, use the
+single lockfile already present. If the signals conflict, ask which manager is
+authoritative and stop before changing dependencies. If neither signal exists,
+default to npm.
+
+Use the selected manager consistently:
+
+| Manager | Remove dependencies | Add development dependencies | Run a script |
+|---------|---------------------|------------------------------|--------------|
+| npm | `npm uninstall <PACKAGES>` | `npm install -D <PACKAGES>` | `npm run <SCRIPT>` |
+| pnpm | `pnpm remove <PACKAGES>` | `pnpm add -D <PACKAGES>` | `pnpm run <SCRIPT>` |
+| Yarn | `yarn remove <PACKAGES>` | `yarn add -D <PACKAGES>` | `yarn run <SCRIPT>` |
+| Bun | `bun remove <PACKAGES>` | `bun add -d <PACKAGES>` | `bun run <SCRIPT>` |
+
+Do not create a lockfile for a different package manager.
 
 ## Step 2: Parse v3 Configuration
 
@@ -153,36 +190,34 @@ Without `--check`, apply the matching integration method below.
 
 **CLI method (recommended for most projects):**
 
-```bash
-npm uninstall tailwindcss postcss autoprefixer
-npm install -D tailwindcss@latest @tailwindcss/cli@latest
-```
+Remove `tailwindcss` and any PostCSS packages used exclusively by the old
+Tailwind integration, then add
+`tailwindcss@latest @tailwindcss/cli@latest` with the selected package manager.
+Preserve PostCSS dependencies that other project tooling still uses.
 
 Scripts:
 
 ```json
 {
   "scripts": {
-    "css": "npx @tailwindcss/cli -i ./src/input.css -o ./src/output.css --minify",
-    "css:watch": "npx @tailwindcss/cli -i ./src/input.css -o ./src/output.css --watch"
+    "css": "tailwindcss -i ./src/input.css -o ./src/output.css --minify",
+    "css:watch": "tailwindcss -i ./src/input.css -o ./src/output.css --watch"
   }
 }
 ```
 
 **PostCSS method (if using an existing PostCSS pipeline):**
 
-```bash
-npm uninstall tailwindcss autoprefixer
-npm install -D tailwindcss@latest @tailwindcss/postcss@latest postcss
-```
+Remove the old `tailwindcss` package and `autoprefixer` only when it is not used
+elsewhere, then add
+`tailwindcss@latest @tailwindcss/postcss@latest postcss` with the selected
+package manager.
 
 For every v3 plugin converted to an `@plugin` directive, preserve its package
 in `devDependencies` and install a compatible version if it is missing. When
-`@tailwindcss/forms` is detected and `--check` is not present, use:
-
-```bash
-npm install -D @tailwindcss/forms@latest
-```
+`@tailwindcss/forms` is detected and `--check` is not present, add
+`@tailwindcss/forms@latest` with the selected package manager's development
+dependency command.
 
 With `--check`, report that package action without running it. Do not uninstall packages referenced by generated `@plugin` directives.
 
@@ -206,7 +241,8 @@ export default {
 ## Step 7: Handle Old Config File
 
 With `--check`, report the recommended disposition and available alternatives
-without renaming or deleting the existing file. Otherwise, use
+without renaming or deleting the existing file. With `--keep-config`, keep the
+file unchanged as required by the Preservation Flags section. Otherwise, use
 `AskUserQuestion`: "Migration complete. What should we do with `tailwind.config.js`?"
 
 | Option | Description |
@@ -229,9 +265,9 @@ Without `--check`, run only the verification path for the selected integration.
 Run the configured CLI build and confirm its output file exists and is
 non-empty:
 
-```bash
-npm run css 2>&1 | head -20
-```
+Run the `css` script with the selected package manager, for example
+`npm run css`, `pnpm run css`, `yarn run css`, or `bun run css`, and inspect the
+first 20 output lines.
 
 ### PostCSS Verification
 
@@ -269,6 +305,7 @@ dependencies were changed. Otherwise, use the completion report below.
 - Z plugins → @plugin directives
 - Dark mode → class-based custom variant plus `.dark` overrides
 - tailwind.config.js — removed (or kept per user choice)
+- Backups — [created paths, not requested, or preview only]
 
 ### Manual Review Needed
 - [ ] Verify custom colors look correct
@@ -281,7 +318,7 @@ Use only the next steps for the selected integration.
 
 ### CLI Migration Next Steps
 
-1. Run `npm run css:watch`
+1. Run the `css:watch` script with the selected package manager
 2. Test the generated stylesheet thoroughly
 3. Run `/tailwind-audit` to check for any issues
 4. Commit
@@ -324,9 +361,10 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 2. CSS file updated with `@import "tailwindcss"` and `@theme`
 3. `tailwindcss` and `@tailwindcss/cli` updated to v4
 4. CLI build scripts added to `package.json`
-5. `npm run css` succeeds and generates non-empty output CSS
+5. The selected package manager's `css` script succeeds and generates non-empty output CSS
 6. No `@tailwind` directives remain in CSS files
 7. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
+8. Requested `--backup` and `--keep-config` behavior completed before destructive changes
 
 ### PostCSS Migration Completion Criteria
 
@@ -341,6 +379,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 7. No CLI-only `css` script was added solely for migration verification
 8. No `@tailwind` directives remain in CSS files
 9. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
+10. Requested `--backup` and `--keep-config` behavior completed before destructive changes
 
 ```
 <done>COMPLETE</done>

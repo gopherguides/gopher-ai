@@ -1,7 +1,7 @@
 ---
 argument-hint: "[--report|--fix]"
 description: "Analyze and optimize Tailwind CSS output"
-allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(npx:*)", "Bash(grep:*)", "Bash(ls:*)", "Bash(fd:*)", "Bash(wc:*)", "Bash(gzip:*)", "Bash(comm:*)", "Bash(sed:*)", "Bash(time:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(node:*)", "Bash(grep:*)", "Bash(ls:*)", "Bash(fd:*)", "Bash(wc:*)", "Bash(gzip:*)", "Bash(comm:*)", "Bash(sed:*)", "Bash(time:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities"]
 ---
 
 # Optimize Tailwind CSS
@@ -43,21 +43,28 @@ Use the first safe measurement path available.
 
 ### Local CLI Measurement
 
-Check for a project-local Tailwind CLI before invoking it:
+Check for the v4 CLI package itself rather than a potentially v3-owned shared
+binary:
 
 ```bash
-ls node_modules/.bin/tailwindcss 2>/dev/null
+ls node_modules/@tailwindcss/cli/package.json 2>/dev/null
 ```
 
-When it exists, choose a unique directory under the active temporary directory,
-replace `<TEMP_DIR>` below with that concrete path, and write both measurements
-there rather than into the project:
+When it exists, read `node_modules/@tailwindcss/cli/package.json`, select its
+`bin` string or `tailwindcss` bin entry, and resolve that relative path against
+the package directory. Verify that the resolved entry remains inside
+`node_modules/@tailwindcss/cli`, exists, and is a file. Bind its concrete path
+to `<LOCAL_CLI_ENTRY>`; otherwise treat the CLI as unavailable.
+
+Choose a unique directory under the active temporary directory, replace
+`<TEMP_DIR>` below with that concrete path, and write both measurements there
+rather than into the project:
 
 ```bash
-npx --no-install @tailwindcss/cli -i input.css -o "<TEMP_DIR>/dev-output.css" 2>&1
+node "<LOCAL_CLI_ENTRY>" -i input.css -o "<TEMP_DIR>/dev-output.css" 2>&1
 wc -c "<TEMP_DIR>/dev-output.css"
 
-npx --no-install @tailwindcss/cli -i input.css -o "<TEMP_DIR>/prod-output.css" --minify 2>&1
+node "<LOCAL_CLI_ENTRY>" -i input.css -o "<TEMP_DIR>/prod-output.css" --minify 2>&1
 wc -c "<TEMP_DIR>/prod-output.css"
 gzip -c "<TEMP_DIR>/prod-output.css" | wc -c
 ```
@@ -158,7 +165,7 @@ When a local Tailwind CLI is available, time a build into the temporary
 directory selected in Step 2:
 
 ```bash
-time npx --no-install @tailwindcss/cli -i input.css -o "<TEMP_DIR>/timed-output.css" --minify 2>&1
+time node "<LOCAL_CLI_ENTRY>" -i input.css -o "<TEMP_DIR>/timed-output.css" --minify 2>&1
 ```
 
 Without a local CLI, do not run a read-only Vite or PostCSS build that may
