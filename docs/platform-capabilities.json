@@ -844,6 +844,10 @@
         {
           "kind": "command",
           "path": "plugins/gopher-guides/commands/clear-cache.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/gopher-guides/skills/clear-cache/SKILL.md"
         }
       ],
       "platforms": {
@@ -851,12 +855,14 @@
           "disposition": "command",
           "names": [
             "gopher-guides:clear-cache"
+          ],
+          "skill_names": [
+            "gopher-guides:clear-cache"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/337"
+          "disposition": "skill",
+          "name": "gopher-guides:clear-cache"
         }
       }
     },

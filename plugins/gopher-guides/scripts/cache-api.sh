@@ -11,6 +11,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 ENDPOINT="${1:-}"
 JSON_DATA="${2:-}"
 CACHE_FILE="${GOPHER_GUIDES_CACHE_FILE:-${XDG_CACHE_HOME:-$HOME/.cache}/gopher-ai/gopher-guides-cache.json}"
@@ -40,75 +42,7 @@ esac
 
 # Create cache dir
 mkdir -p "$(dirname "$CACHE_FILE")"
-LOCK_FILE="${CACHE_FILE}.lock"
-LOCK_CANDIDATE="${LOCK_FILE}.$$"
-RECLAIM_DIR="${LOCK_FILE}.reclaim"
-LOCK_OWNER=""
-LOCK_STALE_SECONDS=10
-CACHE_TEMP=""
-
-release_cache_lock() {
-  if [ -n "$CACHE_TEMP" ]; then
-    rm -f "$CACHE_TEMP"
-  fi
-  rm -f "$LOCK_CANDIDATE"
-  if [ -n "$LOCK_OWNER" ] && [ -f "$LOCK_FILE" ] &&
-     [ "$(cat "$LOCK_FILE" 2>/dev/null)" = "$LOCK_OWNER" ]; then
-    rm -f "$LOCK_FILE"
-  fi
-}
-
-cache_lock_owner() {
-  printf '%s %s %s\n' "$$" "$(date +%s)" "$RANDOM"
-}
-
-cache_lock_is_abandoned() {
-  local lock_age
-  local lock_created
-  local lock_owner
-  local lock_pid
-  local now
-  lock_owner=$(cat "$LOCK_FILE" 2>/dev/null || true)
-  lock_pid=${lock_owner%% *}
-  case "$lock_pid" in
-    ''|*[!0-9]*) return 0 ;;
-  esac
-  [ "$lock_owner" != "$lock_pid" ] || return 0
-  lock_created=${lock_owner#"$lock_pid "}
-  lock_created=${lock_created%% *}
-  case "$lock_created" in
-    ''|*[!0-9]*) return 0 ;;
-  esac
-  kill -0 "$lock_pid" 2>/dev/null || return 0
-  now=$(date +%s)
-  lock_age=$((now - lock_created))
-  [ "$lock_age" -lt 0 ] || [ "$lock_age" -ge "$LOCK_STALE_SECONDS" ]
-}
-
-reclaim_abandoned_cache_lock() {
-  cache_lock_is_abandoned || return 1
-  mkdir "$RECLAIM_DIR" 2>/dev/null || return 1
-  if cache_lock_is_abandoned; then
-    rm -f "$LOCK_FILE"
-  fi
-  rmdir "$RECLAIM_DIR" 2>/dev/null || true
-}
-
-acquire_cache_lock() {
-  local attempt=0
-  LOCK_OWNER=$(cache_lock_owner)
-  printf '%s\n' "$LOCK_OWNER" > "$LOCK_CANDIDATE"
-  while ! ln "$LOCK_CANDIDATE" "$LOCK_FILE" 2>/dev/null; do
-    reclaim_abandoned_cache_lock || true
-    attempt=$((attempt + 1))
-    if [ "$attempt" -ge 240 ]; then
-      echo "Error: Timed out waiting for the Gopher Guides cache lock" >&2
-      return 1
-    fi
-    sleep 0.05
-  done
-  rm -f "$LOCK_CANDIDATE"
-}
+CACHE_EPOCH=$("$SCRIPT_DIR/cache-mutate.sh" epoch "$CACHE_FILE")
 
 # Generate cache key from endpoint + data
 hash_input() {
@@ -160,21 +94,8 @@ NOW=$(date +%s)
 CACHE_ENTRY=$(jq -n --arg resp "$RESPONSE" --argjson ts "$NOW" --arg ep "$ENDPOINT" \
   '{response: $resp, cached_at: $ts, endpoint: $ep}')
 
-acquire_cache_lock
-trap release_cache_lock EXIT
-trap 'exit 1' HUP INT TERM
-CACHE_TEMP=$(mktemp "${CACHE_FILE}.tmp.XXXXXX")
-
-if [ -f "$CACHE_FILE" ] && jq -e 'type == "object"' "$CACHE_FILE" >/dev/null 2>&1; then
-  jq --arg key "$CACHE_KEY" --argjson entry "$CACHE_ENTRY" \
-    '.[$key] = $entry' "$CACHE_FILE" > "$CACHE_TEMP"
-else
-  jq -n --arg key "$CACHE_KEY" --argjson entry "$CACHE_ENTRY" \
-    '{($key): $entry}' > "$CACHE_TEMP"
-fi
-mv "$CACHE_TEMP" "$CACHE_FILE"
-CACHE_TEMP=""
-rm -f "$LOCK_FILE"
-trap - EXIT HUP INT TERM
+printf '%s\n' "$CACHE_ENTRY" |
+  "$SCRIPT_DIR/cache-lock.sh" "${CACHE_FILE}.lock" \
+    "$SCRIPT_DIR/cache-mutate.sh" update "$CACHE_FILE" "$CACHE_KEY" "$CACHE_EPOCH"
 
 echo "$RESPONSE"

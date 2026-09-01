@@ -124,7 +124,7 @@ def validate_documentation(matrix, expected_counts):
         )
     rows = {plugin: (claude, codex) for plugin, claude, codex in row_matches}
 
-    resolved_issues = {"go-web": {"323"}}
+    resolved_issues = {"go-web": {"323"}, "gopher-guides": {"337"}}
     for plugin in matrix["plugins"]:
         plugin_name = plugin["name"]
         capabilities = [

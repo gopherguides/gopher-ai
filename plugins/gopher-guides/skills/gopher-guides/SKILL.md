@@ -84,7 +84,9 @@ curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
 ### Cache Management
 
 - Cache location: `${GOPHER_GUIDES_CACHE_FILE:-${XDG_CACHE_HOME:-$HOME/.cache}/gopher-ai/gopher-guides-cache.json}`
-- Clear cache: Use `/clear-cache` command
+- Existing `.claude/gopher-guides-cache.json` data remains usable without importing project-controlled responses into the shared user cache: set `GOPHER_GUIDES_CACHE_FILE="$PWD/.claude/gopher-guides-cache.json"` while working in that project.
+- Claude Code: Clear cache with `/gopher-guides:clear-cache`.
+- Codex: Clear cache with `$gopher-guides:clear-cache`.
 
 ## Response Handling
 

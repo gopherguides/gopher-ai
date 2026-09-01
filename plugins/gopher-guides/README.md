@@ -13,7 +13,7 @@ Or install via marketplace:
 /plugin marketplace add gopherguides/gopher-ai
 ```
 
-## Skills (Auto-invoked)
+## Skills
 
 ### Gopher Guides Training
 
@@ -23,6 +23,17 @@ Provides authoritative answers from official Gopher Guides training materials wh
 - Code review and implementation guidance
 - Testing, concurrency, error handling
 - Web development, database patterns
+
+### Cache Management
+
+The response cache defaults to `${XDG_CACHE_HOME:-$HOME/.cache}/gopher-ai/gopher-guides-cache.json`. Set `GOPHER_GUIDES_CACHE_FILE` to use an explicit location.
+
+| Platform | Clear cache |
+|----------|-------------|
+| Claude Code | `/gopher-guides:clear-cache` |
+| Codex | `$gopher-guides:clear-cache` |
+
+Existing project-local `.claude/gopher-guides-cache.json` data remains usable by setting `GOPHER_GUIDES_CACHE_FILE="$PWD/.claude/gopher-guides-cache.json"` in that project. This compatibility path keeps project-controlled responses out of the shared user cache. Cache clearing removes only the resolved Gopher Guides cache file and any current-project legacy cache file, then reports each target.
 
 ## API Tools
 

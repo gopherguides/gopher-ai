@@ -254,9 +254,9 @@ GO_WORKFLOW_SKILL_RESOURCES=(
   "$ROOT_DIR/plugins/go-workflow/lib"
   "$ROOT_DIR/plugins/go-workflow/agents"
 )
-GOPHER_GUIDES_SKILL="$ROOT_DIR/plugins/gopher-guides/skills/gopher-guides/SKILL.md"
+GOPHER_GUIDES_SKILLS="$ROOT_DIR/plugins/gopher-guides/skills"
 RESOURCE_CONTRACT_FAILURE=""
-RESOURCE_SKILLS=("$GO_WORKFLOW_SKILLS"/*/SKILL.md "$GOPHER_GUIDES_SKILL")
+RESOURCE_SKILLS=("$GO_WORKFLOW_SKILLS"/*/SKILL.md "$GOPHER_GUIDES_SKILLS"/*/SKILL.md)
 for resource_skill in "${RESOURCE_SKILLS[@]}"; do
   if ! file_contains '## Plugin Resource Resolution' "$resource_skill" ||
      ! file_contains '`<PLUGIN_ROOT>` is notation' "$resource_skill" ||
@@ -269,7 +269,7 @@ for resource_skill in "${RESOURCE_SKILLS[@]}"; do
 done
 
 LEGACY_SKILL_RESOURCE_PATHS=$(rg -n --glob '*.md' '\$\{CLAUDE_PLUGIN_ROOT\}/' \
-  "${GO_WORKFLOW_SKILL_RESOURCES[@]}" "$GOPHER_GUIDES_SKILL" || true)
+  "${GO_WORKFLOW_SKILL_RESOURCES[@]}" "$GOPHER_GUIDES_SKILLS" || true)
 CODEX_RESOURCE_PROBE="$ROOT_DIR/scripts/probe-codex-skill-resources.sh"
 if [ -n "$RESOURCE_CONTRACT_FAILURE" ]; then
   echo "FAIL ($RESOURCE_CONTRACT_FAILURE)"
@@ -280,7 +280,8 @@ elif [ -n "$LEGACY_SKILL_RESOURCE_PATHS" ]; then
   ERRORS=$((ERRORS + 1))
 elif [ ! -f "$ROOT_DIR/plugins/go-workflow/lib/driver-interaction.md" ] ||
      [ ! -x "$ROOT_DIR/plugins/go-workflow/scripts/setup-loop.sh" ] ||
-     [ ! -x "$ROOT_DIR/plugins/gopher-guides/scripts/cache-api.sh" ]; then
+     [ ! -x "$ROOT_DIR/plugins/gopher-guides/scripts/cache-api.sh" ] ||
+     [ ! -x "$ROOT_DIR/plugins/gopher-guides/scripts/clear-cache.sh" ]; then
   echo "FAIL (representative bundled resources are missing)"
   ERRORS=$((ERRORS + 1))
 elif [ ! -x "$CODEX_RESOURCE_PROBE" ]; then
