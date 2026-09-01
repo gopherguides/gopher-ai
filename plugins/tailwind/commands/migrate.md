@@ -206,11 +206,26 @@ directives, the proposed package set targets v4, and the final repository
 status matches the initial status. Do not run the CSS build because it may
 overwrite generated output.
 
-Without `--check`, run the migrated build:
+Without `--check`, run only the verification path for the selected integration.
+
+### CLI Verification
+
+Run the configured CLI build and confirm its output file exists and is
+non-empty:
 
 ```bash
 npm run css 2>&1 | head -20
 ```
+
+### PostCSS Verification
+
+Confirm the migrated CSS entry is connected to the existing PostCSS pipeline,
+then run that pipeline's existing build command. Verify it succeeds with
+`@tailwindcss/postcss` enabled. Do not add or invoke a CLI-only `css` script.
+
+If the PostCSS project has no build command, report the missing project-level
+command and ask which existing command should verify the integration rather
+than silently adding a CLI workflow.
 
 Common errors:
 
@@ -244,13 +259,23 @@ dependencies were changed. Otherwise, use the completion report below.
 - [ ] Test dark mode toggle
 - [ ] Check responsive breakpoints
 - [ ] Verify plugins work correctly
-
-### Next Steps
-1. `npm run css:watch`
-2. Test thoroughly
-3. `/tailwind-audit` to check for any issues
-4. Commit
 ```
+
+Use only the next steps for the selected integration.
+
+### CLI Migration Next Steps
+
+1. Run `npm run css:watch`
+2. Test the generated stylesheet thoroughly
+3. Run `/tailwind-audit` to check for any issues
+4. Commit
+
+### PostCSS Migration Next Steps
+
+1. Run the existing PostCSS-backed development or watch command
+2. Test the stylesheet produced by the project's asset pipeline thoroughly
+3. Run `/tailwind-audit` to check for any issues
+4. Commit
 
 Resources: https://tailwindcss.com/docs/upgrade-guide; https://oklch.com/
 
@@ -273,15 +298,31 @@ these are TRUE:
 3. The preview report identifies unresolved plugin or color conversions
 4. No project files, dependencies, or generated CSS changed
 
-### Migration Completion Criteria
+Without `--check`, follow the selected integration path. Use only the migration completion criteria for the selected integration.
+
+### CLI Migration Completion Criteria
 
 DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
 1. v3 config parsed and analyzed
 2. CSS file updated with `@import "tailwindcss"` and `@theme`
-3. package.json deps updated to v4
-4. `npm run css` (or equivalent) succeeds with zero errors
-5. No `@tailwind` directives remain in CSS files
+3. `tailwindcss` and `@tailwindcss/cli` updated to v4
+4. CLI build scripts added to `package.json`
+5. `npm run css` succeeds and generates non-empty output CSS
+6. No `@tailwind` directives remain in CSS files
+
+### PostCSS Migration Completion Criteria
+
+DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
+
+1. v3 config parsed and analyzed
+2. CSS file updated with `@import "tailwindcss"` and `@theme`
+3. `tailwindcss`, `@tailwindcss/postcss`, and `postcss` updated to v4
+4. `@tailwindcss/postcss` registered in the PostCSS configuration
+5. CSS entry connected to the existing PostCSS pipeline
+6. Existing PostCSS-backed build succeeds with zero errors
+7. No CLI-only `css` script was added solely for migration verification
+8. No `@tailwind` directives remain in CSS files
 
 ```
 <done>COMPLETE</done>

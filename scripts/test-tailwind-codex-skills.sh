@@ -121,6 +121,12 @@ assert_contains "$MIGRATE_COMMAND" '## Read-only Preview (`--check`)'
 assert_contains "$MIGRATE_COMMAND" 'Do not edit files, install or remove dependencies, rename or delete configuration, or run a build that overwrites generated CSS.'
 assert_contains "$MIGRATE_COMMAND" '### Preview Completion Criteria'
 assert_contains "$MIGRATE_COMMAND" 'No project files, dependencies, or generated CSS changed'
+for integration in CLI PostCSS; do
+  assert_contains "$MIGRATE_COMMAND" "### $integration Verification"
+  assert_contains "$MIGRATE_COMMAND" "### $integration Migration Completion Criteria"
+  assert_contains "$MIGRATE_COMMAND" "### $integration Migration Next Steps"
+done
+assert_contains "$MIGRATE_COMMAND" 'Use only the migration completion criteria for the selected integration.'
 
 INIT_COMMAND="$PLUGIN_DIR/commands/init.md"
 for integration in CLI Vite PostCSS; do
