@@ -160,16 +160,12 @@ file_contains() {
 
 ADDRESS_REVIEW_BOT_REGISTRY="$ROOT_DIR/plugins/go-workflow/skills/address-review/bot-registry.md"
 GO_WORKFLOW_README="$ROOT_DIR/plugins/go-workflow/README.md"
+CODEX_CONNECTOR_REGISTRY_ROW='| `chatgpt-codex-connector[bot]` | Current-head `codex-pull-request-review-summary` issue comment has a connector-authored `+1` reaction and no unresolved inline comments from the connector | Current-head summary has unresolved inline comments from the connector | `@codex review` |'
 
 echo -n "Address-review registers current-head Codex connector re-review... "
-if ! file_contains '`chatgpt-codex-connector[bot]`' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
-   ! file_contains '`@codex review`' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
-   ! file_contains 'codex-pull-request-review-summary' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+if ! file_contains "$CODEX_CONNECTOR_REGISTRY_ROW" "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'PR_HEAD_SHA' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
-   ! file_contains 'reactions' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
-   ! file_contains 'connector-authored `+1`' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
-   ! file_contains 'no unresolved inline comments' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
-   ! file_contains 'unresolved inline comments' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'repos/$REPO_SLUG/issues/comments/$COMMENT_ID/reactions' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'only when discovered' "$GO_WORKFLOW_README" ||
    ! file_contains '`chatgpt-codex-connector[bot]`' "$GO_WORKFLOW_README"; then
   echo "FAIL (Codex connector detection, trigger, or signal contract missing)"
