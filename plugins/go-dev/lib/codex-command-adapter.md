@@ -29,6 +29,18 @@ reading a resource.
 Do not require the go-workflow plugin. The selected go-dev plugin owns every
 script, loop helper, and supporting document referenced by its command body.
 
+## Persistent Loop State
+
+The command bodies' `Loop Initialization` sections and `<done>...</done>`
+markers implement Claude Code's Stop-hook loop protocol. On Codex, skip every
+`Loop Initialization` section, do not run `setup-loop.sh`, do not create
+`.local/state/*.loop.local.json`, and do not emit a `<done>...</done>` marker.
+Perform any required iteration within the current invocation and preserve the
+command body's actual completion criteria and user-decision boundaries.
+
+On Claude Code, follow the loop initialization and completion-marker protocol
+unchanged.
+
 ## Native Capabilities
 
 Map command-body capabilities by intent:

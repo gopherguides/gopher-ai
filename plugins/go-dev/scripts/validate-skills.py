@@ -19,25 +19,18 @@ GREEN_COMMANDS = {
     "cat",
     "comm",
     "cut",
-    "date",
-    "diff",
     "dirname",
     "echo",
     "export",
     "false",
-    "file",
     "grep",
     "head",
     "jq",
     "ls",
-    "mktemp",
     "printf",
     "pwd",
     "readlink",
     "realpath",
-    "rg",
-    "sed",
-    "sort",
     "stat",
     "tail",
     "test",
@@ -51,15 +44,22 @@ GREEN_COMMANDS = {
 YELLOW_COMMANDS = {
     "awk",
     "curl",
+    "date",
+    "diff",
     "docker",
     "env",
+    "file",
     "find",
     "gh",
     "go",
     "golangci-lint",
+    "mktemp",
     "node",
     "npm",
     "npx",
+    "rg",
+    "sed",
+    "sort",
     "tee",
     "wget",
 }
@@ -406,7 +406,7 @@ def classify_block(block):
         unknown.add("output redirection")
         tiers.append("red")
     for segment in command_segments(block.code):
-        if re.match(r"^\s*[({]", segment):
+        if re.match(r"^\s*(?:[({]|case\b|for\b|select\b|function\b)", segment):
             unknown.add("compound command")
             tiers.append("red")
             continue
@@ -432,11 +432,7 @@ def classify_block(block):
         elif command in YELLOW_COMMANDS:
             tiers.append("yellow")
         elif command in GREEN_COMMANDS:
-            if command == "sed" and "-i" in tokens[1:]:
-                unknown.add("sed -i")
-                tiers.append("red")
-            else:
-                tiers.append("green")
+            tiers.append("green")
         else:
             unknown.add(command)
             tiers.append("red")

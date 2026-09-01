@@ -13,16 +13,16 @@ This prevents destructive commands from hiding behind a GREEN prefix
 ## GREEN — Read-Only, Safe to Execute
 
 ```
-echo, cat, grep, rg, jq, mktemp, ls, pwd, date, command, basename,
-dirname, wc, sort, head, tail, tr, cut, sed (without -i), printf, test,
-[, true, false, type, which, readlink, realpath, stat, file, diff, comm,
-uniq, export
+echo, cat, grep, jq, ls, pwd, basename, dirname, wc, head, tail,
+tr, cut, printf, test, [, true, false, type, which, readlink, realpath,
+stat, comm, uniq, export
 ```
 
 ## YELLOW — Conditionally Safe, Syntax Check Only
 
 ```
-awk, env, tee, find (without -exec, -delete, -execdir), git log,
+awk, env, tee, date, diff, file, mktemp, rg, sed, sort,
+find (without -exec, -delete, -execdir), git log,
 git status, git diff, git branch, git show, git rev-parse, git remote,
 curl (without pipe to sh/bash/eval), wget (without pipe to sh/bash/eval),
 go build, go vet, go test, go list, go mod, go version, golangci-lint,
@@ -31,9 +31,15 @@ npm, npx, node, docker, gh
 
 **Why YELLOW (not GREEN):** `awk`, `env`, and `tee` can execute arbitrary
 subprocesses (`awk 'BEGIN{system(...)}'`, `env bash -c '...'`) or write
-to arbitrary files. `find` with `-exec` / `-delete` / `-execdir` mutates
-the filesystem. `curl`/`wget` piped to a shell becomes RED. Plain
-`go test` may execute arbitrary code in test files.
+to arbitrary files. `date`, `diff`, `file`, `mktemp`, `rg`, `sed`, and
+`sort` have modes or options that mutate system state, execute subprocesses,
+or write explicit paths.
+`find` with `-exec` / `-delete` / `-execdir` mutates the filesystem.
+`curl`/`wget` piped to a shell becomes RED. Plain `go test` may execute
+arbitrary code in test files.
+
+Shell compound commands that cannot be fully classified, including `case`,
+`for`, `select`, functions, and subshells, are RED and never executed.
 
 ## RED — Never Execute, Report as Warning
 

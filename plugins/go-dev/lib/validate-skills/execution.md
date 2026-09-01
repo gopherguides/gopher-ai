@@ -73,7 +73,8 @@ $TIMEOUT_CMD 5 env -i \
 | **Restricted bash** | `bash --restricted` | Prevents `cd`, changing `PATH`, redirecting output to files outside `/tmp` |
 | **Clean environment** | `env -i` | No inherited secrets or developer-specific config (API keys, tokens) |
 | **PATH includes /opt/homebrew/bin** | Explicit PATH | Ensures Homebrew tools are available on Apple Silicon |
-| **Write restriction** | Only `/tmp` is writable | A misbehaving block can't damage repo state |
+| **Temporary working root** | Isolated `cwd`, `HOME`, and `TMPDIR` | Keeps incidental files out of the repository |
+| **Write prevention** | GREEN excludes commands with file-mutating modes | The shell environment is not a filesystem sandbox |
 
 Record exit code and any stderr output. Non-zero exit codes become
 `warning` findings.

@@ -89,6 +89,11 @@ for contract in \
   "\${CLAUDE_PLUGIN_ROOT}" \
   'native structured-input capability' \
   'native delegation capability' \
+  'skip every' \
+  '`setup-loop.sh`' \
+  '`.local/state/*.loop.local.json`' \
+  '`<done>...</done>`' \
+  'within the current invocation' \
   'Do not require the go-workflow plugin'; do
   assert_contains "$ADAPTER" "$contract"
 done
@@ -118,9 +123,13 @@ RED_FILE="$FIXTURE_ROOT/red.md"
 UNKNOWN_FILE="$FIXTURE_ROOT/unknown.md"
 COMMAND_FILE="$FIXTURE_ROOT/command.md"
 QUOTED_OPERATOR_FILE="$FIXTURE_ROOT/quoted-operator.md"
+CASE_FILE="$FIXTURE_ROOT/case.md"
+MUTATING_OPTION_FILE="$FIXTURE_ROOT/mutating-option.md"
 RED_MARKER="$FIXTURE_ROOT/red-command-ran"
 UNKNOWN_MARKER="$FIXTURE_ROOT/unknown-command-ran"
 COMMAND_MARKER="$FIXTURE_ROOT/command-ran"
+CASE_MARKER="$FIXTURE_ROOT/case-marker"
+MUTATING_DIR="$FIXTURE_ROOT/mutating-options"
 
 cat > "$VALID_FILE" <<'EOF'
 ```bash
@@ -164,6 +173,25 @@ printf '%s\n' \
   'continued|value'
 printf '%s\n' value # ignored | command
 ```
+EOF
+
+printf '%s\n' keep > "$CASE_MARKER"
+cat > "$CASE_FILE" <<EOF
+\`\`\`bash
+case keep in keep) rm -f "$CASE_MARKER" ;; esac
+\`\`\`
+EOF
+
+mkdir -p "$MUTATING_DIR"
+printf '%s\n' original > "$MUTATING_DIR/sed-target"
+cat > "$MUTATING_OPTION_FILE" <<EOF
+\`\`\`bash
+sort -o "$MUTATING_DIR/sort-output" /dev/null
+diff --output="$MUTATING_DIR/diff-output" /dev/null /dev/null
+mktemp "$MUTATING_DIR/mktemp.XXXXXX"
+rg --pre 'touch "$MUTATING_DIR/rg-output"' pattern /dev/null
+sed -i.bak 's/original/changed/' "$MUTATING_DIR/sed-target"
+\`\`\`
 EOF
 
 cp "$VALID_FILE" "$FIXTURE_ROOT/plugins/example/commands/valid.md"
@@ -273,6 +301,40 @@ import sys
 report = json.loads(sys.argv[1])
 assert not any(
     finding["layer"] == "classification"
+    for finding in report["findings"]
+)
+PY
+
+CASE_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json case.md)
+[ -e "$CASE_MARKER" ] || fail "case-arm command bypass removed its marker"
+python3 - "$CASE_JSON" <<'PY'
+import json
+import sys
+
+report = json.loads(sys.argv[1])
+assert any(
+    finding["layer"] == "classification"
+    and "Unknown command classified conservatively: compound command" in finding["finding"]
+    for finding in report["findings"]
+)
+PY
+
+MUTATING_OPTION_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json mutating-option.md)
+[ ! -e "$MUTATING_DIR/sort-output" ] || fail "sort -o was executed"
+[ ! -e "$MUTATING_DIR/diff-output" ] || fail "diff --output was executed"
+[ ! -e "$MUTATING_DIR/rg-output" ] || fail "rg --pre was executed"
+[ ! -e "$MUTATING_DIR/sed-target.bak" ] || fail "sed -i was executed"
+[ "$(cat "$MUTATING_DIR/sed-target")" = original ] || fail "sed mutated its target"
+if compgen -G "$MUTATING_DIR/mktemp.*" >/dev/null; then
+  fail "mktemp with an explicit path was executed"
+fi
+python3 - "$MUTATING_OPTION_JSON" <<'PY'
+import json
+import sys
+
+report = json.loads(sys.argv[1])
+assert not any(
+    finding["layer"] == "execution"
     for finding in report["findings"]
 )
 PY
