@@ -94,17 +94,15 @@ owner_identity=$(process_identity "$$")
 attempt=0
 while true; do
   if mkdir "$LOCK_DIRECTORY" 2>/dev/null; then
-    if ! printf '%s\n' "$owner_identity" > "$OWNER_FILE"; then
-      rmdir "$LOCK_DIRECTORY" 2>/dev/null || true
-      exit 1
+    if printf '%s\n' "$owner_identity" 2>/dev/null > "$OWNER_FILE"; then
+      shopt -s nullglob
+      owner_files=("$LOCK_DIRECTORY"/owner.*)
+      shopt -u nullglob
+      if [ "${#owner_files[@]}" -eq 1 ] && [ "${owner_files[0]}" = "$OWNER_FILE" ]; then
+        break
+      fi
+      release_directory_lock
     fi
-    shopt -s nullglob
-    owner_files=("$LOCK_DIRECTORY"/owner.*)
-    shopt -u nullglob
-    if [ "${#owner_files[@]}" -eq 1 ] && [ "${owner_files[0]}" = "$OWNER_FILE" ]; then
-      break
-    fi
-    release_directory_lock
   else
     reclaim_portable_lock
   fi
