@@ -12,7 +12,7 @@ Initialize Tailwind CSS v4 in the current directory.
 
 **Usage:** `/tailwind-init [project-path]`. `/tailwind-init` (current dir) or `/tailwind-init ./my-app` (specific dir).
 
-**What it does:** detect project type → check for existing Tailwind → choose integration method → install deps → create CSS entry file with v4 syntax → set up build scripts.
+**What it does:** detect project type → check for existing Tailwind → choose integration method → install deps → create CSS entry file with v4 syntax → configure the selected build integration.
 
 **v4 key changes:** no `tailwind.config.js` (configure in CSS via `@theme`); single `@import "tailwindcss";`; auto-detects templates (`@source` only for custom paths).
 
@@ -154,7 +154,7 @@ Create with v4 syntax:
 
 Adjust `@source` paths based on where templates are located.
 
-## Step 6: Configure Build Scripts
+## Step 6: Configure Selected Integration
 
 **CLI:**
 
@@ -192,23 +192,87 @@ css/output.css
 static/css/output.css
 ```
 
-## Step 8: Final Report
+## Step 8: Verify Selected Integration
+
+Run only the verification path for the selected integration.
+
+### CLI Verification
+
+Run the configured build and confirm the output file exists and is non-empty:
+
+```bash
+npm run css
+```
+
+### Vite Verification
+
+Ensure the CSS entry file is imported from the application entry point, then
+run the project's existing Vite build:
+
+```bash
+npm run build
+```
+
+Confirm the build succeeds and processes the Tailwind CSS entry without
+errors. Do not add CLI-only `css` scripts or a standalone output path.
+
+### PostCSS Verification
+
+Ensure the CSS entry file is connected to the project's existing PostCSS
+pipeline, then run that pipeline's existing build command. Confirm the build
+succeeds with `@tailwindcss/postcss` enabled. Do not add CLI-only `css` scripts
+or require a standalone output path.
+
+If the selected Vite or PostCSS project has no build command, report the
+missing project-level command and ask which existing command should verify the
+integration rather than silently adding a CLI workflow.
+
+## Step 9: Final Report
+
+Use only the next steps for the selected integration.
 
 ```
 Tailwind CSS v4 Initialized
 
 Files created/modified:
 - [CSS entry file path]
-- package.json (dependencies + scripts)
+- package.json (dependencies, plus scripts for CLI)
 - [Config file if Vite/PostCSS]
 
+Verification:
+- [Selected integration and successful verification command]
+
+Docs: https://tailwindcss.com/docs
+```
+
+### CLI Next Steps
+
+```text
 Next steps:
 1. npm run css:watch
 2. Include in HTML: <link href="/css/output.css" rel="stylesheet">
 3. Use classes: <div class="flex items-center gap-4 p-4 bg-primary text-primary-foreground">…
 4. Customize theme via @theme { ... } in the CSS file
+```
 
-Docs: https://tailwindcss.com/docs
+### Vite Next Steps
+
+```text
+Next steps:
+1. Import the CSS entry file from the application entry point
+2. Run the existing Vite development command, usually npm run dev
+3. Use classes: <div class="flex items-center gap-4 p-4 bg-primary text-primary-foreground">…
+4. Customize theme via @theme { ... } in the CSS file
+```
+
+### PostCSS Next Steps
+
+```text
+Next steps:
+1. Run the existing PostCSS-backed development or watch command
+2. Include the pipeline's resulting stylesheet through the project's existing asset flow
+3. Use classes: <div class="flex items-center gap-4 p-4 bg-primary text-primary-foreground">…
+4. Customize theme via @theme { ... } in the CSS file
 ```
 
 ## Notes
@@ -219,13 +283,32 @@ Docs: https://tailwindcss.com/docs
 
 ## Completion Criteria
 
-DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
+Use only the completion criteria for the selected integration. DO NOT output
+`<done>COMPLETE</done>` until every item in that integration's list is TRUE.
+
+### CLI Completion Criteria
 
 1. Dependencies installed
 2. CSS entry file created with `@import "tailwindcss"`
 3. Build scripts added to `package.json`
 4. `npm run css` (or equivalent) succeeds with zero errors
 5. Output CSS is generated
+
+### Vite Completion Criteria
+
+1. `tailwindcss` and `@tailwindcss/vite` installed
+2. CSS entry file created with `@import "tailwindcss"`
+3. Tailwind plugin registered in the Vite configuration
+4. CSS entry file imported from the application entry point
+5. Existing Vite build succeeds and processes the CSS entry without errors
+
+### PostCSS Completion Criteria
+
+1. `tailwindcss`, `@tailwindcss/postcss`, and `postcss` installed
+2. CSS entry file created with `@import "tailwindcss"`
+3. `@tailwindcss/postcss` registered in the PostCSS configuration
+4. CSS entry file connected to the existing PostCSS pipeline
+5. Existing PostCSS-backed build succeeds with zero errors
 
 ```
 <done>COMPLETE</done>

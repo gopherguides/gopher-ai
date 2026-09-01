@@ -122,4 +122,12 @@ assert_contains "$MIGRATE_COMMAND" 'Do not edit files, install or remove depende
 assert_contains "$MIGRATE_COMMAND" '### Preview Completion Criteria'
 assert_contains "$MIGRATE_COMMAND" 'No project files, dependencies, or generated CSS changed'
 
+INIT_COMMAND="$PLUGIN_DIR/commands/init.md"
+for integration in CLI Vite PostCSS; do
+  assert_contains "$INIT_COMMAND" "### $integration Verification"
+  assert_contains "$INIT_COMMAND" "### $integration Completion Criteria"
+  assert_contains "$INIT_COMMAND" "### $integration Next Steps"
+done
+assert_contains "$INIT_COMMAND" 'Use only the completion criteria for the selected integration.'
+
 printf 'Tailwind Codex workflow skill tests passed.\n'
