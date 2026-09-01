@@ -407,6 +407,7 @@ elif ! (
   COMPOSITION_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-composition-state.XXXXXX")
   trap 'rm -rf "$COMPOSITION_ROOT"' EXIT
   cd "$COMPOSITION_ROOT"
+  COMPOSITION_ROOT=$(pwd -P)
   [ "$(resolve_loop_owner_root)" = "$COMPOSITION_ROOT" ]
   mkdir -p "$COMPOSITION_ROOT/.local/state"
   STATE_FILE="$COMPOSITION_ROOT/.local/state/complete-issue-302.loop.local.json"
