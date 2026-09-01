@@ -36,21 +36,13 @@ STEP_ALIAS_PATTERN = re.compile(
     r'''^(\s*)-\s*(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
     r'''\*[^\s,\[\]{}]+\s*(?:#.*)?$'''
 )
-INLINE_WITH_PATTERN = re.compile(
-    r'''^(\s*)(["']?)with\2\s*:\s*'''
-    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*\{([^{}]*)\}\s*(?:#.*)?$'''
-)
 ACTION_SCALAR_PATTERN = re.compile(
     r'''^(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)$''',
     re.IGNORECASE,
 )
-FALSE_VALUE_PATTERN = re.compile(
-    r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*(?:false|"false"|'false')$''',
-    re.IGNORECASE,
-)
 LIST_ITEM_PATTERN = re.compile(r"^(\s*)-(?:\s+|$)")
 SCALAR_PREFIX_PATTERN = re.compile(
-    r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
+    r'''^(?:(?:&|!)[^\s,\[\]{}]+(?:\s+|$))*'''
 )
 DOUBLE_QUOTED_ESCAPES = {
     "0": "\0",
@@ -159,6 +151,11 @@ def parse_action_value(value):
     return action.lower(), action_ref
 
 
+def scalar_is_false(value):
+    scalar = decode_yaml_scalar(value)
+    return scalar is not None and scalar.casefold() == "false"
+
+
 def split_flow_text(value, delimiter):
     parts = []
     start = 0
@@ -221,7 +218,12 @@ def strip_yaml_comment(value):
 
 def joined_flow_step(lines, start):
     match = re.match(r"^(\s*)-\s*", lines[start])
-    if not match or not lines[start][match.end() :].lstrip().startswith("{"):
+    if not match:
+        return None
+    value = SCALAR_PREFIX_PATTERN.sub(
+        "", lines[start][match.end() :].lstrip(), count=1
+    )
+    if not value.startswith("{"):
         return None
 
     fragments = []
@@ -305,7 +307,9 @@ def flow_step_mapping(line):
     if not match:
         return None
 
-    value = line[match.end() :].strip()
+    value = SCALAR_PREFIX_PATTERN.sub(
+        "", line[match.end() :].strip(), count=1
+    )
     if not value.startswith("{"):
         return None
     depth = 0
@@ -633,6 +637,14 @@ def parser_failures():
             "actions/checkout",
             "v4",
         ),
+        "      - &checkout { uses: actions/checkout@v4 }": (
+            "actions/checkout",
+            "v4",
+        ),
+        "      - !!map { uses: actions/setup-go@v6 }": (
+            "actions/setup-go",
+            "v6",
+        ),
         r'      - uses: "actions\u002fcheckout@v4"': (
             "actions/checkout",
             "v4",
@@ -741,7 +753,7 @@ def parser_failures():
         failures.append("flow parser promoted quoted uses fixture")
     multiline_flow_lines = [
         "    steps:",
-        "      - {",
+        "      - &checkout {",
         "          name: Checkout,",
         "          uses: actions/checkout@v4",
         "        }",
@@ -886,6 +898,16 @@ def cache_parser_failures():
         (
             [
                 "      - name: Set up Node",
+                r'        "\u0077ith":',
+                r'          "package-manager-\u0063ache": False',
+                "        uses: actions/setup-node@v7",
+            ],
+            3,
+            True,
+        ),
+        (
+            [
+                "      - name: Set up Node",
                 "        with: &inputs",
                 "          package-manager-cache: &disabled false",
                 "        uses: actions/setup-node@v7",
@@ -899,6 +921,16 @@ def cache_parser_failures():
                 "        uses: actions/setup-node@v7",
                 "        with:",
                 "          # package-manager-cache: false",
+            ],
+            1,
+            False,
+        ),
+        (
+            [
+                "      - name: Set up Node",
+                "        uses: actions/setup-node@v7",
+                "        with:",
+                "          package-manager-cache: false#bogus",
             ],
             1,
             False,
@@ -1069,21 +1101,16 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
             break
 
     for index in range(step_start, step_end):
-        inline_with_match = INLINE_WITH_PATTERN.match(lines[index])
-        if (
-            inline_with_match
-            and len(inline_with_match.group(1)) == step_key_indentation
-        ):
-            return flow_mapping_has_cache_disabled(
-                f"{{{inline_with_match.group(3)}}}"
-            )
-
-        with_match = re.match(
-            r'''^(\s*)(["']?)with\2\s*:\s*'''
-            r'''(?:(?:&|!)[^\s,\[\]{}]+\s*)*(?:#.*)?$''',
-            lines[index],
-        )
-        if not with_match or len(with_match.group(1)) != step_key_indentation:
+        with_entry = block_mapping_entry(lines[index])
+        if not with_entry or with_entry[2] != "with":
+            continue
+        with_indentation = len(with_entry[0]) + (2 if with_entry[1] else 0)
+        if with_indentation != step_key_indentation:
+            continue
+        with_value = SCALAR_PREFIX_PATTERN.sub("", with_entry[3], count=1).strip()
+        if with_value.startswith("{"):
+            return flow_mapping_has_cache_disabled(with_value)
+        if with_value and not with_value.startswith("#"):
             continue
 
         input_indentation = None
@@ -1091,22 +1118,16 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
             key_match = re.match(r"^(\s*)\S", line)
             if key_match and len(key_match.group(1)) <= step_key_indentation:
                 break
-            input_match = re.match(
-                r'''^(\s*)(["']?)[A-Za-z0-9_-]+\2\s*:\s*''', line
-            )
-            if not input_match:
+            input_entry = block_mapping_entry(line)
+            if not input_entry or input_entry[1]:
                 continue
-            current_indentation = len(input_match.group(1))
+            current_indentation = len(input_entry[0])
             if input_indentation is None:
                 input_indentation = current_indentation
             if current_indentation != input_indentation:
                 continue
-            if re.match(
-                r'''^\s*(["']?)package-manager-cache\1\s*:\s*'''
-                r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
-                r'''(?:false|"false"|'false')\s*(?:#.*)?$''',
-                line,
-                re.IGNORECASE,
+            if input_entry[2] == "package-manager-cache" and scalar_is_false(
+                input_entry[3]
             ):
                 return True
     return False
@@ -1125,7 +1146,7 @@ def flow_mapping_has_cache_disabled(value):
     if entries is None:
         return False
     cache_value = flow_mapping_value(entries, "package-manager-cache")
-    return bool(cache_value and FALSE_VALUE_PATTERN.match(cache_value))
+    return bool(cache_value and scalar_is_false(cache_value))
 
 
 def action_has_cache_disabled(lines, start, parsed):
