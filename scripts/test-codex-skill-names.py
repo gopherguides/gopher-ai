@@ -4,6 +4,7 @@ import json
 import os
 import queue
 import re
+import shlex
 import subprocess
 import tempfile
 import threading
@@ -20,6 +21,16 @@ COUNT_PATTERN = re.compile(
     r"Shipped surface: (\d+) Claude Code commands across (\d+) plugins; "
     r"(\d+) Codex skills across (\d+) plugins; "
     r"(\d+) optional Codex MCP tools\."
+)
+REPOSITORY_GUIDANCE_FILES = (
+    ROOT_DIR / "README.md",
+    ROOT_DIR / "AGENTS.md",
+    ROOT_DIR / "scripts/build-universal.sh",
+)
+STALE_REPOSITORY_GUIDANCE = (
+    "Repo-local",
+    "Plugins load automatically from .agents/plugins/marketplace.json",
+    "Codex reads `.agents/plugins/marketplace.json` on startup",
 )
 
 
@@ -190,7 +201,7 @@ def assert_no_bare_documentation_references(plugin_names, skill_names):
 
 
 def run_codex(env, cwd, *args):
-    subprocess.run(
+    return subprocess.run(
         ["codex", *args],
         cwd=cwd,
         env=env,
@@ -224,7 +235,15 @@ def query_resolver(env, cwd):
         client.close()
 
 
-def assert_resolver_surface(response, plugin_names, skill_names):
+def parsed_activation_commands(output):
+    return [
+        shlex.split(line.strip())
+        for line in output.splitlines()
+        if line.strip().startswith("codex plugin ")
+    ]
+
+
+def resolver_skill_names(response):
     if len(response["data"]) != 1:
         raise AssertionError(
             f"expected one workspace entry, got {len(response['data'])}"
@@ -232,8 +251,11 @@ def assert_resolver_surface(response, plugin_names, skill_names):
     entry = response["data"][0]
     if entry["errors"]:
         raise AssertionError(f"skills/list returned errors: {entry['errors']}")
+    return [skill["name"] for skill in entry["skills"]]
 
-    resolver_name_list = [skill["name"] for skill in entry["skills"]]
+
+def assert_resolver_surface(response, plugin_names, skill_names):
+    resolver_name_list = resolver_skill_names(response)
     duplicate_names = sorted(
         name for name, count in Counter(resolver_name_list).items() if count > 1
     )
@@ -262,11 +284,28 @@ def assert_resolver_surface(response, plugin_names, skill_names):
         )
 
 
+def validate_repository_guidance():
+    stale_matches = []
+    for path in REPOSITORY_GUIDANCE_FILES:
+        content = path.read_text(encoding="utf-8")
+        stale_matches.extend(
+            f"{path.relative_to(ROOT_DIR)}: {phrase}"
+            for phrase in STALE_REPOSITORY_GUIDANCE
+            if phrase in content
+        )
+    if stale_matches:
+        raise AssertionError(
+            "documentation contains stale repository discovery guidance: "
+            f"{stale_matches}"
+        )
+
+
 def main():
     matrix = load_matrix()
     plugin_names, skill_names = declared_surface(matrix)
     assert_readme_counts(matrix, plugin_names, skill_names)
     assert_no_bare_documentation_references(plugin_names, skill_names)
+    validate_repository_guidance()
 
     temp_base = (
         os.environ.get("TMPDIR")
@@ -277,15 +316,43 @@ def main():
     temp_base_path = Path(temp_base).resolve()
     with tempfile.TemporaryDirectory(
         prefix="gopher-ai-skill-home-", dir=temp_base
-    ) as home_root, tempfile.TemporaryDirectory(
-        prefix="gopher-ai-skill-cwd-", dir=temp_base
-    ) as cwd_root:
-        test_home = Path(home_root)
-        clean_cwd = Path(cwd_root).resolve()
-        codex_home = test_home / ".codex"
+    ) as root:
+        test_root = Path(root)
+        codex_home = test_root / ".codex"
         codex_home.mkdir()
+        target_repo = test_root / "target repo"
+        target_repo.mkdir()
+        marketplace_dir = target_repo / ".agents/plugins"
+        marketplace_dir.mkdir(parents=True)
+        (marketplace_dir / "marketplace.json").write_text(
+            json.dumps({"name": "repo-plugins", "plugins": []}),
+            encoding="utf-8",
+        )
+        temp_bin = test_root / "bin"
+        temp_bin.mkdir()
+        mktemp = temp_bin / "mktemp"
+        mktemp.write_text(
+            "#!/bin/bash\n"
+            "if [[ $# -eq 0 ]]; then\n"
+            '  exec /usr/bin/mktemp "${TMPDIR:?}/gopher-ai-test.XXXXXX"\n'
+            "elif [[ $# -eq 1 && $1 == -d ]]; then\n"
+            '  exec /usr/bin/mktemp -d "${TMPDIR:?}/gopher-ai-test.XXXXXX"\n'
+            "fi\n"
+            'exec /usr/bin/mktemp "$@"\n',
+            encoding="utf-8",
+        )
+        mktemp.chmod(0o755)
         env = os.environ.copy()
-        env.update({"HOME": str(test_home), "CODEX_HOME": str(codex_home)})
+        env.update(
+            {
+                "HOME": str(test_root),
+                "CODEX_HOME": str(codex_home),
+                "PATH": f"{temp_bin}{os.pathsep}{env['PATH']}",
+                "TMPDIR": str(test_root),
+                "TMP": str(test_root),
+                "TEMP": str(test_root),
+            }
+        )
         if temp_base_path.is_relative_to(ROOT_DIR.resolve()):
             existing_ceiling = env.get("GIT_CEILING_DIRECTORIES")
             env["GIT_CEILING_DIRECTORIES"] = os.pathsep.join(
@@ -294,21 +361,77 @@ def main():
                 if value
             )
 
-        run_codex(env, clean_cwd, "plugin", "marketplace", "add", str(ROOT_DIR), "--json")
-        for plugin_name in plugin_names:
-            run_codex(
-                env,
-                clean_cwd,
-                "plugin",
-                "add",
-                f"{plugin_name}@gopher-ai",
-                "--json",
+        install = subprocess.run(
+            [str(ROOT_DIR / "scripts/install-codex.sh"), "--repo", str(target_repo)],
+            cwd=ROOT_DIR,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        marketplace_name = json.loads(
+            (marketplace_dir / "marketplace.json").read_text(encoding="utf-8")
+        )["name"]
+        activation_commands = [
+            ["codex", "plugin", "marketplace", "add", str(target_repo)],
+            *(
+                ["codex", "plugin", "add", f"{name}@{marketplace_name}"]
+                for name in sorted(plugin_names)
+            ),
+        ]
+        emitted_commands = parsed_activation_commands(install.stdout)
+        if emitted_commands != activation_commands:
+            raise AssertionError(
+                "installer output activation commands differ from expected: "
+                f"{emitted_commands}"
             )
-        response = query_resolver(env, clean_cwd)
+
+        unsafe_repo = test_root / "unsafe target"
+        unsafe_marketplace_dir = unsafe_repo / ".agents/plugins"
+        unsafe_marketplace_dir.mkdir(parents=True)
+        unsafe_marketplace_name = "repo plugins;$(touch injected)"
+        (unsafe_marketplace_dir / "marketplace.json").write_text(
+            json.dumps({"name": unsafe_marketplace_name, "plugins": []}),
+            encoding="utf-8",
+        )
+        unsafe_install = subprocess.run(
+            [str(ROOT_DIR / "scripts/install-codex.sh"), "--repo", str(unsafe_repo)],
+            cwd=ROOT_DIR,
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        unsafe_commands = parsed_activation_commands(unsafe_install.stdout)
+        unsafe_expected = [
+            ["codex", "plugin", "marketplace", "add", str(unsafe_repo)],
+            *(
+                ["codex", "plugin", "add", f"{name}@{unsafe_marketplace_name}"]
+                for name in sorted(plugin_names)
+            ),
+        ]
+        if unsafe_commands != unsafe_expected:
+            raise AssertionError(
+                "installer output did not safely preserve activation arguments: "
+                f"{unsafe_commands}"
+            )
+
+        inactive_names = set(resolver_skill_names(query_resolver(env, target_repo)))
+        unexpectedly_active = set(skill_names) & inactive_names
+        if unexpectedly_active:
+            raise AssertionError(
+                "repo-staged skills unexpectedly active before plugin activation: "
+                f"{sorted(unexpectedly_active)}"
+            )
+
+        for command in emitted_commands:
+            run_codex(env, target_repo, *command[1:])
+
+        response = query_resolver(env, target_repo)
 
     assert_resolver_surface(response, plugin_names, skill_names)
     print(
-        "Codex all-plugin qualified skill-name probe passed: "
+        "Codex repo activation and all-plugin qualified skill-name probe passed: "
         f"{len(skill_names)} skills: {', '.join(sorted(skill_names))}"
     )
 

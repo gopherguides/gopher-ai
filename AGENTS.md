@@ -61,17 +61,30 @@ Codex does not resolve a bare `convert-to-go-project` skill name as an alias.
 
 ## Installation
 
-### Repo-Local (Recommended)
+### Repository-Backed
 
-This repo includes `.agents/plugins/marketplace.json` which Codex reads on startup. When you clone this repo and run Codex inside it, all plugins are discovered automatically — no manual installation needed.
-
-Browse available plugins with the `/plugins` command in Codex CLI.
-
-To add these plugins to **your own repo**:
+This repo includes `.agents/plugins/marketplace.json` as a plugin catalog. The
+catalog does not enable plugins based on the working directory. To stage the
+plugins in your own repo and activate all six from that source. For a new
+target catalog named `gopher-ai`:
 
 ```bash
 ./scripts/install-codex.sh --repo /path/to/your-repo
+codex plugin marketplace add /path/to/your-repo
+codex plugin add go-dev@gopher-ai
+codex plugin add go-web@gopher-ai
+codex plugin add go-workflow@gopher-ai
+codex plugin add gopher-guides@gopher-ai
+codex plugin add llm-tools@gopher-ai
+codex plugin add tailwind@gopher-ai
 ```
+
+The activation commands enable plugins throughout the active `CODEX_HOME`.
+If the target already has a named catalog, use the commands printed by the
+installer; they preserve and use that catalog name instead of `gopher-ai`.
+Do not combine this repository-backed source with `--user` in the same home;
+use a dedicated `CODEX_HOME` when repository isolation is required. Use
+`/plugins` to browse the activated plugins.
 
 ### Global (Personal) Use
 
