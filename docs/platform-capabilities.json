@@ -993,6 +993,10 @@
         {
           "kind": "command",
           "path": "plugins/llm-tools/commands/gemini.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/llm-tools/skills/gemini/SKILL.md"
         }
       ],
       "platforms": {
@@ -1000,12 +1004,14 @@
           "disposition": "command",
           "names": [
             "llm-tools:gemini"
+          ],
+          "skill_names": [
+            "llm-tools:gemini"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/335"
+          "disposition": "skill",
+          "name": "llm-tools:gemini"
         }
       }
     },
@@ -1041,6 +1047,10 @@
         {
           "kind": "command",
           "path": "plugins/llm-tools/commands/ollama.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/llm-tools/skills/ollama/SKILL.md"
         }
       ],
       "platforms": {
@@ -1048,12 +1058,14 @@
           "disposition": "command",
           "names": [
             "llm-tools:ollama"
+          ],
+          "skill_names": [
+            "llm-tools:ollama"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/335"
+          "disposition": "skill",
+          "name": "llm-tools:ollama"
         }
       }
     },
