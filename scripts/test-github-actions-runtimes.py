@@ -120,6 +120,16 @@ def cache_parser_failures():
         (
             [
                 "      - name: Set up Node",
+                '        "with":',
+                '          "package-manager-cache": "false"',
+                '        "uses": actions/setup-node@v7',
+            ],
+            3,
+            True,
+        ),
+        (
+            [
+                "      - name: Set up Node",
                 "        uses: actions/setup-node@v7",
                 "        with:",
                 "          # package-manager-cache: false",
@@ -227,7 +237,9 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
             break
 
     for index in range(step_start, step_end):
-        with_match = re.match(r"^(\s*)with:\s*(?:#.*)?$", lines[index])
+        with_match = re.match(
+            r'''^(\s*)(["']?)with\2\s*:\s*(?:#.*)?$''', lines[index]
+        )
         if not with_match or len(with_match.group(1)) != step_key_indentation:
             continue
 
@@ -236,7 +248,9 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
             key_match = re.match(r"^(\s*)\S", line)
             if key_match and len(key_match.group(1)) <= step_key_indentation:
                 break
-            input_match = re.match(r"^(\s*)[A-Za-z0-9_-]+:\s*", line)
+            input_match = re.match(
+                r'''^(\s*)(["']?)[A-Za-z0-9_-]+\2\s*:\s*''', line
+            )
             if not input_match:
                 continue
             current_indentation = len(input_match.group(1))
@@ -244,7 +258,11 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
                 input_indentation = current_indentation
             if current_indentation != input_indentation:
                 continue
-            if re.match(r"^\s*package-manager-cache:\s*false\s*(?:#.*)?$", line):
+            if re.match(
+                r'''^\s*(["']?)package-manager-cache\1\s*:\s*'''
+                r'''(?:false|"false"|'false')\s*(?:#.*)?$''',
+                line,
+            ):
                 return True
     return False
 
