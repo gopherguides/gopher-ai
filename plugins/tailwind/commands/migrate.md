@@ -120,14 +120,32 @@ plugin's `strategy` option into an `@plugin` block instead of dropping it.
 
 ## Step 3: Generate v4 CSS Configuration
 
+Identify the existing Tailwind CSS entry that the selected build integration
+uses and bind it to `<CSS_ENTRY>`. If multiple files contain v3 directives,
+use the build configuration to identify the primary entry; ask before writing
+when repository evidence cannot disambiguate it.
+
+For the CLI integration, derive a distinct sibling output path and bind it to `<CSS_OUTPUT>`: replace an `input.css` filename with `output.css`, or append
+`.generated.css` to another stem. Never use `<CSS_ENTRY>` itself as output.
+
+Determine the effective base directory for every v3 `content` pattern using
+the v3 configuration and project invocation context. Rebase every content glob
+from that base to the directory containing `<CSS_ENTRY>` before emitting an
+`@source` directive. Normalize separators to `/` and preserve glob syntax. For
+example, with `src/index.css` and a project-root v3 base,
+`./src/**/*.tsx` becomes `./**/*.tsx`, while `./public/**/*.html` becomes
+`../public/**/*.html`.
+
+Enumerate the files matched before and after rebasing. Do not write or report a
+migration as complete unless the generated `@source` directives resolve to the same files as the v3 content patterns.
+
 Convert the parsed configuration to v4 CSS:
 
 ```css
 @import "tailwindcss";
 
-/* From content array */
-@source "./src/**/*.{js,jsx,ts,tsx}";
-@source "./public/index.html";
+/* Rebased from content array relative to <CSS_ENTRY> */
+@source "<REBASED_CONTENT_PATH>";
 
 /* From theme.extend */
 @theme {
@@ -200,11 +218,14 @@ Scripts:
 ```json
 {
   "scripts": {
-    "css": "tailwindcss -i ./src/input.css -o ./src/output.css --minify",
-    "css:watch": "tailwindcss -i ./src/input.css -o ./src/output.css --watch"
+    "css": "tailwindcss -i <CSS_ENTRY> -o <CSS_OUTPUT> --minify",
+    "css:watch": "tailwindcss -i <CSS_ENTRY> -o <CSS_OUTPUT> --watch"
   }
 }
 ```
+
+Replace `<CSS_ENTRY>` and `<CSS_OUTPUT>` with their concrete project-relative
+paths before writing the scripts.
 
 **PostCSS method (if using an existing PostCSS pipeline):**
 
@@ -267,7 +288,8 @@ non-empty:
 
 Run the `css` script with the selected package manager, for example
 `npm run css`, `pnpm run css`, `yarn run css`, or `bun run css`, and inspect the
-first 20 output lines.
+first 20 output lines. Confirm the concrete `<CSS_OUTPUT>` exists and is
+non-empty.
 
 ### PostCSS Verification
 
@@ -349,7 +371,8 @@ these are TRUE:
 1. The v3 configuration and affected CSS files were parsed and analyzed
 2. Proposed CSS, dependency, script, PostCSS, and old-config changes were shown
 3. The preview report identifies unresolved plugin or color conversions
-4. No project files, dependencies, or generated CSS changed
+4. Proposed `@source` paths preserve the v3 content matches from the selected CSS entry
+5. No project files, dependencies, or generated CSS changed
 
 Without `--check`, follow the selected integration path. Use only the migration completion criteria for the selected integration.
 
@@ -361,10 +384,11 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 2. CSS file updated with `@import "tailwindcss"` and `@theme`
 3. `tailwindcss` and `@tailwindcss/cli` updated to v4
 4. CLI build scripts added to `package.json`
-5. The selected package manager's `css` script succeeds and generates non-empty output CSS
+5. The selected package manager's `css` script succeeds and generates non-empty output CSS at `<CSS_OUTPUT>`
 6. No `@tailwind` directives remain in CSS files
 7. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
 8. Requested `--backup` and `--keep-config` behavior completed before destructive changes
+9. Generated `@source` directives preserve every v3 content match relative to the selected CSS entry
 
 ### PostCSS Migration Completion Criteria
 
@@ -380,6 +404,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 8. No `@tailwind` directives remain in CSS files
 9. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
 10. Requested `--backup` and `--keep-config` behavior completed before destructive changes
+11. Generated `@source` directives preserve every v3 content match relative to the selected CSS entry
 
 ```
 <done>COMPLETE</done>

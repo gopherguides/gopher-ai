@@ -37,6 +37,12 @@ grep -rl '@import.*tailwindcss' --include="*.css" . 2>/dev/null
 ls **/output.css dist/**/*.css build/**/*.css public/**/*.css 2>/dev/null
 ```
 
+Use the selected integration's build configuration to identify the primary
+Tailwind entry among the discovered files. Bind the selected Tailwind CSS entry to `<CSS_ENTRY>`. If multiple candidates remain, ask which entry to analyze. Bind an existing built artifact to `<GENERATED_CSS>` when one can be identified; otherwise leave it unavailable and report that limitation.
+
+Choose a unique directory under the active temporary directory and bind its
+concrete path to `<TEMP_DIR>` for every disposable analysis file.
+
 ## Step 2: Measure Bundle Size
 
 Use the first safe measurement path available.
@@ -61,13 +67,17 @@ Choose a unique directory under the active temporary directory, replace
 rather than into the project:
 
 ```bash
-node "<LOCAL_CLI_ENTRY>" -i input.css -o "<TEMP_DIR>/dev-output.css" 2>&1
+node "<LOCAL_CLI_ENTRY>" -i "<CSS_ENTRY>" -o "<TEMP_DIR>/dev-output.css" 2>&1
 wc -c "<TEMP_DIR>/dev-output.css"
 
-node "<LOCAL_CLI_ENTRY>" -i input.css -o "<TEMP_DIR>/prod-output.css" --minify 2>&1
+node "<LOCAL_CLI_ENTRY>" -i "<CSS_ENTRY>" -o "<TEMP_DIR>/prod-output.css" --minify 2>&1
 wc -c "<TEMP_DIR>/prod-output.css"
 gzip -c "<TEMP_DIR>/prod-output.css" | wc -c
 ```
+
+After a successful local CLI build, bind
+`<TEMP_DIR>/prod-output.css` to `<GENERATED_CSS>` for the generated-class and
+CSS-variable checks below.
 
 Do not install `@tailwindcss/cli` solely for measurement.
 
@@ -104,7 +114,7 @@ Most Tailwind projects ship < 10 KB CSS gzipped.
 ```bash
 fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -d 5 2>/dev/null | wc -l
 fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -d 5 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn
-grep '@source' input.css
+grep '@source' "<CSS_ENTRY>"
 ```
 
 For each `@source` pattern, verify files are found:
@@ -128,13 +138,13 @@ continue with template class inventory.
 ```bash
 # Used classes in templates
 grep -ohr 'class="[^"]*"' --include="*.html" --include="*.templ" --include="*.jsx" --include="*.tsx" . 2>/dev/null | \
-  sed 's/class="//g' | sed 's/"//g' | tr ' ' '\n' | sort -u > /tmp/used-classes.txt
+  sed 's/class="//g' | sed 's/"//g' | tr ' ' '\n' | sort -u > "<TEMP_DIR>/used-classes.txt"
 
 # Class names in generated CSS
-grep -oE '\.[a-zA-Z][a-zA-Z0-9_-]*' output.css | sed 's/\.//' | sort -u > /tmp/css-classes.txt
+grep -oE '\.[a-zA-Z][a-zA-Z0-9_-]*' "<GENERATED_CSS>" | sed 's/\.//' | sort -u > "<TEMP_DIR>/css-classes.txt"
 
 # CSS-only (potentially unused)
-comm -23 /tmp/css-classes.txt /tmp/used-classes.txt | head -50
+comm -23 "<TEMP_DIR>/css-classes.txt" "<TEMP_DIR>/used-classes.txt" | head -50
 ```
 
 **Note:** Some "unused" classes may be: dynamically generated (`bg-${color}-500`); used by JavaScript; from third-party libraries; or base/reset styles (intentionally included).
@@ -146,8 +156,8 @@ is available, report these metrics as unavailable rather than building over a
 project output file.
 
 ```bash
-grep -c -- '--' output.css
-grep -oE '--color-[a-z]+-[0-9]+' output.css | sort -u | wc -l
+grep -c -- '--' "<GENERATED_CSS>"
+grep -oE '--color-[a-z]+-[0-9]+' "<GENERATED_CSS>" | sort -u | wc -l
 ```
 
 | Category | Expected | If higher |
@@ -165,7 +175,7 @@ When a local Tailwind CLI is available, time a build into the temporary
 directory selected in Step 2:
 
 ```bash
-time node "<LOCAL_CLI_ENTRY>" -i input.css -o "<TEMP_DIR>/timed-output.css" --minify 2>&1
+time node "<LOCAL_CLI_ENTRY>" -i "<CSS_ENTRY>" -o "<TEMP_DIR>/timed-output.css" --minify 2>&1
 ```
 
 Without a local CLI, do not run a read-only Vite or PostCSS build that may

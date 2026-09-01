@@ -121,6 +121,18 @@ grep -l '@import.*tailwindcss' *.css */*.css 2>/dev/null   # should find one
 grep -l '@tailwind' *.css */*.css 2>/dev/null              # should be empty
 ```
 
+## v3 Migration Guard
+
+Treat a project as v3 when the installed Tailwind major version is v3 or its
+CSS still uses v3 `@tailwind` directives. A JavaScript configuration alone is
+only a review signal because v4 can load one explicitly with `@config`. When `--fix` is present and a v3 project is detected, apply this guard. Keep every v3 compliance finding read-only. Do not replace `@tailwind` directives, remove the JavaScript configuration, or alter Tailwind/PostCSS dependencies as an audit auto-fix.
+
+Report that a complete migration is required and direct the user to the
+explicit `$tailwind:migrate` workflow. Delegate to that workflow only when the
+user separately requests migration; never apply a CSS-only subset from audit.
+Version-independent fixes such as duplicate-utility removal may continue when
+they do not alter migration state.
+
 ## Step 3: Generate Report
 
 ```
@@ -159,7 +171,9 @@ grep -l '@tailwind' *.css */*.css 2>/dev/null              # should be empty
 
 ## Step 4: Auto-Fix (if `--fix`)
 
-Auto-apply: remove duplicate utilities (keep last), convert inline styles, reorder classes to convention, update v3 → v4 syntax in CSS files only.
+Auto-apply: remove duplicate utilities (keep last), convert inline styles, and
+reorder classes to convention. On confirmed v4 projects, apply only v4-to-v4
+syntax corrections that do not require dependency or configuration changes.
 
 **Do NOT auto-fix:** component extraction (naming requires user input); color choices (subjective); arbitrary values (may be intentional).
 
@@ -170,7 +184,7 @@ Fixed X issues automatically:
 - Removed Y duplicate utilities
 - Converted Z inline styles
 - Reordered W class strings
-- Updated V v3 patterns to v4
+- Reported V migration findings without partial v3 changes
 
 Remaining issues: X (require manual review)
 ```
@@ -188,7 +202,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
 1. All template files scanned
 2. Audit report generated
-3. If `--fix` provided: auto-fixes applied
+3. If `--fix` provided: permitted auto-fixes applied and v3 migration findings left unchanged
 4. Summary displayed
 
 ```

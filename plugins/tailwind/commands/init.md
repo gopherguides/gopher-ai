@@ -126,15 +126,21 @@ CSS path by project type:
 | Next.js | `app/globals.css` or `styles/globals.css` |
 | Plain HTML | `css/input.css` |
 
+Bind the selected CSS entry path to `<CSS_ENTRY>`. For the CLI integration,
+derive a distinct sibling output path and bind it to `<CSS_OUTPUT>`: replace an
+`input.css` filename with `output.css`, or append `.generated.css` to another
+stem. Never use the entry file itself as the output. Resolve how the project
+serves that output and bind its browser-facing URL to `<PUBLIC_CSS_URL>`.
+
 Create with v4 syntax:
 
 ```css
 @import "tailwindcss";
 
-/* Adjust paths for your templates */
-@source "../templates/**/*.templ";
-@source "../components/**/*.html";
-@source "./**/*.{js,jsx,ts,tsx,vue,svelte}";
+/* Replace with paths relative to <CSS_ENTRY> */
+@source "<RELATIVE_TEMPLATE_PATH>/**/*.templ";
+@source "<RELATIVE_COMPONENT_PATH>/**/*.html";
+@source "<RELATIVE_SOURCE_PATH>/**/*.{js,jsx,ts,tsx,vue,svelte}";
 
 /* Design tokens — add yours */
 @theme {
@@ -171,7 +177,8 @@ Create with v4 syntax:
 }
 ```
 
-Adjust `@source` paths based on where templates are located.
+Replace every placeholder with a concrete path relative to the directory
+containing `<CSS_ENTRY>`, and verify each path resolves to the intended files.
 
 ## Step 6: Configure Selected Integration
 
@@ -180,11 +187,14 @@ Adjust `@source` paths based on where templates are located.
 ```json
 {
   "scripts": {
-    "css": "tailwindcss -i ./css/input.css -o ./css/output.css --minify",
-    "css:watch": "tailwindcss -i ./css/input.css -o ./css/output.css --watch"
+    "css": "tailwindcss -i <CSS_ENTRY> -o <CSS_OUTPUT> --minify",
+    "css:watch": "tailwindcss -i <CSS_ENTRY> -o <CSS_OUTPUT> --watch"
   }
 }
 ```
+
+Replace `<CSS_ENTRY>` and `<CSS_OUTPUT>` with their concrete project-relative
+paths before writing the scripts.
 
 **Vite** — `vite.config.js`:
 
@@ -205,11 +215,8 @@ export default {
 
 ## Step 7: Update .gitignore (CLI only)
 
-```text
-# Tailwind output (regenerated on build)
-css/output.css
-static/css/output.css
-```
+Add the concrete `<CSS_OUTPUT>` path to `.gitignore` as regenerated build
+output. Do not add example paths that the selected CLI script does not write.
 
 ## Step 8: Verify Selected Integration
 
@@ -265,7 +272,7 @@ Docs: https://tailwindcss.com/docs
 ```text
 Next steps:
 1. Run the `css:watch` script with the selected package manager
-2. Include in HTML: <link href="/css/output.css" rel="stylesheet">
+2. Include in HTML: <link href="<PUBLIC_CSS_URL>" rel="stylesheet">
 3. Use classes: <div class="flex items-center gap-4 p-4 bg-primary text-primary-foreground">…
 4. Customize theme via @theme { ... } in the CSS file
 ```
@@ -307,7 +314,8 @@ Use only the completion criteria for the selected integration. DO NOT output
 2. CSS entry file created with `@import "tailwindcss"`
 3. Build scripts added to `package.json`
 4. The selected package manager's `css` script succeeds with zero errors
-5. Output CSS is generated
+5. Output CSS is generated at the concrete `<CSS_OUTPUT>` path
+6. The stylesheet is referenced through the concrete `<PUBLIC_CSS_URL>`
 
 ### Vite Completion Criteria
 

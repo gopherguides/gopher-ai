@@ -127,6 +127,12 @@ assert_contains "$MIGRATE_COMMAND" '## Preservation Flags'
 assert_contains "$MIGRATE_COMMAND" 'When `--backup` is present and `--check` is absent'
 assert_contains "$MIGRATE_COMMAND" 'When `--keep-config` is present'
 assert_contains "$MIGRATE_COMMAND" 'Do not ask how to dispose of the old configuration'
+assert_contains "$MIGRATE_COMMAND" 'Rebase every content glob'
+assert_contains "$MIGRATE_COMMAND" '`./src/**/*.tsx` becomes `./**/*.tsx`'
+assert_contains "$MIGRATE_COMMAND" 'resolve to the same files as the v3 content patterns'
+assert_contains "$MIGRATE_COMMAND" 'derive a distinct sibling output path and bind it to `<CSS_OUTPUT>`'
+assert_contains "$MIGRATE_COMMAND" '"css": "tailwindcss -i <CSS_ENTRY> -o <CSS_OUTPUT> --minify"'
+assert_not_matches "$MIGRATE_COMMAND" 'tailwindcss -i \./src/input\.css'
 for integration in CLI PostCSS; do
   assert_contains "$MIGRATE_COMMAND" "### $integration Verification"
   assert_contains "$MIGRATE_COMMAND" "### $integration Migration Completion Criteria"
@@ -141,6 +147,11 @@ for integration in CLI Vite PostCSS; do
   assert_contains "$INIT_COMMAND" "### $integration Next Steps"
 done
 assert_contains "$INIT_COMMAND" 'Use only the completion criteria for the selected integration.'
+assert_contains "$INIT_COMMAND" 'Bind the selected CSS entry path to `<CSS_ENTRY>`'
+assert_contains "$INIT_COMMAND" 'derive a distinct sibling output path and bind it to `<CSS_OUTPUT>`'
+assert_contains "$INIT_COMMAND" '"css": "tailwindcss -i <CSS_ENTRY> -o <CSS_OUTPUT> --minify"'
+assert_contains "$INIT_COMMAND" '<PUBLIC_CSS_URL>'
+assert_not_matches "$INIT_COMMAND" 'tailwindcss -i \./css/input\.css'
 
 for package_command in 'pnpm add -D' 'yarn add -D' 'bun add -d'; do
   assert_contains "$INIT_COMMAND" "$package_command"
@@ -165,5 +176,17 @@ assert_contains "$OPTIMIZE_COMMAND" '### Existing Generated CSS Measurement'
 assert_contains "$OPTIMIZE_COMMAND" 'Do not install `@tailwindcss/cli` solely for measurement.'
 assert_contains "$OPTIMIZE_COMMAND" 'record the measurement limitation and continue'
 assert_not_matches "$OPTIMIZE_COMMAND" 'npx[[:space:]]'
+assert_contains "$OPTIMIZE_COMMAND" 'Bind the selected Tailwind CSS entry to `<CSS_ENTRY>`'
+assert_contains "$OPTIMIZE_COMMAND" 'grep '\''@source'\'' "<CSS_ENTRY>"'
+assert_contains "$OPTIMIZE_COMMAND" '"<GENERATED_CSS>"'
+assert_not_matches "$OPTIMIZE_COMMAND" '-i[[:space:]]+input\.css'
+assert_not_matches "$OPTIMIZE_COMMAND" '/tmp/'
+
+AUDIT_COMMAND="$PLUGIN_DIR/commands/audit.md"
+assert_contains "$AUDIT_COMMAND" '## v3 Migration Guard'
+assert_contains "$AUDIT_COMMAND" 'When `--fix` is present and a v3 project is detected'
+assert_contains "$AUDIT_COMMAND" 'Do not replace `@tailwind` directives'
+assert_contains "$AUDIT_COMMAND" 'Keep every v3 compliance finding read-only'
+assert_contains "$AUDIT_COMMAND" '`$tailwind:migrate`'
 
 printf 'Tailwind Codex workflow skill tests passed.\n'
