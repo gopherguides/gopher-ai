@@ -7,6 +7,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WORKFLOWS = ROOT / ".github" / "workflows"
+COMPOSITE_ACTIONS = ROOT / ".github" / "actions"
 PLUGIN_TEMPLATES = ROOT / "plugins"
 AGENT_SKILLS = ROOT / "agent-skills"
 CHECKOUT_V7_SHA = "3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -1008,11 +1009,25 @@ def workflow_files():
         (
             *WORKFLOWS.glob("*.yml"),
             *WORKFLOWS.glob("*.yaml"),
+            *COMPOSITE_ACTIONS.glob("**/action.yml"),
+            *COMPOSITE_ACTIONS.glob("**/action.yaml"),
             *PLUGIN_TEMPLATES.glob("*/templates/**/*.yml"),
             *PLUGIN_TEMPLATES.glob("*/templates/**/*.yaml"),
             *AGENT_SKILLS.glob("**/*.md"),
         )
     )
+
+
+def coverage_failures():
+    composite_manifests = {
+        *COMPOSITE_ACTIONS.glob("**/action.yml"),
+        *COMPOSITE_ACTIONS.glob("**/action.yaml"),
+    }
+    missing = composite_manifests.difference(workflow_files())
+    return [
+        f"composite action manifest is not scanned: {path.relative_to(ROOT)}"
+        for path in sorted(missing)
+    ]
 
 
 def step_has_cache_disabled(lines, start, indentation, list_marker):
@@ -1102,7 +1117,7 @@ def action_has_cache_disabled(lines, start, parsed):
 
 
 def main():
-    failures = parser_failures() + cache_parser_failures()
+    failures = parser_failures() + cache_parser_failures() + coverage_failures()
     discovered = 0
 
     for path in workflow_files():
