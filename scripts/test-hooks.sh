@@ -90,6 +90,245 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
+POST_TOOL_USE_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-post-tool-use.XXXXXX")
+POST_TOOL_USE_HOOK="$ROOT_DIR/plugins/go-workflow/hooks/post-tool-use.sh"
+
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"main.go:12:3: undefined: missingName\n"}' \
+  > "$POST_TOOL_USE_ROOT/codex-compilation.json"
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"","stderr":"dial tcp 192.0.2.1:443: i/o timeout","exit_code":1}}' \
+  > "$POST_TOOL_USE_ROOT/codex-timeout.json"
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"golangci-lint returned an error","exit_code":1}}' \
+  > "$POST_TOOL_USE_ROOT/codex-lint.json"
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"","stderr":"open protected.txt: permission denied","exit_code":1}}' \
+  > "$POST_TOOL_USE_ROOT/codex-permission.json"
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"build completed","exit_code":0}}' \
+  > "$POST_TOOL_USE_ROOT/codex-normal.json"
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"main.go:12:3: undefined: archivedDiagnostic","exit_code":0}}' \
+  > "$POST_TOOL_USE_ROOT/codex-success-diagnostic.json"
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"Process exited with code 0\nFinal output:\ncontext deadline exceeded with status 429"}' \
+  > "$POST_TOOL_USE_ROOT/codex-success-transient.json"
+jq -n --arg output "$(awk 'BEGIN { for (line = 1; line <= 201; line++) print "line " line }')" \
+  '{turn_id: "turn-codex", tool_name: "Bash", tool_response: $output}' \
+  > "$POST_TOOL_USE_ROOT/codex-long-output.json"
+printf '%s\n' '{"session_id":"session-claude","tool_name":"Bash","tool_response":{"stdout":"main.go:9:2: undefined: value","stderr":"","exit_code":1}}' \
+  > "$POST_TOOL_USE_ROOT/claude-compilation.json"
+printf '%s\n' '{"session_id":"session-claude","tool_name":"Bash","tool_output":{"stdout":"main.go:10:2: undefined: legacyValue","stderr":"","exit_code":1}}' \
+  > "$POST_TOOL_USE_ROOT/claude-legacy-compilation.json"
+printf '%s\n' '{"session_id":"session-claude","tool_name":"Bash","tool_response":"API rate limit exceeded"}' \
+  > "$POST_TOOL_USE_ROOT/claude-rate-limit.json"
+printf '%s\n' '{"tool_name":"Bash"}' > "$POST_TOOL_USE_ROOT/missing-output.json"
+printf '%s\n' '{not-json' > "$POST_TOOL_USE_ROOT/malformed.json"
+mkdir -p "$POST_TOOL_USE_ROOT/bin" "$POST_TOOL_USE_ROOT/claude-retry"
+printf '%s\n' '#!/bin/bash' "printf \"called\\n\" > \"\${POST_TOOL_USE_SLEEP_MARKER:?}\"" \
+  > "$POST_TOOL_USE_ROOT/bin/sleep"
+chmod +x "$POST_TOOL_USE_ROOT/bin/sleep"
+
+run_post_tool_use_fixture() {
+  local fixture="$1"
+  local stderr_file="$2"
+  PATH="$POST_TOOL_USE_ROOT/bin:$PATH" \
+  POST_TOOL_USE_SLEEP_MARKER="$POST_TOOL_USE_ROOT/codex-sleep-called" \
+  TMPDIR="$POST_TOOL_USE_ROOT" \
+  bash "$POST_TOOL_USE_HOOK" \
+    < "$fixture" 2> "$stderr_file"
+}
+
+is_supported_codex_post_tool_use_response() {
+  jq -e '
+    type == "object" and
+    ((keys - ["continue", "decision", "hookSpecificOutput", "reason", "stopReason", "systemMessage"]) | length == 0) and
+    (has("retry") | not) and
+    (if has("decision") then
+      .decision == "block" and ((.reason // "") | test("[^[:space:]]"))
+    else
+      true
+    end) and
+    (if has("hookSpecificOutput") then
+      .hookSpecificOutput.hookEventName == "PostToolUse" and
+      ((.hookSpecificOutput.additionalContext // "") | test("[^[:space:]]"))
+    else
+      true
+    end)
+  ' >/dev/null 2>&1
+}
+
+echo -n "  Codex PostToolUse preserves status-unknown string diagnostics as context... "
+CODEX_COMPILE_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-compilation.json" \
+  "$POST_TOOL_USE_ROOT/codex-compilation.stderr")
+if printf '%s\n' "$CODEX_COMPILE_OUTPUT" | is_supported_codex_post_tool_use_response &&
+   printf '%s\n' "$CODEX_COMPILE_OUTPUT" | jq -e '
+     (has("decision") | not) and
+     (.hookSpecificOutput.additionalContext | test("compilation"; "i")) and
+     (.hookSpecificOutput.additionalContext | test("status.*unavailable"; "i")) and
+     (.hookSpecificOutput.additionalContext | contains("main.go:12:3: undefined: missingName"))
+   ' >/dev/null 2>&1; then
+  echo "OK"
+else
+  echo "FAIL (output: ${CODEX_COMPILE_OUTPUT:-<empty>})"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Codex PostToolUse emits supported safe retry guidance for structured transient failures... "
+CODEX_TIMEOUT_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-timeout.json" \
+  "$POST_TOOL_USE_ROOT/codex-timeout.stderr")
+if printf '%s\n' "$CODEX_TIMEOUT_OUTPUT" | is_supported_codex_post_tool_use_response &&
+   printf '%s\n' "$CODEX_TIMEOUT_OUTPUT" | jq -e '
+     .decision == "block" and
+     (has("retry") | not) and
+     (.reason | test("idempoten|safe"; "i")) and
+     (.reason | contains("dial tcp 192.0.2.1:443: i/o timeout"))
+   ' >/dev/null 2>&1 &&
+   [ ! -e "$POST_TOOL_USE_ROOT/codex-sleep-called" ] &&
+   ! compgen -G "$POST_TOOL_USE_ROOT/gopher-ai-retry-*" >/dev/null; then
+  echo "OK"
+else
+  echo "FAIL (output: ${CODEX_TIMEOUT_OUTPUT:-<empty>})"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Codex PostToolUse makes lint and permission failures model-visible... "
+CODEX_LINT_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-lint.json" \
+  "$POST_TOOL_USE_ROOT/codex-lint.stderr")
+CODEX_PERMISSION_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-permission.json" \
+  "$POST_TOOL_USE_ROOT/codex-permission.stderr")
+if printf '%s\n' "$CODEX_LINT_OUTPUT" | is_supported_codex_post_tool_use_response &&
+   printf '%s\n' "$CODEX_LINT_OUTPUT" | jq -e '
+     .decision == "block" and
+     (.reason | test("lint"; "i")) and
+     (.reason | contains("golangci-lint returned an error"))
+   ' >/dev/null 2>&1 &&
+   printf '%s\n' "$CODEX_PERMISSION_OUTPUT" | is_supported_codex_post_tool_use_response &&
+   printf '%s\n' "$CODEX_PERMISSION_OUTPUT" | jq -e '
+     .decision == "block" and
+     (.reason | test("permission|access"; "i")) and
+     (.reason | contains("open protected.txt: permission denied"))
+   ' >/dev/null 2>&1; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Codex PostToolUse reports long output as non-blocking context... "
+CODEX_LONG_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-long-output.json" \
+  "$POST_TOOL_USE_ROOT/codex-long-output.stderr")
+if printf '%s\n' "$CODEX_LONG_OUTPUT" | is_supported_codex_post_tool_use_response &&
+   printf '%s\n' "$CODEX_LONG_OUTPUT" | jq -e '
+     (has("decision") | not) and
+     (.hookSpecificOutput.additionalContext | test("201 lines"))
+   ' >/dev/null 2>&1; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Codex PostToolUse keeps successful ordinary output silent... "
+CODEX_NORMAL_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-normal.json" \
+  "$POST_TOOL_USE_ROOT/codex-normal.stderr")
+if [ -z "$CODEX_NORMAL_OUTPUT" ] &&
+   [ ! -s "$POST_TOOL_USE_ROOT/codex-normal.stderr" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Codex PostToolUse ignores failure text from successful commands... "
+CODEX_SUCCESS_DIAGNOSTIC_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-success-diagnostic.json" \
+  "$POST_TOOL_USE_ROOT/codex-success-diagnostic.stderr")
+CODEX_SUCCESS_TRANSIENT_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-success-transient.json" \
+  "$POST_TOOL_USE_ROOT/codex-success-transient.stderr")
+if [ -z "$CODEX_SUCCESS_DIAGNOSTIC_OUTPUT" ] &&
+   [ -z "$CODEX_SUCCESS_TRANSIENT_OUTPUT" ] &&
+   [ ! -s "$POST_TOOL_USE_ROOT/codex-success-diagnostic.stderr" ] &&
+   [ ! -s "$POST_TOOL_USE_ROOT/codex-success-transient.stderr" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Codex PostToolUse schema rejects the legacy retry response... "
+if ! printf '%s\n' '{"retry":true,"reason":"Network timeout"}' |
+  is_supported_codex_post_tool_use_response; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Claude PostToolUse keeps transient retry output platform-specific... "
+CLAUDE_RETRY_OUTPUT=$(
+  PATH="$POST_TOOL_USE_ROOT/bin:$PATH" \
+  POST_TOOL_USE_SLEEP_MARKER="$POST_TOOL_USE_ROOT/claude-sleep-called" \
+  TMPDIR="$POST_TOOL_USE_ROOT/claude-retry" \
+  bash "$POST_TOOL_USE_HOOK" \
+    < "$POST_TOOL_USE_ROOT/claude-rate-limit.json" \
+    2> "$POST_TOOL_USE_ROOT/claude-rate-limit.stderr"
+)
+if printf '%s\n' "$CLAUDE_RETRY_OUTPUT" | jq -e '
+     .retry == true and ((.reason // "") | test("rate limit"; "i"))
+   ' >/dev/null 2>&1 &&
+   [ -e "$POST_TOOL_USE_ROOT/claude-sleep-called" ] &&
+   compgen -G "$POST_TOOL_USE_ROOT/claude-retry/gopher-ai-retry-*" >/dev/null; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Claude PostToolUse reads current structured tool_response failures... "
+CLAUDE_COMPILE_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/claude-compilation.json" \
+  "$POST_TOOL_USE_ROOT/claude-compilation.stderr")
+CLAUDE_COMPILE_ERROR=$(< "$POST_TOOL_USE_ROOT/claude-compilation.stderr")
+if [ -z "$CLAUDE_COMPILE_OUTPUT" ] &&
+   [[ "$CLAUDE_COMPILE_ERROR" == *"Go compilation error detected"* ]]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Claude PostToolUse keeps legacy tool_output compatibility... "
+CLAUDE_LEGACY_COMPILE_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/claude-legacy-compilation.json" \
+  "$POST_TOOL_USE_ROOT/claude-legacy-compilation.stderr")
+CLAUDE_LEGACY_COMPILE_ERROR=$(< "$POST_TOOL_USE_ROOT/claude-legacy-compilation.stderr")
+if [ -z "$CLAUDE_LEGACY_COMPILE_OUTPUT" ] &&
+   [[ "$CLAUDE_LEGACY_COMPILE_ERROR" == *"Go compilation error detected"* ]]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  PostToolUse fails open for missing and malformed output... "
+MISSING_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/missing-output.json" \
+  "$POST_TOOL_USE_ROOT/missing-output.stderr")
+MALFORMED_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/malformed.json" \
+  "$POST_TOOL_USE_ROOT/malformed.stderr")
+if [ -z "$MISSING_OUTPUT" ] &&
+   [ -z "$MALFORMED_OUTPUT" ] &&
+   [ ! -s "$POST_TOOL_USE_ROOT/missing-output.stderr" ] &&
+   [ ! -s "$POST_TOOL_USE_ROOT/malformed.stderr" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
 echo -n "  Stop hook honors durable driver-input pauses... "
 STOP_HOOK_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook.XXXXXX")
 STOP_HOOK_STATE="$STOP_HOOK_ROOT/.local/state/ship.loop.local.json"
