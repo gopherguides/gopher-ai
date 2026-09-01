@@ -21,6 +21,10 @@ BLOCK_ACTION_PATTERN = re.compile(
     r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#"']+)\4'''
     r'''(?:\s*(?:#.*)?)$'''
 )
+BLOCK_USES_KEY_PATTERN = re.compile(
+    r'''^(\s*)(-\s+)?(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
+    r'''(["']?)uses\3\s*:'''
+)
 ACTION_USES_PATTERN = re.compile(
     r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*'''
     r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
@@ -167,6 +171,55 @@ def flow_mapping_value(entries, key):
     return None
 
 
+def enclosing_steps_index(lines, start):
+    for candidate in range(start - 1, -1, -1):
+        match = re.match(
+            r'''^(\s*)(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
+            r'''(["']?)steps\2\s*:\s*'''
+            r'''(?:(?:&|!)[^\s,\[\]{}]+\s*)*(?:#.*)?$''',
+            lines[candidate],
+        )
+        if not match:
+            continue
+        steps_indentation = len(match.group(1))
+        enclosed = True
+        for line in lines[candidate + 1 : start + 1]:
+            if not line.strip():
+                continue
+            indentation = len(line) - len(line.lstrip())
+            if indentation < steps_indentation:
+                enclosed = False
+                break
+            if indentation == steps_indentation and not re.match(r"^\s*-\s+", line):
+                enclosed = False
+                break
+        if enclosed:
+            return candidate
+    return None
+
+
+def action_is_step_key(lines, start, parsed):
+    steps_index = enclosing_steps_index(lines, start)
+    if steps_index is None:
+        return False
+
+    steps_indentation = len(lines[steps_index]) - len(lines[steps_index].lstrip())
+    list_indents = []
+    for line in lines[steps_index + 1 : start + 1]:
+        match = re.match(r"^(\s*)-\s+", line)
+        if match and len(match.group(1)) >= steps_indentation:
+            list_indents.append(len(match.group(1)))
+    if not list_indents:
+        return False
+
+    indentation, list_marker, _, _, _ = parsed
+    step_indentation = min(list_indents)
+    action_indentation = len(indentation)
+    if list_marker:
+        return action_indentation == step_indentation
+    return action_indentation == step_indentation + 2
+
+
 def parse_action(line):
     match = BLOCK_ACTION_PATTERN.match(line)
     if match:
@@ -183,6 +236,14 @@ def parse_action(line):
             return indentation, True, action, action_ref, True
 
     return None
+
+
+def block_uses_context(line):
+    match = BLOCK_USES_KEY_PATTERN.match(line)
+    if not match:
+        return None
+    indentation, list_marker, _ = match.groups()
+    return indentation, bool(list_marker), "", "", False
 
 
 def find_action_reference(line):
@@ -268,6 +329,22 @@ def parser_failures():
     quoted_flow_step = flow_step_mapping(quoted_flow_line)
     if quoted_flow_step is None or flow_mapping_value(quoted_flow_step[1], "uses"):
         failures.append("flow parser promoted quoted uses fixture")
+    block_lines = [
+        "    steps:",
+        "      - name: Example",
+        "        env:",
+        "          uses: actions/checkout@v4",
+        "        uses: actions/checkout@v7",
+    ]
+    nested_action = parse_action(block_lines[3])
+    direct_action = parse_action(block_lines[4])
+    if nested_action is None or action_is_step_key(block_lines, 3, nested_action):
+        failures.append("action parser promoted nested block uses fixture")
+    if direct_action is None or not action_is_step_key(block_lines, 4, direct_action):
+        failures.append("action parser missed direct block uses fixture")
+    nested_alias = block_uses_context("          uses: *checkout")
+    if nested_alias is None or action_is_step_key(block_lines, 3, nested_alias):
+        failures.append("action parser promoted nested block alias fixture")
     block_scalar_lines = [
         "      - uses: >-",
         "          actions/checkout@v4",
@@ -542,6 +619,12 @@ def main():
                     if uses_value is None:
                         continue
                     fallback_line = f"uses: {uses_value}"
+                else:
+                    uses_context = block_uses_context(candidate_line)
+                    if uses_context and not action_is_step_key(
+                        scanned_lines, index, uses_context
+                    ):
+                        continue
                 reference = find_action_reference(fallback_line)
                 if reference:
                     action, action_ref = reference
@@ -553,6 +636,9 @@ def main():
                 elif USES_ALIAS_PATTERN.search(fallback_line):
                     location = f"{path.relative_to(ROOT)}:{index + 1}"
                     failures.append(f"{location}: action aliases are not supported")
+                continue
+
+            if not action_is_step_key(scanned_lines, index, parsed):
                 continue
 
             discovered += 1
