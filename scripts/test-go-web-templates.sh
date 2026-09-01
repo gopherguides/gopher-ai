@@ -57,8 +57,8 @@ require_before() {
   local first_line
   local second_line
 
-  first_line=$(rg -n -F -m 1 -- "$first" "$file" | cut -d: -f1 || true)
-  second_line=$(rg -n -F -m 1 -- "$second" "$file" | cut -d: -f1 || true)
+  first_line=$(awk -v text="$first" 'index($0, text) { print NR; exit }' "$file")
+  second_line=$(awk -v text="$second" 'index($0, text) { print NR; exit }' "$file")
   if [ -z "$first_line" ] || [ -z "$second_line" ] || [ "$first_line" -ge "$second_line" ]; then
     fail "$label"
   fi
