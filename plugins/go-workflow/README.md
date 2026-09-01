@@ -51,10 +51,13 @@ The `start-issue` skill provides an intelligent issue-to-PR workflow:
    - **Feature**: Plans approach → Implementation → Tests → `feat/` branch
 5. **Asks for clarification** if the type can't be determined automatically
 
-#### Subagent Model Tiering
+#### Surface-Aware Orchestration
 
-The default orchestrated flow routes read-heavy and review subagents through
-rolling model aliases in agent prompt frontmatter:
+The default start flow uses native delegation when the active surface supports
+all required roles. The four prompt Markdown bodies are shared behavioral
+templates; each surface supplies its own dispatch metadata.
+
+Claude Code uses the custom agent definitions and their model frontmatter:
 
 | Agent | Model policy |
 |-------|--------------|
@@ -63,10 +66,16 @@ rolling model aliases in agent prompt frontmatter:
 | Spec Review | Sonnet |
 | Quality Review | Sonnet |
 
-Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before running
-`$go-workflow:start-issue` or `$go-workflow:complete-issue` to override all
-subagent models for that run. Use
-`--no-agents` to switch to the single-session workflow.
+Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before a Claude Code
+`/go-workflow:start-issue` or `/go-workflow:complete-issue` run to override
+those agent models.
+
+Codex maps Explore to its `explorer` profile, Implementer to `worker`, and both
+review roles to `default`. Delegated agents inherit the active Codex model,
+reasoning effort, and configuration. If the required native profiles are not
+available, Codex explains the limitation and uses the single-session workflow.
+Use `--no-agents` to select the single-session workflow explicitly on either
+surface.
 
 #### Codex Model Defaults
 

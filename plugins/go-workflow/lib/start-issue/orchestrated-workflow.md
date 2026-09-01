@@ -1,33 +1,60 @@
-# Start-Issue — Subagent-Orchestrated Workflow
+# Start-Issue — Native Delegation Workflow
 
-Loaded by `skills/start-issue/SKILL.md` when `NO_AGENTS=false` (the default).
-The orchestrator (the trunk's session) retains all control flow, verification
-gates, and external interactions; subagents handle exploration,
-implementation, and review.
+Loaded only after the Surface Dispatch Decision in `skills/start-issue/SKILL.md`
+selects native orchestration. The orchestrator retains all control flow,
+verification gates, and external interactions; delegated agents handle
+exploration, implementation, and review.
 
-## Subagent Model Policy
+## Reusable Prompt Contract
 
-Each prompt under `<PLUGIN_ROOT>/agents/` declares its default `model`
-frontmatter. Do not pass a per-dispatch model in this workflow unless the user
-explicitly requests a one-off override; doing so would mask the prompt's model
-policy.
+The Markdown body of each existing prompt is its surface-neutral reusable
+template:
 
-When dispatching, always set `subagent_type` to the prompt file's frontmatter
-`name` so Claude Code loads that custom subagent definition and applies its
-model policy.
+- `<PLUGIN_ROOT>/agents/explore-prompt.md`
+- `<PLUGIN_ROOT>/agents/implementer-prompt.md`
+- `<PLUGIN_ROOT>/agents/spec-review-prompt.md`
+- `<PLUGIN_ROOT>/agents/quality-review-prompt.md`
 
-Defaults:
+Fill the placeholders in that Markdown body before dispatch. The YAML
+frontmatter is Claude Code binding metadata only; Codex ignores it and uses the
+same surface-neutral body with its native profile binding. Keep these prompt
+files in place so both surfaces share one behavioral contract.
 
-| Delegated prompt | Model policy | Purpose |
-|--------------|--------------|---------|
-| `explore-prompt.md` | `haiku` | Read-only codebase exploration |
-| `implementer-prompt.md` | `inherit` | TDD implementation keeps the parent session's model |
-| `spec-review-prompt.md` | `sonnet` | Mechanical requirements checklist |
-| `quality-review-prompt.md` | `sonnet` | Go idiom, complexity, security, and test review |
+## Surface Bindings
 
-To override all subagent models for a run, set `CLAUDE_CODE_SUBAGENT_MODEL`
-before invoking `$go-workflow:start-issue` or `$go-workflow:complete-issue`. To avoid subagents
-entirely, pass `--no-agents`.
+### Codex binding
+
+Use native Codex delegation and map each workflow role to a built-in profile:
+
+| Role | Native profile |
+|------|----------------|
+| Explore | `explorer` |
+| Implementer | `worker` |
+| Spec Review | `default` |
+| Quality Review | `default` |
+
+Dispatch the filled Markdown body for each role and wait synchronously for its
+result before consuming it. Parallel Implementer tasks may run concurrently,
+but the orchestrator waits for every result in the same session. Delegated
+agents inherit the active Codex model, reasoning effort, and configuration; do
+not add per-dispatch overrides.
+
+### Claude Code binding
+
+Use each prompt file's frontmatter `name` as `subagent_type` so Claude Code
+loads the custom agent definition and applies its model policy:
+
+| Role | Prompt | Model policy |
+|------|--------|--------------|
+| Explore | `explore-prompt.md` | `haiku` |
+| Implementer | `implementer-prompt.md` | `inherit` |
+| Spec Review | `spec-review-prompt.md` | `sonnet` |
+| Quality Review | `quality-review-prompt.md` | `sonnet` |
+
+Do not pass a per-dispatch model unless the user explicitly requests a one-off
+override. To override all Claude Code subagent models for a run, set
+`CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking
+`$go-workflow:start-issue` or `$go-workflow:complete-issue`.
 
 ## Step 1: Check for Duplicates (Bug Fix Only)
 

@@ -58,23 +58,6 @@ This is a **missing-intent gate**. Request the issue number: "What issue number
 would you like to work on?" If structured input is unavailable, ask in the final
 response and stop without initializing the loop or claiming completion.
 
----
-
-## Subagent Model Policy
-
-Default orchestrated mode uses model frontmatter from `<PLUGIN_ROOT>/agents/*.md`:
-
-| Role | Model policy |
-|-------|--------------|
-| Explore | `haiku` |
-| Implementer | `inherit` |
-| Spec Review | `sonnet` |
-| Quality Review | `sonnet` |
-
-Set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking `$go-workflow:start-issue` to
-override all subagent models for a run. Use `--no-agents` to run the
-single-session workflow without subagent dispatch.
-
 ## Output Durability
 
 Any artifact this skill produces — commit messages, PR titles and bodies,
@@ -99,7 +82,7 @@ Strip optional flags and extract the issue number:
 ```bash
 ISSUE_NUM=$(echo "$SKILL_ARGS" | sed 's/--skip-coverage//g; s/--coverage-threshold *[0-9]*//g; s/--no-agents//g' | tr -d ' ')
 HAS_SKIP=$(echo "$SKILL_ARGS" | grep -q '\-\-skip-coverage' && echo "true" || echo "false")
-COV_THRESH=$(echo "$SKILL_ARGS" | grep -oE '\-\-coverage-threshold [0-9]+' | awk '{print $2}')
+COV_THRESH=$(echo "$SKILL_ARGS" | grep -oE '\-\-coverage-threshold [0-9]+' | awk '{print $2}' || true)
 NO_AGENTS=$(echo "$SKILL_ARGS" | grep -q '\-\-no-agents' && echo "true" || echo "false")
 if ! echo "$ISSUE_NUM" | grep -qE '^[0-9]+$'; then
   echo "Error: Issue number must be numeric."
@@ -123,6 +106,15 @@ Store the parsed flags:
   changed-source coverage
 - `COVERAGE_THRESHOLD`: the value after `--coverage-threshold`, or `60` if not specified
 - `NO_AGENTS`: `true` if `--no-agents` was passed, `false` otherwise
+
+## Surface Dispatch Decision
+
+Bind the active assistant surface from the current driver, not installed
+executables, environment variables, or prompt frontmatter, then select:
+
+- `NO_AGENTS=true`: read `<PLUGIN_ROOT>/lib/start-issue/manual-workflow.md` and use the single-session workflow on every surface.
+- `NO_AGENTS=false` on Claude Code: read `<PLUGIN_ROOT>/lib/start-issue/orchestrated-workflow.md` and use its Claude Code binding.
+- `NO_AGENTS=false` on Codex: use the orchestrated workflow only when the native delegation capability supports `explorer`, `worker`, and `default`; otherwise explain why native orchestration is unavailable, then read the manual workflow and continue in the current session.
 
 ## Embedded Workflow Contract
 
@@ -406,19 +398,20 @@ branch creation, implementation, or a completion claim.
 
 ## Implementation Workflow
 
-### Subagent-Orchestrated (default — when `NO_AGENTS=false`)
+### Orchestrated selection
 
-→ Read `<PLUGIN_ROOT>/lib/start-issue/orchestrated-workflow.md` for the
+When the Surface Dispatch Decision selected `<PLUGIN_ROOT>/lib/start-issue/orchestrated-workflow.md`, follow its
 full 12-step procedure: duplicate check (bugs only), branch creation, Explore
-subagent dispatch, design approach (features only), task decomposition +
-parallel-dispatch decision, Implementer subagent dispatch (parallel or
-sequential), spec-compliance review (sonnet), quality review (sonnet), verify
+delegation, design approach (features only), task decomposition and
+parallel-dispatch decision, Implementer delegation (parallel or sequential),
+spec-compliance review, quality review, verify
 (build/test/lint), Step 9.5 coverage gate, security review, submit (PR template
 detection + creation), watch CI.
 
-### Manual (`--no-agents` fallback)
+### Manual selection
 
-→ Read `<PLUGIN_ROOT>/lib/start-issue/manual-workflow.md` for the
+When the Surface Dispatch Decision selected
+`<PLUGIN_ROOT>/lib/start-issue/manual-workflow.md`, follow its
 single-session bug and feature flows. Both follow the same shape: explore/design
 → TDD red (IRON LAW: no implementation code before failing tests) → green →
 verify → coverage → security → submit → watch CI.
