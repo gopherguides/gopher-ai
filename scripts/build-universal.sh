@@ -230,6 +230,9 @@ build_gemini() {
         if [[ -d "${plugin_dir}skills/" ]]; then
             for skill_dir in "${plugin_dir}skills/"*/; do
                 if [[ -f "${skill_dir}SKILL.md" ]]; then
+                    if grep -Fq 'lib/codex-command-adapter.md' "${skill_dir}SKILL.md"; then
+                        continue
+                    fi
                     skill_name=$(basename "$skill_dir")
                     mkdir -p "$ext_dir/skills/$skill_name"
                     cp "${skill_dir}"*.md "$ext_dir/skills/$skill_name/"
