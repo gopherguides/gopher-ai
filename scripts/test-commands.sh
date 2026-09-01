@@ -16,6 +16,7 @@ bash "$ROOT_DIR/scripts/test-review-deep-actions.sh"
 bash "$ROOT_DIR/scripts/test-decision-gates.sh"
 bash "$ROOT_DIR/scripts/test-github-rest.sh"
 bash "$ROOT_DIR/scripts/test-gopher-ai-review-action.sh"
+bash "$ROOT_DIR/scripts/test-tmux-start.sh"
 
 python3 "$ROOT_DIR/scripts/test-codex-skill-arguments.py" --static-only
 
@@ -169,11 +170,11 @@ elif ! file_contains 'Read `${CLAUDE_PLUGIN_ROOT}/skills/e2e-verify/SKILL.md`' "
 elif ! file_contains 'skills/ship/SKILL.md' "$E2E_FINISH"; then
   echo "FAIL (e2e-verify does not load ship directly)"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'tmux send-keys -t "$WINDOW_NAME" "/go-workflow:start-issue $ISSUE_NUM" Enter' "$TMUX_START_SCRIPT"; then
-  echo "FAIL (tmux-start does not send the Claude Code slash command)"
+elif ! file_contains 'dispatch_start_issue "$WINDOW_NAME" "$SURFACE" "$ISSUE_NUM"' "$TMUX_START_SCRIPT"; then
+  echo "FAIL (tmux-start does not dispatch through the selected surface)"
   ERRORS=$((ERRORS + 1))
-elif file_contains 'tmux send-keys -t "$WINDOW_NAME" "\$start-issue $ISSUE_NUM" Enter' "$TMUX_START_SCRIPT"; then
-  echo "FAIL (tmux-start still sends Codex syntax to Claude Code)"
+elif ! file_contains '--surface "$SURFACE"' "$ROOT_DIR/plugins/go-workflow/skills/tmux-start/SKILL.md"; then
+  echo "FAIL (tmux-start skill does not bind the active surface)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"

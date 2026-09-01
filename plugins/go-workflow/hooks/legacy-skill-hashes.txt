@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after committing SKILL.md changes.
 #
-# Total entries: 301
+# Total entries: 302
 002bd0c3859a936f2bbfa90a8c967db4d141b99a741e4c23f0d5bec397a2d3fc complete-issue
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0232ae1141f76c0ba40045649179a566080de9fc717c6cb08c3961b827fe3e88 create-pr
@@ -25,6 +25,7 @@
 0bb5a7f2dd55667fbb3f108b0cdd61f09d44328185254ceb77a41e4a92a5d3f6 address-review
 0c80d04bbfb34fb4e5ade25121b52b2f4f590cf4d66a84db3825dcfb9d8d4211 tailwind-best-practices
 0cfdc1a58ebaf7ca20761841d7516b62f3f1a10d030bd07a79497574f41dd9f4 address-review
+0d9265daea27df7412bb0ac2921b999d66940d959c13901d895e9bcb392b522e tmux-start
 10b54ee6f9de2fbdccf16b665cd8c0231e3fe4a3b58ad3d3c1b8c002974a531b start-issue
 11088aab57ab5b7dd862ae340fd993c18a74fe4cf345f96a698c6b51a0d19694 templui
 1116640e755841f57dbd7a2c94c8b4949d916cbb1b671b61c9202e187637b08e complete-issue
