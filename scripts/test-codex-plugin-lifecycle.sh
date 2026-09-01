@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-EXPECTED_CODEX_VERSION="${CODEX_LIFECYCLE_EXPECTED_VERSION:-0.146.0}"
+EXPECTED_CODEX_VERSION="${CODEX_LIFECYCLE_EXPECTED_VERSION:-}"
 TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
 TEST_ROOT="$(mktemp -d "$TMP_BASE/gopher-ai-codex-lifecycle.XXXXXX")"
 FIXTURE_WORK="$TEST_ROOT/fixture-work"
@@ -75,9 +75,16 @@ for command_name in codex curl git jq python3; do
     command -v "$command_name" >/dev/null 2>&1 || fail "missing required command: $command_name"
 done
 
-ACTUAL_CODEX_VERSION="$(codex --version 2>/dev/null | awk '{print $2}')"
-[[ "$ACTUAL_CODEX_VERSION" == "$EXPECTED_CODEX_VERSION" ]] \
-    || fail "expected codex-cli $EXPECTED_CODEX_VERSION, got ${ACTUAL_CODEX_VERSION:-unknown}"
+CODEX_VERSION_OUTPUT="$(codex --version 2>&1)" \
+    || fail "codex --version failed: ${CODEX_VERSION_OUTPUT:-no output}"
+ACTUAL_CODEX_VERSION="$(awk '$1 == "codex-cli" { print $2; exit }' <<< "$CODEX_VERSION_OUTPUT")"
+[[ -n "$ACTUAL_CODEX_VERSION" ]] \
+    || fail "could not parse Codex CLI version from: $CODEX_VERSION_OUTPUT"
+printf 'Codex CLI version: %s\n' "$ACTUAL_CODEX_VERSION"
+if [[ -n "$EXPECTED_CODEX_VERSION" ]]; then
+    [[ "$ACTUAL_CODEX_VERSION" == "$EXPECTED_CODEX_VERSION" ]] \
+        || fail "expected codex-cli $EXPECTED_CODEX_VERSION, got $ACTUAL_CODEX_VERSION"
+fi
 
 mkdir -p \
     "$FIXTURE_WORK/.agents/plugins" \

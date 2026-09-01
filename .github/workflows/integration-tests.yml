@@ -8,8 +8,19 @@ on:
 
 jobs:
   test-codex-plugin-lifecycle:
+    name: 'Codex compatibility (${{ matrix.lane }}: ${{ matrix.codex-version }})'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: minimum
+            codex-version: '0.146.0'
+            expected-version: '0.146.0'
+          - lane: current
+            codex-version: latest
+            expected-version: ''
     steps:
       - uses: actions/checkout@v4
 
@@ -17,12 +28,12 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install supported Codex CLI
-        run: npm install --global @openai/codex@0.146.0
+      - name: Install Codex CLI
+        run: npm install --global "@openai/codex@${{ matrix.codex-version }}"
 
       - name: Test real Codex plugin lifecycle
         env:
-          CODEX_LIFECYCLE_EXPECTED_VERSION: 0.146.0
+          CODEX_LIFECYCLE_EXPECTED_VERSION: ${{ matrix.expected-version }}
         run: ./scripts/test-codex-plugin-lifecycle.sh
 
       - name: Probe Default-mode shared-skill input behavior
