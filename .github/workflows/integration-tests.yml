@@ -28,7 +28,13 @@ jobs:
       - name: Probe Default-mode shared-skill input behavior
         run: python3 ./scripts/test-codex-default-mode-input.py
 
-      - name: Probe qualified go-workflow skill names
+      - name: Validate platform capability matrix
+        run: python3 ./scripts/test-platform-capabilities.py
+
+      - name: Probe declared Tailwind MCP tools
+        run: node ./scripts/test-tailwind-mcp-server.mjs
+
+      - name: Probe all-plugin qualified Codex skill names
         run: python3 ./scripts/test-codex-skill-names.py
 
       - name: Probe explicit go-workflow skill arguments
