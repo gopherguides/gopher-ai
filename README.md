@@ -216,12 +216,17 @@ For interactive Codex use in Claude Code, llm-tools prefers OpenAI's official `c
 
 ### go-web
 
-Opinionated Go web app scaffolding with our recommended stack.
+Opinionated Go web app scaffolding and project conversion with our recommended stack.
 
-| Command | Description |
-|---------|-------------|
-| `/create-go-project <name>` | Scaffold a new Go web app from scratch |
-| `/convert-to-go-project` | Migrate Express/Django/Laravel/Next.js to Go |
+| Platform | Invocation | Description |
+|----------|------------|-------------|
+| Claude Code | `/create-go-project <name>` | Scaffold a new Go web app from scratch |
+| Claude Code | `/convert-to-go-project [target-directory]` | Convert the current or specified project to Go |
+| Codex | `$go-web:convert-to-go-project [target-directory]` | Convert the current or specified project to Go |
+
+Conversion supports Express and Fastify, Django, Flask, and FastAPI, Laravel
+and other PHP projects, Next.js and React, and existing Go projects that should
+be extended rather than replaced.
 
 **The Stack:** Go + Echo v4, Templ, HTMX, Alpine.js, Tailwind CSS v4, sqlc, goose, Air
 

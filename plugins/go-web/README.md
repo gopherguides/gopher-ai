@@ -13,18 +13,28 @@ Or install via marketplace:
 /plugin marketplace add gopherguides/gopher-ai
 ```
 
-## Commands
+## Claude Code Commands
 
 | Command | Description |
 |---------|-------------|
 | `/create-go-project <name>` | Scaffold a new Go web app from scratch |
-| `/convert-to-go-project` | Migrate Express/Django/Laravel/Next.js to Go |
+| `/convert-to-go-project [target-directory]` | Convert the current or specified project to Go |
 
-## Skills (Auto-Invoked)
+## Codex Skills
 
-| Skill | Description |
-|-------|-------------|
-| `templui` | templUI best practices, templ interpolation patterns, Script() requirements |
+Codex exposes these skills under the `go-web` plugin. Use the qualified name
+shown below to invoke project conversion explicitly; all three skills can also
+activate automatically when their guidance applies.
+
+| Skill | Invocation | Description |
+|-------|------------|-------------|
+| `go-web:convert-to-go-project` | `$go-web:convert-to-go-project [target-directory]` | Convert an existing project to the recommended Go web stack |
+| `go-web:templui` | Auto-invoked | templUI components, interpolation, and Script() requirements |
+| `go-web:htmx` | Auto-invoked | HTMX attributes, swap patterns, and Go handler integration |
+
+Project conversion supports Express and Fastify, Django, Flask, and FastAPI,
+Laravel and other PHP projects, Next.js and React, and existing Go projects
+that should be extended rather than replaced.
 
 ## The Stack
 
@@ -44,12 +54,15 @@ Vercel + Neon PostgreSQL (free tier)
 
 ## Examples
 
-```bash
-# Create a new project
+```text
+# Claude Code: create a new project
 /create-go-project myapp
 
-# Convert existing project to Go stack
-/convert-to-go-project
+# Claude Code: convert an existing project
+/convert-to-go-project ./my-project
+
+# Codex: convert an existing project
+$go-web:convert-to-go-project ./my-project
 ```
 
 ## License

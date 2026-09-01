@@ -442,6 +442,23 @@ else
   echo "OK"
 fi
 
+echo -n "Codex distribution includes project conversion workflow... "
+CODEX_CONVERSION_ERRORS=""
+for asset in \
+  "plugins/go-web/skills/convert-to-go-project/SKILL.md" \
+  "plugins/go-web/references/convert-to-go-project.md"; do
+  if [ ! -f "$ROOT_DIR/dist/codex/$asset" ]; then
+    CODEX_CONVERSION_ERRORS="$CODEX_CONVERSION_ERRORS\n  missing dist/codex/$asset"
+  fi
+done
+if [ -n "$CODEX_CONVERSION_ERRORS" ]; then
+  echo "FAIL"
+  printf '%b\n' "$CODEX_CONVERSION_ERRORS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 CODEX_PLUGIN_COUNT=$(jq '.plugins | length' "$CODEX_MARKETPLACE")
 
 echo -n "Codex slash-only skills disable implicit invocation... "
@@ -555,14 +572,27 @@ if ! "$ROOT_DIR/scripts/validate-gemini-extensions.sh" "$ROOT_DIR/dist/gemini" >
   echo "FAIL"
   sed -n '1,120p' /tmp/gopher-ai-gemini-validation.log
   ERRORS=$((ERRORS + 1))
-elif [ ! -x "$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/scripts/worktree-create.sh" ] \
-  || [ ! -f "$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/lib/ship/local-review.md" ] \
-  || [ ! -f "$ROOT_DIR/dist/gemini/gopher-ai-llm-tools/prompts/codex-review.md" ] \
-  || [ ! -f "$ROOT_DIR/dist/gemini/gopher-ai-go-web/templates/deploy/Dockerfile" ]; then
-  echo "FAIL (expected runtime asset is missing)"
-  ERRORS=$((ERRORS + 1))
 else
-  echo "OK"
+  GEMINI_RUNTIME_ERRORS=""
+  if [ ! -x "$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/scripts/worktree-create.sh" ]; then
+    GEMINI_RUNTIME_ERRORS="$GEMINI_RUNTIME_ERRORS\n  missing executable dist/gemini/gopher-ai-go-workflow/scripts/worktree-create.sh"
+  fi
+  for asset in \
+    "gopher-ai-go-workflow/lib/ship/local-review.md" \
+    "gopher-ai-llm-tools/prompts/codex-review.md" \
+    "gopher-ai-go-web/templates/deploy/Dockerfile" \
+    "gopher-ai-go-web/references/convert-to-go-project.md"; do
+    if [ ! -f "$ROOT_DIR/dist/gemini/$asset" ]; then
+      GEMINI_RUNTIME_ERRORS="$GEMINI_RUNTIME_ERRORS\n  missing dist/gemini/$asset"
+    fi
+  done
+  if [ -n "$GEMINI_RUNTIME_ERRORS" ]; then
+    echo "FAIL"
+    printf '%b\n' "$GEMINI_RUNTIME_ERRORS"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
 fi
 
 echo -n "Gemini validation rejects missing local assets... "
@@ -619,11 +649,20 @@ else
       MISSING_DIRS="$MISSING_DIRS $PLUGIN_PATH"
     fi
   done
-  if [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] || [ -n "$BAD_PATHS" ] || [ -n "$MISSING_DIRS" ]; then
+  MISSING_GO_WEB_ASSETS=""
+  for asset in \
+    "plugins/go-web/skills/convert-to-go-project/SKILL.md" \
+    "plugins/go-web/references/convert-to-go-project.md"; do
+    if [ ! -f "$TMP_REPO/$asset" ]; then
+      MISSING_GO_WEB_ASSETS="$MISSING_GO_WEB_ASSETS $asset"
+    fi
+  done
+  if [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] || [ -n "$BAD_PATHS" ] || [ -n "$MISSING_DIRS" ] || [ -n "$MISSING_GO_WEB_ASSETS" ]; then
     echo "FAIL"
     [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] && echo "expected $CODEX_PLUGIN_COUNT plugins, got $ACTUAL_COUNT"
     [ -n "$BAD_PATHS" ] && echo "bad plugin paths:$BAD_PATHS"
     [ -n "$MISSING_DIRS" ] && echo "missing plugin dirs:$MISSING_DIRS"
+    [ -n "$MISSING_GO_WEB_ASSETS" ] && echo "missing go-web project conversion assets:$MISSING_GO_WEB_ASSETS"
     ERRORS=$((ERRORS + 1))
   else
     echo "OK"
