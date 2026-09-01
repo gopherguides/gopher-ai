@@ -404,15 +404,35 @@ def validate_capabilities(matrix, plugin_records, supported_codex):
         if not isinstance(claude_names, list) or not claude_names:
             fail(f"capability {identifier} must declare Claude names")
         if expected_claude_disposition == "command":
-            expected_names = sorted(
+            expected_command_names = sorted(
                 f"{plugin}:{Path(source['path']).stem}"
                 for source in sources
                 if source["kind"] == "command"
             )
-            if sorted(claude_names) != expected_names:
+            if sorted(claude_names) != expected_command_names:
                 fail(
                     f"capability {identifier} Claude command names differ from sources: "
-                    f"expected {expected_names}, got {sorted(claude_names)}"
+                    f"expected {expected_command_names}, got {sorted(claude_names)}"
+                )
+            expected_skill_names = sorted(
+                f"{plugin}:{frontmatter_name(ROOT_DIR / source_path)}"
+                for source_path in skill_sources
+            )
+            claude_skill_names = claude.get("skill_names")
+            if expected_skill_names:
+                if not isinstance(claude_skill_names, list) or not claude_skill_names:
+                    fail(
+                        f"capability {identifier} must declare mixed Claude skill names"
+                    )
+                if sorted(claude_skill_names) != expected_skill_names:
+                    fail(
+                        f"capability {identifier} Claude skill names differ from sources: "
+                        f"expected {expected_skill_names}, "
+                        f"got {sorted(claude_skill_names)}"
+                    )
+            elif "skill_names" in claude:
+                fail(
+                    f"command-only capability {identifier} declares Claude skill names"
                 )
 
         codex = platforms["codex"]

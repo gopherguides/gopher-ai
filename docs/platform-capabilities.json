@@ -317,6 +317,9 @@
             "go-workflow:create-worktree",
             "go-workflow:prune-worktree",
             "go-workflow:remove-worktree"
+          ],
+          "skill_names": [
+            "go-workflow:worktree"
           ]
         },
         "codex": {
@@ -391,6 +394,9 @@
           "disposition": "command",
           "names": [
             "go-dev:profile"
+          ],
+          "skill_names": [
+            "go-dev:go-profiling-optimization"
           ]
         },
         "codex": {
@@ -417,6 +423,9 @@
         "claude_code": {
           "disposition": "command",
           "names": [
+            "go-dev:validate-skills"
+          ],
+          "skill_names": [
             "go-dev:validate-skills"
           ]
         },
@@ -799,6 +808,9 @@
           "disposition": "command",
           "names": [
             "llm-tools:gemini-image"
+          ],
+          "skill_names": [
+            "llm-tools:gemini-image"
           ]
         },
         "codex": {
@@ -1016,6 +1028,9 @@
         "claude_code": {
           "disposition": "command",
           "names": [
+            "go-web:convert-to-go-project"
+          ],
+          "skill_names": [
             "go-web:convert-to-go-project"
           ]
         },

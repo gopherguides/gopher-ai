@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 MATRIX_PATH = ROOT_DIR / "docs/platform-capabilities.json"
 README_PATH = ROOT_DIR / "README.md"
+BARE_SKILL_PATTERN = re.compile(r"\$([a-z][a-z0-9-]*)(?![a-z0-9_:-])")
 COUNT_PATTERN = re.compile(
     r"Shipped surface: (\d+) Claude Code commands across (\d+) plugins; "
     r"(\d+) Codex skills across (\d+) plugins; "
@@ -157,6 +158,37 @@ def assert_readme_counts(matrix, plugin_names, skill_names):
         )
 
 
+def documentation_files(plugin_names):
+    paths = {ROOT_DIR / "AGENTS.md", README_PATH}
+    for plugin_name in plugin_names:
+        plugin_root = ROOT_DIR / "plugins" / plugin_name
+        paths.add(plugin_root / "README.md")
+        for directory_name in ("skills", "lib"):
+            directory = plugin_root / directory_name
+            if directory.is_dir():
+                paths.update(directory.rglob("*.md"))
+    return sorted(path for path in paths if path.is_file())
+
+
+def assert_no_bare_documentation_references(plugin_names, skill_names):
+    suffixes = {name.split(":", 1)[1] for name in skill_names}
+    offenders = []
+    for path in documentation_files(plugin_names):
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            for match in BARE_SKILL_PATTERN.finditer(line):
+                if match.group(1) in suffixes:
+                    offenders.append(
+                        f"{path.relative_to(ROOT_DIR)}:{line_number}:{match.group(0)}"
+                    )
+    if offenders:
+        raise AssertionError(
+            "documentation contains unresolvable bare Codex skill references: "
+            + ", ".join(offenders)
+        )
+
+
 def run_codex(env, cwd, *args):
     subprocess.run(
         ["codex", *args],
@@ -234,6 +266,7 @@ def main():
     matrix = load_matrix()
     plugin_names, skill_names = declared_surface(matrix)
     assert_readme_counts(matrix, plugin_names, skill_names)
+    assert_no_bare_documentation_references(plugin_names, skill_names)
 
     temp_base = (
         os.environ.get("TMPDIR")
