@@ -29,6 +29,83 @@ fail() {
     return 1
 }
 
+register_pid() {
+    ACTIVE_PIDS="$ACTIVE_PIDS $1"
+}
+
+unregister_pid() {
+    local removed_pid="$1"
+    local retained_pids=""
+    local pid
+    for pid in $ACTIVE_PIDS; do
+        if [[ "$pid" != "$removed_pid" ]]; then
+            retained_pids="$retained_pids $pid"
+        fi
+    done
+    ACTIVE_PIDS="$retained_pids"
+}
+
+terminate_active_processes() {
+    local timed_out=false
+    local pid watchdog_pid timeout_marker
+    for pid in $ACTIVE_PIDS; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+            continue
+        fi
+        timeout_marker="$TEST_ROOT/process-$pid.timeout"
+        (
+            sleep 5
+            if kill -0 "$pid" 2>/dev/null; then
+                : > "$timeout_marker"
+                kill -KILL "$pid" 2>/dev/null || true
+            fi
+        ) &
+        watchdog_pid=$!
+        kill -TERM "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+        kill "$watchdog_pid" 2>/dev/null || true
+        wait "$watchdog_pid" 2>/dev/null || true
+        if [[ -f "$timeout_marker" ]]; then
+            timed_out=true
+        fi
+    done
+    ACTIVE_PIDS=""
+    [[ "$timed_out" == false ]]
+}
+
+wait_for_clone_tree_quiescence() {
+    local codex_root="$1"
+    local attempts="${2:-100}"
+    local required_quiet_samples="${3:-10}"
+    local attempt quiet_samples=0
+    [[ -d "$codex_root/.tmp" ]] || return 0
+    for attempt in $(seq 1 "$attempts"); do
+        if compgen -G "$codex_root/.tmp/plugins-clone-*" >/dev/null; then
+            quiet_samples=0
+        else
+            quiet_samples=$((quiet_samples + 1))
+            if [[ "$quiet_samples" -ge "$required_quiet_samples" ]]; then
+                return 0
+            fi
+        fi
+        sleep 0.1
+    done
+    return 1
+}
+
+remove_test_root() {
+    local attempt remove_error=""
+    for attempt in $(seq 1 20); do
+        if remove_error=$(rm -rf -- "$TEST_ROOT" 2>&1) && [[ ! -e "$TEST_ROOT" ]]; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    printf 'FAIL: lifecycle temporary tree cleanup did not drain: %s\n' "$remove_error" >&2
+    return 1
+}
+
 dump_diagnostics() {
     printf '\n=== Codex lifecycle smoke diagnostics ===\n' >&2
     printf 'test root: %s\n' "$TEST_ROOT" >&2
@@ -58,14 +135,23 @@ dump_diagnostics() {
 cleanup() {
     local status=$?
     trap - EXIT INT TERM
-    local pid
-    for pid in $ACTIVE_PIDS; do
-        kill "$pid" 2>/dev/null || true
-    done
+    local cleanup_failure=""
+    if ! terminate_active_processes; then
+        cleanup_failure="owned lifecycle processes did not drain within 5 seconds"
+    fi
+    if ! wait_for_clone_tree_quiescence "$CODEX_HOME"; then
+        cleanup_failure="${cleanup_failure:+$cleanup_failure; }Codex plugin clone workers did not drain within 10 seconds"
+    fi
+    if [[ -n "$cleanup_failure" ]]; then
+        printf 'FAIL: %s\n' "$cleanup_failure" >&2
+        status=1
+    fi
     if [[ "$status" -ne 0 ]]; then
         dump_diagnostics
     fi
-    rm -rf -- "$TEST_ROOT"
+    if ! remove_test_root; then
+        status=1
+    fi
     exit "$status"
 }
 
@@ -96,6 +182,38 @@ mkdir -p \
     "$SECOND_WORKSPACE" \
     "$THIRD_WORKSPACE" \
     "$LOG_DIR"
+
+assert_clone_tree_drain() {
+    local fixture_root="$TEST_ROOT/clone-drain-regression"
+    local clone_root="$fixture_root/.tmp/plugins-clone-late"
+    local started_marker="$fixture_root/started"
+    local finished_marker="$fixture_root/finished"
+    local writer_pid
+    mkdir -p "$fixture_root/.tmp"
+    (
+        sleep 0.1
+        mkdir -p "$clone_root/plugins"
+        : > "$started_marker"
+        sleep 0.3
+        rm -rf -- "$clone_root"
+        : > "$finished_marker"
+    ) &
+    writer_pid=$!
+    register_pid "$writer_pid"
+    wait_for_clone_tree_quiescence "$fixture_root" \
+        || fail "late clone-tree writer did not drain"
+    wait "$writer_pid"
+    unregister_pid "$writer_pid"
+    [[ -f "$started_marker" && -f "$finished_marker" ]] \
+        || fail "clone-tree drain returned before the late writer completed"
+    mkdir -p "$fixture_root/.tmp/plugins-clone-stuck"
+    if wait_for_clone_tree_quiescence "$fixture_root" 2 1; then
+        fail "clone-tree drain accepted a persistent writer"
+    fi
+    rm -rf -- "$fixture_root"
+}
+
+assert_clone_tree_drain
 
 for plugin_dir in "$ROOT_DIR"/plugins/*; do
     [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
@@ -159,7 +277,7 @@ python3 "$SCRIPT_DIR/test-codex-plugin-lifecycle-server.py" \
     --state-dir "$SERVER_STATE" \
     > "$LOG_DIR/server.stdout" 2> "$LOG_DIR/server.stderr" &
 SERVER_PID=$!
-ACTIVE_PIDS="$ACTIVE_PIDS $SERVER_PID"
+register_pid "$SERVER_PID"
 
 wait_for_file() {
     local path="$1"
@@ -181,6 +299,7 @@ wait_for_session_request() {
         [[ -f "$path" ]] && return 0
         if ! kill -0 "$pid" 2>/dev/null; then
             wait "$pid" 2>/dev/null || true
+            unregister_pid "$pid"
             fail "$description process exited before contacting the Responses server"
         fi
         sleep 0.1
@@ -258,7 +377,7 @@ start_session() {
         </dev/null \
         > "$LOG_DIR/$label.stdout" 2> "$LOG_DIR/$label.stderr" &
     SESSION_PID=$!
-    ACTIVE_PIDS="$ACTIVE_PIDS $SESSION_PID"
+    register_pid "$SESSION_PID"
 }
 
 finish_session() {
@@ -273,14 +392,16 @@ finish_session() {
         fi
     ) &
     local watchdog_pid=$!
-    ACTIVE_PIDS="$ACTIVE_PIDS $watchdog_pid"
+    register_pid "$watchdog_pid"
     local status
     set +e
     wait "$pid"
     status=$?
     set -e
+    unregister_pid "$pid"
     kill "$watchdog_pid" 2>/dev/null || true
     wait "$watchdog_pid" 2>/dev/null || true
+    unregister_pid "$watchdog_pid"
     [[ ! -f "$timeout_marker" ]] || fail "$label session timed out"
     [[ "$status" -eq 0 ]] || fail "$label session exited with code $status"
 }
