@@ -20,7 +20,7 @@ BLOCK_ACTION_PATTERN = re.compile(
     r'''^(\s*)(-\s+)?(["']?)uses\3\s*:\s*'''
     r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
     r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#"']+)\4'''
-    r'''(?:\s*(?:#.*)?)$''',
+    r'''(?:\s+#.*)?\s*$''',
     re.IGNORECASE,
 )
 ACTION_USES_PATTERN = re.compile(
@@ -379,7 +379,7 @@ def is_block_scalar_value(value):
 def block_scalar_header_indentation(line):
     entry = block_mapping_entry(line)
     if entry and is_block_scalar_value(entry[3]):
-        return len(entry[0])
+        return len(entry[0]) + (2 if entry[1] else 0)
 
     match = re.match(r"^(\s*)-\s*(.*)$", line)
     if match and is_block_scalar_value(match.group(2)):
@@ -662,6 +662,16 @@ def parser_failures():
         failures.append("action parser unexpectedly accepted fallback fixture")
     if find_action_reference(fallback_line) != ("actions/checkout", "v4"):
         failures.append("action fallback missed unrecognized syntax fixture")
+    attached_hash_lines = [
+        "    steps:",
+        "      - uses: actions/checkout@v7#bogus",
+    ]
+    if parse_action(attached_hash_lines[1]) is not None:
+        failures.append("action parser treated attached hash as a comment")
+    if unparsed_action_reference(
+        attached_hash_lines, 1, attached_hash_lines[1]
+    ) != ("reference", ("actions/checkout", "v7")):
+        failures.append("action fallback missed attached hash fixture")
     if not USES_ALIAS_PATTERN.search("      - uses: *checkout"):
         failures.append("action fallback missed alias fixture")
     step_alias_lines = [
@@ -704,6 +714,15 @@ def parser_failures():
     scalar_content = block_scalar_content_indices(block_scalar_lines)
     if 4 not in scalar_content or 6 in scalar_content:
         failures.append("block scalar boundary parser failed fixture")
+    step_scalar_lines = [
+        "    steps:",
+        "      - name: |",
+        "          Checkout repository",
+        "        uses: actions/checkout@v4",
+    ]
+    scalar_content = block_scalar_content_indices(step_scalar_lines)
+    if 2 not in scalar_content or 3 in scalar_content:
+        failures.append("step scalar boundary parser failed fixture")
     nested_flow_line = (
         '      - { run: echo "$uses", env: { uses: actions/checkout@v4 } }'
     )
