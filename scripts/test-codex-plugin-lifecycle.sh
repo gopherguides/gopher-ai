@@ -386,10 +386,12 @@ jq -e '
     ([.. | objects | select(
         (.type? == "function_call_output" or .type? == "custom_tool_call_output") and
         .call_id? == "post-tool-use-probe" and
-        ((.output? // "") | tostring | test("compilation"; "i")) and
         ((.output? // "") | tostring | contains("probe.go:1:1: undefined: lifecycleProbe"))
     )] | length == 1) and
-    ([.. | strings] | join("\n") | test("compilation"; "i"))
+    ([.. | strings] | join("\n") |
+        test("compilation"; "i") and
+        test("status.*unavailable"; "i") and
+        contains("probe.go:1:1: undefined: lifecycleProbe"))
 ' "$SERVER_STATE/4.request.json" >/dev/null \
     || fail "follow-up request did not contain the tool result and hook steering"
 
