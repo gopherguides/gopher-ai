@@ -5,8 +5,8 @@ HOOK_INPUT=$(cat)
 
 if ! PLATFORM=$(printf '%s\n' "$HOOK_INPUT" | jq -r '
   if type != "object" then "unknown"
-  elif has("tool_response") then "codex"
-  elif has("tool_output") then "claude"
+  elif has("turn_id") and has("tool_response") then "codex"
+  elif has("tool_response") or has("tool_output") then "claude"
   else "unknown"
   end
 ' 2>/dev/null); then
@@ -24,14 +24,8 @@ if ! TOOL_NAME=$(printf '%s\n' "$HOOK_INPUT" | jq -r '
   exit 0
 fi
 
-if [ "$PLATFORM" = "codex" ]; then
-  OUTPUT_FIELD="tool_response"
-else
-  OUTPUT_FIELD="tool_output"
-fi
-
-if ! TOOL_OUTPUT=$(printf '%s\n' "$HOOK_INPUT" | jq -r --arg field "$OUTPUT_FIELD" '
-  .[$field] |
+if ! TOOL_OUTPUT=$(printf '%s\n' "$HOOK_INPUT" | jq -r --arg platform "$PLATFORM" '
+  (if $platform == "codex" or has("tool_response") then .tool_response else .tool_output end) |
   if . == null then ""
   elif type == "string" then .
   else [.. | scalars | tostring] | join("\n")

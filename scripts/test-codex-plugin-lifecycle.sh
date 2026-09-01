@@ -360,6 +360,7 @@ wait_for_session_request "$SERVER_STATE/4.requested" "$PROBE_SESSION_PID" "probe
 
 jq -e --arg command "$PROBE_COMMAND" '
     .hook_event_name == "PostToolUse" and
+    (.turn_id | type == "string" and length > 0) and
     .tool_name == "Bash" and
     (.tool_use_id | type == "string" and length > 0) and
     .tool_input.command == $command and
