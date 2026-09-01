@@ -78,16 +78,26 @@ wait_for_clone_tree_quiescence() {
     local codex_root="$1"
     local attempts="${2:-100}"
     local required_quiet_samples="${3:-10}"
-    local attempt quiet_samples=0
+    local attempt clone_root current_snapshot previous_snapshot="" quiet_samples=0
     [[ -d "$codex_root/.tmp" ]] || return 0
     for attempt in $(seq 1 "$attempts"); do
-        if compgen -G "$codex_root/.tmp/plugins-clone-*" >/dev/null; then
-            quiet_samples=0
-        else
+        current_snapshot=$(
+            {
+                for clone_root in "$codex_root"/.tmp/plugins-clone-*; do
+                    [[ -e "$clone_root" ]] || continue
+                    printf '%s\n' "$clone_root"
+                    LC_ALL=C ls -laR "$clone_root" 2>/dev/null || true
+                done
+            } | cksum
+        )
+        if [[ "$current_snapshot" == "$previous_snapshot" ]]; then
             quiet_samples=$((quiet_samples + 1))
             if [[ "$quiet_samples" -ge "$required_quiet_samples" ]]; then
                 return 0
             fi
+        else
+            previous_snapshot="$current_snapshot"
+            quiet_samples=0
         fi
         sleep 0.1
     done
@@ -157,7 +167,7 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-for command_name in codex curl git jq python3; do
+for command_name in cksum codex curl git jq python3; do
     command -v "$command_name" >/dev/null 2>&1 || fail "missing required command: $command_name"
 done
 
@@ -206,10 +216,24 @@ assert_clone_tree_drain() {
     unregister_pid "$writer_pid"
     [[ -f "$started_marker" && -f "$finished_marker" ]] \
         || fail "clone-tree drain returned before the late writer completed"
-    mkdir -p "$fixture_root/.tmp/plugins-clone-stuck"
-    if wait_for_clone_tree_quiescence "$fixture_root" 2 1; then
-        fail "clone-tree drain accepted a persistent writer"
+    local mutation_stop="$fixture_root/mutation-stop"
+    local mutation_pid mutation=0
+    mkdir -p "$fixture_root/.tmp/plugins-clone-mutating"
+    (
+        while [[ ! -f "$mutation_stop" ]]; do
+            mutation=$((mutation + 1))
+            : > "$fixture_root/.tmp/plugins-clone-mutating/entry-$mutation"
+            sleep 0.05
+        done
+    ) &
+    mutation_pid=$!
+    register_pid "$mutation_pid"
+    if wait_for_clone_tree_quiescence "$fixture_root" 5 2; then
+        fail "clone-tree drain accepted an active writer"
     fi
+    : > "$mutation_stop"
+    wait "$mutation_pid"
+    unregister_pid "$mutation_pid"
     rm -rf -- "$fixture_root"
 }
 
