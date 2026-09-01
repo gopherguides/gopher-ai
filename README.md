@@ -12,7 +12,7 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | **OpenAI Codex CLI** | 6 plugins; capabilities vary | Repository-backed, user-wide, or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
-Shipped surface: 36 Claude Code commands across 7 plugins; 33 Codex skills across 6 plugins; 8 optional Codex MCP tools.
+Shipped surface: 36 Claude Code commands across 7 plugins; 37 Codex skills across 6 plugins; 8 optional Codex MCP tools.
 
 See the [platform capability matrix](docs/platform-capabilities.md) for exact
 qualified names and workflows that are not yet available on Codex.
@@ -268,12 +268,17 @@ be extended rather than replaced.
 
 Tailwind CSS v4 tools for initialization, auditing, migration, and optimization.
 
-| Command | Description |
-|---------|-------------|
-| `/tailwind-init` | Initialize Tailwind CSS v4 in a project |
-| `/tailwind-migrate` | Migrate from Tailwind v3 to v4 |
-| `/tailwind-audit` | Audit Tailwind usage for best practices |
-| `/tailwind-optimize` | Optimize Tailwind configuration and usage |
+| Workflow | Claude Code | Codex | Behavior |
+|----------|-------------|-------|----------|
+| Initialize | `/tailwind-init [path]` | `$tailwind:init [path]` | Explicit-only on Codex; installs and configures Tailwind v4 |
+| Migrate | `/tailwind-migrate [options]` | `$tailwind:migrate [options]` | Explicit-only on Codex; `--check` previews without changes |
+| Audit | `/tailwind-audit [path] [options]` | `$tailwind:audit [path] [options]` | Read-only by default; `--fix` applies safe fixes |
+| Optimize | `/tailwind-optimize [options]` | `$tailwind:optimize [options]` | Read-only by default; `--fix` applies safe optimizations |
+
+The Tailwind `cancel-loop` workflow is intentionally unsupported on Codex
+because it controls Claude Code persistent-loop hooks. The
+`$tailwind:tailwind-best-practices` skill remains available for Tailwind v4
+syntax and styling guidance.
 
 **MCP Tools** (Claude Code, Codex, and generated Gemini extensions):
 - `search_tailwind_docs` - Search Tailwind CSS documentation

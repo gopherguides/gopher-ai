@@ -1260,6 +1260,10 @@
         {
           "kind": "command",
           "path": "plugins/tailwind/commands/audit.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/tailwind/skills/audit/SKILL.md"
         }
       ],
       "platforms": {
@@ -1267,12 +1271,14 @@
           "disposition": "command",
           "names": [
             "tailwind:audit"
+          ],
+          "skill_names": [
+            "tailwind:audit"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/336"
+          "disposition": "skill",
+          "name": "tailwind:audit"
         }
       }
     },
@@ -1308,6 +1314,10 @@
         {
           "kind": "command",
           "path": "plugins/tailwind/commands/init.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/tailwind/skills/init/SKILL.md"
         }
       ],
       "platforms": {
@@ -1315,12 +1325,14 @@
           "disposition": "command",
           "names": [
             "tailwind:init"
+          ],
+          "skill_names": [
+            "tailwind:init"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/336"
+          "disposition": "skill",
+          "name": "tailwind:init"
         }
       }
     },
@@ -1332,6 +1344,10 @@
         {
           "kind": "command",
           "path": "plugins/tailwind/commands/migrate.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/tailwind/skills/migrate/SKILL.md"
         }
       ],
       "platforms": {
@@ -1339,12 +1355,14 @@
           "disposition": "command",
           "names": [
             "tailwind:migrate"
+          ],
+          "skill_names": [
+            "tailwind:migrate"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/336"
+          "disposition": "skill",
+          "name": "tailwind:migrate"
         }
       }
     },
@@ -1356,6 +1374,10 @@
         {
           "kind": "command",
           "path": "plugins/tailwind/commands/optimize.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/tailwind/skills/optimize/SKILL.md"
         }
       ],
       "platforms": {
@@ -1363,12 +1385,14 @@
           "disposition": "command",
           "names": [
             "tailwind:optimize"
+          ],
+          "skill_names": [
+            "tailwind:optimize"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/336"
+          "disposition": "skill",
+          "name": "tailwind:optimize"
         }
       }
     },
