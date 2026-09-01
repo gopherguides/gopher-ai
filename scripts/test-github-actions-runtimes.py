@@ -19,7 +19,8 @@ BLOCK_ACTION_PATTERN = re.compile(
     r'''^(\s*)(-\s+)?(["']?)uses\3\s*:\s*'''
     r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
     r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#"']+)\4'''
-    r'''(?:\s*(?:#.*)?)$'''
+    r'''(?:\s*(?:#.*)?)$''',
+    re.IGNORECASE,
 )
 BLOCK_USES_KEY_PATTERN = re.compile(
     r'''^(\s*)(-\s+)?(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
@@ -28,7 +29,8 @@ BLOCK_USES_KEY_PATTERN = re.compile(
 ACTION_USES_PATTERN = re.compile(
     r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*'''
     r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
-    r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)\2'''
+    r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)\2''',
+    re.IGNORECASE,
 )
 USES_ALIAS_PATTERN = re.compile(
     r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*\*[A-Za-z0-9_-]+'''
@@ -42,11 +44,13 @@ BLOCK_SCALAR_USES_PATTERN = re.compile(
     r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*[>|][0-9+-]*\s*(?:#.*)?$'''
 )
 ACTION_SCALAR_PATTERN = re.compile(
-    r'''^(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)$'''
+    r'''^(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)$''',
+    re.IGNORECASE,
 )
 ACTION_VALUE_PATTERN = re.compile(
     r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
-    r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)\1$'''
+    r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)\1$''',
+    re.IGNORECASE,
 )
 FALSE_VALUE_PATTERN = re.compile(
     r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*(?:false|"false"|'false')$'''
@@ -224,7 +228,7 @@ def parse_action(line):
     match = BLOCK_ACTION_PATTERN.match(line)
     if match:
         indentation, list_marker, _, _, action, action_ref = match.groups()
-        return indentation, bool(list_marker), action, action_ref, False
+        return indentation, bool(list_marker), action.lower(), action_ref, False
 
     flow_step = flow_step_mapping(line)
     if flow_step:
@@ -233,7 +237,7 @@ def parse_action(line):
         match = None if uses_value is None else ACTION_VALUE_PATTERN.match(uses_value)
         if match:
             _, action, action_ref = match.groups()
-            return indentation, True, action, action_ref, True
+            return indentation, True, action.lower(), action_ref, True
 
     return None
 
@@ -248,7 +252,7 @@ def block_uses_context(line):
 
 def find_action_reference(line):
     match = ACTION_USES_PATTERN.search(line)
-    return None if match is None else (match.group(3), match.group(4))
+    return None if match is None else (match.group(3).lower(), match.group(4))
 
 
 def parse_block_scalar_action(lines, start):
@@ -273,7 +277,7 @@ def parse_block_scalar_action(lines, start):
     if not action_match:
         return None
     action, action_ref = action_match.groups()
-    return indentation, bool(list_marker), action, action_ref, False
+    return indentation, bool(list_marker), action.lower(), action_ref, False
 
 
 def parser_failures():
@@ -292,6 +296,8 @@ def parser_failures():
             "v4",
         ),
         "      - uses: !!str actions/setup-go@v6": ("actions/setup-go", "v6"),
+        "      - uses: Actions/Checkout@v4": ("actions/checkout", "v4"),
+        "      - uses: actions/Setup-Node@v4": ("actions/setup-node", "v4"),
         "  #     - uses: actions/setup-go@v6": ("actions/setup-go", "v6"),
         "      - { uses: actions/checkout@v4 }": ("actions/checkout", "v4"),
         '      - { name: Checkout, "uses": "actions/checkout@v4" }': (
