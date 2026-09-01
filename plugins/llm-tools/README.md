@@ -24,7 +24,7 @@ paths as explicit qualified skills.
 | Workflow | Claude Code | Codex |
 |----------|-------------|-------|
 | Gemini delegation | `/llm-tools:gemini <prompt>` | `$llm-tools:gemini <prompt>` |
-| Local Ollama delegation | `/llm-tools:ollama <prompt>` | `$llm-tools:ollama <prompt>` |
+| Ollama delegation | `/llm-tools:ollama <prompt>` | `$llm-tools:ollama <prompt>` |
 | Gemini image generation | `/llm-tools:gemini-image <prompt>` | `$llm-tools:gemini-image <prompt>` |
 | Claude-to-Codex delegation | `/llm-tools:codex <prompt>` | Intentionally unsupported; the active assistant is already Codex |
 | Multi-provider comparison | `/llm-tools:llm-compare <prompt>` | Intentionally unsupported |
@@ -79,7 +79,9 @@ llm-tools omits `-m` for Codex calls by default, so Codex CLI chooses its provid
 
 ## Privacy Note
 
-- Ollama keeps prompt data local after its model is installed.
+- Ollama privacy depends on `OLLAMA_HOST`. Only verified loopback endpoints are
+  treated as local; any other destination is disclosed and requires explicit
+  confirmation before sending prompt data.
 - Gemini sends prompts to Google. An explicit Codex invocation authorizes only
   its attached prompt; adding code, diffs, file contents, logs, or session
   context requires a separate disclosure and explicit confirmation.

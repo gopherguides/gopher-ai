@@ -8,6 +8,7 @@ PLUGIN_DIR="$ROOT_DIR/plugins/llm-tools"
 ADAPTER="$PLUGIN_DIR/lib/codex-command-adapter.md"
 CAPABILITIES="$ROOT_DIR/docs/platform-capabilities.json"
 SECOND_OPINION="$PLUGIN_DIR/skills/second-opinion/SKILL.md"
+OLLAMA_SKILL="$PLUGIN_DIR/skills/ollama/SKILL.md"
 PROVIDER_SKILLS=(gemini ollama)
 
 fail() {
@@ -81,7 +82,6 @@ for contract in \
   'SKILL_ARGS' \
   'explicit confirmation' \
   'Google Gemini' \
-  'stays on the local machine' \
   "\$llm-tools:gemini" \
   "\$llm-tools:ollama" \
   'Never recommend a Claude Code slash command' \
@@ -89,11 +89,32 @@ for contract in \
   assert_contains "$ADAPTER" "$contract"
 done
 
+for contract in \
+  'OLLAMA_HOST' \
+  'http://127.0.0.1:11434' \
+  '127.0.0.0/8' \
+  '::1' \
+  'configured destination' \
+  'redact any credentials' \
+  'Obtain explicit confirmation before sending the prompt or any context.'; do
+  assert_contains "$ADAPTER" "$contract"
+done
+
+if frontmatter "$OLLAMA_SKILL" | matches 'keeping prompt data on the machine'; then
+  fail "Ollama skill description makes an unconditional local-only claim"
+fi
+frontmatter "$OLLAMA_SKILL" | matches 'configured Ollama endpoint' ||
+  fail "Ollama skill description omits endpoint-aware privacy"
+
 CODEX_SECTION=$(section_text "$SECOND_OPINION" '## Codex' '## Claude Code')
 CLAUDE_SECTION=$(section_text "$SECOND_OPINION" '## Claude Code' '## When NOT to Suggest')
 
 printf '%s\n' "$CODEX_SECTION" | matches '[$]llm-tools:gemini' || fail "Codex second-opinion guidance omits Gemini"
 printf '%s\n' "$CODEX_SECTION" | matches '[$]llm-tools:ollama' || fail "Codex second-opinion guidance omits Ollama"
+printf '%s\n' "$CODEX_SECTION" | matches 'configured Ollama endpoint' || fail "Codex second-opinion guidance omits endpoint-aware privacy"
+if printf '%s\n' "$CODEX_SECTION" | matches 'keeps the prompt on the user.s machine'; then
+  fail "Codex second-opinion guidance makes an unconditional local-only claim"
+fi
 if printf '%s\n' "$CODEX_SECTION" | matches '(^|[[:space:]`])/'; then
   fail "Codex second-opinion guidance suggests a Claude Code slash command"
 fi
@@ -109,6 +130,17 @@ for skill_name in "${PROVIDER_SKILLS[@]}"; do
     | select(.id == $id)
     | .platforms.codex == {"disposition": "skill", "name": $name}
   ' "$CAPABILITIES" >/dev/null || fail "$skill_name is not a declared Codex capability"
+done
+
+jq -e '
+  .capabilities[]
+  | select(.id == "llm-tools.ollama")
+  | .summary
+  | contains("configured Ollama endpoint")
+' "$CAPABILITIES" >/dev/null || fail "Ollama capability summary omits endpoint-aware privacy"
+
+for doc in "$ROOT_DIR/README.md" "$PLUGIN_DIR/README.md"; do
+  assert_contains "$doc" 'OLLAMA_HOST'
 done
 
 for unsupported in cancel-loop codex convert llm-compare review-loop; do

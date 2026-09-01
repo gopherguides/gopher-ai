@@ -54,12 +54,13 @@ Offer only installed Codex skills:
 - `$llm-tools:gemini <specific question>` asks Google Gemini. Explain that the
   prompt goes to a cloud provider and that adding code or repository context
   requires explicit confirmation.
-- `$llm-tools:ollama <specific question>` asks an installed local model and
-  keeps the prompt on the user's machine.
+- `$llm-tools:ollama <specific question>` asks an installed Ollama model. Its
+  privacy boundary depends on the configured Ollama endpoint; the provider
+  skill verifies loopback destinations or confirms a non-loopback transfer.
 
-For security-sensitive or proprietary code, prefer presenting the local
-Ollama option first. For architectural decisions, offer either provider and
-let the user choose; do not invoke one implicitly.
+For security-sensitive or proprietary code, present Ollama only with that
+endpoint check. For architectural decisions, offer either provider and let the
+user choose; do not invoke one implicitly.
 
 ## Claude Code
 
@@ -94,8 +95,8 @@ Do not suggest second opinions when:
 
 ## Privacy Consideration
 
-Before sending code or repository context to a cloud provider, identify the
-provider and the material that would leave the machine, then obtain explicit
-confirmation. Never include secrets or unrelated files. Ollama processing is
-local after its model is installed; model downloads remain a separate user
-decision.
+Before sending code or repository context to a non-local provider, identify
+the provider and the material that would leave the machine, then obtain
+explicit confirmation. Never include secrets or unrelated files. Ollama is
+local only when its effective `OLLAMA_HOST` is a verified loopback endpoint;
+model downloads remain a separate user decision.

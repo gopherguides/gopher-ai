@@ -1,6 +1,6 @@
 ---
 name: ollama
-description: "Delegates an explicit analysis, review, or second-opinion request to a locally installed Ollama model while keeping prompt data on the machine. Use only when the user asks for Ollama or a local model; do not start a server or download a model without consent."
+description: "Delegates an explicit analysis, review, or second-opinion request after checking the configured Ollama endpoint and requiring consent for non-loopback destinations. Use only when the user asks for Ollama; do not start a server or download a model without consent."
 argument-hint: "<prompt>"
 disable-model-invocation: true
 ---

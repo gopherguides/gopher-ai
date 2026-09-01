@@ -36,10 +36,19 @@ data. An explicit skill invocation authorizes sending its attached prompt text
 only; it does not authorize adding repository or session context. Never send
 secrets, credentials, tokens, or unrelated files.
 
-Ollama data stays on the local machine after a model is installed. State that
-local boundary before execution. Starting the Ollama server or downloading a
-model is a separate state-changing action and still requires the command body's
-user decision.
+Before invoking Ollama, resolve the effective endpoint from `OLLAMA_HOST`,
+using `http://127.0.0.1:11434` when the variable is unset. Parse the endpoint as
+data without evaluating it. Treat only `localhost`, IPv4 addresses in
+`127.0.0.0/8`, and the IPv6 address `::1` as local. For those loopback hosts,
+state that the prompt stays on the machine.
+
+For any other or unparseable host, do not repeat the command body's local-only
+claims. Disclose the configured destination by scheme, host, and port, and
+redact any credentials, tokens, query values, or paths.
+Obtain explicit confirmation before sending the prompt or any context.
+An explicit skill invocation does not authorize a non-loopback Ollama
+transfer. Starting the Ollama server or downloading a model is a separate
+state-changing action and still requires the command body's user decision.
 
 ## Surface Translation
 

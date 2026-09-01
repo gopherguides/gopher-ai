@@ -229,7 +229,7 @@ Multi-LLM integration for second opinions and task delegation. The
 | Workflow | Claude Code | Codex |
 |----------|-------------|-------|
 | Gemini delegation | `/llm-tools:gemini <prompt>` | `$llm-tools:gemini <prompt>` |
-| Local Ollama delegation | `/llm-tools:ollama <prompt>` | `$llm-tools:ollama <prompt>` |
+| Ollama delegation | `/llm-tools:ollama <prompt>` | `$llm-tools:ollama <prompt>` |
 | Gemini image generation | `/llm-tools:gemini-image <prompt>` | `$llm-tools:gemini-image <prompt>` |
 | Claude-to-Codex delegation | `/llm-tools:codex <prompt>` | Intentionally unsupported; the active assistant is already Codex |
 | Multi-provider comparison | `/llm-tools:llm-compare <prompt>` | Intentionally unsupported |
@@ -239,8 +239,9 @@ Multi-LLM integration for second opinions and task delegation. The
 Only Claude Code uses OpenAI's official `codex@openai-codex` plugin routing.
 Codex provider skills never recommend those Claude-only commands. Gemini is a
 cloud boundary: adding code, diffs, or repository context requires explicit
-confirmation after the payload is disclosed. Ollama keeps prompt data local
-after its model is installed.
+confirmation after the payload is disclosed. Ollama privacy depends on
+`OLLAMA_HOST`: only verified loopback endpoints are treated as local, and any
+other destination requires disclosure and explicit confirmation.
 
 ### go-web
 

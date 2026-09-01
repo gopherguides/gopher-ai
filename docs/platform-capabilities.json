@@ -1042,7 +1042,7 @@
     {
       "id": "llm-tools.ollama",
       "plugin": "llm-tools",
-      "summary": "Delegate a private task to local Ollama models.",
+      "summary": "Delegate a task to the configured Ollama endpoint with privacy checks.",
       "sources": [
         {
           "kind": "command",
