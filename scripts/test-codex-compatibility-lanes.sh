@@ -60,7 +60,9 @@ expected_source = [
   'printf \'Codex CLI version: %s\\n\' "$ACTUAL_CODEX_VERSION"',
 ]
 missing_source = expected_source.reject { |line| lifecycle_source.lines(chomp: true).include?(line) }
-abort "Codex lifecycle version contract is incomplete" unless missing_source.empty?
+unless missing_source.empty?
+  abort "Codex lifecycle version contract is incomplete: #{missing_source.join(', ')}"
+end
 RUBY
 
 printf 'Codex compatibility lane tests passed.\n'
