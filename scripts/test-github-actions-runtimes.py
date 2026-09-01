@@ -15,9 +15,20 @@ SUPPORTED_REFS = {
     "actions/setup-go": {"v7"},
     "actions/setup-node": {"v7"},
 }
-ACTION_PATTERN = re.compile(
+BLOCK_ACTION_PATTERN = re.compile(
     r'''^(\s*)(-\s+)?uses:\s*(["']?)(actions/(?:checkout|setup-go|setup-node))'''
     r'''@([^\s#"']+)\3(?:\s*(?:#.*)?)$'''
+)
+FLOW_ACTION_PATTERN = re.compile(
+    r'''^(\s*)-\s*\{.*?(["']?)uses\2\s*:\s*(["']?)'''
+    r'''(actions/(?:checkout|setup-go|setup-node))@([^\s,}"']+)\3(?=\s*[,}])'''
+)
+FLOW_WITH_PATTERN = re.compile(
+    r'''(?:\{|,)\s*(?:with|"with"|'with')\s*:\s*\{([^{}]*)\}'''
+)
+FLOW_CACHE_PATTERN = re.compile(
+    r'''(?:^|,)\s*(?:package-manager-cache|"package-manager-cache"|'''
+    r'''\'package-manager-cache\')\s*:\s*(?:false|"false"|'false')\s*(?=,|$)'''
 )
 
 
@@ -26,6 +37,20 @@ def normalize_workflow_line(line):
     if match:
         return f"{match.group(1)}{match.group(2)}"
     return line
+
+
+def parse_action(line):
+    match = BLOCK_ACTION_PATTERN.match(line)
+    if match:
+        indentation, list_marker, _, action, action_ref = match.groups()
+        return indentation, bool(list_marker), action, action_ref, False
+
+    match = FLOW_ACTION_PATTERN.match(line)
+    if match:
+        indentation, _, _, action, action_ref = match.groups()
+        return indentation, True, action, action_ref, True
+
+    return None
 
 
 def parser_failures():
@@ -38,11 +63,16 @@ def parser_failures():
         ),
         "        uses: 'actions/setup-node@v4'": ("actions/setup-node", "v4"),
         "  #     - uses: actions/setup-go@v6": ("actions/setup-go", "v6"),
+        "      - { uses: actions/checkout@v4 }": ("actions/checkout", "v4"),
+        '      - { name: Checkout, "uses": "actions/checkout@v4" }': (
+            "actions/checkout",
+            "v4",
+        ),
     }
     failures = []
     for line, expected in cases.items():
-        match = ACTION_PATTERN.match(normalize_workflow_line(line))
-        actual = None if match is None else (match.group(4), match.group(5))
+        parsed = parse_action(normalize_workflow_line(line))
+        actual = None if parsed is None else (parsed[2], parsed[3])
         if actual != expected:
             failures.append(f"action parser missed fixture: {line}")
     return failures
@@ -111,16 +141,25 @@ def cache_parser_failures():
             1,
             False,
         ),
+        (
+            [
+                "      - { uses: actions/setup-node@v7, with: { package-manager-cache: false } }",
+            ],
+            0,
+            True,
+        ),
+        (
+            [
+                "      - { uses: actions/setup-node@v7, env: { package-manager-cache: false } }",
+            ],
+            0,
+            False,
+        ),
     )
     failures = []
     for lines, uses_index, expected in cases:
-        match = ACTION_PATTERN.match(lines[uses_index])
-        actual = step_has_cache_disabled(
-            lines,
-            uses_index,
-            len(match.group(1)),
-            bool(match.group(2)),
-        )
+        parsed = parse_action(lines[uses_index])
+        actual = action_has_cache_disabled(lines, uses_index, parsed)
         if actual != expected:
             failures.append(f"cache parser failed fixture at uses line {uses_index + 1}")
 
@@ -132,13 +171,8 @@ def cache_parser_failures():
             "  #         package-manager-cache: false",
         )
     ]
-    generator_match = ACTION_PATTERN.match(generator_lines[0])
-    if not step_has_cache_disabled(
-        generator_lines,
-        0,
-        len(generator_match.group(1)),
-        bool(generator_match.group(2)),
-    ):
+    generator_action = parse_action(generator_lines[0])
+    if not action_has_cache_disabled(generator_lines, 0, generator_action):
         failures.append("cache parser missed commented generator fixture")
     return failures
 
@@ -197,6 +231,18 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
     return False
 
 
+def flow_step_has_cache_disabled(line):
+    with_match = FLOW_WITH_PATTERN.search(line)
+    return bool(with_match and FLOW_CACHE_PATTERN.search(with_match.group(1)))
+
+
+def action_has_cache_disabled(lines, start, parsed):
+    indentation, list_marker, _, _, flow_mapping = parsed
+    if flow_mapping:
+        return flow_step_has_cache_disabled(lines[start])
+    return step_has_cache_disabled(lines, start, len(indentation), list_marker)
+
+
 def main():
     failures = parser_failures() + cache_parser_failures()
     discovered = 0
@@ -205,21 +251,21 @@ def main():
         lines = path.read_text().splitlines()
         normalized_lines = [normalize_workflow_line(line) for line in lines]
         for index, line in enumerate(lines):
-            match = ACTION_PATTERN.match(line)
+            parsed = parse_action(line)
             scanned_lines = lines
-            if not match and PLUGIN_TEMPLATES in path.parents:
-                match = ACTION_PATTERN.match(normalized_lines[index])
+            if not parsed and PLUGIN_TEMPLATES in path.parents:
+                parsed = parse_action(normalized_lines[index])
                 scanned_lines = normalized_lines
-            if not match:
+            if not parsed:
                 continue
 
             discovered += 1
-            indentation, list_marker, _, action, action_ref = match.groups()
+            _, _, action, action_ref, _ = parsed
             location = f"{path.relative_to(ROOT)}:{index + 1}"
             if action_ref not in SUPPORTED_REFS[action]:
                 failures.append(f"{location}: unsupported {action}@{action_ref}")
-            if action == "actions/setup-node" and not step_has_cache_disabled(
-                scanned_lines, index, len(indentation), bool(list_marker)
+            if action == "actions/setup-node" and not action_has_cache_disabled(
+                scanned_lines, index, parsed
             ):
                 failures.append(
                     f"{location}: setup-node must set package-manager-cache: false"
