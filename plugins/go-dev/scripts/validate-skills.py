@@ -392,11 +392,13 @@ def heredoc_specifiers(line):
         while index < len(line) and line[index] in {" ", "\t"}:
             index += 1
         delimiter = []
+        quoted = False
         while index < len(line):
             character = line[index]
             if character in " \t\r\n;&|<>()":
                 break
             if character in {"'", '"'}:
+                quoted = True
                 delimiter_quote = character
                 index += 1
                 while index < len(line) and line[index] != delimiter_quote:
@@ -406,14 +408,48 @@ def heredoc_specifiers(line):
                     index += 1
                 continue
             if character == "\\" and index + 1 < len(line):
+                quoted = True
                 delimiter.append(line[index + 1])
                 index += 2
                 continue
             delimiter.append(character)
             index += 1
         if delimiter:
-            specifiers.append(("".join(delimiter), strip_tabs))
+            specifiers.append(("".join(delimiter), strip_tabs, quoted))
     return specifiers
+
+
+def heredoc_expansion_projection(line):
+    expansions = []
+    escaped = False
+    index = 0
+    while index < len(line):
+        character = line[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if character == "\\":
+            escaped = True
+            index += 1
+            continue
+        if line.startswith(("$(", "<(", ">("), index):
+            expansions.append(line[index : index + 2])
+            index += 2
+            continue
+        if character == "`":
+            expansions.append("`heredoc`")
+            index += 1
+            continue
+        braced = re.match(r"\$\{[A-Za-z_][A-Za-z0-9_]*[^}]*\}", line[index:])
+        plain = re.match(r"\$[A-Za-z_][A-Za-z0-9_]*", line[index:])
+        match = braced or plain
+        if match:
+            expansions.append(match.group(0))
+            index += len(match.group(0))
+            continue
+        index += 1
+    return " ".join(expansions)
 
 
 def without_heredoc_bodies(code):
@@ -422,11 +458,17 @@ def without_heredoc_bodies(code):
     for line in code.splitlines(keepends=True):
         content = line.rstrip("\r\n")
         if pending:
-            delimiter, strip_tabs = pending[0]
+            delimiter, strip_tabs, quoted = pending[0]
             candidate = content.lstrip("\t") if strip_tabs else content
             if candidate == delimiter:
                 pending.pop(0)
-            retained.append("\n" if line.endswith(("\n", "\r")) else "")
+                retained.append("\n" if line.endswith(("\n", "\r")) else "")
+            elif quoted:
+                retained.append("\n" if line.endswith(("\n", "\r")) else "")
+            else:
+                retained.append(heredoc_expansion_projection(content))
+                if line.endswith(("\n", "\r")):
+                    retained.append("\n")
             continue
         retained.append(line)
         pending.extend(heredoc_specifiers(content))
@@ -474,6 +516,25 @@ def without_shell_comments(code):
 
 def shell_code_projection(code):
     return without_shell_comments(without_heredoc_bodies(code))
+
+
+def has_write_redirection(code):
+    states = shell_quote_states(code)
+    for index, character in enumerate(code):
+        if states[index] is not None:
+            continue
+        backslashes = 0
+        previous = index - 1
+        while previous >= 0 and code[previous] == "\\":
+            backslashes += 1
+            previous -= 1
+        if backslashes % 2:
+            continue
+        if character == ">":
+            return True
+        if character == "<" and index + 1 < len(code) and code[index + 1] == ">":
+            return True
+    return False
 
 
 def command_segments(code):
@@ -559,7 +620,7 @@ def classify_block(block):
     if re.search(r"\$\(|`[^`]+`|[<>]\(", code):
         unknown.add("command substitution")
         tiers.append("red")
-    if re.search(r"(?:^|[^<])>{1,2}(?:[^&]|$)", code, re.MULTILINE):
+    if has_write_redirection(code):
         unknown.add("output redirection")
         tiers.append("red")
     for segment in command_segments(code):

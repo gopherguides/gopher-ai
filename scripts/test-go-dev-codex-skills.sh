@@ -132,6 +132,8 @@ OUTPUT_LIMIT_FILE="$FIXTURE_ROOT/output-limit.md"
 CONTROL_FLOW_FILE="$FIXTURE_ROOT/control-flow.md"
 FAILED_EXECUTION_FILE="$FIXTURE_ROOT/failed-execution.md"
 HEREDOC_FILE="$FIXTURE_ROOT/heredoc.md"
+UNQUOTED_HEREDOC_FILE="$FIXTURE_ROOT/unquoted-heredoc.md"
+READ_WRITE_REDIRECTION_FILE="$FIXTURE_ROOT/read-write-redirection.md"
 SEMANTIC_REVIEW_FILE="$FIXTURE_ROOT/semantic-review.md"
 EXECUTABLE_PATH_FILE="$FIXTURE_ROOT/executable-path.md"
 PATH_ASSIGNMENT_FILE="$FIXTURE_ROOT/path-assignment.md"
@@ -145,6 +147,8 @@ CASE_MARKER="$FIXTURE_ROOT/case-marker"
 MUTATING_DIR="$FIXTURE_ROOT/mutating-options"
 MALICIOUS_BIN="$FIXTURE_ROOT/malicious-bin"
 PATH_MARKER="$FIXTURE_ROOT/path-command-ran"
+HEREDOC_MARKER="$FIXTURE_ROOT/heredoc-command-ran"
+READ_WRITE_MARKER="$FIXTURE_ROOT/read-write-redirection-ran"
 
 cat > "$VALID_FILE" <<'EOF'
 ```bash
@@ -187,6 +191,7 @@ printf '%s\n' escaped\|value
 printf '%s\n' \
   'continued|value'
 printf '%s\n' value # ignored | command
+printf '%s\n' 'left>right'
 ```
 EOF
 
@@ -241,6 +246,20 @@ printf '%s\n' $UNDEFINED
 EOF
 ```
 MARKDOWN
+
+cat > "$UNQUOTED_HEREDOC_FILE" <<EOF
+\`\`\`sh
+cat <<PAYLOAD
+\$(touch "$HEREDOC_MARKER")
+PAYLOAD
+\`\`\`
+EOF
+
+cat > "$READ_WRITE_REDIRECTION_FILE" <<EOF
+\`\`\`sh
+cat <> "$READ_WRITE_MARKER"
+\`\`\`
+EOF
 
 cat > "$SEMANTIC_REVIEW_FILE" <<'EOF'
 ```bash
@@ -472,16 +491,30 @@ assert "codex-validator-sensitive-output" not in sys.argv[2]
 PY
 
 HEREDOC_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json heredoc.md)
+UNQUOTED_HEREDOC_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json unquoted-heredoc.md)
+READ_WRITE_REDIRECTION_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json read-write-redirection.md)
 SEMANTIC_REVIEW_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json semantic-review.md)
-python3 - "$HEREDOC_JSON" "$SEMANTIC_REVIEW_JSON" <<'PY'
+[ ! -e "$HEREDOC_MARKER" ] || fail "unquoted heredoc command substitution was executed"
+[ ! -e "$READ_WRITE_MARKER" ] || fail "read-write redirection was executed"
+python3 - "$HEREDOC_JSON" "$UNQUOTED_HEREDOC_JSON" "$READ_WRITE_REDIRECTION_JSON" "$SEMANTIC_REVIEW_JSON" <<'PY'
 import json
 import sys
 
 heredoc = json.loads(sys.argv[1])
-semantic = json.loads(sys.argv[2])
+unquoted_heredoc = json.loads(sys.argv[2])
+read_write_redirection = json.loads(sys.argv[3])
+semantic = json.loads(sys.argv[4])
 assert not any(
     finding["layer"] in {"classification", "review"}
     for finding in heredoc["findings"]
+)
+assert any(
+    finding["layer"] == "classification" and "command substitution" in finding["finding"]
+    for finding in unquoted_heredoc["findings"]
+)
+assert any(
+    finding["layer"] == "classification" and "output redirection" in finding["finding"]
+    for finding in read_write_redirection["findings"]
 )
 messages = [finding["finding"] for finding in semantic["findings"]]
 assert any("Unquoted variable expansion" in message and "UNDEFINED" in message for message in messages)

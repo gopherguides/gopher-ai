@@ -43,7 +43,9 @@ Shell compound commands that cannot be fully classified, including `case`,
 Environment assignments and executable tokens containing a path separator are
 also RED. GREEN execution trusts only bare command names resolved from the
 helper's fixed clean `PATH`. `printf -v` is RED because it can mutate `PATH`
-without assignment syntax.
+without assignment syntax. Write-capable shell redirections, including `>`,
+`>>`, and `<>`, are RED. Quoted heredoc bodies are literal data; expansions in
+unquoted heredoc bodies are classified conservatively before execution.
 
 ## RED — Never Execute, Report as Warning
 
