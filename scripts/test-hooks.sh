@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 HOOK_TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+HOOK_TMP_BASE=$(cd "$HOOK_TMP_BASE" && pwd -P) || exit 1
 case "$HOOK_TMP_BASE/" in
   "$ROOT_DIR/"*)
     export GIT_CEILING_DIRECTORIES="$HOOK_TMP_BASE${GIT_CEILING_DIRECTORIES:+:$GIT_CEILING_DIRECTORIES}"
@@ -122,7 +123,7 @@ run_runtime_location_tests() {
   fi
 
   echo -n "  Gopher Guides cache validates before writes and uses user cache locations... "
-  local cache_fixture cache_home cache_xdg cache_override cache_bin cache_default_file
+  local cache_fixture cache_home cache_xdg cache_override cache_bin cache_identity_bin cache_default_file
   local cache_parallel cache_parallel_bin cache_parallel_barrier cache_parallel_pids
   local cache_corrupt cache_corrupt_output
   local cache_missing_args_dir cache_missing_key_dir
@@ -147,6 +148,7 @@ run_runtime_location_tests() {
   cache_xdg="$cache_fixture/xdg"
   cache_override="$cache_fixture/override/cache.json"
   cache_bin="$cache_fixture/bin"
+  cache_identity_bin="$cache_fixture/identity-bin"
   cache_default_file="$cache_xdg/gopher-ai/gopher-guides-cache.json"
   cache_corrupt="$cache_fixture/corrupt/cache.json"
   cache_parallel="$cache_fixture/parallel/cache.json"
@@ -171,13 +173,22 @@ run_runtime_location_tests() {
   cache_clear_output_file="$cache_fixture/clear-race-clear-output"
   clear_cache_command=$(sed -n 's/^!`\(.*\)`$/\1/p' "$clear_cache")
 
-  mkdir -p "$cache_home" "$cache_bin" "$cache_parallel_bin" "$cache_parallel_barrier" \
+  mkdir -p "$cache_home" "$cache_bin" "$cache_identity_bin" "$cache_parallel_bin" "$cache_parallel_barrier" \
     "$cache_fixture/work" "$cache_clear_race_bin" \
     "$(dirname "$cache_corrupt")" "$(dirname "$cache_compatibility_legacy")" \
     "$(dirname "$cache_lock_smoke")" "$(dirname "$cache_clear_race")"
 
   printf '%s\n' '#!/bin/sh' 'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' > "$cache_bin/curl"
   chmod +x "$cache_bin/curl"
+  printf '%s\n' \
+    '#!/bin/sh' \
+    'if [ "$1" = -p ] && [ "$3" = -o ] && [ "$4" = lstart= ]; then' \
+    '  printf '\''fixture-identity-%s\n'\'' "$2"' \
+    '  exit 0' \
+    'fi' \
+    'exit 1' \
+    > "$cache_identity_bin/ps"
+  chmod +x "$cache_identity_bin/ps"
   printf '%s\n' \
     '#!/bin/sh' \
     ': > "$CACHE_TEST_BARRIER/$$"' \
@@ -219,7 +230,8 @@ run_runtime_location_tests() {
   mkdir "${cache_lock_smoke}.directory"
   printf '%s\n' stale > "${cache_lock_smoke}.directory/owner.$$.$RANDOM.$RANDOM"
   printf '%s\n' '{"old":true}' > "$cache_lock_portable_cache"
-  if cache_lock_portable_reused_output=$(GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
+  if cache_lock_portable_reused_output=$(PATH="$cache_identity_bin:$PATH" \
+       GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
        "$cache_lock" "$cache_lock_smoke" "$cache_mutate" clear "$cache_lock_portable_cache") &&
      [ -z "$cache_lock_portable_reused_output" ] &&
      [ ! -e "$cache_lock_portable_cache" ] &&
