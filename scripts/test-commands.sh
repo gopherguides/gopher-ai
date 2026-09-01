@@ -158,6 +158,23 @@ file_contains() {
   awk -v needle="$needle" 'index($0, needle) { found = 1 } END { exit found ? 0 : 1 }' "$file"
 }
 
+ADDRESS_REVIEW_BOT_REGISTRY="$ROOT_DIR/plugins/go-workflow/skills/address-review/bot-registry.md"
+GO_WORKFLOW_README="$ROOT_DIR/plugins/go-workflow/README.md"
+
+echo -n "Address-review registers current-head Codex connector re-review... "
+if ! file_contains '`chatgpt-codex-connector[bot]`' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains '`@codex review`' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'commit_id == PR_HEAD_SHA' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'no unresolved inline comments' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'unresolved inline comments' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'only when discovered' "$GO_WORKFLOW_README" ||
+   ! file_contains '`chatgpt-codex-connector[bot]`' "$GO_WORKFLOW_README"; then
+  echo "FAIL (Codex connector detection, trigger, or signal contract missing)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Shared skill resources use the cross-platform plugin-root contract... "
 GO_WORKFLOW_SKILLS="$ROOT_DIR/plugins/go-workflow/skills"
 GO_WORKFLOW_SKILL_RESOURCES=(

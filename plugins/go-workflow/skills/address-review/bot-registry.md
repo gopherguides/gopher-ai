@@ -6,6 +6,7 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 
 | Login | Approval Signal | Has Issues Signal | Re-review Trigger |
 |---|---|---|---|
+| `chatgpt-codex-connector[bot]` | Newest `COMMENTED` review has `commit_id == PR_HEAD_SHA` and no unresolved inline comments from the connector | Newest `COMMENTED` review has `commit_id == PR_HEAD_SHA` and unresolved inline comments from the connector | `@codex review` |
 | `coderabbitai[bot]` | Formal `APPROVED` review state (requires `request_changes_workflow` in `.coderabbit.yaml`) | `CHANGES_REQUESTED` review with inline comments | `@coderabbitai full review` |
 | `greptileai` | Greptile status check passes + no inline comments posted | Inline comments on specific file changes | `@greptileai` |
 | `copilot-pull-request-review[bot]` | `COMMENTED` review with no inline file comments ("did not comment on any files") | `COMMENTED` review with inline suggestions | Re-request review button in PR sidebar _(no `@` mention trigger)_ |
@@ -13,6 +14,7 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 
 ## Bot Detection Logic
 
+- **Codex connector**: Inspect REST formal reviews and GraphQL review threads only when discovered as `chatgpt-codex-connector[bot]`. Select the newest connector review whose `commit_id == PR_HEAD_SHA`. Its `COMMENTED` review is approval when it has no unresolved inline comments from the connector; unresolved inline comments are actionable findings. A connector review for any other commit is stale and cannot satisfy current-head approval. Re-trigger with `@codex review`.
 - **CodeRabbit**: Only bot that uses formal GitHub review states. Use `github_pr_reviews "$PR_NUM"`, select the newest `coderabbitai[bot]` review by `submitted_at`, and treat `APPROVED` as done.
 - **Greptile**: Uses a **status check** (not review states). Use `github_check_snapshot "$PR_HEAD_SHA"`; a successful Greptile item plus no new inline comments means Greptile is satisfied.
 - **Copilot**: Always posts `COMMENTED` formal reviews (never `APPROVED` or `CHANGES_REQUESTED`). Inspect its REST formal reviews. If its newest body says it "did not comment on any files" or has no inline comments, it found no issues. It cannot be re-triggered via comment; use the re-request review button in the GitHub PR sidebar.
@@ -106,6 +108,9 @@ fi
 3. If it matches but has no trigger command (e.g., `copilot-pull-request-review[bot]`) → skip, log: "Skipping <login>: no re-trigger mechanism available"
 4. If it's on the ignore list (`github-actions[bot]`, `dependabot[bot]`, etc.) → skip silently
 5. If it doesn't match any registry entry and looks like a bot (contains `[bot]` or `bot` suffix) → skip, log: "Skipping unknown bot <login>: no trigger command known"
+
+For `chatgpt-codex-connector[bot]`, this lookup produces `@codex review` only
+when discovered in the actual reviewer list and the Step 3 feedback list.
 
 **Never iterate the Bot Registry to find bots. Always iterate actual reviewers and look up triggers.**
 

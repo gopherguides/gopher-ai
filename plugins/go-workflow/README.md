@@ -97,13 +97,14 @@ automatically:
 
 #### Auto Bot Re-review
 
-When bot reviewers (Codex, CodeRabbit, Greptile, etc.) leave feedback, the skill automatically requests re-review by posting `@bot review` comments.
+When supported bot reviewers leave feedback, the skill automatically requests
+re-review only when discovered among the pull request's actual reviewers.
 
 **Supported bots:**
-- `codex` → `@codex review`
-- `coderabbitai` → `@coderabbitai review`
-- `greptileai` → `@greptileai review`
-- `copilot` → Added via GitHub Reviewers
+- `chatgpt-codex-connector[bot]` → `@codex review`
+- `coderabbitai[bot]` → `@coderabbitai full review`
+- `greptileai` → `@greptileai`
+- `copilot-pull-request-review[bot]` → Re-request through GitHub Reviewers
 
 **To disable auto bot re-review**, add to your project's CLAUDE.md:
 ```markdown
