@@ -30,6 +30,31 @@ line_absence_status() {
 
 echo "=== Plugin Installation Tests ==="
 
+echo -n "Gemini generation avoids heredoc and here-string I/O... "
+GEMINI_GENERATORS=$(sed -n '/^generate_gemini_extension_json()/,/^create_archive()/p' "$ROOT_DIR/scripts/build-universal.sh")
+if printf '%s\n' "$GEMINI_GENERATORS" | rg -q '<<<|<<[[:space:]]*[[:alnum:]'\''"]'; then
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+if [ -x /opt/homebrew/bin/bash ] &&
+   /opt/homebrew/bin/bash --version | sed -n '1p' | rg -q 'version 5\.3\.' &&
+   command -v gtimeout >/dev/null 2>&1; then
+  echo -n "Universal build completes under Bash 5.3... "
+  BASH_53_LOG=$(mktemp "${TMPDIR:-${TMP:-${TEMP:-/tmp}}}/gopher-ai-bash-53-build.XXXXXX")
+  if gtimeout 30 /opt/homebrew/bin/bash "$ROOT_DIR/scripts/build-universal.sh" >"$BASH_53_LOG" 2>&1; then
+    echo "OK"
+  else
+    BASH_53_STATUS=$?
+    echo "FAIL (status $BASH_53_STATUS)"
+    sed -n '1,120p' "$BASH_53_LOG"
+    ERRORS=$((ERRORS + 1))
+  fi
+  rm -f "$BASH_53_LOG"
+fi
+
 # Test 1: marketplace.json exists and is valid JSON
 echo -n "marketplace.json is valid JSON... "
 if ! jq . "$MARKETPLACE" >/dev/null 2>&1; then
