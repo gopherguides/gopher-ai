@@ -336,6 +336,10 @@
         {
           "kind": "command",
           "path": "plugins/go-workflow/commands/cancel-loop.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/cancel-loop/SKILL.md"
         }
       ],
       "platforms": {
@@ -343,12 +347,14 @@
           "disposition": "command",
           "names": [
             "go-workflow:cancel-loop"
+          ],
+          "skill_names": [
+            "go-workflow:cancel-loop"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/332"
+          "disposition": "skill",
+          "name": "go-workflow:cancel-loop"
         }
       }
     },
