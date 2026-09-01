@@ -215,14 +215,14 @@ for codex_skill in "$CODEX_GO_WORKFLOW_SKILL" "$CODEX_GOPHER_GUIDES_SKILL"; do
     BUILT_RESOURCE_FAILURE="missing ${codex_skill#"$ROOT_DIR"/}"
     break
   fi
-  if ! rg -q '## Plugin Resource Resolution' "$codex_skill" ||
-     ! rg -q 'directory containing the absolute selected `SKILL.md` path, then ascend two directories' "$codex_skill"; then
+  if ! grep -Fq '## Plugin Resource Resolution' "$codex_skill" ||
+     ! grep -Fq 'directory containing the absolute selected `SKILL.md` path, then ascend two directories' "$codex_skill"; then
     BUILT_RESOURCE_FAILURE="Codex artifact lacks the binding contract: ${codex_skill#"$ROOT_DIR"/}"
     break
   fi
 done
 if [ -z "$BUILT_RESOURCE_FAILURE" ]; then
-  LEGACY_CODEX_RESOURCE_PATHS=$(rg -n --glob '*.md' '\$\{CLAUDE_PLUGIN_ROOT\}/' \
+  LEGACY_CODEX_RESOURCE_PATHS=$(grep -RInF --include='*.md' '${CLAUDE_PLUGIN_ROOT}/' \
     "$ROOT_DIR/dist/codex/plugins/go-workflow/skills" \
     "$ROOT_DIR/dist/codex/plugins/go-workflow/lib" \
     "$ROOT_DIR/dist/codex/plugins/go-workflow/agents" \
@@ -235,10 +235,10 @@ if [ -z "$BUILT_RESOURCE_FAILURE" ]; then
     BUILT_RESOURCE_FAILURE="Codex artifacts omit representative bundled resources"
   elif [ ! -f "$GEMINI_GO_WORKFLOW_SKILL" ] || [ ! -f "$GEMINI_GOPHER_GUIDES_SKILL" ]; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts omit representative skills"
-  elif rg -q '<PLUGIN_ROOT>' "$GEMINI_GO_WORKFLOW_SKILL" "$GEMINI_GOPHER_GUIDES_SKILL"; then
+  elif grep -Fq '<PLUGIN_ROOT>' "$GEMINI_GO_WORKFLOW_SKILL" "$GEMINI_GOPHER_GUIDES_SKILL"; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts retain unresolved plugin-root notation"
-  elif ! rg -Fq '$HOME/.gemini/extensions/gopher-ai-go-workflow/lib/driver-interaction.md' "$GEMINI_GO_WORKFLOW_SKILL" ||
-       ! rg -Fq '$HOME/.gemini/extensions/gopher-ai-gopher-guides/scripts/cache-api.sh' "$GEMINI_GOPHER_GUIDES_SKILL"; then
+  elif ! grep -Fq '$HOME/.gemini/extensions/gopher-ai-go-workflow/lib/driver-interaction.md' "$GEMINI_GO_WORKFLOW_SKILL" ||
+       ! grep -Fq '$HOME/.gemini/extensions/gopher-ai-gopher-guides/scripts/cache-api.sh' "$GEMINI_GOPHER_GUIDES_SKILL"; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts lack installed extension resource paths"
   fi
 fi
