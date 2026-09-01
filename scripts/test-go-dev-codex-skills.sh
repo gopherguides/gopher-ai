@@ -116,8 +116,11 @@ VALID_FILE="$FIXTURE_ROOT/valid.md"
 INVALID_FILE="$FIXTURE_ROOT/invalid.md"
 RED_FILE="$FIXTURE_ROOT/red.md"
 UNKNOWN_FILE="$FIXTURE_ROOT/unknown.md"
+COMMAND_FILE="$FIXTURE_ROOT/command.md"
+QUOTED_OPERATOR_FILE="$FIXTURE_ROOT/quoted-operator.md"
 RED_MARKER="$FIXTURE_ROOT/red-command-ran"
 UNKNOWN_MARKER="$FIXTURE_ROOT/unknown-command-ran"
+COMMAND_MARKER="$FIXTURE_ROOT/command-ran"
 
 cat > "$VALID_FILE" <<'EOF'
 ```bash
@@ -143,6 +146,24 @@ cat > "$UNKNOWN_FILE" <<EOF
 \`\`\`bash
 printf '%s\\n' "\$(touch "$UNKNOWN_MARKER")"
 \`\`\`
+EOF
+
+cat > "$COMMAND_FILE" <<EOF
+\`\`\`bash
+command touch "$COMMAND_MARKER"
+\`\`\`
+EOF
+
+cat > "$QUOTED_OPERATOR_FILE" <<'EOF'
+```bash
+printf '%s\n' 'left|right'
+printf '%s\n' 'left;right'
+printf '%s\n' "left&&right"
+printf '%s\n' escaped\|value
+printf '%s\n' \
+  'continued|value'
+printf '%s\n' value # ignored | command
+```
 EOF
 
 cp "$VALID_FILE" "$FIXTURE_ROOT/plugins/example/commands/valid.md"
@@ -225,6 +246,33 @@ assert any(
     finding["layer"] == "classification"
     and finding["severity"] == "warning"
     and "Unknown command" in finding["finding"]
+    for finding in report["findings"]
+)
+PY
+
+COMMAND_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json command.md)
+[ ! -e "$COMMAND_MARKER" ] || fail "command builtin bypass was executed"
+python3 - "$COMMAND_JSON" <<'PY'
+import json
+import sys
+
+report = json.loads(sys.argv[1])
+assert any(
+    finding["layer"] == "classification"
+    and finding["severity"] == "warning"
+    and "Unknown command classified conservatively: command" in finding["finding"]
+    for finding in report["findings"]
+)
+PY
+
+QUOTED_OPERATOR_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json quoted-operator.md)
+python3 - "$QUOTED_OPERATOR_JSON" <<'PY'
+import json
+import sys
+
+report = json.loads(sys.argv[1])
+assert not any(
+    finding["layer"] == "classification"
     for finding in report["findings"]
 )
 PY

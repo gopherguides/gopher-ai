@@ -18,7 +18,6 @@ GREEN_COMMANDS = {
     "basename",
     "cat",
     "comm",
-    "command",
     "cut",
     "date",
     "diff",
@@ -329,10 +328,51 @@ def syntax_findings(block, script_path):
 
 def command_segments(code):
     segments = []
-    for line in code.splitlines():
-        if line.lstrip().startswith("#"):
+    current = []
+    quote = None
+    escaped = False
+    index = 0
+    while index < len(code):
+        character = code[index]
+        if escaped:
+            current.append(character)
+            escaped = False
+            index += 1
             continue
-        segments.extend(re.split(r"&&|\|\||[;|]", line))
+        if character == "\\" and quote != "'":
+            current.append(character)
+            escaped = True
+            index += 1
+            continue
+        if quote:
+            current.append(character)
+            if character == quote:
+                quote = None
+            index += 1
+            continue
+        if character in {"'", '"'}:
+            current.append(character)
+            quote = character
+            index += 1
+            continue
+        if character == "#" and (not current or current[-1].isspace()):
+            while index < len(code) and code[index] != "\n":
+                index += 1
+            continue
+        if character in {";", "|", "&", "\n"}:
+            segment = "".join(current).strip()
+            if segment:
+                segments.append(segment)
+            current = []
+            while index + 1 < len(code) and code[index + 1] in {";", "|", "&"}:
+                index += 1
+            index += 1
+            continue
+        current.append(character)
+        index += 1
+    segment = "".join(current).strip()
+    if segment:
+        segments.append(segment)
     return segments
 
 
