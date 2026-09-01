@@ -17,6 +17,7 @@
     "best-practices"
   ],
   "skills": "./skills/",
+  "commands": [],
   "interface": {
     "displayName": "Go Dev",
     "shortDescription": "Go-specific development tools with idiomatic best practices",

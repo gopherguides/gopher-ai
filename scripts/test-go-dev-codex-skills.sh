@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PLUGIN_DIR="$ROOT_DIR/plugins/go-dev"
+CODEX_MANIFEST="$PLUGIN_DIR/.codex-plugin/plugin.json"
 ADAPTER="$PLUGIN_DIR/lib/codex-command-adapter.md"
 VALIDATOR="$PLUGIN_DIR/scripts/validate-skills.py"
 WORKFLOW_SKILLS=(bench build-fix explain lint-fix profile refactor-clean test-gen verify)
@@ -14,6 +15,8 @@ fail() {
   printf 'FAIL: %s\n' "$1" >&2
   exit 1
 }
+
+jq -e '.commands == []' "$CODEX_MANIFEST" >/dev/null || fail "go-dev Codex manifest allows legacy command migration"
 
 frontmatter() {
   awk '
@@ -105,8 +108,8 @@ done
 
 [ -x "$VALIDATOR" ] || fail "validate-skills.py is missing or not executable"
 
-: "${TMPDIR:?TMPDIR must point to the Detent temporary directory}"
-FIXTURE_ROOT=$(mktemp -d "$TMPDIR/go-dev-codex-skills.XXXXXX")
+TEST_TMP_BASE="${TMPDIR:-/tmp}"
+FIXTURE_ROOT=$(mktemp -d "$TEST_TMP_BASE/go-dev-codex-skills.XXXXXX")
 mkdir -p "$FIXTURE_ROOT/plugins/example/commands" "$FIXTURE_ROOT/plugins/example/skills/example"
 
 VALID_FILE="$FIXTURE_ROOT/valid.md"
