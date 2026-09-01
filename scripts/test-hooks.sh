@@ -19,6 +19,7 @@ run_runtime_location_tests() {
   local cleanup_hook="$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh"
   local cache_api="$ROOT_DIR/plugins/gopher-guides/scripts/cache-api.sh"
   local cache_lock="$ROOT_DIR/plugins/gopher-guides/scripts/cache-lock.sh"
+  local cache_mutate="$ROOT_DIR/plugins/gopher-guides/scripts/cache-mutate.sh"
   local clear_cache="$ROOT_DIR/plugins/gopher-guides/commands/clear-cache.md"
   local clear_cache_script="$ROOT_DIR/plugins/gopher-guides/scripts/clear-cache.sh"
 
@@ -128,12 +129,15 @@ run_runtime_location_tests() {
   local cache_compatibility_work cache_compatibility_xdg cache_compatibility_target cache_compatibility_legacy
   local cache_compatibility_default_output cache_compatibility_legacy_output
   local cache_legacy_file cache_unrelated_file legacy_unrelated_file
-  local cache_lock_smoke cache_lock_smoke_output cache_lock_portable_output
+  local cache_lock_portable_cache cache_lock_smoke cache_lock_smoke_output
+  local cache_lock_portable_orphan_output
+  local cache_lock_portable_output cache_lock_portable_reused_output
   local cache_clear_race cache_clear_race_bin cache_clear_race_output cache_clear_race_ready
   local cache_clear_race_release cache_clear_writer_output cache_clear_writer_pid clear_attempt
   local clear_cache_command default_clear_output expected_default_clear_output override_clear_output
   local default_cache_valid=false override_cache_valid=false compatibility_cache_valid=false
-  local cache_lock_smoke_valid=false cache_lock_portable_valid=false
+  local cache_lock_smoke_valid=false cache_lock_portable_orphan_valid=false
+  local cache_lock_portable_reused_valid=false cache_lock_portable_valid=false
   local cache_clear_race_valid=false cache_clear_race_status=true
   local corrupt_cache_valid=false parallel_cache_valid=false parallel_status=true writer writer_pid
 
@@ -157,6 +161,7 @@ run_runtime_location_tests() {
   cache_unrelated_file="$cache_xdg/gopher-ai/unrelated.json"
   legacy_unrelated_file="$cache_fixture/work/.claude/settings.json"
   cache_lock_smoke="$cache_fixture/native-lock/cache.lock"
+  cache_lock_portable_cache="$cache_fixture/native-lock/portable-cache.json"
   cache_clear_race="$cache_fixture/clear-race/cache.json"
   cache_clear_race_bin="$cache_fixture/clear-race-bin"
   cache_clear_race_ready="$cache_fixture/clear-race-ready"
@@ -191,11 +196,33 @@ run_runtime_location_tests() {
      [ "$cache_lock_smoke_output" = native-lock ]; then
     cache_lock_smoke_valid=true
   fi
+  printf '%s\n' '{"old":true}' > "$cache_lock_portable_cache"
   if cache_lock_portable_output=$(GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
-       "$cache_lock" "$cache_lock_smoke" sh -c 'printf portable-lock') &&
-     [ "$cache_lock_portable_output" = portable-lock ] &&
+       "$cache_lock" "$cache_lock_smoke" "$cache_mutate" clear "$cache_lock_portable_cache") &&
+     [ -z "$cache_lock_portable_output" ] &&
+     [ ! -e "$cache_lock_portable_cache" ] &&
      [ ! -d "${cache_lock_smoke}.directory" ]; then
     cache_lock_portable_valid=true
+  fi
+  mkdir "${cache_lock_smoke}.directory"
+  printf '%s\n' stale > "${cache_lock_smoke}.directory/owner.99999999.1"
+  printf '%s\n' '{"old":true}' > "$cache_lock_portable_cache"
+  if cache_lock_portable_orphan_output=$(GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
+       "$cache_lock" "$cache_lock_smoke" "$cache_mutate" clear "$cache_lock_portable_cache") &&
+     [ -z "$cache_lock_portable_orphan_output" ] &&
+     [ ! -e "$cache_lock_portable_cache" ] &&
+     [ ! -d "${cache_lock_smoke}.directory" ]; then
+    cache_lock_portable_orphan_valid=true
+  fi
+  mkdir "${cache_lock_smoke}.directory"
+  printf '%s\n' stale > "${cache_lock_smoke}.directory/owner.$$.$RANDOM.$RANDOM"
+  printf '%s\n' '{"old":true}' > "$cache_lock_portable_cache"
+  if cache_lock_portable_reused_output=$(GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
+       "$cache_lock" "$cache_lock_smoke" "$cache_mutate" clear "$cache_lock_portable_cache") &&
+     [ -z "$cache_lock_portable_reused_output" ] &&
+     [ ! -e "$cache_lock_portable_cache" ] &&
+     [ ! -d "${cache_lock_smoke}.directory" ]; then
+    cache_lock_portable_reused_valid=true
   fi
 
   if GOPHER_GUIDES_API_KEY=test \
@@ -264,6 +291,7 @@ run_runtime_location_tests() {
   cache_parallel_pids=""
   for writer in 1 2 3 4 5 6 7 8; do
     PATH="$cache_parallel_bin:$PATH" \
+      GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
       GOPHER_GUIDES_API_KEY=test \
       GOPHER_GUIDES_CACHE_FILE="$cache_parallel" \
       CACHE_TEST_BARRIER="$cache_parallel_barrier" \
@@ -283,6 +311,7 @@ run_runtime_location_tests() {
 
   printf '%s\n' '{"old":true}' > "$cache_clear_race"
   PATH="$cache_clear_race_bin:$PATH" \
+    GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
     GOPHER_GUIDES_API_KEY=test \
     GOPHER_GUIDES_CACHE_FILE="$cache_clear_race" \
     CACHE_TEST_READY="$cache_clear_race_ready" \
@@ -298,6 +327,7 @@ run_runtime_location_tests() {
     sleep 0.01
   done
   cache_clear_race_output=$(GOPHER_GUIDES_CACHE_FILE="$cache_clear_race" \
+    GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
     XDG_CACHE_HOME="$cache_fixture/unused-xdg" HOME="$cache_home" \
     "$clear_cache_script") || cache_clear_race_status=false
   : > "$cache_clear_race_release"
@@ -335,6 +365,8 @@ run_runtime_location_tests() {
   if [ ! -e "$cache_missing_args_dir" ] &&
      [ ! -e "$cache_missing_key_dir" ] &&
      [ "$cache_lock_smoke_valid" = true ] &&
+     [ "$cache_lock_portable_orphan_valid" = true ] &&
+     [ "$cache_lock_portable_reused_valid" = true ] &&
      [ "$cache_lock_portable_valid" = true ] &&
      [ "$default_cache_valid" = true ] &&
      [ "$override_cache_valid" = true ] &&
