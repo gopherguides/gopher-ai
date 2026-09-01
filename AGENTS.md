@@ -17,7 +17,7 @@ The Codex plugin set currently includes `go-workflow`, `go-dev`, `gopher-guides`
 | `gopher-guides` | Gopher Guides training materials | clear-cache, gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | gemini, gemini-image, ollama, second-opinion |
 | `go-web` | Go web scaffolding (Templ + HTMX) | create-go-project, convert-to-go-project, templui, htmx |
-| `tailwind` | Tailwind CSS v4 tools | tailwind-best-practices |
+| `tailwind` | Tailwind CSS v4 tools | audit, init, migrate, optimize, tailwind-best-practices |
 
 ## Workflow Skills (go-workflow plugin)
 

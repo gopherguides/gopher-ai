@@ -4,23 +4,29 @@ Tailwind CSS v4 development tools for initialization, auditing, migration, and o
 
 ## Installation
 
+Claude Code:
+
 ```bash
 /plugin install tailwind@gopher-ai
 ```
 
-Or install via marketplace:
+Codex, after registering the gopher-ai marketplace:
+
 ```bash
-/plugin marketplace add gopherguides/gopher-ai
+codex plugin add tailwind@gopher-ai
 ```
 
-## Commands
+## Workflow surfaces
 
-| Command | Description |
-|---------|-------------|
-| `/tailwind-init [path]` | Initialize Tailwind v4 in an existing project |
-| `/tailwind-audit [path]` | Audit Tailwind usage for best practices |
-| `/tailwind-migrate` | Migrate from Tailwind v3 to v4 |
-| `/tailwind-optimize` | Analyze and optimize CSS output |
+| Workflow | Claude Code | Codex | Behavior |
+|----------|-------------|-------|----------|
+| Initialize | `/tailwind-init [path]` | `$tailwind:init [path]` | Explicit-only on Codex; installs and configures Tailwind v4 |
+| Audit | `/tailwind-audit [path] [options]` | `$tailwind:audit [path] [options]` | Read-only by default; `--fix` applies safe fixes |
+| Migrate | `/tailwind-migrate [options]` | `$tailwind:migrate [options]` | Explicit-only on Codex; `--check` previews without changes |
+| Optimize | `/tailwind-optimize [options]` | `$tailwind:optimize [options]` | Read-only by default; `--fix` applies safe optimizations |
+
+The Tailwind `cancel-loop` workflow remains intentionally unsupported on Codex
+because it controls Claude Code persistent-loop hooks.
 
 ## Skills (Auto-invoked)
 
@@ -83,7 +89,9 @@ npm install -D tailwindcss @tailwindcss/cli
   --color-primary-foreground: oklch(1 0 0);
 }
 
-@variant dark {
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark {
   --color-background: oklch(0.145 0 0);
   --color-foreground: oklch(0.985 0 0);
 }
@@ -106,7 +114,7 @@ npx @tailwindcss/cli -i input.css -o output.css --minify
 | `tailwind.config.js` | CSS `@theme { }` directive |
 | `@tailwind base/components/utilities` | `@import "tailwindcss"` |
 | `content: [...]` | `@source "..."` |
-| `darkMode: 'class'` | `@variant dark { }` |
+| `darkMode: 'class'` | `@custom-variant dark (...)` plus `.dark { }` overrides |
 
 ## Integration Options
 
@@ -117,6 +125,8 @@ npx @tailwindcss/cli -i input.css -o output.css --minify
 | PostCSS | `@tailwindcss/postcss` | Existing PostCSS pipelines |
 
 ## Examples
+
+Claude Code:
 
 ```bash
 # Initialize in current project
@@ -142,6 +152,17 @@ npx @tailwindcss/cli -i input.css -o output.css --minify
 
 # Generate detailed report
 /tailwind-optimize --report
+```
+
+Codex:
+
+```text
+$tailwind:init
+$tailwind:init ./my-app
+$tailwind:audit
+$tailwind:audit --fix
+$tailwind:migrate --check
+$tailwind:optimize --report
 ```
 
 ## Requirements
