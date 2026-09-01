@@ -3,8 +3,10 @@
 import json
 import os
 import re
+import resource
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -98,6 +100,7 @@ RUNTIME_VARIABLE_PATTERN = re.compile(
     + "|".join(RUNTIME_VARIABLES)
     + r")\b)"
 )
+EXECUTION_OUTPUT_LIMIT = 64 * 1024
 FENCE_START = re.compile(r"^\s*```(bash|sh|shell|zsh)(?:\s+[^`]*)?\s*$")
 FENCE_END = re.compile(r"^\s*```\s*$")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|\"[^\"]*\"|[^\s]*)\s*")
@@ -394,6 +397,13 @@ def command_tokens(segment):
         return ["<unparseable>"]
 
 
+def set_execution_output_limit():
+    resource.setrlimit(
+        resource.RLIMIT_FSIZE,
+        (EXECUTION_OUTPUT_LIMIT, EXECUTION_OUTPUT_LIMIT),
+    )
+
+
 def classify_block(block):
     tiers = []
     results = []
@@ -493,17 +503,43 @@ def execution_findings(block, script_path, tier, execution_root):
         "TMPDIR": str(execution_root),
         "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
     }
-    try:
-        completed = subprocess.run(
+    with tempfile.TemporaryFile() as captured:
+        process = subprocess.Popen(
             command,
             cwd=execution_root,
             env=environment,
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=captured,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            preexec_fn=set_execution_output_limit,
         )
-    except subprocess.TimeoutExpired:
+        try:
+            returncode = process.wait(timeout=5)
+            timed_out = False
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+            returncode = process.returncode
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        output_size = os.fstat(captured.fileno()).st_size
+        captured.seek(0)
+        output = captured.read(EXECUTION_OUTPUT_LIMIT).decode("utf-8", errors="replace")
+    if timed_out:
         return [
             finding(
                 block,
@@ -513,15 +549,25 @@ def execution_findings(block, script_path, tier, execution_root):
                 "Make the example bounded or classify it as syntax-check only.",
             )
         ]
-    if completed.returncode == 0:
+    if output_size >= EXECUTION_OUTPUT_LIMIT:
+        return [
+            finding(
+                block,
+                "warning",
+                "execution",
+                "GREEN-tier execution exceeded the 64 KiB output limit",
+                "Bound the example output or classify it as syntax-check only.",
+            )
+        ]
+    if returncode == 0:
         return []
-    output = clean_process_output(completed.stderr or completed.stdout, script_path)
+    output = clean_process_output(output, script_path)
     return [
         finding(
             block,
             "warning",
             "execution",
-            f"GREEN-tier execution failed with status {completed.returncode}: {output}",
+            f"GREEN-tier execution failed with status {returncode}: {output}",
             "Correct the example or move it to a syntax-check-only classification.",
         )
     ]

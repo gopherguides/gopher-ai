@@ -1,7 +1,7 @@
 ---
 name: explain
 description: "Explains targeted Go files, functions, or packages with focused diagrams and idiom analysis. Use when understanding existing Go code; do not use when implementation or refactoring is requested."
-argument-hint: "<file|function|package> [--json]"
+argument-hint: "<file|function|package>"
 ---
 
 # Explain

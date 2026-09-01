@@ -33,22 +33,6 @@ variables.
 If runtime variables found → skip execution, report as `info`: "Block
 contains plugin runtime variables — skipped execution."
 
-## Timeout Detection
-
-```bash
-if command -v gtimeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="gtimeout"
-elif command -v timeout >/dev/null 2>&1; then
-  TIMEOUT_CMD="timeout"
-else
-  TIMEOUT_CMD=""
-fi
-```
-
-If neither is available, skip execution and report as `info`: "No
-`timeout` or `gtimeout` available — skipping safe execution. Install
-coreutils for execution support."
-
 ## Execution Command
 
 Dispatch by language tag:
@@ -57,30 +41,31 @@ Dispatch by language tag:
 - `sh` → `sh` (POSIX mode, no `--restricted` flag — not supported by POSIX sh)
 - `zsh` → `zsh` if available, otherwise skip with info note
 
-```bash
-$TIMEOUT_CMD 5 env -i \
-  HOME=/tmp \
-  TMPDIR=/tmp \
-  PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
-  <shell-command> "$TMPDIR/block-NNN.sh" 2>&1
-```
+The Python helper launches the shell in a new process group with an isolated
+working directory and environment. It combines stdout and stderr in a regular
+temporary file, applies a 64 KiB `RLIMIT_FSIZE`, waits at most five seconds,
+and terminates the process group so background descendants cannot survive the
+validation.
 
 ## Guardrails
 
 | Guardrail | Mechanism | Why |
 |-----------|-----------|-----|
-| **Timeout** | 5s via `$TIMEOUT_CMD` | Prevent hangs from a misclassified block |
+| **Timeout** | 5s subprocess wait | Prevents hangs from a misclassified block |
+| **Output limit** | 64 KiB regular-file limit | Prevents unbounded output from exhausting memory or disk |
+| **Process ownership** | New process group, terminated after execution | Prevents background descendants from escaping validation |
 | **Restricted bash** | `bash --restricted` | Prevents `cd`, changing `PATH`, redirecting output to files outside `/tmp` |
 | **Clean environment** | `env -i` | No inherited secrets or developer-specific config (API keys, tokens) |
 | **PATH includes /opt/homebrew/bin** | Explicit PATH | Ensures Homebrew tools are available on Apple Silicon |
 | **Temporary working root** | Isolated `cwd`, `HOME`, and `TMPDIR` | Keeps incidental files out of the repository |
 | **Write prevention** | GREEN excludes commands with file-mutating modes | The shell environment is not a filesystem sandbox |
 
-Record exit code and any stderr output. Non-zero exit codes become
+Record the exit code and bounded combined output. Non-zero exit codes become
 `warning` findings.
 
 ## CRITICAL Rules
 
 - Never execute blocks classified as YELLOW or RED — see `classification.md`
 - Never execute blocks with unresolvable plugin runtime variables
+- Never buffer or store more than 64 KiB of execution output
 - The block-level tier is the most restrictive of any command on any line

@@ -89,6 +89,9 @@ for contract in \
   "\${CLAUDE_PLUGIN_ROOT}" \
   'native structured-input capability' \
   'native delegation capability' \
+  'selected the skill implicitly' \
+  'activating request' \
+  'neither an explicit argument' \
   'skip every' \
   '`setup-loop.sh`' \
   '`.local/state/*.loop.local.json`' \
@@ -125,6 +128,7 @@ COMMAND_FILE="$FIXTURE_ROOT/command.md"
 QUOTED_OPERATOR_FILE="$FIXTURE_ROOT/quoted-operator.md"
 CASE_FILE="$FIXTURE_ROOT/case.md"
 MUTATING_OPTION_FILE="$FIXTURE_ROOT/mutating-option.md"
+OUTPUT_LIMIT_FILE="$FIXTURE_ROOT/output-limit.md"
 RED_MARKER="$FIXTURE_ROOT/red-command-ran"
 UNKNOWN_MARKER="$FIXTURE_ROOT/unknown-command-ran"
 COMMAND_MARKER="$FIXTURE_ROOT/command-ran"
@@ -192,6 +196,12 @@ mktemp "$MUTATING_DIR/mktemp.XXXXXX"
 rg --pre 'touch "$MUTATING_DIR/rg-output"' pattern /dev/null
 sed -i.bak 's/original/changed/' "$MUTATING_DIR/sed-target"
 \`\`\`
+EOF
+
+cat > "$OUTPUT_LIMIT_FILE" <<'EOF'
+```bash
+cat /dev/zero
+```
 EOF
 
 cp "$VALID_FILE" "$FIXTURE_ROOT/plugins/example/commands/valid.md"
@@ -335,6 +345,20 @@ import sys
 report = json.loads(sys.argv[1])
 assert not any(
     finding["layer"] == "execution"
+    for finding in report["findings"]
+)
+PY
+
+OUTPUT_LIMIT_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json output-limit.md)
+python3 - "$OUTPUT_LIMIT_JSON" <<'PY'
+import json
+import sys
+
+report = json.loads(sys.argv[1])
+assert any(
+    finding["layer"] == "execution"
+    and finding["severity"] == "warning"
+    and "64 KiB output limit" in finding["finding"]
     for finding in report["findings"]
 )
 PY

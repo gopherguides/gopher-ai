@@ -10,10 +10,13 @@ Bind the invocation text to `SKILL_ARGS` without evaluating it:
 1. Preserve `SKILL_ARGS` when a parent workflow explicitly supplied it,
    including an explicitly empty value.
 2. On Claude Code, bind the injected `$ARGUMENTS` value.
-3. On Codex, find the exact qualified `$go-dev:<skill-name>` invocation that
-   activated the selected skill and bind only the text following that name.
-4. If the invocation has no attached text, bind `SKILL_ARGS` to an empty
-   string.
+3. On Codex with an explicit invocation, find the exact qualified
+   `$go-dev:<skill-name>` token and bind only the text following that name.
+4. When Codex selected the skill implicitly, derive the target and relevant
+   options from the activating request. For example, `explain
+   pkg/auth/login.go` binds `pkg/auth/login.go`.
+5. Bind `SKILL_ARGS` to an empty string only when neither an explicit argument
+   nor an implicit target or option is present.
 
 Treat every `$ARGUMENTS` or `${ARGUMENTS}` reference in the command body as a
 reference to `SKILL_ARGS`. Preserve whitespace and never read arguments from a
