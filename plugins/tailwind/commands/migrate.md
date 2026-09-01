@@ -38,6 +38,18 @@ Parse arguments:
 - `--keep-config` — keep old config file after migration (for reference)
 - `--backup` — create backup files before modifying
 
+## Read-only Preview (`--check`)
+
+When `--check` is present, capture the initial repository status, then follow
+Steps 1-3 to analyze the v3 project and generate proposed v4 content in the
+response. In Steps 4-7, describe the exact file, package, and configuration
+changes that normal migration mode would make without applying them.
+
+Do not edit files, install or remove dependencies, rename or delete configuration, or run a build that overwrites generated CSS. Skip mutation-specific questions and record the recommended old-config disposition as a preview item instead. Use the Preview Completion Criteria at the end of this workflow rather than the mutation criteria.
+
+Without `--check`, perform the migration and use the Migration Completion
+Criteria.
+
 ## Loop Initialization
 
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-migrate" "COMPLETE"; fi`
@@ -106,6 +118,9 @@ For hex → oklch conversion, use https://oklch.com/. Common conversions:
 | `#f59e0b` (amber-500) | `oklch(0.75 0.18 70)` |
 | `#ffffff` / `#000000` | `oklch(1 0 0)` / `oklch(0 0 0)` |
 
+With `--check`, render this proposed CSS in the report without writing it.
+Otherwise, write it to the selected CSS entry file.
+
 ## Step 4: Update CSS Files
 
 ```bash
@@ -120,7 +135,15 @@ Replace v3 directives:
 
 Existing `@apply` rules in your CSS continue to work unchanged.
 
+With `--check`, list every affected CSS file and its proposed replacements but
+do not edit it. Otherwise, apply the replacements.
+
 ## Step 5: Update package.json
+
+With `--check`, report the dependencies and scripts that would be removed,
+added, or changed. Do not run a package manager or edit `package.json`.
+
+Without `--check`, apply the matching integration method below.
 
 **CLI method (recommended for most projects):**
 
@@ -149,6 +172,10 @@ npm install -D tailwindcss@latest @tailwindcss/postcss@latest postcss
 
 ## Step 6: Handle PostCSS Config
 
+With `--check`, include the proposed configuration in the report without
+writing it. Otherwise, update the existing PostCSS configuration when the
+project uses that integration.
+
 ```js
 // v4
 export default {
@@ -162,6 +189,8 @@ export default {
 
 ## Step 7: Handle Old Config File
 
+With `--check`, report the recommended disposition and available alternatives
+without renaming or deleting the existing file. Otherwise, use
 `AskUserQuestion`: "Migration complete. What should we do with `tailwind.config.js`?"
 
 | Option | Description |
@@ -171,6 +200,13 @@ export default {
 | **Keep unchanged** | May cause confusion |
 
 ## Step 8: Verify
+
+With `--check`, verify that the proposed CSS contains the v4 import and theme
+directives, the proposed package set targets v4, and the final repository
+status matches the initial status. Do not run the CSS build because it may
+overwrite generated output.
+
+Without `--check`, run the migrated build:
 
 ```bash
 npm run css 2>&1 | head -20
@@ -184,7 +220,11 @@ Common errors:
 | `Cannot find module` | Plugin not v4 compatible |
 | `Invalid CSS` | Syntax error in `@theme` block |
 
-## Step 9: Migration Report
+## Step 9: Migration or Preview Report
+
+With `--check`, label the report `Tailwind v3 → v4 Migration Preview`, describe
+all proposed changes and unresolved choices, and state that no project files or
+dependencies were changed. Otherwise, use the completion report below.
 
 ```
 ## Tailwind v3 → v4 Migration Complete
@@ -222,6 +262,18 @@ Resources: https://tailwindcss.com/docs/upgrade-guide; https://oklch.com/
 - Test thoroughly after migration, especially dark mode and responsive designs
 
 ## Completion Criteria
+
+### Preview Completion Criteria
+
+When `--check` is present, do not output `<done>COMPLETE</done>` until ALL of
+these are TRUE:
+
+1. The v3 configuration and affected CSS files were parsed and analyzed
+2. Proposed CSS, dependency, script, PostCSS, and old-config changes were shown
+3. The preview report identifies unresolved plugin or color conversions
+4. No project files, dependencies, or generated CSS changed
+
+### Migration Completion Criteria
 
 DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 

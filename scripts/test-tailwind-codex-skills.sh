@@ -116,4 +116,10 @@ for example_file in \
   assert_contains "$example_file" '.dark {'
 done
 
+MIGRATE_COMMAND="$PLUGIN_DIR/commands/migrate.md"
+assert_contains "$MIGRATE_COMMAND" '## Read-only Preview (`--check`)'
+assert_contains "$MIGRATE_COMMAND" 'Do not edit files, install or remove dependencies, rename or delete configuration, or run a build that overwrites generated CSS.'
+assert_contains "$MIGRATE_COMMAND" '### Preview Completion Criteria'
+assert_contains "$MIGRATE_COMMAND" 'No project files, dependencies, or generated CSS changed'
+
 printf 'Tailwind Codex workflow skill tests passed.\n'
