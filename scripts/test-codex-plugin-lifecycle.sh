@@ -400,10 +400,11 @@ run_installer() {
         bash -c 'cd "$1" && exec bash "$2" --user' \
         _ "$TEST_ROOT" "$ROOT_DIR/scripts/install-codex.sh"
     installer_pid="$OWNED_PID"
-    set +e
-    wait "$installer_pid"
-    installer_status=$?
-    set -e
+    if wait "$installer_pid"; then
+        installer_status=0
+    else
+        installer_status=$?
+    fi
     unregister_pid "$installer_pid"
     if ! kill -0 -- "-$installer_pid" 2>/dev/null; then
         unregister_pgid "$installer_pid"
@@ -466,10 +467,11 @@ finish_session() {
     local watchdog_pid=$!
     register_pid "$watchdog_pid"
     local status
-    set +e
-    wait "$pid"
-    status=$?
-    set -e
+    if wait "$pid"; then
+        status=0
+    else
+        status=$?
+    fi
     unregister_pid "$pid"
     if ! kill -0 -- "-$pid" 2>/dev/null; then
         unregister_pgid "$pid"
