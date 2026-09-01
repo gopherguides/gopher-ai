@@ -124,13 +124,16 @@ run_runtime_location_tests() {
   local cache_parallel cache_parallel_bin cache_parallel_barrier cache_parallel_pids
   local cache_corrupt cache_corrupt_output
   local cache_abandoned cache_abandoned_output cache_reused cache_reused_output
+  local cache_clear_race cache_clear_race_output cache_clear_race_ready cache_clear_race_release
+  local cache_clear_pid cache_clear_writer_pid clear_attempt
   local cache_missing_args_dir cache_missing_key_dir
   local cache_compatibility_work cache_compatibility_xdg cache_compatibility_target cache_compatibility_legacy
   local cache_compatibility_default_output cache_compatibility_legacy_output
   local cache_legacy_file cache_unrelated_file legacy_unrelated_file
   local clear_cache_command default_clear_output expected_default_clear_output override_clear_output
   local default_cache_valid=false override_cache_valid=false compatibility_cache_valid=false
-  local abandoned_cache_valid=false corrupt_cache_valid=false parallel_cache_valid=false parallel_status=true reused_cache_valid=false writer writer_pid
+  local abandoned_cache_valid=false cache_clear_race_valid=false cache_clear_race_status=true
+  local cache_clear_waited=false corrupt_cache_valid=false parallel_cache_valid=false parallel_status=true reused_cache_valid=false writer writer_pid
   cache_fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-guides-cache.XXXXXX")
   cache_home="$cache_fixture/home"
   cache_xdg="$cache_fixture/xdg"
@@ -140,6 +143,9 @@ run_runtime_location_tests() {
   cache_corrupt="$cache_fixture/corrupt/cache.json"
   cache_abandoned="$cache_fixture/abandoned/cache.json"
   cache_reused="$cache_fixture/reused/cache.json"
+  cache_clear_race="$cache_fixture/clear-race/cache.json"
+  cache_clear_race_ready="$cache_fixture/clear-race/writer-ready"
+  cache_clear_race_release="$cache_fixture/clear-race/writer-release"
   cache_parallel="$cache_fixture/parallel/cache.json"
   cache_parallel_bin="$cache_fixture/parallel-bin"
   cache_parallel_barrier="$cache_fixture/parallel-barrier"
@@ -155,7 +161,8 @@ run_runtime_location_tests() {
   clear_cache_command=$(sed -n 's/^!`\(.*\)`$/\1/p' "$clear_cache")
   mkdir -p "$cache_home" "$cache_bin" "$cache_parallel_bin" "$cache_parallel_barrier" \
     "$cache_fixture/work" "$(dirname "$cache_corrupt")" "$(dirname "$cache_abandoned")" \
-    "$(dirname "$cache_reused")" "$(dirname "$cache_compatibility_legacy")"
+    "$(dirname "$cache_reused")" "$(dirname "$cache_clear_race")" \
+    "$(dirname "$cache_compatibility_legacy")"
   printf '%s\n' '#!/bin/sh' 'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' > "$cache_bin/curl"
   chmod +x "$cache_bin/curl"
   printf '%s\n' \
@@ -262,6 +269,52 @@ run_runtime_location_tests() {
      jq -e 'length == 8' "$cache_parallel" >/dev/null 2>&1; then
     parallel_cache_valid=true
   fi
+  printf '%s\n' '{"old":true}' > "$cache_clear_race"
+  (
+    writer_candidate="${cache_clear_race}.lock.writer"
+    printf '%s %s %s\n' "$$" "$(date +%s)" "$RANDOM" > "$writer_candidate"
+    ln "$writer_candidate" "${cache_clear_race}.lock"
+    : > "$cache_clear_race_ready"
+    while [ ! -e "$cache_clear_race_release" ]; do
+      sleep 0.01
+    done
+    printf '%s\n' '{"writer":true}' > "${cache_clear_race}.tmp.writer"
+    mv "${cache_clear_race}.tmp.writer" "$cache_clear_race"
+    rm -f "${cache_clear_race}.lock" "$writer_candidate"
+  ) &
+  cache_clear_writer_pid=$!
+  while [ ! -e "$cache_clear_race_ready" ] && kill -0 "$cache_clear_writer_pid" 2>/dev/null; do
+    sleep 0.01
+  done
+  GOPHER_GUIDES_CACHE_FILE="$cache_clear_race" \
+    XDG_CACHE_HOME="$cache_fixture/unused-xdg" HOME="$cache_home" \
+    "$clear_cache_script" > "$cache_fixture/clear-race/output" &
+  cache_clear_pid=$!
+  clear_attempt=0
+  while [ "$clear_attempt" -lt 100 ]; do
+    if [ -f "${cache_clear_race}.lock.${cache_clear_pid}" ]; then
+      cache_clear_waited=true
+      break
+    fi
+    if ! kill -0 "$cache_clear_pid" 2>/dev/null; then
+      break
+    fi
+    clear_attempt=$((clear_attempt + 1))
+    sleep 0.01
+  done
+  : > "$cache_clear_race_release"
+  wait "$cache_clear_writer_pid" || cache_clear_race_status=false
+  wait "$cache_clear_pid" || cache_clear_race_status=false
+  cache_clear_race_output=$(cat "$cache_fixture/clear-race/output")
+  if [ "$cache_clear_race_status" = true ] &&
+     [ "$cache_clear_waited" = true ] &&
+     [ ! -e "$cache_clear_race" ] &&
+     [ ! -e "${cache_clear_race}.lock" ] &&
+     ! compgen -G "${cache_clear_race}.lock.*" >/dev/null &&
+     ! compgen -G "${cache_clear_race}.tmp.*" >/dev/null &&
+     [ "$cache_clear_race_output" = "Gopher Guides cache cleared: $cache_clear_race" ]; then
+    cache_clear_race_valid=true
+  fi
   mkdir -p "$(dirname "$cache_legacy_file")"
   printf '%s\n' '{"legacy":true}' > "$cache_legacy_file"
   printf '%s\n' '{"keep":true}' > "$cache_unrelated_file"
@@ -287,6 +340,7 @@ run_runtime_location_tests() {
      [ "$override_cache_valid" = true ] &&
      [ "$compatibility_cache_valid" = true ] &&
      [ "$abandoned_cache_valid" = true ] &&
+     [ "$cache_clear_race_valid" = true ] &&
      [ "$corrupt_cache_valid" = true ] &&
      [ "$parallel_cache_valid" = true ] &&
      [ "$reused_cache_valid" = true ] &&
