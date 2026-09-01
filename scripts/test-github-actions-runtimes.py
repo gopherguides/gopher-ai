@@ -36,6 +36,7 @@ STEP_ALIAS_PATTERN = re.compile(
     r'''^(\s*)-\s*(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
     r'''\*[^\s,\[\]{}]+\s*(?:#.*)?$'''
 )
+YAML_ALIAS_PATTERN = re.compile(r'''^\*[^\s,\[\]{}]+\s*(?:#.*)?$''')
 ACTION_SCALAR_PATTERN = re.compile(
     r'''^(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)$''',
     re.IGNORECASE,
@@ -1052,6 +1053,17 @@ def cache_parser_failures():
         multiline_flow_lines, 1, parsed
     ):
         failures.append("cache parser missed multiline flow fixture")
+    alias_lines = [
+        "      - uses: actions/setup-node@v7",
+        "        with: *node-inputs",
+    ]
+    parsed = parse_action(alias_lines[0])
+    if action_cache_status(alias_lines, 0, parsed) != "alias":
+        failures.append("cache parser missed block input alias fixture")
+    flow_alias_line = "      - { uses: actions/setup-node@v7, with: *node-inputs }"
+    parsed = parse_action(flow_alias_line)
+    if action_cache_status([flow_alias_line], 0, parsed) != "alias":
+        failures.append("cache parser missed flow input alias fixture")
     return failures
 
 
@@ -1081,7 +1093,7 @@ def coverage_failures():
     ]
 
 
-def step_has_cache_disabled(lines, start, indentation, list_marker):
+def step_cache_status(lines, start, indentation, list_marker):
     step_start = start
     step_indentation = indentation
     step_key_indentation = indentation + 2 if list_marker else indentation
@@ -1108,8 +1120,10 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
         if with_indentation != step_key_indentation:
             continue
         with_value = SCALAR_PREFIX_PATTERN.sub("", with_entry[3], count=1).strip()
+        if YAML_ALIAS_PATTERN.fullmatch(with_value):
+            return "alias"
         if with_value.startswith("{"):
-            return flow_mapping_has_cache_disabled(with_value)
+            return flow_mapping_cache_status(with_value)
         if with_value and not with_value.startswith("#"):
             continue
 
@@ -1129,31 +1143,37 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
             if input_entry[2] == "package-manager-cache" and scalar_is_false(
                 input_entry[3]
             ):
-                return True
-    return False
+                return "disabled"
+    return "missing"
 
 
-def flow_step_has_cache_disabled(line):
+def flow_step_cache_status(line):
     flow_step = flow_step_mapping(line)
     if not flow_step:
-        return False
+        return "missing"
     with_value = flow_mapping_value(flow_step[1], "with")
-    return bool(with_value and flow_mapping_has_cache_disabled(with_value))
+    if with_value and YAML_ALIAS_PATTERN.fullmatch(with_value):
+        return "alias"
+    return flow_mapping_cache_status(with_value) if with_value else "missing"
 
 
-def flow_mapping_has_cache_disabled(value):
+def flow_mapping_cache_status(value):
     entries = parse_flow_mapping(value)
     if entries is None:
-        return False
+        return "missing"
     cache_value = flow_mapping_value(entries, "package-manager-cache")
-    return bool(cache_value and scalar_is_false(cache_value))
+    return "disabled" if cache_value and scalar_is_false(cache_value) else "missing"
+
+
+def action_cache_status(lines, start, parsed):
+    indentation, list_marker, _, _, flow_mapping_line = parsed
+    if flow_mapping_line:
+        return flow_step_cache_status(flow_mapping_line)
+    return step_cache_status(lines, start, len(indentation), list_marker)
 
 
 def action_has_cache_disabled(lines, start, parsed):
-    indentation, list_marker, _, _, flow_mapping_line = parsed
-    if flow_mapping_line:
-        return flow_step_has_cache_disabled(flow_mapping_line)
-    return step_has_cache_disabled(lines, start, len(indentation), list_marker)
+    return action_cache_status(lines, start, parsed) == "disabled"
 
 
 def main():
@@ -1228,9 +1248,14 @@ def main():
             if action == "actions/setup-node" and not action_has_cache_disabled(
                 scanned_lines, index, parsed
             ):
-                failures.append(
-                    f"{location}: setup-node must set package-manager-cache: false"
-                )
+                if action_cache_status(scanned_lines, index, parsed) == "alias":
+                    failures.append(
+                        f"{location}: setup-node input aliases are not supported"
+                    )
+                else:
+                    failures.append(
+                        f"{location}: setup-node must set package-manager-cache: false"
+                    )
 
     if discovered == 0:
         failures.append("no checkout, setup-go, or setup-node workflow actions found")
