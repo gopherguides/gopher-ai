@@ -19,34 +19,37 @@ Reference table of known review bots. Used ONLY for matching against bots actual
   `codex-pull-request-review-summary`. Confirm the commit displayed in that
   summary is the prefix of `PR_HEAD_SHA`, then load
   `repos/$REPO_SLUG/issues/comments/$COMMENT_ID/reactions`. A
-  connector-authored `+1` reaction or a summary body containing
-  `Didn’t find any major issues` is a clean-result signal. The clean-result
-  form must contain `Reviewed commit:` followed by a commit prefix matching
-  `PR_HEAD_SHA`. Either signal counts as current-head approval only when the
-  summary targets `PR_HEAD_SHA` and the connector has no unresolved inline
-  comments. Unresolved connector inline comments while that summary targets
-  `PR_HEAD_SHA` are actionable findings. A running summary, a clean-result
-  summary without matching reviewed-commit evidence, or a summary for another
-  commit is pending or stale and cannot satisfy approval. Re-trigger with
-  `@codex review`.
+  connector-authored `+1` reaction on that current-head summary is one approval
+  signal. Select the newest connector-authored issue comment containing
+  `Didn’t find any major issues` independently from the persistent summary.
+  That clean-result comment is a second approval signal only when it contains
+  `Reviewed commit:` followed by a commit prefix matching `PR_HEAD_SHA`.
+  Either signal counts as current-head approval only when the connector has no
+  unresolved inline comments. Unresolved connector inline comments are
+  actionable findings. A running summary, a clean-result comment without
+  matching reviewed-commit evidence, or a signal for another commit is pending
+  or stale and cannot satisfy approval. Re-trigger with `@codex review`.
 
 Evaluate the two approval forms independently, then apply the shared
 current-head and unresolved-thread requirements:
 
 ```bash
-CODEX_REVIEWED_COMMIT=$(sed -n 's/.*Reviewed commit:[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$CODEX_SUMMARY_BODY" | head -1)
-CODEX_CURRENT_HEAD=false
-if [ -n "$CODEX_REVIEWED_COMMIT" ] && [[ "$PR_HEAD_SHA" == "$CODEX_REVIEWED_COMMIT"* ]]; then
-  CODEX_CURRENT_HEAD=true
+CODEX_SUMMARY_COMMIT=$(sed -n 's/.*`\([0-9a-fA-F]\{7,40\}\)`.*/\1/p' <<< "$CODEX_SUMMARY_BODY" | head -1)
+CODEX_REACTION_APPROVED=false
+if [ -n "$CODEX_SUMMARY_COMMIT" ] && [[ "$PR_HEAD_SHA" == "$CODEX_SUMMARY_COMMIT"* ]] &&
+   jq -e 'any(.[]; .content == "+1" and .user.login == "chatgpt-codex-connector[bot]")' <<< "$CODEX_REACTIONS" >/dev/null; then
+  CODEX_REACTION_APPROVED=true
 fi
 
-CODEX_REACTION_APPROVED=$(jq -r '
-  any(.[];
-    .content == "+1" and
-    .user.login == "chatgpt-codex-connector[bot]")
-' <<< "$CODEX_REACTIONS")
+CODEX_CLEAN_RESULT_COMMENT=$(jq -c '[
+  .[]
+  | select(.user.login == "chatgpt-codex-connector[bot]")
+  | select(.body | contains("Didn’t find any major issues"))
+] | sort_by(.created_at) | last // empty' <<< "$ISSUE_COMMENTS")
+CODEX_CLEAN_RESULT_BODY=$(jq -r '.body // empty' <<< "$CODEX_CLEAN_RESULT_COMMENT")
+CODEX_REVIEWED_COMMIT=$(sed -n 's/.*Reviewed commit:[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$CODEX_CLEAN_RESULT_BODY" | head -1)
 CODEX_CLEAN_RESULT_APPROVED=false
-if grep -Fq 'Didn’t find any major issues' <<< "$CODEX_SUMMARY_BODY"; then
+if [ -n "$CODEX_REVIEWED_COMMIT" ] && [[ "$PR_HEAD_SHA" == "$CODEX_REVIEWED_COMMIT"* ]]; then
   CODEX_CLEAN_RESULT_APPROVED=true
 fi
 CODEX_UNRESOLVED_THREADS=$(jq '[
@@ -55,8 +58,7 @@ CODEX_UNRESOLVED_THREADS=$(jq '[
   | select(any(.comments.nodes[]?; .author.login == "chatgpt-codex-connector"))
 ] | length' <<< "$THREAD_RESULT")
 
-if [ "$CODEX_CURRENT_HEAD" = true ] &&
-   [ "$CODEX_UNRESOLVED_THREADS" -eq 0 ] &&
+if [ "$CODEX_UNRESOLVED_THREADS" -eq 0 ] &&
    { [ "$CODEX_REACTION_APPROVED" = true ] || [ "$CODEX_CLEAN_RESULT_APPROVED" = true ]; }; then
   echo "Codex connector approved the current head"
 fi
