@@ -129,11 +129,18 @@ QUOTED_OPERATOR_FILE="$FIXTURE_ROOT/quoted-operator.md"
 CASE_FILE="$FIXTURE_ROOT/case.md"
 MUTATING_OPTION_FILE="$FIXTURE_ROOT/mutating-option.md"
 OUTPUT_LIMIT_FILE="$FIXTURE_ROOT/output-limit.md"
+EXECUTABLE_PATH_FILE="$FIXTURE_ROOT/executable-path.md"
+PATH_ASSIGNMENT_FILE="$FIXTURE_ROOT/path-assignment.md"
+PATH_INLINE_FILE="$FIXTURE_ROOT/path-inline.md"
+PATH_EXPORT_FILE="$FIXTURE_ROOT/path-export.md"
+PRINTF_PATH_FILE="$FIXTURE_ROOT/printf-path.md"
 RED_MARKER="$FIXTURE_ROOT/red-command-ran"
 UNKNOWN_MARKER="$FIXTURE_ROOT/unknown-command-ran"
 COMMAND_MARKER="$FIXTURE_ROOT/command-ran"
 CASE_MARKER="$FIXTURE_ROOT/case-marker"
 MUTATING_DIR="$FIXTURE_ROOT/mutating-options"
+MALICIOUS_BIN="$FIXTURE_ROOT/malicious-bin"
+PATH_MARKER="$FIXTURE_ROOT/path-command-ran"
 
 cat > "$VALID_FILE" <<'EOF'
 ```bash
@@ -202,6 +209,46 @@ cat > "$OUTPUT_LIMIT_FILE" <<'EOF'
 ```bash
 cat /dev/zero
 ```
+EOF
+
+mkdir -p "$MALICIOUS_BIN"
+cat > "$MALICIOUS_BIN/cat" <<EOF
+#!/bin/sh
+printf '%s\n' ran > "$PATH_MARKER"
+EOF
+chmod +x "$MALICIOUS_BIN/cat"
+
+cat > "$EXECUTABLE_PATH_FILE" <<EOF
+\`\`\`sh
+"$MALICIOUS_BIN/cat"
+\`\`\`
+EOF
+
+cat > "$PATH_ASSIGNMENT_FILE" <<EOF
+\`\`\`sh
+PATH="$MALICIOUS_BIN:$PATH"
+cat /dev/null
+\`\`\`
+EOF
+
+cat > "$PATH_INLINE_FILE" <<EOF
+\`\`\`sh
+PATH="$MALICIOUS_BIN:$PATH" cat /dev/null
+\`\`\`
+EOF
+
+cat > "$PATH_EXPORT_FILE" <<EOF
+\`\`\`sh
+export PATH="$MALICIOUS_BIN:$PATH"
+cat /dev/null
+\`\`\`
+EOF
+
+cat > "$PRINTF_PATH_FILE" <<EOF
+\`\`\`bash
+printf -v PATH '%s' "$MALICIOUS_BIN:$PATH"
+cat /dev/null
+\`\`\`
 EOF
 
 cp "$VALID_FILE" "$FIXTURE_ROOT/plugins/example/commands/valid.md"
@@ -360,6 +407,30 @@ assert any(
     and finding["severity"] == "warning"
     and "64 KiB output limit" in finding["finding"]
     for finding in report["findings"]
+)
+PY
+
+EXECUTABLE_PATH_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json executable-path.md)
+PATH_ASSIGNMENT_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json path-assignment.md)
+PATH_INLINE_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json path-inline.md)
+PATH_EXPORT_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json path-export.md)
+PRINTF_PATH_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json printf-path.md)
+[ ! -e "$PATH_MARKER" ] || fail "untrusted executable path or PATH mutation was executed"
+python3 - "$EXECUTABLE_PATH_JSON" "$PATH_ASSIGNMENT_JSON" "$PATH_INLINE_JSON" "$PATH_EXPORT_JSON" "$PRINTF_PATH_JSON" <<'PY'
+import json
+import sys
+
+reports = [json.loads(value) for value in sys.argv[1:]]
+for report in reports[:3] + reports[4:]:
+    assert any(
+        finding["layer"] == "classification"
+        and finding["severity"] == "warning"
+        and "Unknown command classified conservatively" in finding["finding"]
+        for finding in report["findings"]
+    )
+assert not any(
+    finding["layer"] == "execution"
+    for finding in reports[3]["findings"]
 )
 PY
 

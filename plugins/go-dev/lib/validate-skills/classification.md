@@ -15,13 +15,13 @@ This prevents destructive commands from hiding behind a GREEN prefix
 ```
 echo, cat, grep, jq, ls, pwd, basename, dirname, wc, head, tail,
 tr, cut, printf, test, [, true, false, type, which, readlink, realpath,
-stat, comm, uniq, export
+stat, comm, uniq
 ```
 
 ## YELLOW — Conditionally Safe, Syntax Check Only
 
 ```
-awk, env, tee, date, diff, file, mktemp, rg, sed, sort,
+awk, env, export, tee, date, diff, file, mktemp, rg, sed, sort,
 find (without -exec, -delete, -execdir), git log,
 git status, git diff, git branch, git show, git rev-parse, git remote,
 curl (without pipe to sh/bash/eval), wget (without pipe to sh/bash/eval),
@@ -40,6 +40,10 @@ arbitrary code in test files.
 
 Shell compound commands that cannot be fully classified, including `case`,
 `for`, `select`, functions, and subshells, are RED and never executed.
+Environment assignments and executable tokens containing a path separator are
+also RED. GREEN execution trusts only bare command names resolved from the
+helper's fixed clean `PATH`. `printf -v` is RED because it can mutate `PATH`
+without assignment syntax.
 
 ## RED — Never Execute, Report as Warning
 

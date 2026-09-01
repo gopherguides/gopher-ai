@@ -23,7 +23,6 @@ GREEN_COMMANDS = {
     "cut",
     "dirname",
     "echo",
-    "export",
     "false",
     "grep",
     "head",
@@ -50,6 +49,7 @@ YELLOW_COMMANDS = {
     "diff",
     "docker",
     "env",
+    "export",
     "file",
     "find",
     "gh",
@@ -103,7 +103,6 @@ RUNTIME_VARIABLE_PATTERN = re.compile(
 EXECUTION_OUTPUT_LIMIT = 64 * 1024
 FENCE_START = re.compile(r"^\s*```(bash|sh|shell|zsh)(?:\s+[^`]*)?\s*$")
 FENCE_END = re.compile(r"^\s*```\s*$")
-ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|\"[^\"]*\"|[^\s]*)\s*")
 
 
 @dataclass(frozen=True)
@@ -386,7 +385,6 @@ def command_tokens(segment):
     while True:
         previous = text
         text = re.sub(r"^(?:if|then|elif|else|while|until|do|!)\s+", "", text)
-        text = ASSIGNMENT.sub("", text)
         if text == previous:
             break
     if not text or re.match(r"^(?:fi|done|esac|for|select|case|function|\{|\})\b", text):
@@ -423,7 +421,15 @@ def classify_block(block):
         tokens = command_tokens(segment)
         if not tokens:
             continue
-        command = Path(tokens[0]).name
+        command = tokens[0]
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", command):
+            unknown.add("environment assignment")
+            tiers.append("red")
+            continue
+        if "/" in command:
+            unknown.add("executable path")
+            tiers.append("red")
+            continue
         if command == "git":
             subcommand = next((token for token in tokens[1:] if not token.startswith("-")), "")
             if subcommand in RED_GIT_COMMANDS or (
@@ -438,6 +444,9 @@ def classify_block(block):
                 tiers.append("red")
         elif command in RED_COMMANDS:
             red.add(command)
+            tiers.append("red")
+        elif command == "printf" and any(token.startswith("-v") for token in tokens[1:]):
+            unknown.add("printf -v")
             tiers.append("red")
         elif command in YELLOW_COMMANDS:
             tiers.append("yellow")
