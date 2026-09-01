@@ -432,6 +432,145 @@ else
   echo "OK"
 fi
 
+echo -n "Start-issue binds default orchestration to the active surface... "
+START_ISSUE_ORCHESTRATION="$ROOT_DIR/plugins/go-workflow/lib/start-issue/orchestrated-workflow.md"
+START_ISSUE_DISPATCH=$(awk '
+  /^## Surface Dispatch Decision$/ { active = 1; next }
+  active && /^## / { exit }
+  active { print }
+' "$START_ISSUE_SKILL")
+START_ISSUE_PROMPT_CONTRACT=$(awk '
+  /^## Reusable Prompt Contract$/ { active = 1; next }
+  active && /^## / { exit }
+  active { print }
+' "$START_ISSUE_ORCHESTRATION")
+START_ISSUE_CLAUDE_BINDING=$(awk '
+  /^### Claude Code binding$/ { active = 1; next }
+  active && /^### / { exit }
+  active { print }
+' "$START_ISSUE_ORCHESTRATION")
+START_ISSUE_CODEX_BINDING=$(awk '
+  /^### Codex binding$/ { active = 1; next }
+  active && /^### / { exit }
+  active { print }
+' "$START_ISSUE_ORCHESTRATION")
+START_ISSUE_FLAG_PARSER=$(awk '
+  /^## Security Validation & Flag Parsing$/ { section = 1; next }
+  section && /^```bash$/ { code = 1; next }
+  code && /^```$/ { exit }
+  code { print }
+' "$START_ISSUE_SKILL")
+START_ISSUE_DEFAULT_PARSE=$(SKILL_ARGS="328" bash -euo pipefail -c \
+  "$START_ISSUE_FLAG_PARSER"$'\n''printf "PARSED:%s:%s\n" "$ISSUE_NUM" "$NO_AGENTS"')
+START_ISSUE_MANUAL_PARSE=$(SKILL_ARGS="328 --no-agents" bash -euo pipefail -c \
+  "$START_ISSUE_FLAG_PARSER"$'\n''printf "PARSED:%s:%s\n" "$ISSUE_NUM" "$NO_AGENTS"')
+START_ISSUE_PARSER_LINE=$(awk '/^## Security Validation & Flag Parsing$/ { print NR; exit }' "$START_ISSUE_SKILL")
+START_ISSUE_FLAG_STORE_LINE=$(awk '/^- `NO_AGENTS`:/{ print NR; exit }' "$START_ISSUE_SKILL")
+START_ISSUE_DISPATCH_LINE=$(awk '/^## Surface Dispatch Decision$/ { print NR; exit }' "$START_ISSUE_SKILL")
+START_ISSUE_SURFACE_FAILURE=""
+
+record_start_issue_surface_failure() {
+  if [ -z "$START_ISSUE_SURFACE_FAILURE" ]; then
+    START_ISSUE_SURFACE_FAILURE="$1"
+  else
+    START_ISSUE_SURFACE_FAILURE="$START_ISSUE_SURFACE_FAILURE; $1"
+  fi
+}
+
+case "$START_ISSUE_DEFAULT_PARSE" in
+  *$'\nPARSED:328:false'|PARSED:328:false) ;;
+  *) record_start_issue_surface_failure "default parser did not bind ISSUE_NUM=328 and NO_AGENTS=false" ;;
+esac
+
+case "$START_ISSUE_MANUAL_PARSE" in
+  *$'\nPARSED:328:true'|PARSED:328:true) ;;
+  *) record_start_issue_surface_failure "--no-agents parser did not bind ISSUE_NUM=328 and NO_AGENTS=true" ;;
+esac
+
+if [ -z "$START_ISSUE_PARSER_LINE" ] || [ -z "$START_ISSUE_FLAG_STORE_LINE" ] ||
+   [ -z "$START_ISSUE_DISPATCH_LINE" ] ||
+   [ "$START_ISSUE_DISPATCH_LINE" -le "$START_ISSUE_PARSER_LINE" ] ||
+   [ "$START_ISSUE_DISPATCH_LINE" -le "$START_ISSUE_FLAG_STORE_LINE" ]; then
+  record_start_issue_surface_failure "dispatch decision occurs before NO_AGENTS is parsed and stored"
+fi
+
+case "$START_ISSUE_DISPATCH" in
+  *'explain why native orchestration is unavailable'*) ;;
+  *) record_start_issue_surface_failure "fallback does not explain why native orchestration is unavailable" ;;
+esac
+
+for required in 'NO_AGENTS=true' 'manual-workflow.md' 'NO_AGENTS=false' 'Codex' 'native delegation capability' 'orchestrated-workflow.md'; do
+  case "$START_ISSUE_DISPATCH" in
+    *"$required"*) ;;
+    *)
+    START_ISSUE_SURFACE_FAILURE="dispatch decision is missing '$required'"
+    break
+    ;;
+  esac
+done
+
+if [ -z "$START_ISSUE_SURFACE_FAILURE" ]; then
+  for required in 'Explore' 'Implementer' 'Spec Review' 'Quality Review' 'subagent_type'; do
+    case "$START_ISSUE_CLAUDE_BINDING" in
+      *"$required"*) ;;
+      *)
+      START_ISSUE_SURFACE_FAILURE="Claude binding is missing '$required'"
+      break
+      ;;
+    esac
+  done
+fi
+
+if [ -z "$START_ISSUE_SURFACE_FAILURE" ]; then
+  for required in 'Explore' 'Implementer' 'Spec Review' 'Quality Review' '`explorer`' '`worker`' '`default`' 'synchronously'; do
+    case "$START_ISSUE_CODEX_BINDING" in
+      *"$required"*) ;;
+      *)
+      START_ISSUE_SURFACE_FAILURE="Codex binding is missing '$required'"
+      break
+      ;;
+    esac
+  done
+fi
+
+if [ -z "$START_ISSUE_SURFACE_FAILURE" ] &&
+   [[ "$START_ISSUE_CODEX_BINDING" =~ subagent_type|haiku|sonnet|CLAUDE_CODE_SUBAGENT_MODEL ]]; then
+  START_ISSUE_SURFACE_FAILURE="Codex binding contains Claude-only dispatch or model controls"
+fi
+
+if [ -z "$START_ISSUE_SURFACE_FAILURE" ]; then
+  for required in 'Markdown body' 'frontmatter' 'surface-neutral'; do
+    case "$START_ISSUE_PROMPT_CONTRACT" in
+      *"$required"*) ;;
+      *)
+      START_ISSUE_SURFACE_FAILURE="reusable prompt contract is missing '$required'"
+      break
+      ;;
+    esac
+  done
+fi
+
+for prompt_file in \
+  "$ROOT_DIR/plugins/go-workflow/agents/explore-prompt.md" \
+  "$ROOT_DIR/plugins/go-workflow/agents/implementer-prompt.md" \
+  "$ROOT_DIR/plugins/go-workflow/agents/spec-review-prompt.md" \
+  "$ROOT_DIR/plugins/go-workflow/agents/quality-review-prompt.md"; do
+  PROMPT_MARKDOWN_BODY=$(awk '
+    /^---$/ { separators += 1; next }
+    separators >= 2 { print }
+  ' "$prompt_file")
+  if [[ "$PROMPT_MARKDOWN_BODY" =~ Grep|Glob|subagent_type|CLAUDE_CODE_SUBAGENT_MODEL|haiku|sonnet ]]; then
+    record_start_issue_surface_failure "$(basename "$prompt_file") Markdown body contains surface-specific term '${BASH_REMATCH[0]}'"
+  fi
+done
+
+if [ -n "$START_ISSUE_SURFACE_FAILURE" ]; then
+  echo "FAIL ($START_ISSUE_SURFACE_FAILURE)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Address-review stages only fix-cycle files... "
 ADDRESS_REVIEW_FIX_CYCLE="$ROOT_DIR/plugins/go-workflow/skills/address-review/fix-cycle.md"
 if file_contains 'git add -A' "$ADDRESS_REVIEW_FIX_CYCLE"; then

@@ -40,12 +40,14 @@ The component workflow skills are user-only. Do not call them with the Skill
 tool. Load their `SKILL.md` files with Read and execute their instructions
 directly with the arguments specified below.
 
-The `$go-workflow:start-issue` phase owns subagent model tiering through agent prompt
-frontmatter: Explore uses Haiku, Spec Review and Quality Review use Sonnet,
-and Implementer inherits the parent session model. To override all subagent
-models for a run, set `CLAUDE_CODE_SUBAGENT_MODEL=<model>` before invoking
-`$go-workflow:complete-issue`; pass `--no-agents` through to run the start phase without
-subagents.
+The `$go-workflow:start-issue` phase owns its surface-aware dispatch decision.
+Claude Code orchestration uses the custom agent definitions and their model
+frontmatter; `CLAUDE_CODE_SUBAGENT_MODEL=<model>` overrides those models for a
+Claude Code run. Codex orchestration maps the reusable prompt bodies to its
+built-in delegation profiles and inherits the active Codex model, reasoning
+effort, and configuration. When those native profiles are unavailable, Codex
+uses the single-session start workflow. Pass `--no-agents` through to select
+that workflow explicitly on either surface.
 
 ## Parse Arguments
 
