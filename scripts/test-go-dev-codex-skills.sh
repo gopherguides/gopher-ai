@@ -192,6 +192,7 @@ printf '%s\n' \
   'continued|value'
 printf '%s\n' value # ignored | command
 printf '%s\n' 'left>right'
+printf '%s\n' '$(rm -rf /)'
 ```
 EOF
 
@@ -266,6 +267,7 @@ cat > "$SEMANTIC_REVIEW_FILE" <<'EOF'
 DEFINED=value
 printf '%s\n' "$DEFINED"
 printf '%s\n' $UNDEFINED
+printf '%s\n' "$(printf '%s' "$HOME")"
 curl -s https://example.invalid | jq .
 gh issue list | head -n 1
 ```
@@ -517,7 +519,7 @@ assert any(
     for finding in read_write_redirection["findings"]
 )
 messages = [finding["finding"] for finding in semantic["findings"]]
-assert any("Unquoted variable expansion" in message and "UNDEFINED" in message for message in messages)
+assert "Unquoted variable expansion may split or glob: UNDEFINED" in messages
 assert any("used before definition" in message and "UNDEFINED" in message for message in messages)
 assert "Variables are used before definition or documentation: DEFINED" not in messages
 assert any("without HTTP failure checking" in message for message in messages)

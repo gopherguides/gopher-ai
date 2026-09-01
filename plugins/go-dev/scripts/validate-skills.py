@@ -537,6 +537,11 @@ def has_write_redirection(code):
     return False
 
 
+def has_executable_substitution(code):
+    _, substitutions = shell_contexts(code)
+    return bool(substitutions)
+
+
 def command_segments(code):
     segments = []
     current = []
@@ -617,7 +622,7 @@ def classify_block(block):
     results = []
     unknown = set()
     red = set()
-    if re.search(r"\$\(|`[^`]+`|[<>]\(", code):
+    if has_executable_substitution(code):
         unknown.add("command substitution")
         tiers.append("red")
     if has_write_redirection(code):
@@ -789,24 +794,91 @@ def execution_findings(block, script_path, tier, execution_root):
     ]
 
 
+def shell_contexts(code):
+    states = [None] * len(code)
+    substitutions = []
+
+    def skip_backtick(index, outer_quote):
+        states[index] = outer_quote
+        index += 1
+        escaped = False
+        while index < len(code):
+            states[index] = "'"
+            if escaped:
+                escaped = False
+            elif code[index] == "\\":
+                escaped = True
+            elif code[index] == "`":
+                return index + 1
+            index += 1
+        return index
+
+    def scan(index, stop_at_parenthesis=False, depth=0):
+        if depth > 64:
+            return len(code)
+        quote = None
+        parenthesis_depth = 0
+        while index < len(code):
+            character = code[index]
+            states[index] = quote
+            if quote == "'":
+                if character == "'":
+                    quote = None
+                index += 1
+                continue
+            if character == "\\":
+                if index + 1 < len(code):
+                    states[index + 1] = quote
+                index += 2
+                continue
+            if quote == '"':
+                if character == '"':
+                    quote = None
+                    index += 1
+                    continue
+                if code.startswith("$(", index):
+                    substitutions.append(index)
+                    states[index + 1] = quote
+                    index = scan(index + 2, stop_at_parenthesis=True, depth=depth + 1)
+                    continue
+                if character == "`":
+                    substitutions.append(index)
+                    index = skip_backtick(index, quote)
+                    continue
+                index += 1
+                continue
+            if character == "'":
+                quote = "'"
+                index += 1
+                continue
+            if character == '"':
+                quote = '"'
+                index += 1
+                continue
+            if code.startswith("$(", index) or code.startswith("<(", index) or code.startswith(">(", index):
+                substitutions.append(index)
+                states[index + 1] = quote
+                index = scan(index + 2, stop_at_parenthesis=True, depth=depth + 1)
+                continue
+            if character == "`":
+                substitutions.append(index)
+                index = skip_backtick(index, quote)
+                continue
+            if stop_at_parenthesis and character == "(":
+                parenthesis_depth += 1
+            elif stop_at_parenthesis and character == ")":
+                if parenthesis_depth == 0:
+                    return index + 1
+                parenthesis_depth -= 1
+            index += 1
+        return index
+
+    scan(0)
+    return states, substitutions
+
+
 def shell_quote_states(code):
-    states = []
-    quote = None
-    escaped = False
-    for character in code:
-        states.append(quote)
-        if escaped:
-            escaped = False
-            continue
-        if character == "\\" and quote != "'":
-            escaped = True
-            continue
-        if quote:
-            if character == quote:
-                quote = None
-            continue
-        if character in {"'", '"'}:
-            quote = character
+    states, _ = shell_contexts(code)
     return states
 
 
