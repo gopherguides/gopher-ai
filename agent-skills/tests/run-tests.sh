@@ -142,6 +142,36 @@ else
     fail "install.sh: still references old .github/skills/ path"
 fi
 
+header "CI Workflow Validation"
+
+CI_WORKFLOW="${AGENT_SKILLS_CI_WORKFLOW:-$ROOT_DIR/../.github/workflows/agent-skills-ci.yml}"
+SETUP_GO_COUNT=$(rg -c 'uses: actions/setup-go@v5' "$CI_WORKFLOW" || true)
+PINNED_GO_COUNT=$(rg -c "go-version: '1\.26\.7'" "$CI_WORKFLOW" || true)
+
+if [[ "$SETUP_GO_COUNT" -gt 0 && "$PINNED_GO_COUNT" == "$SETUP_GO_COUNT" ]]; then
+    pass "agent-skills CI: all setup-go steps use Go 1.26.7"
+else
+    fail "agent-skills CI: expected every setup-go step pinned to Go 1.26.7 (found $SETUP_GO_COUNT steps, $PINNED_GO_COUNT pins)"
+fi
+
+DEMO_JOB=$(sed -n '/^  test-demo-repo:/,/^  [a-z][a-z-]*:$/p' "$CI_WORKFLOW")
+VULN_SCAN_STEP_COUNT=$(rg -c '^      - name: Scan demo repo for vulnerabilities$' <<< "$DEMO_JOB" || true)
+VULN_SCAN_STEP=$(awk '
+    capture && (/^      - / || /^  [^ ]/) { exit }
+    /^      - name: Scan demo repo for vulnerabilities$/ { capture = 1 }
+    capture { print }
+' <<< "$DEMO_JOB")
+if rg -q 'go install golang.org/x/vuln/cmd/govulncheck@v1\.7\.0' <<< "$DEMO_JOB" && \
+   [[ "$VULN_SCAN_STEP_COUNT" == "1" ]] && \
+   rg -q '^        working-directory: agent-skills/examples/demo-repo$' <<< "$VULN_SCAN_STEP" && \
+   rg -q '^        run: govulncheck \./\.\.\.$' <<< "$VULN_SCAN_STEP" && \
+   ! rg -q '^[[:space:]]+continue-on-error:' <<< "$VULN_SCAN_STEP" && \
+   ! rg -q '\|\|[[:space:]]*true' <<< "$VULN_SCAN_STEP"; then
+    pass "agent-skills CI: demo repo has a hard govulncheck scan"
+else
+    fail "agent-skills CI: demo repo missing hard govulncheck scan"
+fi
+
 # ── Demo Repo Validation ────────────────────────────────────────────
 
 header "Demo Repo Validation"
