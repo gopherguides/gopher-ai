@@ -9,7 +9,7 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | Platform | Status | Install Method |
 |----------|--------|----------------|
 | **Claude Code** | Full support | Plugin marketplace |
-| **OpenAI Codex CLI** | 6 plugins; capabilities vary | Repo-local, installer script, or manual |
+| **OpenAI Codex CLI** | 6 plugins; capabilities vary | Repository-backed, user-wide, or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
 Shipped surface: 36 Claude Code commands across 7 plugins; 20 Codex skills across 6 plugins; 8 optional Codex MCP tools.
@@ -71,15 +71,24 @@ git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
 ./scripts/install-codex.sh --user
 
-# Repo-local install — plugins available only when running Codex inside this repo:
-codex   # Plugins load automatically from .agents/plugins/marketplace.json
-
-# Add the marketplace to another repo (project-scoped, like the gopher-ai repo itself):
+# Repository-backed staging and activation for a new gopher-ai catalog:
 ./scripts/install-codex.sh --repo /path/to/your-repo
+codex plugin marketplace add /path/to/your-repo
+codex plugin add go-dev@gopher-ai
+codex plugin add go-web@gopher-ai
+codex plugin add go-workflow@gopher-ai
+codex plugin add gopher-guides@gopher-ai
+codex plugin add llm-tools@gopher-ai
+codex plugin add tailwind@gopher-ai
 ```
 
-**Pick one mode.** `--user` and `--repo`-when-cwd'd-into-our-repo will both load the
-plugins, so having both active doubles the skill metadata Codex loads. The
+`--repo` copies the plugins and writes a marketplace catalog; the catalog alone
+does not enable anything. The follow-up commands enable the plugins throughout
+the active `CODEX_HOME`, not only while Codex runs in that repository. Do not
+combine repository-backed activation and `--user` in the same `CODEX_HOME`.
+If the target already has a named marketplace catalog, run the commands printed
+by the installer; they use the preserved catalog name instead of `gopher-ai`.
+Use a dedicated `CODEX_HOME` for an isolated repository-backed setup. The
 SessionStart hook on the Claude Code side auto-removes stale unmarked installs
 from earlier README versions and clears any stale gopher-ai marketplace cache
 when a marked global install is present.
@@ -307,11 +316,11 @@ SHELL=/bin/bash claude
 
 Plugins are distributed via the [Codex plugin system](https://developers.openai.com/codex/plugins). Each plugin contains skills that activate automatically or can be invoked explicitly.
 
-**Repo-local discovery:** Codex reads `.agents/plugins/marketplace.json` on startup and syncs plugins automatically. Use `/plugins` to browse and manage installed plugins. Plugins with `.codex-plugin/plugin.json` are packaged for Codex. Today that set is `go-workflow`, `go-dev`, `gopher-guides`, `llm-tools`, `go-web`, and `tailwind`. The repo's `productivity` module remains Claude-only.
+**Repository-backed catalog:** `.agents/plugins/marketplace.json` describes the available plugins but does not enable them by cwd. Use `/plugins` to browse and manage plugins after registering the marketplace and activating them in the current `CODEX_HOME`. Plugins with `.codex-plugin/plugin.json` are packaged for Codex. Today that set is `go-workflow`, `go-dev`, `gopher-guides`, `llm-tools`, `go-web`, and `tailwind`. The repo's `productivity` module remains Claude-only.
 
 **Codex model defaults:** The `llm-tools` Codex commands omit `-m` by default so Codex CLI chooses its provider default. If `~/.codex/config.toml` contains a `model = "..."` line, that local pin overrides the provider default for every llm-tools Codex call that omits `-m`; leave it unset to keep using the latest recommended Codex model.
 
-**Install into another repo:** `./scripts/install-codex.sh --repo /path/to/your-repo` copies the current plugin set and merges entries into that repo's `.agents/plugins/marketplace.json` without removing unrelated plugin entries.
+**Stage in another repo:** `./scripts/install-codex.sh --repo /path/to/your-repo` copies the current plugin set and merges entries into that repo's `.agents/plugins/marketplace.json` without removing unrelated plugin entries. It then prints the marketplace registration command and all six `codex plugin add` commands required to activate the staged plugins, using the merged catalog's actual name in each selector. Those commands modify the active `CODEX_HOME`, so use either this repository-backed source or `--user` in a given home, never both. Set a dedicated `CODEX_HOME` when the activation must be isolated from your normal Codex setup.
 
 **GitHub one-liner:** `bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"` auto-detects all platforms — installs Claude Code and Gemini, and installs Codex plugins globally so skills load in every Codex session. The Codex install registers or upgrades the gopher-ai marketplace, then runs `codex plugin add <plugin>@gopher-ai` for all six Codex-capable plugins. Codex owns the cache publication and plugin enablement; the installer does not write private cache roots or `config.toml` plugin entries.
 

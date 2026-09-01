@@ -31,11 +31,28 @@ gopher-ai for Codex can be installed in two ways:
                 older installs (with --yes semantics — assumes the user wants
                 the migration).
 
-  --repo PATH   Install plugins into PATH/plugins and merge entries into
-                PATH/.agents/plugins/marketplace.json. Use this for project-
-                scoped installs where you want the plugins to load only when
-                running Codex inside that repo. Also runs the legacy
-                ~/.codex/skills/ cleanup.
+  --repo PATH   Stage plugins in PATH/plugins and merge entries into
+                PATH/.agents/plugins/marketplace.json. This marketplace file
+                is a catalog only; it does not enable plugins by working
+                directory. Also runs the legacy ~/.codex/skills/ cleanup.
+
+                After staging, the installer prints the exact activation
+                commands. For a new catalog named gopher-ai, they are:
+                  codex plugin marketplace add /path/to/repo
+                  codex plugin add go-dev@gopher-ai
+                  codex plugin add go-web@gopher-ai
+                  codex plugin add go-workflow@gopher-ai
+                  codex plugin add gopher-guides@gopher-ai
+                  codex plugin add llm-tools@gopher-ai
+                  codex plugin add tailwind@gopher-ai
+
+                If PATH already has a named marketplace catalog, its name is
+                preserved and used in the printed plugin selectors.
+
+                These commands enable plugins in the active CODEX_HOME, not
+                only in PATH. Do not combine this repository-backed source
+                with --user in the same CODEX_HOME. Set a dedicated CODEX_HOME
+                when repository isolation is required.
 
   --cleanup     Remove legacy gopher-ai skills from ~/.codex/skills/ left over
                 from the old `--user` mode (which copied skills there). Two
@@ -813,6 +830,29 @@ write_repo_marketplace() {
     echo "updated marketplace: $marketplace_file"
 }
 
+print_repo_activation_instructions() {
+    local target_repo="$1"
+    local marketplace_name
+
+    marketplace_name="$(jq -er '.name' "$target_repo/.agents/plugins/marketplace.json")"
+
+    echo ""
+    echo "repository staging complete. The marketplace file is a catalog only; it does not enable plugins."
+    echo "Run these commands to enable all Gopher AI plugins in the active CODEX_HOME:"
+    printf '  codex plugin marketplace add %q\n' "$target_repo"
+
+    local plugin_dir
+    for plugin_dir in "$ROOT_DIR"/plugins/*; do
+        [[ -d "$plugin_dir" ]] || continue
+        [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
+        printf '  codex plugin add %q\n' "$(basename "$plugin_dir")@$marketplace_name"
+    done
+
+    echo "These activations apply throughout that CODEX_HOME, not only in $target_repo."
+    echo "Do not combine this repository-backed source with --user in the same CODEX_HOME."
+    echo "Use a dedicated CODEX_HOME when repository isolation is required."
+}
+
 main() {
     case "${1:-}" in
         --help|-h)
@@ -856,6 +896,7 @@ main() {
             write_repo_marketplace "$target_repo"
             # --repo is itself an explicit migration action; auto-confirm cleanup.
             cleanup_legacy_user_skills "true"
+            print_repo_activation_instructions "$target_repo"
             ;;
         *)
             usage >&2
