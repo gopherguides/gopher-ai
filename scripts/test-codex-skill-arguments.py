@@ -3,9 +3,11 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -101,6 +103,27 @@ def run_codex(env, cwd, *args):
     )
 
 
+def cleanup_temp_tree(
+    path,
+    *,
+    attempts=20,
+    delay=0.1,
+    remove=shutil.rmtree,
+    pause=time.sleep,
+    path_exists=lambda candidate: candidate.exists(),
+):
+    for attempt in range(attempts):
+        try:
+            remove(path)
+            return
+        except OSError as error:
+            if isinstance(error, FileNotFoundError) and not path_exists(path):
+                return
+            if attempt == attempts - 1:
+                raise
+            pause(delay)
+
+
 def assert_static_contract():
     argument_contract = " ".join(
         (WORKFLOW_ROOT / "lib/skill-arguments.md")
@@ -163,6 +186,62 @@ def assert_static_contract():
             )
 
 
+def assert_cleanup_retry_contract():
+    path = Path("fixture")
+    attempts = []
+    pauses = []
+
+    def transient_remove(candidate):
+        attempts.append(candidate)
+        if len(attempts) < 3:
+            raise OSError("directory not empty")
+
+    cleanup_temp_tree(
+        path,
+        attempts=3,
+        delay=0.25,
+        remove=transient_remove,
+        pause=pauses.append,
+    )
+    if attempts != [path, path, path] or pauses != [0.25, 0.25]:
+        raise AssertionError("temporary tree cleanup did not retry bounded failures")
+
+    descendant_attempts = []
+    descendant_pauses = []
+
+    def descendant_disappears(candidate):
+        descendant_attempts.append(candidate)
+        if len(descendant_attempts) == 1:
+            raise FileNotFoundError("descendant disappeared")
+
+    cleanup_temp_tree(
+        path,
+        attempts=2,
+        delay=0.25,
+        remove=descendant_disappears,
+        pause=descendant_pauses.append,
+        path_exists=lambda _: True,
+    )
+    if descendant_attempts != [path, path] or descendant_pauses != [0.25]:
+        raise AssertionError("temporary tree cleanup accepted a missing descendant")
+
+    def persistent_remove(candidate):
+        raise OSError(f"cannot remove {candidate}")
+
+    try:
+        cleanup_temp_tree(
+            path,
+            attempts=2,
+            delay=0,
+            remove=persistent_remove,
+            pause=lambda _: None,
+        )
+    except OSError:
+        pass
+    else:
+        raise AssertionError("temporary tree cleanup suppressed a persistent failure")
+
+
 def run_live_probe(env, workspace, provider, skill_name, invocation):
     request_offset = len(ProbeResponsesHandler.request_bodies)
     run_codex(
@@ -210,6 +289,7 @@ def main():
     args = parser.parse_args()
 
     assert_static_contract()
+    assert_cleanup_retry_contract()
     if args.static_only:
         print("Workflow skill argument contract checks passed.")
         return
@@ -220,8 +300,11 @@ def main():
     server_thread.start()
 
     temp_base = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
-    with tempfile.TemporaryDirectory(prefix="gopher-ai-skill-arguments-", dir=temp_base) as root:
-        test_root = Path(root)
+    test_root = None
+    try:
+        test_root = Path(
+            tempfile.mkdtemp(prefix="gopher-ai-skill-arguments-", dir=temp_base)
+        )
         codex_home = test_root / ".codex"
         workspace = test_root / "workspace"
         codex_home.mkdir()
@@ -244,12 +327,14 @@ def main():
 
         run_codex(env, test_root, "plugin", "marketplace", "add", str(ROOT_DIR), "--json")
         run_codex(env, test_root, "plugin", "add", "go-workflow@gopher-ai", "--json")
-        try:
-            for skill_name, invocation in PROBES:
-                run_live_probe(env, workspace, provider, skill_name, invocation)
-        finally:
-            server.shutdown()
-            server.server_close()
+        for skill_name, invocation in PROBES:
+            run_live_probe(env, workspace, provider, skill_name, invocation)
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=5)
+        if test_root is not None:
+            cleanup_temp_tree(test_root)
 
     print("Codex skill argument probes passed: positional argument and flag.")
 

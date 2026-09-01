@@ -10,6 +10,7 @@ ERRORS=0
 echo "=== Command File Tests ==="
 
 bash "$ROOT_DIR/scripts/test-review-plan.sh"
+bash "$ROOT_DIR/scripts/test-codex-compatibility-lanes.sh"
 bash "$ROOT_DIR/scripts/test-codex-review-model.sh"
 bash "$ROOT_DIR/scripts/test-ship-ollama-model.sh"
 bash "$ROOT_DIR/scripts/test-review-deep-actions.sh"
