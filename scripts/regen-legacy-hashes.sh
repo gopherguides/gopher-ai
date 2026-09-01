@@ -55,7 +55,7 @@ fi
 
 # Refuse to run on a shallow clone — it would silently produce a manifest
 # missing historical SKILL.md hashes that are precisely what the migration
-# needs. CI runners (e.g. actions/checkout@v4) default to shallow.
+# needs. CI runners (e.g. actions/checkout@v7) default to shallow.
 if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null)" == "true" ]]; then
     cat >&2 <<'EOF'
 error: this is a shallow git clone. The manifest must be built from the FULL
