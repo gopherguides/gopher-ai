@@ -60,8 +60,9 @@ validation.
 | **Temporary working root** | Isolated `cwd`, `HOME`, and `TMPDIR` | Keeps incidental files out of the repository |
 | **Write prevention** | GREEN excludes commands with file-mutating modes | The shell environment is not a filesystem sandbox |
 
-Record the exit code and bounded combined output. Non-zero exit codes become
-`warning` findings.
+Record the exit code and bounded combined-output byte count, then discard the
+output contents. Non-zero exit codes become `warning` findings without
+including process output, which could contain data read from the host.
 
 ## CRITICAL Rules
 

@@ -100,6 +100,32 @@ RUNTIME_VARIABLE_PATTERN = re.compile(
     + "|".join(RUNTIME_VARIABLES)
     + r")\b)"
 )
+KNOWN_SHELL_VARIABLES = {
+    "BASH_SOURCE",
+    "CI",
+    "EUID",
+    "HOME",
+    "HOSTNAME",
+    "IFS",
+    "LANG",
+    "LINENO",
+    "OLDPWD",
+    "OPTARG",
+    "OPTIND",
+    "PATH",
+    "PPID",
+    "PWD",
+    "RANDOM",
+    "REPLY",
+    "SECONDS",
+    "SHELL",
+    "SHLVL",
+    "TERM",
+    "TMPDIR",
+    "UID",
+    "USER",
+    "_",
+}.union(RUNTIME_VARIABLES)
 EXECUTION_OUTPUT_LIMIT = 64 * 1024
 FENCE_START = re.compile(r"^\s*```(bash|sh|shell|zsh)(?:\s+[^`]*)?\s*$")
 FENCE_END = re.compile(r"^\s*```\s*$")
@@ -328,6 +354,128 @@ def syntax_findings(block, script_path):
     return results
 
 
+def heredoc_specifiers(line):
+    specifiers = []
+    quote = None
+    escaped = False
+    index = 0
+    while index < len(line):
+        character = line[index]
+        if escaped:
+            escaped = False
+            index += 1
+            continue
+        if character == "\\" and quote != "'":
+            escaped = True
+            index += 1
+            continue
+        if quote:
+            if character == quote:
+                quote = None
+            index += 1
+            continue
+        if character in {"'", '"'}:
+            quote = character
+            index += 1
+            continue
+        if character == "#" and (
+            index == 0 or line[index - 1].isspace() or line[index - 1] in ";&|(){}<>"
+        ):
+            break
+        if not line.startswith("<<", index) or line.startswith("<<<", index):
+            index += 1
+            continue
+        index += 2
+        strip_tabs = index < len(line) and line[index] == "-"
+        if strip_tabs:
+            index += 1
+        while index < len(line) and line[index] in {" ", "\t"}:
+            index += 1
+        delimiter = []
+        while index < len(line):
+            character = line[index]
+            if character in " \t\r\n;&|<>()":
+                break
+            if character in {"'", '"'}:
+                delimiter_quote = character
+                index += 1
+                while index < len(line) and line[index] != delimiter_quote:
+                    delimiter.append(line[index])
+                    index += 1
+                if index < len(line):
+                    index += 1
+                continue
+            if character == "\\" and index + 1 < len(line):
+                delimiter.append(line[index + 1])
+                index += 2
+                continue
+            delimiter.append(character)
+            index += 1
+        if delimiter:
+            specifiers.append(("".join(delimiter), strip_tabs))
+    return specifiers
+
+
+def without_heredoc_bodies(code):
+    pending = []
+    retained = []
+    for line in code.splitlines(keepends=True):
+        content = line.rstrip("\r\n")
+        if pending:
+            delimiter, strip_tabs = pending[0]
+            candidate = content.lstrip("\t") if strip_tabs else content
+            if candidate == delimiter:
+                pending.pop(0)
+            retained.append("\n" if line.endswith(("\n", "\r")) else "")
+            continue
+        retained.append(line)
+        pending.extend(heredoc_specifiers(content))
+    return "".join(retained)
+
+
+def without_shell_comments(code):
+    retained = []
+    quote = None
+    escaped = False
+    index = 0
+    while index < len(code):
+        character = code[index]
+        if escaped:
+            retained.append(character)
+            escaped = False
+            index += 1
+            continue
+        if character == "\\" and quote != "'":
+            retained.append(character)
+            escaped = True
+            index += 1
+            continue
+        if quote:
+            retained.append(character)
+            if character == quote:
+                quote = None
+            index += 1
+            continue
+        if character in {"'", '"'}:
+            retained.append(character)
+            quote = character
+            index += 1
+            continue
+        if character == "#" and (
+            not retained or retained[-1].isspace() or retained[-1] in ";&|(){}<>"
+        ):
+            while index < len(code) and code[index] not in "\r\n":
+                index += 1
+            continue
+        retained.append(character)
+        index += 1
+    return "".join(retained)
+
+
+def shell_code_projection(code):
+    return without_shell_comments(without_heredoc_bodies(code))
+
+
 def command_segments(code):
     segments = []
     current = []
@@ -403,17 +551,18 @@ def set_execution_output_limit():
 
 
 def classify_block(block):
+    code = shell_code_projection(block.code)
     tiers = []
     results = []
     unknown = set()
     red = set()
-    if re.search(r"\$\(|`[^`]+`|[<>]\(", block.code):
+    if re.search(r"\$\(|`[^`]+`|[<>]\(", code):
         unknown.add("command substitution")
         tiers.append("red")
-    if re.search(r"(?:^|[^<])>{1,2}(?:[^&]|$)", block.code, re.MULTILINE):
+    if re.search(r"(?:^|[^<])>{1,2}(?:[^&]|$)", code, re.MULTILINE):
         unknown.add("output redirection")
         tiers.append("red")
-    for segment in command_segments(block.code):
+    for segment in command_segments(code):
         if re.match(r"^\s*(?:[({]|case\b|for\b|select\b|function\b)", segment):
             unknown.add("compound command")
             tiers.append("red")
@@ -456,7 +605,7 @@ def classify_block(block):
             unknown.add(command)
             tiers.append("red")
 
-    if re.search(r"\b(?:curl|wget)\b[^\n|]*\|\s*(?:sh|bash|eval|exec)\b", block.code):
+    if re.search(r"\b(?:curl|wget)\b[^\n|]*\|\s*(?:sh|bash|eval|exec)\b", code):
         red.add("pipe to shell")
         tiers.append("red")
     for command in sorted(red):
@@ -579,7 +728,179 @@ def execution_findings(block, script_path, tier, execution_root):
     ]
 
 
+def shell_quote_states(code):
+    states = []
+    quote = None
+    escaped = False
+    for character in code:
+        states.append(quote)
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and quote != "'":
+            escaped = True
+            continue
+        if quote:
+            if character == quote:
+                quote = None
+            continue
+        if character in {"'", '"'}:
+            quote = character
+    return states
+
+
+def variable_references(code, states):
+    references = []
+    index = 0
+    while index < len(code):
+        backslashes = 0
+        previous = index - 1
+        while previous >= 0 and code[previous] == "\\":
+            backslashes += 1
+            previous -= 1
+        if code[index] != "$" or states[index] == "'" or backslashes % 2:
+            index += 1
+            continue
+        braced = re.match(r"\$\{([A-Za-z_][A-Za-z0-9_]*)([^}]*)\}", code[index:])
+        plain = re.match(r"\$([A-Za-z_][A-Za-z0-9_]*)", code[index:])
+        match = braced or plain
+        if not match:
+            index += 1
+            continue
+        tail = match.group(2) if braced else ""
+        references.append(
+            {
+                "name": match.group(1),
+                "position": index,
+                "unquoted": states[index] is None,
+                "defaulted": bool(re.match(r"^:?[+?=\-]", tail)),
+            }
+        )
+        index += len(match.group(0))
+    return references
+
+
+def variable_definition_positions(code, states):
+    positions = {}
+    patterns = (
+        r"(?<![-\w$])([A-Za-z_][A-Za-z0-9_]*)=",
+        r"\b(?:for|select|read|local|declare|typeset)\s+(?:-[A-Za-z]+\s+)*([A-Za-z_][A-Za-z0-9_]*)\b",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, code):
+            position = match.start(1)
+            if states[position] is None:
+                positions.setdefault(match.group(1), []).append(position)
+    return positions
+
+
+def semantic_variable_findings(block, code):
+    states = shell_quote_states(code)
+    references = variable_references(code, states)
+    definitions = variable_definition_positions(code, states)
+    unquoted = sorted({reference["name"] for reference in references if reference["unquoted"]})
+    undefined = sorted(
+        {
+            reference["name"]
+            for reference in references
+            if reference["name"] not in KNOWN_SHELL_VARIABLES
+            and not reference["defaulted"]
+            and not any(
+                position < reference["position"]
+                for position in definitions.get(reference["name"], [])
+            )
+        }
+    )
+    results = []
+    if unquoted:
+        results.append(
+            finding(
+                block,
+                "warning",
+                "review",
+                f"Unquoted variable expansion may split or glob: {', '.join(unquoted)}",
+                "Double-quote expansions unless intentional splitting is required.",
+            )
+        )
+    if undefined:
+        results.append(
+            finding(
+                block,
+                "warning",
+                "review",
+                f"Variables are used before definition or documentation: {', '.join(undefined)}",
+                "Assign each variable earlier, use a documented runtime variable, or provide an explicit default.",
+            )
+        )
+    return results
+
+
+def external_output_findings(block, code):
+    results = []
+    pipefail = bool(re.search(r"\bset\s+(?:-[^\n]*o\s+pipefail|-o\s+pipefail)\b", code))
+    for line in code.splitlines():
+        curl_json = re.search(r"\bcurl\b([^|\n]*)\|\s*jq\b", line)
+        if curl_json and not re.search(r"(?:^|\s)(?:-f\b|--fail(?:-with-body)?\b)", curl_json.group(1)):
+            results.append(
+                finding(
+                    block,
+                    "warning",
+                    "review",
+                    "curl output is parsed as JSON without HTTP failure checking",
+                    "Use --fail or --fail-with-body and handle request failures before parsing JSON.",
+                )
+            )
+        direct_json = re.search(r"\b(curl|gh|git|go|docker|npm|npx)\b[^|\n]*\|\s*jq\b", line)
+        if direct_json and not pipefail and not re.search(r"^\s*if\b|\|\|\s*\S|&&\s*\S", line):
+            results.append(
+                finding(
+                    block,
+                    "warning",
+                    "review",
+                    f"{direct_json.group(1)} output is piped to jq without pipeline error handling",
+                    "Enable pipefail or check the producer and parser statuses explicitly.",
+                )
+            )
+        parsed = re.search(
+            r"\b(gh|git)\b([^|\n]*)\|\s*(?:awk|sed|cut|head|tail|rg|grep)\b",
+            line,
+        )
+        if parsed:
+            options = parsed.group(2)
+            stable = re.search(r"(?:--json|--format|--template|--jq|--porcelain|--pretty(?:=|\s+format))\b", options)
+            if not stable:
+                results.append(
+                    finding(
+                        block,
+                        "warning",
+                        "review",
+                        f"{parsed.group(1)} human-readable output is parsed without a stable format option",
+                        "Request structured or explicitly formatted output before parsing it.",
+                    )
+                )
+        first_line = re.search(
+            r"\b(curl|gh|git|go|docker|npm|npx)\b([^|\n]*)\|\s*"
+            r"(?:head\s+(?:-n\s*)?1\b|sed\s+[^|\n]*1p\b|awk\s+[^|\n]*NR\s*==\s*1)",
+            line,
+        )
+        if first_line and not re.search(
+            r"(?:--json|--format|--template|--jq|--porcelain|--pretty(?:=|\s+format))\b",
+            first_line.group(2),
+        ):
+            results.append(
+                finding(
+                    block,
+                    "warning",
+                    "review",
+                    f"{first_line.group(1)} first-line output may include banners or progress text",
+                    "Request a stable machine-readable field instead of selecting the first display line.",
+                )
+            )
+    return results
+
+
 def review_findings(block):
+    code = shell_code_projection(block.code)
     checks = (
         (
             r"\bmktemp\s+\S*X{6}\.[A-Za-z0-9]+",
@@ -619,8 +940,10 @@ def review_findings(block):
     )
     results = []
     for pattern, message, fix in checks:
-        if re.search(pattern, block.code, re.MULTILINE):
+        if re.search(pattern, code, re.MULTILINE):
             results.append(finding(block, "warning", "review", message, fix))
+    results.extend(semantic_variable_findings(block, code))
+    results.extend(external_output_findings(block, code))
     return results
 
 

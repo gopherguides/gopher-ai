@@ -131,6 +131,8 @@ MUTATING_OPTION_FILE="$FIXTURE_ROOT/mutating-option.md"
 OUTPUT_LIMIT_FILE="$FIXTURE_ROOT/output-limit.md"
 CONTROL_FLOW_FILE="$FIXTURE_ROOT/control-flow.md"
 FAILED_EXECUTION_FILE="$FIXTURE_ROOT/failed-execution.md"
+HEREDOC_FILE="$FIXTURE_ROOT/heredoc.md"
+SEMANTIC_REVIEW_FILE="$FIXTURE_ROOT/semantic-review.md"
 EXECUTABLE_PATH_FILE="$FIXTURE_ROOT/executable-path.md"
 PATH_ASSIGNMENT_FILE="$FIXTURE_ROOT/path-assignment.md"
 PATH_INLINE_FILE="$FIXTURE_ROOT/path-inline.md"
@@ -228,6 +230,25 @@ cat > "$FAILED_EXECUTION_FILE" <<'EOF'
 ```bash
 printf '%s\n' codex-validator-sensitive-output
 false
+```
+EOF
+
+cat > "$HEREDOC_FILE" <<'MARKDOWN'
+```bash
+cat <<'EOF'
+rm -rf /
+printf '%s\n' $UNDEFINED
+EOF
+```
+MARKDOWN
+
+cat > "$SEMANTIC_REVIEW_FILE" <<'EOF'
+```bash
+DEFINED=value
+printf '%s\n' "$DEFINED"
+printf '%s\n' $UNDEFINED
+curl -s https://example.invalid | jq .
+gh issue list | head -n 1
 ```
 EOF
 
@@ -448,6 +469,28 @@ assert any(
     for finding in failed_execution["findings"]
 )
 assert "codex-validator-sensitive-output" not in sys.argv[2]
+PY
+
+HEREDOC_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json heredoc.md)
+SEMANTIC_REVIEW_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json semantic-review.md)
+python3 - "$HEREDOC_JSON" "$SEMANTIC_REVIEW_JSON" <<'PY'
+import json
+import sys
+
+heredoc = json.loads(sys.argv[1])
+semantic = json.loads(sys.argv[2])
+assert not any(
+    finding["layer"] in {"classification", "review"}
+    for finding in heredoc["findings"]
+)
+messages = [finding["finding"] for finding in semantic["findings"]]
+assert any("Unquoted variable expansion" in message and "UNDEFINED" in message for message in messages)
+assert any("used before definition" in message and "UNDEFINED" in message for message in messages)
+assert "Variables are used before definition or documentation: DEFINED" not in messages
+assert any("without HTTP failure checking" in message for message in messages)
+assert any("piped to jq without pipeline error handling" in message for message in messages)
+assert any("human-readable output" in message for message in messages)
+assert any("first-line output" in message for message in messages)
 PY
 
 EXECUTABLE_PATH_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json executable-path.md)
