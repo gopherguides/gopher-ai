@@ -704,6 +704,16 @@ def classify_block(block):
 def execution_findings(block, script_path, tier, execution_root):
     if tier != "green":
         return []
+    if block.language == "zsh":
+        return [
+            finding(
+                block,
+                "info",
+                "execution",
+                "zsh blocks are syntax-check only — skipped execution",
+                "Run the block manually in a trusted environment when behavior validation is required.",
+            )
+        ]
     if RUNTIME_VARIABLE_PATTERN.search(block.code):
         return [
             finding(
@@ -913,17 +923,54 @@ def variable_references(code, states):
     return references
 
 
+def command_spans(code, states):
+    spans = []
+    start = 0
+    for index, character in enumerate(code):
+        if states[index] is None and character in ";|&\n":
+            if code[start:index].strip():
+                spans.append((start, index, code[start:index]))
+            start = index + 1
+    if code[start:].strip():
+        spans.append((start, len(code), code[start:]))
+    return spans
+
+
 def variable_definition_positions(code, states):
     positions = {}
-    patterns = (
-        r"(?<![-\w$])([A-Za-z_][A-Za-z0-9_]*)=",
-        r"\b(?:for|select|read|local|declare|typeset)\s+(?:-[A-Za-z]+\s+)*([A-Za-z_][A-Za-z0-9_]*)\b",
-    )
-    for pattern in patterns:
-        for match in re.finditer(pattern, code):
-            position = match.start(1)
-            if states[position] is None:
-                positions.setdefault(match.group(1), []).append(position)
+    control_keywords = {"!", "do", "elif", "else", "if", "then", "until", "while"}
+    declaration_commands = {"declare", "export", "local", "readonly", "typeset"}
+    for _, end, segment in command_spans(code, states):
+        try:
+            tokens = shlex.split(segment, comments=True, posix=True)
+        except ValueError:
+            continue
+        while tokens and tokens[0] in control_keywords:
+            tokens.pop(0)
+        if not tokens:
+            continue
+        assignment_names = []
+        while tokens:
+            assignment = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=", tokens[0])
+            if not assignment:
+                break
+            assignment_names.append(assignment.group(1))
+            tokens.pop(0)
+        if not tokens:
+            for name in assignment_names:
+                positions.setdefault(name, []).append(end)
+            continue
+        command = tokens.pop(0)
+        names = []
+        if command in declaration_commands:
+            names = [token.split("=", 1)[0] for token in tokens if not token.startswith("-")]
+        elif command == "read":
+            names = [token for token in tokens if not token.startswith("-") and not token.isdigit()]
+        elif command in {"for", "select"} and tokens:
+            names = [tokens[0]]
+        for name in names:
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+                positions.setdefault(name, []).append(end)
     return positions
 
 

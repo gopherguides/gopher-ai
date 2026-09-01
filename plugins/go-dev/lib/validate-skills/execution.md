@@ -39,7 +39,7 @@ Dispatch by language tag:
 
 - `bash` or `shell` → `bash --restricted`
 - `sh` → `sh` (POSIX mode, no `--restricted` flag — not supported by POSIX sh)
-- `zsh` → `zsh` if available, otherwise skip with info note
+- `zsh` → syntax check only; never execute untrusted zsh expansions
 
 The Python helper launches the shell in a new process group with an isolated
 working directory and environment. It combines stdout and stderr in a regular
@@ -55,6 +55,7 @@ validation.
 | **Output limit** | 64 KiB regular-file limit | Prevents unbounded output from exhausting memory or disk |
 | **Process ownership** | New process group, terminated after execution | Prevents background descendants from escaping validation |
 | **Restricted bash** | `bash --restricted` | Prevents `cd`, changing `PATH`, redirecting output to files outside `/tmp` |
+| **zsh syntax only** | Never dispatch zsh blocks | zsh glob qualifiers and expansion flags can execute embedded shell code |
 | **Clean environment** | `env -i` | No inherited secrets or developer-specific config (API keys, tokens) |
 | **PATH includes /opt/homebrew/bin** | Explicit PATH | Ensures Homebrew tools are available on Apple Silicon |
 | **Temporary working root** | Isolated `cwd`, `HOME`, and `TMPDIR` | Keeps incidental files out of the repository |

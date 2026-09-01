@@ -135,6 +135,7 @@ HEREDOC_FILE="$FIXTURE_ROOT/heredoc.md"
 UNQUOTED_HEREDOC_FILE="$FIXTURE_ROOT/unquoted-heredoc.md"
 READ_WRITE_REDIRECTION_FILE="$FIXTURE_ROOT/read-write-redirection.md"
 SEMANTIC_REVIEW_FILE="$FIXTURE_ROOT/semantic-review.md"
+ZSH_EXECUTION_FILE="$FIXTURE_ROOT/zsh-execution.md"
 EXECUTABLE_PATH_FILE="$FIXTURE_ROOT/executable-path.md"
 PATH_ASSIGNMENT_FILE="$FIXTURE_ROOT/path-assignment.md"
 PATH_INLINE_FILE="$FIXTURE_ROOT/path-inline.md"
@@ -149,6 +150,7 @@ MALICIOUS_BIN="$FIXTURE_ROOT/malicious-bin"
 PATH_MARKER="$FIXTURE_ROOT/path-command-ran"
 HEREDOC_MARKER="$FIXTURE_ROOT/heredoc-command-ran"
 READ_WRITE_MARKER="$FIXTURE_ROOT/read-write-redirection-ran"
+ZSH_MARKER="$FIXTURE_ROOT/zsh-command-ran"
 
 cat > "$VALID_FILE" <<'EOF'
 ```bash
@@ -266,11 +268,21 @@ cat > "$SEMANTIC_REVIEW_FILE" <<'EOF'
 ```bash
 DEFINED=value
 printf '%s\n' "$DEFINED"
+printf '%s\n' FOO=value
+printf '%s\n' "$FOO"
+export DECLARED=value
+printf '%s\n' "$DECLARED"
 printf '%s\n' $UNDEFINED
 printf '%s\n' "$(printf '%s' "$HOME")"
 curl -s https://example.invalid | jq .
 gh issue list | head -n 1
 ```
+EOF
+
+cat > "$ZSH_EXECUTION_FILE" <<EOF
+\`\`\`zsh
+printf '%s\n' /dev/null(e:'touch "$ZSH_MARKER"':)
+\`\`\`
 EOF
 
 mkdir -p "$MALICIOUS_BIN"
@@ -496,9 +508,11 @@ HEREDOC_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json heredoc.md)
 UNQUOTED_HEREDOC_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json unquoted-heredoc.md)
 READ_WRITE_REDIRECTION_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json read-write-redirection.md)
 SEMANTIC_REVIEW_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json semantic-review.md)
+ZSH_EXECUTION_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json zsh-execution.md)
 [ ! -e "$HEREDOC_MARKER" ] || fail "unquoted heredoc command substitution was executed"
 [ ! -e "$READ_WRITE_MARKER" ] || fail "read-write redirection was executed"
-python3 - "$HEREDOC_JSON" "$UNQUOTED_HEREDOC_JSON" "$READ_WRITE_REDIRECTION_JSON" "$SEMANTIC_REVIEW_JSON" <<'PY'
+[ ! -e "$ZSH_MARKER" ] || fail "zsh expansion was executed"
+python3 - "$HEREDOC_JSON" "$UNQUOTED_HEREDOC_JSON" "$READ_WRITE_REDIRECTION_JSON" "$SEMANTIC_REVIEW_JSON" "$ZSH_EXECUTION_JSON" <<'PY'
 import json
 import sys
 
@@ -506,6 +520,7 @@ heredoc = json.loads(sys.argv[1])
 unquoted_heredoc = json.loads(sys.argv[2])
 read_write_redirection = json.loads(sys.argv[3])
 semantic = json.loads(sys.argv[4])
+zsh_execution = json.loads(sys.argv[5])
 assert not any(
     finding["layer"] in {"classification", "review"}
     for finding in heredoc["findings"]
@@ -520,12 +535,17 @@ assert any(
 )
 messages = [finding["finding"] for finding in semantic["findings"]]
 assert "Unquoted variable expansion may split or glob: UNDEFINED" in messages
-assert any("used before definition" in message and "UNDEFINED" in message for message in messages)
+assert "Variables are used before definition or documentation: FOO, UNDEFINED" in messages
 assert "Variables are used before definition or documentation: DEFINED" not in messages
+assert not any("used before definition" in message and "DECLARED" in message for message in messages)
 assert any("without HTTP failure checking" in message for message in messages)
 assert any("piped to jq without pipeline error handling" in message for message in messages)
 assert any("human-readable output" in message for message in messages)
 assert any("first-line output" in message for message in messages)
+assert any(
+    finding["layer"] == "execution" and "zsh blocks are syntax-check only" in finding["finding"]
+    for finding in zsh_execution["findings"]
+)
 PY
 
 EXECUTABLE_PATH_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json executable-path.md)
