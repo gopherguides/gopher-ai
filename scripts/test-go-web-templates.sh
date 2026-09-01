@@ -9,6 +9,10 @@ CONVERSION_COMMAND="$ROOT_DIR/plugins/go-web/commands/convert-to-go-project.md"
 CONVERSION_SKILL="$ROOT_DIR/plugins/go-web/skills/convert-to-go-project/SKILL.md"
 CONVERSION_WORKFLOW="$ROOT_DIR/plugins/go-web/references/convert-to-go-project.md"
 CONVERSION_WORKFLOW_ROUTE='Read `${CLAUDE_PLUGIN_ROOT}/references/convert-to-go-project.md`'
+CREATE_COMMAND="$ROOT_DIR/plugins/go-web/commands/create-go-project.md"
+CREATE_SKILL="$ROOT_DIR/plugins/go-web/skills/create-go-project/SKILL.md"
+CREATE_WORKFLOW="$ROOT_DIR/plugins/go-web/references/create-go-project.md"
+CREATE_WORKFLOW_ROUTE='Read `${CLAUDE_PLUGIN_ROOT}/references/create-go-project.md`'
 FIXTURE_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-go-web-XXXXXX")
 ERRORS=0
 
@@ -204,6 +208,84 @@ render_and_verify_fixture() {
   fi
 }
 
+render_and_verify_create_project_fixture() {
+  local fixture="$FIXTURE_ROOT/create-project"
+  local source
+  local target
+  local required_path
+
+  while IFS='|' read -r source target; do
+    mkdir -p "$fixture/$(dirname "$target")"
+    sed \
+      -e 's|{{PROJECT_NAME}}|example-app|g' \
+      -e 's|{{DATABASE_TYPE}}|sqlite3|g' \
+      "$TEMPLATE_DIR/$source" > "$fixture/$target"
+  done <<'EOF'
+core/go.mod|go.mod
+core/gitignore|.gitignore
+core/package.json|package.json
+core/Makefile|Makefile
+core/air.toml|.air.toml
+core/golangci.yml|.golangci.yml
+env/envrc.example|.envrc.example
+env/envrc.sqlite|.envrc
+db/sqlc.sqlite.yaml|sqlc/sqlc.yaml
+db/queries-example.sql|sqlc/queries/example.sql
+db/migration-initial.sqlite.sql|internal/database/migrations/001_initial.sql
+db/database.sqlite.go|internal/database/database.go
+app/main.go|cmd/server/main.go
+app/server.go|cmd/server/server.go
+app/main_test.go|cmd/server/main_test.go
+app/slog.go|cmd/server/slog.go
+app/generate.go|cmd/server/generate.go
+app/config.go|internal/config/config.go
+app/ctxkeys.go|internal/ctxkeys/keys.go
+app/meta.go|internal/meta/meta.go
+app/meta-context.go|internal/meta/context.go
+app/middleware.go|internal/middleware/middleware.go
+app/handler.go|internal/handler/handler.go
+app/home.go|internal/handler/home.go
+app/testutil.sqlite.go|internal/testutil/testutil.go
+templ/meta.templ|templates/layouts/meta.templ
+templ/base.templ|templates/layouts/base.templ
+templ/home.templ|templates/pages/home.templ
+css/input.css|static/css/input.css
+ci/ci.yml|.github/workflows/ci.yml
+ci/dependabot.yml|.github/dependabot.yml
+EOF
+
+  mkdir -p "$fixture/static/js" "$fixture/data"
+  touch "$fixture/static/js/.gitkeep" "$fixture/data/.gitkeep"
+
+  for required_path in \
+    go.mod \
+    Makefile \
+    cmd/server/main.go \
+    internal/database/database.go \
+    internal/database/migrations/001_initial.sql \
+    internal/testutil/testutil.go \
+    templates/layouts/base.templ \
+    templates/pages/home.templ \
+    static/css/input.css \
+    static/js/.gitkeep \
+    data/.gitkeep \
+    .github/workflows/ci.yml; do
+    if [ ! -f "$fixture/$required_path" ]; then
+      fail "create-go-project fixture is missing $required_path"
+    fi
+  done
+
+  if rg -n '\{\{(PROJECT_NAME|DATABASE_TYPE)\}\}' "$fixture"; then
+    fail "create-go-project fixture contains unresolved placeholders"
+  fi
+  require_literal "$fixture/go.mod" "module example-app" \
+    "create-go-project fixture must substitute the project name"
+  require_literal "$fixture/Makefile" 'goose -dir $(MIGRATIONS_DIR) sqlite3' \
+    "create-go-project fixture must substitute the database type"
+  require_literal "$fixture/.envrc" 'export DATABASE_URL="./data/example-app.db"' \
+    "create-go-project fixture must select the SQLite environment"
+}
+
 echo "=== go-web Database Test Helper Fixtures ==="
 
 for backend in sqlite postgres mysql; do
@@ -242,11 +324,34 @@ require_literal "$TEMPLATE_DIR/ci/ci.yml" 'TEST_DATABASE_URL: "postgresql://test
 require_literal "$TEMPLATE_DIR/ci/ci.yml" 'TEST_DATABASE_URL: "root:test@tcp(localhost:3306)/testdb"' \
   "MySQL CI fixture must run database tests with test-only configuration"
 
-CREATE_COMMAND="$ROOT_DIR/plugins/go-web/commands/create-go-project.md"
-require_literal "$CREATE_COMMAND" "app/testutil.<db>.go" \
-  "create-go-project must select the database-specific test helper"
-reject_literal "$CREATE_COMMAND" "app/testutil.go" \
-  "create-go-project must not select the generic SQLite helper"
+if [ ! -f "$CREATE_WORKFLOW" ]; then
+  fail "missing shared create-go-project workflow"
+else
+  require_literal "$CREATE_WORKFLOW" '`${CLAUDE_PLUGIN_ROOT}/templates/`' \
+    "shared creation workflow must use the plugin template library"
+  require_literal "$CREATE_WORKFLOW" '`${CLAUDE_PLUGIN_ROOT}/templates/README.md`' \
+    "shared creation workflow must use the plugin template manifest"
+  require_literal "$CREATE_WORKFLOW" "app/testutil.<db>.go" \
+    "shared creation workflow must select the database-specific test helper"
+  reject_literal "$CREATE_WORKFLOW" "app/testutil.go" \
+    "shared creation workflow must not select the generic SQLite helper"
+  require_literal "$CREATE_WORKFLOW" "Ask the user which database they want to use" \
+    "shared creation workflow must preserve database confirmation"
+  require_literal "$CREATE_WORKFLOW" 'create the project at `./$ARGUMENTS/`' \
+    "shared creation workflow must define the generated project location"
+  require_literal "$CREATE_WORKFLOW" "go build -o" \
+    "shared creation workflow must verify the generated project build"
+fi
+
+require_literal "$CREATE_COMMAND" "$CREATE_WORKFLOW_ROUTE" \
+  "create-go-project command must route to the shared creation workflow"
+
+if [ ! -f "$CREATE_SKILL" ]; then
+  fail "missing create-go-project Codex skill"
+else
+  require_literal "$CREATE_SKILL" "$CREATE_WORKFLOW_ROUTE" \
+    "create-go-project skill must route to the shared creation workflow"
+fi
 
 if [ ! -f "$CONVERSION_WORKFLOW" ]; then
   fail "missing shared convert-to-go-project workflow"
@@ -302,6 +407,7 @@ fi
 for backend in sqlite postgres mysql; do
   render_and_verify_fixture "$backend"
 done
+render_and_verify_create_project_fixture
 
 if [ "$ERRORS" -gt 0 ]; then
   echo "FAILED: $ERRORS go-web fixture issue(s)"

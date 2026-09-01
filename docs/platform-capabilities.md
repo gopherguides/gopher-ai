@@ -5,7 +5,7 @@ The canonical machine-readable inventory is
 capability is unavailable on that platform today, not that an installed plugin
 provides an equivalent workflow by another name.
 
-Shipped surface: 36 Claude Code commands across 7 plugins; 31 Codex skills across 6 plugins; 8 optional Codex MCP tools.
+Shipped surface: 36 Claude Code commands across 7 plugins; 32 Codex skills across 6 plugins; 8 optional Codex MCP tools.
 
 ## Current matrix
 
@@ -16,7 +16,7 @@ Shipped surface: 36 Claude Code commands across 7 plugins; 31 Codex skills acros
 | `productivity` | Commands: `changelog`, `gopher-ai-refresh`, `release`, `standup`, `weekly-summary`. | Intentionally Claude-only; all five commands are unsupported. |
 | `gopher-guides` | Command: `clear-cache`. Skill: `gopher-guides`. | Skill: `$gopher-guides:gopher-guides`. `clear-cache` is unsupported ([#337](https://github.com/gopherguides/gopher-ai/issues/337)). |
 | `llm-tools` | Commands: `cancel-loop`, `codex`, `convert`, `gemini`, `gemini-image`, `llm-compare`, `ollama`, `review-loop`. Skills: `gemini`, `gemini-image`, `ollama`, `second-opinion`. | Skills: `$llm-tools:gemini`, `$llm-tools:gemini-image`, `$llm-tools:ollama`, `$llm-tools:second-opinion`. `cancel-loop`, Claude-to-Codex delegation, conversion, multi-provider comparison, and the persistent review loop remain intentionally unsupported on Codex ([#335](https://github.com/gopherguides/gopher-ai/issues/335)). |
-| `go-web` | Commands: `cancel-loop`, `convert-to-go-project`, `create-go-project`. Skills: `convert-to-go-project`, `htmx`, `templui`. | Skills: `$go-web:convert-to-go-project`, `$go-web:htmx`, `$go-web:templui`. Conversion resolved [#323](https://github.com/gopherguides/gopher-ai/issues/323); `cancel-loop` and `create-go-project` are unsupported ([#334](https://github.com/gopherguides/gopher-ai/issues/334)). |
+| `go-web` | Commands: `cancel-loop`, `convert-to-go-project`, `create-go-project`. Skills: `convert-to-go-project`, `create-go-project`, `htmx`, `templui`. | Skills: `$go-web:convert-to-go-project`, `$go-web:create-go-project`, `$go-web:htmx`, `$go-web:templui`. Project conversion resolved [#323](https://github.com/gopherguides/gopher-ai/issues/323), and project creation resolved [#334](https://github.com/gopherguides/gopher-ai/issues/334); `cancel-loop` remains unsupported. |
 | `tailwind` | Commands: `audit`, `cancel-loop`, `init`, `migrate`, `optimize`. Skill: `tailwind-best-practices`. | Skill: `$tailwind:tailwind-best-practices`. All five command workflows are unsupported ([#336](https://github.com/gopherguides/gopher-ai/issues/336)). |
 
 The optional Tailwind MCP server exposes `search_tailwind_docs`,

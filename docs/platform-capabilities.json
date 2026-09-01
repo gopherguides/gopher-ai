@@ -1201,6 +1201,10 @@
         {
           "kind": "command",
           "path": "plugins/go-web/commands/create-go-project.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-web/skills/create-go-project/SKILL.md"
         }
       ],
       "platforms": {
@@ -1208,12 +1212,14 @@
           "disposition": "command",
           "names": [
             "go-web:create-go-project"
+          ],
+          "skill_names": [
+            "go-web:create-go-project"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/334"
+          "disposition": "skill",
+          "name": "go-web:create-go-project"
         }
       }
     },

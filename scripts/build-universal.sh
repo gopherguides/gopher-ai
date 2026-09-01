@@ -95,7 +95,7 @@ gopher-ai is a Go-focused development toolkit distributed as both Claude Code pl
 | `go-dev` | Go development tools and best practices | bench, build-fix, explain, go, go-profiling-optimization, lint-fix, profile, refactor-clean, test-gen, validate-skills, verify |
 | `gopher-guides` | Gopher Guides training materials | gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | gemini, gemini-image, ollama, second-opinion |
-| `go-web` | Go web scaffolding (Templ + HTMX) | templui, htmx |
+| `go-web` | Go web scaffolding (Templ + HTMX) | create-go-project, convert-to-go-project, templui, htmx |
 | `tailwind` | Tailwind CSS v4 tools | tailwind-best-practices |
 
 ## Workflow Skills (go-workflow plugin)
