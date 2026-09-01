@@ -123,7 +123,7 @@ run_runtime_location_tests() {
   fi
 
   echo -n "  Gopher Guides cache validates before writes and uses user cache locations... "
-  local cache_fixture cache_home cache_xdg cache_override cache_bin cache_identity_bin cache_default_file
+  local cache_fixture cache_home cache_xdg cache_override cache_bin cache_identity_bin cache_identity_marker cache_default_file
   local cache_parallel cache_parallel_bin cache_parallel_barrier cache_parallel_pids
   local cache_corrupt cache_corrupt_output
   local cache_missing_args_dir cache_missing_key_dir
@@ -150,6 +150,7 @@ run_runtime_location_tests() {
   cache_override="$cache_fixture/override/cache.json"
   cache_bin="$cache_fixture/bin"
   cache_identity_bin="$cache_fixture/identity-bin"
+  cache_identity_marker="$cache_fixture/identity-observed"
   cache_default_file="$cache_xdg/gopher-ai/gopher-guides-cache.json"
   cache_corrupt="$cache_fixture/corrupt/cache.json"
   cache_parallel="$cache_fixture/parallel/cache.json"
@@ -187,6 +188,7 @@ run_runtime_location_tests() {
   printf '%s\n' \
     '#!/bin/sh' \
     'if [ "$1" = -p ] && [ "$3" = -o ] && [ "$4" = lstart= ]; then' \
+    '  printf '\''%s\n'\'' "$2" > "$CACHE_TEST_IDENTITY_MARKER"' \
     '  printf '\''fixture-identity-%s\n'\'' "$2"' \
     '  exit 0' \
     'fi' \
@@ -260,9 +262,11 @@ run_runtime_location_tests() {
   printf '%s\n' stale > "${cache_lock_smoke}.directory/owner.$$.$RANDOM.$RANDOM"
   printf '%s\n' '{"old":true}' > "$cache_lock_portable_cache"
   if cache_lock_portable_reused_output=$(PATH="$cache_identity_bin:$PATH" \
+       CACHE_TEST_IDENTITY_MARKER="$cache_identity_marker" \
        GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
        "$cache_lock" "$cache_lock_smoke" "$cache_mutate" clear "$cache_lock_portable_cache") &&
      [ -z "$cache_lock_portable_reused_output" ] &&
+     [ "$(cat "$cache_identity_marker")" = "$$" ] &&
      [ ! -e "$cache_lock_portable_cache" ] &&
      [ ! -d "${cache_lock_smoke}.directory" ]; then
     cache_lock_portable_reused_valid=true
