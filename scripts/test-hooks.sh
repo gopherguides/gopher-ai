@@ -121,22 +121,24 @@ run_runtime_location_tests() {
   echo -n "  Gopher Guides cache validates before writes and uses user cache locations... "
   local cache_fixture cache_home cache_xdg cache_override cache_bin cache_default_file
   local cache_parallel cache_parallel_bin cache_parallel_barrier cache_parallel_pids
+  local cache_corrupt cache_corrupt_output
   local cache_missing_args_dir cache_missing_key_dir
   local clear_cache_command default_cache_valid=false override_cache_valid=false
-  local parallel_cache_valid=false parallel_status=true writer writer_pid
+  local corrupt_cache_valid=false parallel_cache_valid=false parallel_status=true writer writer_pid
   cache_fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-guides-cache.XXXXXX")
   cache_home="$cache_fixture/home"
   cache_xdg="$cache_fixture/xdg"
   cache_override="$cache_fixture/override/cache.json"
   cache_bin="$cache_fixture/bin"
   cache_default_file="$cache_xdg/gopher-ai/gopher-guides-cache.json"
+  cache_corrupt="$cache_fixture/corrupt/cache.json"
   cache_parallel="$cache_fixture/parallel/cache.json"
   cache_parallel_bin="$cache_fixture/parallel-bin"
   cache_parallel_barrier="$cache_fixture/parallel-barrier"
   cache_missing_args_dir="$cache_fixture/missing-args"
   cache_missing_key_dir="$cache_fixture/missing-key"
   clear_cache_command=$(sed -n 's/^!`\(.*\)`$/\1/p' "$clear_cache")
-  mkdir -p "$cache_home" "$cache_bin" "$cache_parallel_bin" "$cache_parallel_barrier" "$cache_fixture/work"
+  mkdir -p "$cache_home" "$cache_bin" "$cache_parallel_bin" "$cache_parallel_barrier" "$cache_fixture/work" "$(dirname "$cache_corrupt")"
   printf '%s\n' '#!/bin/sh' 'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' > "$cache_bin/curl"
   chmod +x "$cache_bin/curl"
   printf '%s\n' \
@@ -174,6 +176,15 @@ run_runtime_location_tests() {
        "$cache_override" >/dev/null 2>&1; then
     override_cache_valid=true
   fi
+  printf '{"truncated":' > "$cache_corrupt"
+  if cache_corrupt_output=$(PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
+       GOPHER_GUIDES_CACHE_FILE="$cache_corrupt" HOME="$cache_home" \
+       "$cache_api" audit '{}') &&
+     [ "$cache_corrupt_output" = '{"result":"ok"}' ] &&
+     jq -e 'length == 1 and to_entries[0].value.endpoint == "audit"' \
+       "$cache_corrupt" >/dev/null 2>&1; then
+    corrupt_cache_valid=true
+  fi
   cache_parallel_pids=""
   for writer in 1 2 3 4 5 6 7 8; do
     PATH="$cache_parallel_bin:$PATH" \
@@ -201,6 +212,7 @@ run_runtime_location_tests() {
      [ ! -e "$cache_missing_key_dir" ] &&
      [ "$default_cache_valid" = true ] &&
      [ "$override_cache_valid" = true ] &&
+     [ "$corrupt_cache_valid" = true ] &&
      [ "$parallel_cache_valid" = true ] &&
      [ ! -e "${cache_parallel}.lock" ] &&
      ! compgen -G "${cache_parallel}.tmp.*" >/dev/null &&

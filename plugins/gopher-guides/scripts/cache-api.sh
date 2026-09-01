@@ -117,7 +117,7 @@ trap release_cache_lock EXIT
 trap 'exit 1' HUP INT TERM
 CACHE_TEMP=$(mktemp "${CACHE_FILE}.tmp.XXXXXX")
 
-if [ -f "$CACHE_FILE" ]; then
+if [ -f "$CACHE_FILE" ] && jq -e 'type == "object"' "$CACHE_FILE" >/dev/null 2>&1; then
   jq --arg key "$CACHE_KEY" --argjson entry "$CACHE_ENTRY" \
     '.[$key] = $entry' "$CACHE_FILE" > "$CACHE_TEMP"
 else
