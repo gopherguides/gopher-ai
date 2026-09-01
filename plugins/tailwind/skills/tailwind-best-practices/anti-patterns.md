@@ -8,7 +8,7 @@
 | `@tailwind base;` | `@import "tailwindcss";` |
 | `@tailwind components;` | (included in import) |
 | `@tailwind utilities;` | (included in import) |
-| `darkMode: 'class'` in config | `@variant dark { }` in CSS |
+| `darkMode: 'class'` in config | `@custom-variant dark (...)` plus `.dark { }` overrides |
 | `theme.extend.colors` in JS | `--color-*` in @theme |
 | `content: [...]` in JS | `@source "..."` in CSS |
 

@@ -23,7 +23,7 @@ Migrate Tailwind CSS v3 configuration to v4's CSS-based configuration.
 |----|-----|
 | `tailwind.config.js` | CSS `@theme { }` directive |
 | `@tailwind base/components/utilities` | `@import "tailwindcss"` |
-| `darkMode: 'class'` | `@variant dark { }` |
+| `darkMode: 'class'` | `@custom-variant dark (...)` plus `.dark { }` overrides |
 | `theme.extend.colors` | `--color-*` CSS variables |
 
 Proceed with migration.
@@ -55,7 +55,7 @@ If no config found:
 
 ## Step 2: Parse v3 Configuration
 
-Read the config file. Extract: `content` array (becomes `@source` directives), `theme.extend` (becomes `@theme` CSS variables), `darkMode` (becomes `@variant`), `plugins` (check v4 compatibility).
+Read the config file. Extract: `content` array (becomes `@source` directives), `theme.extend` (becomes `@theme` CSS variables), `darkMode` (becomes a custom variant and selector), `plugins` (check v4 compatibility).
 
 **Plugin compatibility:**
 
@@ -88,7 +88,9 @@ Convert the parsed configuration to v4 CSS:
 }
 
 /* From darkMode: 'class' */
-@variant dark { /* override theme colors here if needed */ }
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark { /* override theme colors here if needed */ }
 
 /* Plugins */
 @plugin "@tailwindcss/typography";
@@ -194,7 +196,7 @@ Common errors:
 - X custom colors → @theme variables
 - Y content paths → @source directives
 - Z plugins → @plugin directives
-- Dark mode → @variant dark
+- Dark mode → class-based custom variant plus `.dark` overrides
 - tailwind.config.js — removed (or kept per user choice)
 
 ### Manual Review Needed

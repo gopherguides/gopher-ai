@@ -31,6 +31,15 @@ assert_contains() {
     fail "${file#"$ROOT_DIR/"} is missing: $text"
 }
 
+assert_not_matches() {
+  local file="$1"
+  local pattern="$2"
+
+  if awk -v pattern="$pattern" '$0 ~ pattern { found = 1; exit } END { exit found ? 0 : 1 }' "$file"; then
+    fail "${file#"$ROOT_DIR/"} unexpectedly matches: $pattern"
+  fi
+}
+
 matches() {
   local pattern="$1"
 
@@ -83,6 +92,28 @@ for contract in \
   'Do not modify project files, install dependencies, or overwrite generated CSS' \
   'MCP tools are supplementary'; do
   assert_contains "$ADAPTER" "$contract"
+done
+
+DARK_MODE_GUIDANCE=(
+  "$PLUGIN_DIR/README.md"
+  "$PLUGIN_DIR/commands/audit.md"
+  "$PLUGIN_DIR/commands/init.md"
+  "$PLUGIN_DIR/commands/migrate.md"
+  "$PLUGIN_DIR/skills/tailwind-best-practices/SKILL.md"
+  "$PLUGIN_DIR/skills/tailwind-best-practices/anti-patterns.md"
+  "$PLUGIN_DIR/skills/tailwind-best-practices/v4-syntax.md"
+)
+for guidance_file in "${DARK_MODE_GUIDANCE[@]}"; do
+  assert_not_matches "$guidance_file" '^@variant dark[[:space:]]*\\{'
+done
+
+for example_file in \
+  "$PLUGIN_DIR/README.md" \
+  "$PLUGIN_DIR/commands/init.md" \
+  "$PLUGIN_DIR/commands/migrate.md" \
+  "$PLUGIN_DIR/skills/tailwind-best-practices/v4-syntax.md"; do
+  assert_contains "$example_file" '@custom-variant dark (&:where(.dark, .dark *));'
+  assert_contains "$example_file" '.dark {'
 done
 
 printf 'Tailwind Codex workflow skill tests passed.\n'

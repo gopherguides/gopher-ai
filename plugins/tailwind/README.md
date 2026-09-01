@@ -89,7 +89,9 @@ npm install -D tailwindcss @tailwindcss/cli
   --color-primary-foreground: oklch(1 0 0);
 }
 
-@variant dark {
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark {
   --color-background: oklch(0.145 0 0);
   --color-foreground: oklch(0.985 0 0);
 }
@@ -112,7 +114,7 @@ npx @tailwindcss/cli -i input.css -o output.css --minify
 | `tailwind.config.js` | CSS `@theme { }` directive |
 | `@tailwind base/components/utilities` | `@import "tailwindcss"` |
 | `content: [...]` | `@source "..."` |
-| `darkMode: 'class'` | `@variant dark { }` |
+| `darkMode: 'class'` | `@custom-variant dark (...)` plus `.dark { }` overrides |
 
 ## Integration Options
 

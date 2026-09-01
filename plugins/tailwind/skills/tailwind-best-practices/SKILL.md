@@ -34,7 +34,7 @@ Read the relevant file for detailed patterns, code examples, and documentation U
 URL tables organized by category (Getting Started, Core Concepts, Layout, Spacing, Sizing, Typography, Backgrounds & Borders, Effects, Transforms & Animation, Interactivity). Use with WebFetch when MCP tools are unavailable.
 
 ### `v4-syntax.md` — Tailwind CSS v4 Core Syntax
-**CRITICAL**: v4 changed significantly from v3. Covers `@import "tailwindcss"`, `@theme` directive for CSS-based configuration (colors, fonts, spacing), `@source` for detection, `@variant dark` for dark mode, `@layer components` for extraction, `@plugin` for plugins.
+**CRITICAL**: v4 changed significantly from v3. Covers `@import "tailwindcss"`, `@theme` directive for CSS-based configuration (colors, fonts, spacing), `@source` for detection, class-based `@custom-variant dark` plus `.dark` selectors, `@layer components` for extraction, and `@plugin` for plugins.
 
 ### `best-practices.md` — Best Practices
 Class ordering convention (layout → spacing → sizing → typography → colors → effects → interactive), responsive design (mobile-first, breakpoint reference), component extraction rule (3+ times), theme variables over hardcoded values, accessibility (focus-visible, sr-only, contrast).

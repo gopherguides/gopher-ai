@@ -137,7 +137,9 @@ Create with v4 syntax:
   --spacing-22: 5.5rem;
 }
 
-@variant dark {
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark {
   --color-background: oklch(0.145 0 0);
   --color-foreground: oklch(0.985 0 0);
   --color-muted: oklch(0.25 0 0);

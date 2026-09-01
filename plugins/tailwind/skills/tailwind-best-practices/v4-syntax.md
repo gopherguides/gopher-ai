@@ -53,10 +53,12 @@ Tailwind auto-detects most template files. Use `@source` for custom paths:
 @source "./src/**/*.{js,jsx,ts,tsx,vue,svelte}";
 ```
 
-### Dark Mode (@variant directive)
+### Class-based Dark Mode
 
 ```css
-@variant dark {
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark {
   --color-background: oklch(0.145 0 0);
   --color-foreground: oklch(0.985 0 0);
   --color-muted: oklch(0.25 0 0);
@@ -65,6 +67,9 @@ Tailwind auto-detects most template files. Use `@source` for custom paths:
   --color-card: oklch(0.205 0 0);
 }
 ```
+
+Use `@variant dark` only inside an existing CSS selector when applying the
+variant to that selector's declarations.
 
 ### Component Layer (@layer components)
 

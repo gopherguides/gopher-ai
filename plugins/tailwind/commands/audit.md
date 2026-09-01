@@ -113,7 +113,7 @@ Repeated patterns become `@layer components` rules:
 | `@tailwind base/components/utilities` | `@import "tailwindcss";` |
 | `tailwind.config.js` | `@theme { }` in CSS |
 | `theme.extend.colors` | `--color-*` in `@theme` |
-| `darkMode: 'class'` | `@variant dark { }` |
+| `darkMode: 'class'` | `@custom-variant dark (...)` plus `.dark { }` overrides |
 
 ```bash
 ls tailwind.config.* 2>/dev/null               # if found, recommend /tailwind-migrate
