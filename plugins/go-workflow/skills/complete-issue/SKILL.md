@@ -7,23 +7,30 @@ disable-model-invocation: true
 
 # Complete Issue
 
+## Plugin Resource Resolution
+
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root before every resource read or command:
+
+- **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
+
 Autonomous end-to-end pipeline: **issue number in → merged PR out.**
 
 Before requesting decisions, entering a planning workflow, or delegating work,
-read `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+read `<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
+Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving any workflow
 choice.
 
 Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:complete-issue` by
-reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+reading `<PLUGIN_ROOT>/lib/skill-arguments.md` with this Claude Code compatibility payload:
 <claude-skill-arguments>
 $ARGUMENTS
 </claude-skill-arguments>
 
 ```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
+source "<PLUGIN_ROOT>/lib/github-rest.sh"
 ```
 
 Chains the `start-issue` workflow, Codex review, and the `e2e-verify`
@@ -112,7 +119,7 @@ START_ISSUE_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "start_issue
 initialize_workflow_state "$STATE_FILE" "$START_ISSUE_STATE_PATH"
 ```
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/start-issue/SKILL.md` and execute its workflow
+Read `<PLUGIN_ROOT>/skills/start-issue/SKILL.md` and execute its workflow
 directly, treating `$ISSUE_NUM $FLAGS` as its `SKILL_ARGS`. Do not call the
 Skill tool. Read `phases.md` for the full sub-step list (fetch issue, create
 worktree, detect type, explore, design, TDD, verify, coverage, security review,
@@ -260,7 +267,7 @@ E2E_VERIFY_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "e2e_verify")
 initialize_workflow_state "$STATE_FILE" "$E2E_VERIFY_STATE_PATH"
 ```
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/e2e-verify/SKILL.md` and execute its workflow
+Read `<PLUGIN_ROOT>/skills/e2e-verify/SKILL.md` and execute its workflow
 directly, treating `$PR_NUM fix-and-ship` as its `SKILL_ARGS`. Do not call the
 Skill tool. This runs the full workflow in `fix-and-ship` mode (rebase, build,
 address review, E2E browser tests, post results, add the `run-full-ci` label,

@@ -7,15 +7,22 @@ disable-model-invocation: true
 
 # Ship PR
 
+## Plugin Resource Resolution
+
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root before every resource read or command:
+
+- **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
+
 Before requesting decisions or delegating work, read
-`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+`<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
+Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving any workflow
 choice.
 
 Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:ship` by
-reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+reading `<PLUGIN_ROOT>/lib/skill-arguments.md` with this Claude Code compatibility payload:
 <claude-skill-arguments>
 $ARGUMENTS
 </claude-skill-arguments>
@@ -23,7 +30,7 @@ $ARGUMENTS
 Load the shared GitHub REST helpers before any GitHub workflow operation:
 
 ```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
+source "<PLUGIN_ROOT>/lib/github-rest.sh"
 ```
 
 ## GraphQL Budget Discipline (read first)
@@ -70,7 +77,7 @@ mutation and name every ambiguous path. An existing canonical state always
 wins; linked-worktree strays are ignored in that case.
 
 ```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
 
 SHIP_EMBEDDED=false
 WORKFLOW_STATE_PATH='[]'
@@ -184,12 +191,12 @@ else
   fi
 
   if [ -z "$EXISTING_PHASE" ]; then
-    if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then
+    if [ ! -x "<PLUGIN_ROOT>/scripts/setup-loop.sh" ]; then
       echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."
       exit 1
     fi
-    "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" \
-      "$(jq -c . "${CLAUDE_PLUGIN_ROOT}/lib/ship/resume-messages.json")" \
+    "<PLUGIN_ROOT>/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" \
+      "$(jq -c . "<PLUGIN_ROOT>/lib/ship/resume-messages.json")" \
       "$STATE_FILE" "[\"SHIPPED\",\"INCOMPLETE\"]"
   fi
   initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
@@ -216,7 +223,7 @@ Store as `LLM_CHOICE`, `MAX_PASSES`, `NO_MERGE`, `SKIP_COVERAGE`,
 
 Persist arguments to the resolved workflow object so the
 stop-hook can recover all fields on re-entry. The path-aware initialization lives in
-`${CLAUDE_PLUGIN_ROOT}/lib/ship/state-fields.md` — fields written: `args`,
+`<PLUGIN_ROOT>/lib/ship/state-fields.md` — fields written: `args`,
 `llm`, `pass`, `no_merge`, `pr_number`, `base_branch`,
 `bot_review_baseline`, `discovered_bots`, `has_ci`, `ci_skip_reason`, `skip_coverage`,
 `coverage_threshold`, `coverage_result`, `coverage_tests_generated`,
@@ -364,7 +371,7 @@ set_loop_field "$STATE_FILE" "pr_number" "$PR_NUM" "$WORKFLOW_STATE_PATH"
 ## 4. Prerequisite Check
 
 Verify the selected LLM CLI is installed. Read
-`${CLAUDE_PLUGIN_ROOT}/lib/ship/prerequisites.md` for the evidence-based
+`<PLUGIN_ROOT>/lib/ship/prerequisites.md` for the evidence-based
 fallback ordering. A driver may replace an unpinned default and must state the
 rationale. Replacing an explicitly selected backend is a missing-intent gate.
 
@@ -388,7 +395,7 @@ creation. Never end a session with staged or committed-but-unpushed work while
 waiting on a background process.
 
 **Coverage gate (Step 7.5, final pass only):** Read
-`${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow
+`<PLUGIN_ROOT>/lib/coverage/coverage-verification.md` and follow
 Steps A–F with `BASE_BRANCH=origin/${BASE_BRANCH}`, `STATE_FILE`,
 `SKIP_COVERAGE`, `COVERAGE_THRESHOLD` from parsed args.
 
@@ -396,7 +403,7 @@ Steps A–F with `BASE_BRANCH=origin/${BASE_BRANCH}`, `STATE_FILE`,
 `PASS >= MAX_PASSES` → Phase 2. Otherwise → back to Step 5. Always stage only
 fixed files (never `git add -A`).
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/local-review.md` for: LLM execution
+→ Read `<PLUGIN_ROOT>/lib/ship/local-review.md` for: LLM execution
 paths (codex exhaustive/quick, fable Claude-subagent, gemini, ollama,
 agent-based fallback), structured-JSON vs free-text parsing,
 `confidence_score < 0.3` filter, codegen-drift check
@@ -416,7 +423,7 @@ a PR exists (auto-detect template at `.github/pull_request_template.md` or
 `PULL_REQUEST_TEMPLATE.md`, else default `## Summary` + `## Test Plan`), capture
 `HEAD_SHA` and `BOT_REVIEW_BASELINE` immediately and persist both.
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/push-and-pr.md` for the push command, PR
+→ Read `<PLUGIN_ROOT>/lib/ship/push-and-pr.md` for the push command, PR
 creation logic, template detection, and the post-push capture block.
 
 ---
@@ -443,7 +450,7 @@ If no `.github/workflows/*.yml` files exist → persist `has_ci: false` with
 exist but no checks register, only skip CI after Step 10b establishes that no
 active workflow applies to the current PR.
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/ci-watch.md` for: HEAD-SHA
+→ Read `<PLUGIN_ROOT>/lib/ship/ci-watch.md` for: HEAD-SHA
 capture-and-verify, the 120s wait for checks to register against the SHA,
 combined check-run and commit-status aggregation, post-watch SHA shift
 detection (concurrent push →
@@ -461,12 +468,12 @@ set_loop_phase "$STATE_FILE" "bot-watching" "$WORKFLOW_STATE_PATH"
 Discover review bots from REST formal reviews, REST top-level issue comments,
 and GraphQL review-thread comments; use an exact-head check snapshot for
 status-only bots such as Greptile. Match against
-`${CLAUDE_PLUGIN_ROOT}/skills/address-review/bot-registry.md`. Persist
+`<PLUGIN_ROOT>/skills/address-review/bot-registry.md`. Persist
 `discovered_bots` (comma-separated). If none are found and
 `BOT_REVIEW_BASELINE` is recent (<2 min), follow the bounded automatic wait in
 `bot-watch.md`.
 
-For polling, Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/watch-loop.md`
+For polling, Read `<PLUGIN_ROOT>/skills/address-review/watch-loop.md`
 Steps 12a–12d:
 
 - All bots approved → Step 13
@@ -474,7 +481,7 @@ Steps 12a–12d:
 - Timeout (5 min) → apply the deterministic re-trigger or incomplete outcome
   in `watch-loop.md`
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/bot-watch.md` for the full GraphQL query
+→ Read `<PLUGIN_ROOT>/lib/ship/bot-watch.md` for the full GraphQL query
 and the bot-not-detected-yet retry policy.
 
 ---
@@ -499,7 +506,7 @@ checkout and bot watch.
 responses). Then push, capture `HEAD_SHA` after push. Persist both. Return to
 Step 10 — re-watch CI for the new SHA.
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/address-bots.md` for the rebase-or-abort
+→ Read `<PLUGIN_ROOT>/lib/ship/address-bots.md` for the rebase-or-abort
 handling and the baseline-then-push ordering.
 
 ---
@@ -514,7 +521,7 @@ set_loop_phase "$STATE_FILE" "merging" "$WORKFLOW_STATE_PATH"
 fails due to protection, STOP and inform the user — do NOT retry with elevated
 privileges.
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/ship/merge.md` for: final-checks (CI green, no
+→ Read `<PLUGIN_ROOT>/lib/ship/merge.md` for: final-checks (CI green, no
 unresolved threads, no human `CHANGES_REQUESTED`), `--no-merge` early exit,
 merge-strategy selection (`SHIP_MERGE_STRATEGY`, then `--squash` > `--rebase` > `--merge`), the full
 REST `mergeable_state` decision tree (`unknown`/`dirty`/`blocked`/`clean`/
@@ -589,7 +596,7 @@ blocking evidence and stop incomplete. Do not bypass a completion criterion.
 
 ## Further Reading
 
-All sibling files live under `${CLAUDE_PLUGIN_ROOT}/lib/ship/`:
+All sibling files live under `<PLUGIN_ROOT>/lib/ship/`:
 
 - `state-fields.md` — full jq invocation for Step 1's persist; field name reference
 - `prerequisites.md` — Step 4 LLM diagnostic output

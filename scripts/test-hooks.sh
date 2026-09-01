@@ -13,7 +13,259 @@ esac
 
 ERRORS=0
 
+run_runtime_location_tests() {
+  local worktree_state="$ROOT_DIR/plugins/go-workflow/scripts/worktree-state.sh"
+  local pre_tool_hook="$ROOT_DIR/plugins/go-workflow/hooks/pre-tool-use.sh"
+  local cleanup_hook="$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh"
+  local cache_api="$ROOT_DIR/plugins/gopher-guides/scripts/cache-api.sh"
+  local clear_cache="$ROOT_DIR/plugins/gopher-guides/commands/clear-cache.md"
+
+  echo -n "  Worktree safety state is shared through the Git common directory... "
+  local state_fixture state_main state_linked state_primary_home state_linked_home
+  local state_common_relative state_common state_file saved_state hook_output
+  state_fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-worktree-state.XXXXXX")
+  state_main="$state_fixture/main"
+  state_linked="$state_fixture/linked"
+  state_primary_home="$state_fixture/primary-home"
+  state_linked_home="$state_fixture/linked-home"
+  mkdir -p "$state_main" "$state_primary_home" "$state_linked_home"
+  git -C "$state_main" init -q -b main
+  git -C "$state_main" -c user.name="Hook Tests" -c user.email="hooks@example.com" \
+    commit --allow-empty -qm "test: initialize state fixture"
+  git -C "$state_main" worktree add -qb linked-state "$state_linked" >/dev/null
+  state_common_relative=$(git -C "$state_main" rev-parse --git-common-dir)
+  state_common=$(cd "$state_main" && cd "$state_common_relative" && pwd -P)
+  state_file="$state_common/gopher-ai/worktree-state.json"
+  (
+    cd "$state_main"
+    HOME="$state_primary_home" "$worktree_state" save "$state_linked" "$state_main" 324 >/dev/null
+  )
+  saved_state=$(
+    cd "$state_linked"
+    HOME="$state_linked_home" "$worktree_state" get
+  )
+  hook_output=$(
+    cd "$state_linked"
+    jq -n --arg target "$state_main/blocked.txt" \
+      '{tool_name:"Read",tool_input:{file_path:$target}}' |
+      HOME="$state_linked_home" /bin/bash "$pre_tool_hook"
+  )
+  mkdir -p "$(dirname "$state_file")"
+  printf '%s\n' '{"keep":true}' > "$(dirname "$state_file")/unrelated.json"
+  (
+    cd "$state_linked"
+    HOME="$state_linked_home" "$worktree_state" clear >/dev/null
+  )
+  if jq -e --arg linked "$state_linked" --arg main "$state_main" \
+       '.worktree_path == $linked and .original_path == $main and .issue == "324"' \
+       <<< "$saved_state" >/dev/null 2>&1 &&
+     printf '%s\n' "$hook_output" | jq -e \
+       '.decision == "block" and (.reason | contains("original repo"))' >/dev/null 2>&1 &&
+     [ ! -e "$state_file" ] &&
+     [ -f "$(dirname "$state_file")/unrelated.json" ] &&
+     [ ! -e "$state_primary_home/.claude/worktree-state.json" ]; then
+    echo "OK"
+  else
+    echo "FAIL"
+    ERRORS=$((ERRORS + 1))
+  fi
+
+  echo -n "  Worktree safety state reads and narrowly clears the Claude-era file... "
+  local legacy_fixture legacy_repo legacy_home legacy_state legacy_output
+  legacy_fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-worktree-legacy.XXXXXX")
+  legacy_repo="$legacy_fixture/repo"
+  legacy_home="$legacy_fixture/home"
+  legacy_state="$legacy_home/.claude/worktree-state.json"
+  mkdir -p "$legacy_repo" "$(dirname "$legacy_state")"
+  git -C "$legacy_repo" init -q -b main
+  printf '%s\n' '{"worktree_path":"/example/linked","original_path":"/example/main","issue":"7"}' > "$legacy_state"
+  printf '%s\n' '{"keep":true}' > "$legacy_home/.claude/unrelated.json"
+  legacy_output=$(
+    cd "$legacy_repo"
+    HOME="$legacy_home" "$worktree_state" get
+  )
+  (
+    cd "$legacy_repo"
+    HOME="$legacy_home" "$worktree_state" clear >/dev/null
+  )
+  if jq -e '.issue == "7"' <<< "$legacy_output" >/dev/null 2>&1 &&
+     [ ! -e "$legacy_state" ] &&
+     [ -f "$legacy_home/.claude/unrelated.json" ]; then
+    echo "OK"
+  else
+    echo "FAIL"
+    ERRORS=$((ERRORS + 1))
+  fi
+
+  echo -n "  SessionStart cleanup uses Codex plugin root and plugin data... "
+  local cleanup_fixture cleanup_home cleanup_data cleanup_version cleanup_marker
+  cleanup_fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-cleanup-data.XXXXXX")
+  cleanup_home="$cleanup_fixture/home"
+  cleanup_data="$cleanup_fixture/plugin-data"
+  cleanup_version=$(jq -r '.version' "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json")
+  cleanup_marker="$cleanup_data/.gopher-ai-cleanup-v3-$cleanup_version"
+  mkdir -p "$cleanup_home/.codex" "$cleanup_data"
+  PLUGIN_ROOT="$ROOT_DIR/plugins/go-workflow" \
+    PLUGIN_DATA="$cleanup_data" \
+    CLAUDE_PLUGIN_ROOT="$cleanup_fixture/missing-plugin" \
+    HOME="$cleanup_home" \
+    bash "$cleanup_hook" >/dev/null 2>&1
+  if [ -f "$cleanup_marker" ] &&
+     ! compgen -G "$cleanup_home/.codex/.gopher-ai-cleanup-*" >/dev/null; then
+    echo "OK"
+  else
+    echo "FAIL"
+    ERRORS=$((ERRORS + 1))
+  fi
+
+  echo -n "  Gopher Guides cache validates before writes and uses user cache locations... "
+  local cache_fixture cache_home cache_xdg cache_override cache_bin cache_default_file
+  local cache_parallel cache_parallel_bin cache_parallel_barrier cache_parallel_pids
+  local cache_corrupt cache_corrupt_output
+  local cache_abandoned cache_abandoned_output cache_reused cache_reused_output
+  local cache_missing_args_dir cache_missing_key_dir
+  local clear_cache_command default_cache_valid=false override_cache_valid=false
+  local abandoned_cache_valid=false corrupt_cache_valid=false parallel_cache_valid=false parallel_status=true reused_cache_valid=false writer writer_pid
+  cache_fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-guides-cache.XXXXXX")
+  cache_home="$cache_fixture/home"
+  cache_xdg="$cache_fixture/xdg"
+  cache_override="$cache_fixture/override/cache.json"
+  cache_bin="$cache_fixture/bin"
+  cache_default_file="$cache_xdg/gopher-ai/gopher-guides-cache.json"
+  cache_corrupt="$cache_fixture/corrupt/cache.json"
+  cache_abandoned="$cache_fixture/abandoned/cache.json"
+  cache_reused="$cache_fixture/reused/cache.json"
+  cache_parallel="$cache_fixture/parallel/cache.json"
+  cache_parallel_bin="$cache_fixture/parallel-bin"
+  cache_parallel_barrier="$cache_fixture/parallel-barrier"
+  cache_missing_args_dir="$cache_fixture/missing-args"
+  cache_missing_key_dir="$cache_fixture/missing-key"
+  clear_cache_command=$(sed -n 's/^!`\(.*\)`$/\1/p' "$clear_cache")
+  mkdir -p "$cache_home" "$cache_bin" "$cache_parallel_bin" "$cache_parallel_barrier" "$cache_fixture/work" "$(dirname "$cache_corrupt")" "$(dirname "$cache_abandoned")" "$(dirname "$cache_reused")"
+  printf '%s\n' '#!/bin/sh' 'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' > "$cache_bin/curl"
+  chmod +x "$cache_bin/curl"
+  printf '%s\n' \
+    '#!/bin/sh' \
+    ': > "$CACHE_TEST_BARRIER/$$"' \
+    'while [ "$(ls -1 "$CACHE_TEST_BARRIER" | wc -l | tr -d '\'' '\'')" -lt "$CACHE_TEST_WRITERS" ]; do sleep 0.01; done' \
+    'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' \
+    > "$cache_parallel_bin/curl"
+  chmod +x "$cache_parallel_bin/curl"
+  if GOPHER_GUIDES_API_KEY=test \
+       GOPHER_GUIDES_CACHE_FILE="$cache_missing_args_dir/cache.json" \
+       HOME="$cache_home" "$cache_api" >/dev/null 2>&1; then
+    false
+  fi
+  if GOPHER_GUIDES_API_KEY='' \
+       GOPHER_GUIDES_CACHE_FILE="$cache_missing_key_dir/cache.json" \
+       HOME="$cache_home" "$cache_api" practices '{}' >/dev/null 2>&1; then
+    false
+  fi
+  (
+    cd "$cache_fixture/work"
+    PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
+      XDG_CACHE_HOME="$cache_xdg" HOME="$cache_home" \
+      "$cache_api" practices '{}' >/dev/null
+    PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
+      GOPHER_GUIDES_CACHE_FILE="$cache_override" \
+      XDG_CACHE_HOME="$cache_fixture/unused-xdg" HOME="$cache_home" \
+      "$cache_api" examples '{}' >/dev/null
+  )
+  if jq -e 'length == 1 and to_entries[0].value.endpoint == "practices"' \
+       "$cache_default_file" >/dev/null 2>&1; then
+    default_cache_valid=true
+  fi
+  if jq -e 'length == 1 and to_entries[0].value.endpoint == "examples"' \
+       "$cache_override" >/dev/null 2>&1; then
+    override_cache_valid=true
+  fi
+  printf '{"truncated":' > "$cache_corrupt"
+  if cache_corrupt_output=$(PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
+       GOPHER_GUIDES_CACHE_FILE="$cache_corrupt" HOME="$cache_home" \
+       "$cache_api" audit '{}') &&
+     [ "$cache_corrupt_output" = '{"result":"ok"}' ] &&
+     jq -e 'length == 1 and to_entries[0].value.endpoint == "audit"' \
+       "$cache_corrupt" >/dev/null 2>&1; then
+    corrupt_cache_valid=true
+  fi
+  printf '%s\n' 99999999 > "${cache_abandoned}.lock"
+  if cache_abandoned_output=$(PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
+       GOPHER_GUIDES_CACHE_FILE="$cache_abandoned" HOME="$cache_home" \
+       "$cache_api" review '{}') &&
+     [ "$cache_abandoned_output" = '{"result":"ok"}' ] &&
+     jq -e 'length == 1 and to_entries[0].value.endpoint == "review"' \
+       "$cache_abandoned" >/dev/null 2>&1 &&
+     [ ! -e "${cache_abandoned}.lock" ]; then
+    abandoned_cache_valid=true
+  fi
+  printf '%s\n' "$$" > "${cache_reused}.lock"
+  if cache_reused_output=$(PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
+       GOPHER_GUIDES_CACHE_FILE="$cache_reused" HOME="$cache_home" \
+       "$cache_api" examples '{}') &&
+     [ "$cache_reused_output" = '{"result":"ok"}' ] &&
+     jq -e 'length == 1 and to_entries[0].value.endpoint == "examples"' \
+       "$cache_reused" >/dev/null 2>&1 &&
+     [ ! -e "${cache_reused}.lock" ]; then
+    reused_cache_valid=true
+  fi
+  cache_parallel_pids=""
+  for writer in 1 2 3 4 5 6 7 8; do
+    PATH="$cache_parallel_bin:$PATH" \
+      GOPHER_GUIDES_API_KEY=test \
+      GOPHER_GUIDES_CACHE_FILE="$cache_parallel" \
+      CACHE_TEST_BARRIER="$cache_parallel_barrier" \
+      CACHE_TEST_WRITERS=8 \
+      "$cache_api" "parallel-$writer" '{}' >/dev/null &
+    writer_pid=$!
+    cache_parallel_pids="$cache_parallel_pids $writer_pid"
+  done
+  for writer_pid in $cache_parallel_pids; do
+    wait "$writer_pid" || parallel_status=false
+  done
+  if [ "$parallel_status" = true ] &&
+     jq -e 'length == 8' "$cache_parallel" >/dev/null 2>&1; then
+    parallel_cache_valid=true
+  fi
+  XDG_CACHE_HOME="$cache_xdg" HOME="$cache_home" \
+    bash -c "$clear_cache_command" >/dev/null
+  GOPHER_GUIDES_CACHE_FILE="$cache_override" \
+    XDG_CACHE_HOME="$cache_fixture/unused-xdg" HOME="$cache_home" \
+    bash -c "$clear_cache_command" >/dev/null
+  if [ ! -e "$cache_missing_args_dir" ] &&
+     [ ! -e "$cache_missing_key_dir" ] &&
+     [ "$default_cache_valid" = true ] &&
+     [ "$override_cache_valid" = true ] &&
+     [ "$abandoned_cache_valid" = true ] &&
+     [ "$corrupt_cache_valid" = true ] &&
+     [ "$parallel_cache_valid" = true ] &&
+     [ "$reused_cache_valid" = true ] &&
+     [ ! -e "${cache_parallel}.lock" ] &&
+     ! compgen -G "${cache_parallel}.lock.*" >/dev/null &&
+     ! compgen -G "${cache_parallel}.tmp.*" >/dev/null &&
+     [ ! -e "$cache_default_file" ] &&
+     [ ! -e "$cache_override" ] &&
+     [ ! -e "$cache_fixture/work/.claude" ]; then
+    echo "OK"
+  else
+    echo "FAIL"
+    ERRORS=$((ERRORS + 1))
+  fi
+}
+
+if [ "${GOPHER_AI_HOOK_TEST_FOCUS:-}" = "runtime-locations" ]; then
+  echo "=== Runtime Location Hook Tests ==="
+  run_runtime_location_tests
+  if [ "$ERRORS" -gt 0 ]; then
+    echo "FAILED: $ERRORS runtime location test(s) failed"
+    exit 1
+  fi
+  echo "All runtime location hook tests passed."
+  exit 0
+fi
+
 echo "=== Hook Tests ==="
+
+run_runtime_location_tests
 
 if ! bash "$SCRIPT_DIR/test-loop-state.sh"; then
   ERRORS=$((ERRORS + 1))

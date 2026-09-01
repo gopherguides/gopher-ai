@@ -313,7 +313,7 @@ COMMIT_MESSAGE="fix: address review-deep findings
 - <tests added for testable fixes, if any>"
 
 POST_FIX_RESULT=$(
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/review-deep-post-fix.sh" \
+  bash "<PLUGIN_ROOT>/scripts/review-deep-post-fix.sh" \
     "${ACTION_ARGS[@]}" \
     --message "$COMMIT_MESSAGE" \
     -- "${OWNED_FILES[@]}"

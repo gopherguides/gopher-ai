@@ -33,7 +33,7 @@ CALLER_LOOP_STATE_FILE="$STATE_FILE"
 CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"
 ```
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md`, execute its argument
+Read `<PLUGIN_ROOT>/skills/address-review/SKILL.md`, execute its argument
 resolution and **Embedded Workflow Contract**, then follow **Steps 2–11 only**:
 
 - **Skip Step 1** (loop init / PR checkout) — we're already on the branch; loop is owned by `$go-workflow:ship`

@@ -486,6 +486,8 @@ awk '
   block && /^```$/ { exit }
   block { print }
 ' "$SHIP_SKILL" > "$SHIP_BOOTSTRAP_BLOCK"
+sed 's|<PLUGIN_ROOT>|${CLAUDE_PLUGIN_ROOT}|g' "$SHIP_BOOTSTRAP_BLOCK" > "${SHIP_BOOTSTRAP_BLOCK}.bound"
+mv "${SHIP_BOOTSTRAP_BLOCK}.bound" "$SHIP_BOOTSTRAP_BLOCK"
 
 SHIP_STATE_FIELDS_BLOCK=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-ship-state-fields-XXXXXX")
 awk '
@@ -866,6 +868,8 @@ awk '
   block && /^```$/ { exit }
   block { print }
 ' "$SHIP_SKILL" > "$SHIP_FAILURE_BLOCK"
+sed 's|<PLUGIN_ROOT>|${CLAUDE_PLUGIN_ROOT}|g' "$SHIP_FAILURE_BLOCK" > "${SHIP_FAILURE_BLOCK}.bound"
+mv "${SHIP_FAILURE_BLOCK}.bound" "$SHIP_FAILURE_BLOCK"
 
 EMBEDDED_SHIP_TMP=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-embedded-ship-XXXXXX")
 EMBEDDED_STATE="$EMBEDDED_SHIP_TMP/.local/state/complete-issue-302.loop.local.json"

@@ -330,7 +330,7 @@ for skill_file in \
   "$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md" \
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md" \
   "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"; do
-  if ! grep -qF 'source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"' "$skill_file"; then
+  if ! grep -qF 'source "<PLUGIN_ROOT>/lib/github-rest.sh"' "$skill_file"; then
     fail "${skill_file#"$ROOT_DIR"/} does not load the shared REST helper"
   fi
 done

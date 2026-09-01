@@ -75,7 +75,7 @@ uncovered function:
 
 ### Go
 
-- Check for existing test files following patterns from `${CLAUDE_PLUGIN_ROOT}/skills/address-review/test-generation.md` Steps 4.5b-4.5c:
+- Check for existing test files following patterns from `<PLUGIN_ROOT>/skills/address-review/test-generation.md` Steps 4.5b-4.5c:
   ```bash
   ls "$WORKTREE_PATH/${FILE%.*}_test.go" 2>/dev/null || ls "$WORKTREE_PATH/$(dirname "$FILE")"/*_test.go 2>/dev/null
   ```

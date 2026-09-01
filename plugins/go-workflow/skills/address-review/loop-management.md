@@ -10,7 +10,7 @@ if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
 elif [ -f "$LOOP_STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$LOOP_STATE_FILE" 2>/dev/null)" ]; then
   echo "Re-entry detected — skipping setup-loop."
 else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE" "" "" '{}' \
+  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE" "" "" '{}' \
     "$LOOP_STATE_FILE" '["COMPLETE","INCOMPLETE"]'
 fi
 initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
@@ -34,7 +34,7 @@ Check if resuming from a previous watching phase:
 ```bash
 CURRENT_PHASE=""
 if [ -f "$LOOP_STATE_FILE" ]; then
-  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  source "<PLUGIN_ROOT>/lib/loop-state.sh"
   read_loop_state "$LOOP_STATE_FILE" "$WORKFLOW_STATE_PATH"
   CURRENT_PHASE="$PHASE"
 fi

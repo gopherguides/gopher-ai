@@ -25,7 +25,8 @@
 
 set -u
 
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+PLUGIN_ROOT="${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
+PLUGIN_DATA_ROOT="${PLUGIN_DATA:-${CLAUDE_PLUGIN_DATA:-}}"
 MANIFEST="$PLUGIN_ROOT/hooks/legacy-skill-hashes.txt"
 SKILLS_HOME="$HOME/.codex/skills"
 PLUGINS_HOME="$HOME/.codex/plugins"
@@ -53,8 +54,14 @@ KNOWN_PLUGINS="go-dev go-web go-workflow gopher-guides llm-tools tailwind"
 #     <name>/ regardless of marker, since the marker came from the (broken)
 #     prior --user install path.
 CLEANUP_LOGIC_VERSION="v3"
-PLUGIN_VERSION="$(awk -F'"' '/"version"/ {print $4; exit}' "$PLUGIN_ROOT/.claude-plugin/plugin.json" 2>/dev/null || echo "unknown")"
-MARKER="$HOME/.codex/.gopher-ai-cleanup-${CLEANUP_LOGIC_VERSION}-${PLUGIN_VERSION}"
+PLUGIN_MANIFEST="$PLUGIN_ROOT/.codex-plugin/plugin.json"
+[[ -f "$PLUGIN_MANIFEST" ]] || PLUGIN_MANIFEST="$PLUGIN_ROOT/.claude-plugin/plugin.json"
+PLUGIN_VERSION="$(awk -F'"' '/"version"/ {print $4; exit}' "$PLUGIN_MANIFEST" 2>/dev/null || echo "unknown")"
+if [[ -n "$PLUGIN_DATA_ROOT" ]]; then
+    MARKER="$PLUGIN_DATA_ROOT/.gopher-ai-cleanup-${CLEANUP_LOGIC_VERSION}-${PLUGIN_VERSION}"
+else
+    MARKER="$HOME/.codex/.gopher-ai-cleanup-${CLEANUP_LOGIC_VERSION}-${PLUGIN_VERSION}"
+fi
 [[ -f "$MARKER" ]] && exit 0
 
 # Detect a portable sha256 implementation. macOS ships `shasum -a 256` but not

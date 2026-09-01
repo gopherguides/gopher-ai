@@ -20,7 +20,7 @@ echo "REVIEW_CLEAN=$REVIEW_CLEAN"
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
 REVIEW_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}}"
 if [ -n "$REVIEW_STATE_FILE" ] && [ -f "$REVIEW_STATE_FILE" ]; then
-  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  source "<PLUGIN_ROOT>/lib/loop-state.sh"
   set_loop_field "$REVIEW_STATE_FILE" "review_clean" "true" "$WORKFLOW_STATE_PATH"
   echo "Persisted review_clean=true to $REVIEW_STATE_FILE"
 fi
@@ -43,7 +43,7 @@ if [ "${EMBEDDED_WORKFLOW:-false}" != "true" ] &&
    [ -n "${DETECTED_BOTS:-}" ] &&
    [ -n "${REVIEW_STATE_FILE:-}" ] &&
    [ -f "$REVIEW_STATE_FILE" ]; then
-  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  source "<PLUGIN_ROOT>/lib/loop-state.sh"
   set_loop_phase "$REVIEW_STATE_FILE" "watching" "$WORKFLOW_STATE_PATH"
   echo "Phase set to: watching (post-fix-cycle path)"
 fi
@@ -66,7 +66,7 @@ Address feedback, but note: "This PR has pending review feedback that cannot be 
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
 LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
 if [ -f "$LOOP_STATE_FILE" ]; then
-  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  source "<PLUGIN_ROOT>/lib/loop-state.sh"
   set_loop_phase "$LOOP_STATE_FILE" "fixing" "$WORKFLOW_STATE_PATH"
 fi
 ```

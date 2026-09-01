@@ -7,21 +7,28 @@ disable-model-invocation: true
 
 # E2E Verify
 
+## Plugin Resource Resolution
+
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root before every resource read or command:
+
+- **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
+
 Before requesting decisions or delegating work, read
-`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+`<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving a missing
+Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving a missing
 target or other workflow choice.
 
 Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:e2e-verify` by
-reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+reading `<PLUGIN_ROOT>/lib/skill-arguments.md` with this Claude Code compatibility payload:
 <claude-skill-arguments>
 $ARGUMENTS
 </claude-skill-arguments>
 
 ```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
+source "<PLUGIN_ROOT>/lib/github-rest.sh"
 ```
 
 ## Core Principle: Visual Verification is Non-Negotiable
@@ -100,7 +107,7 @@ Never infer composition from a generic inherited `STATE_FILE`:
 
 ```bash
 EMBEDDED_WORKFLOW=false
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
 RESOLVED_ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')
 if [ -z "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ "${RESOLVED_ORIGINAL_REPO_ROOT#/}" = "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ ! -d "$RESOLVED_ORIGINAL_REPO_ROOT" ]; then
   echo "Error: Could not resolve the absolute primary worktree root."
@@ -371,7 +378,7 @@ CALLER_LOOP_STATE_FILE="$STATE_FILE"
 CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"
 ```
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md`, execute its argument
+Read `<PLUGIN_ROOT>/skills/address-review/SKILL.md`, execute its argument
 resolution and **Embedded Workflow Contract**, then follow **Steps 2-11 only**:
 
 - **Skip Step 1** (checkout/rebase) — already done in Steps 1-2 above
@@ -639,7 +646,7 @@ EXPECTED_REVIEW_HEAD="$FINAL_REVIEW_HEAD"
 ```
 
 If this block sets `WORKFLOW_REASON`, follow **Hard Invariant Failure** and stop.
-Otherwise, read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/SKILL.md` and
+Otherwise, read `<PLUGIN_ROOT>/skills/address-review/SKILL.md` and
 repeat **Step 11 only** before proceeding to E2E testing. Do not proceed until
 CI is green and the unresolved-thread count is zero for the exact local and
 published final head. Step 11 must retain `EXPECTED_REVIEW_HEAD` and reject any

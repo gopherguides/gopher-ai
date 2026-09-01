@@ -204,6 +204,51 @@ CODEX_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-codex-plugins-v${EXPECTED_VERSION}
 GEMINI_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-gemini-extensions-v${EXPECTED_VERSION}.tar.gz"
 ARCHIVE_MTIME=946684800
 
+echo -n "Codex and Gemini builds resolve shared skill resources... "
+CODEX_GO_WORKFLOW_SKILL="$ROOT_DIR/dist/codex/plugins/go-workflow/skills/start-issue/SKILL.md"
+CODEX_GOPHER_GUIDES_SKILL="$ROOT_DIR/dist/codex/plugins/gopher-guides/skills/gopher-guides/SKILL.md"
+GEMINI_GO_WORKFLOW_SKILL="$ROOT_DIR/dist/gemini/gopher-ai-go-workflow/skills/start-issue/SKILL.md"
+GEMINI_GOPHER_GUIDES_SKILL="$ROOT_DIR/dist/gemini/gopher-ai-gopher-guides/skills/gopher-guides/SKILL.md"
+BUILT_RESOURCE_FAILURE=""
+for codex_skill in "$CODEX_GO_WORKFLOW_SKILL" "$CODEX_GOPHER_GUIDES_SKILL"; do
+  if [ ! -f "$codex_skill" ]; then
+    BUILT_RESOURCE_FAILURE="missing ${codex_skill#"$ROOT_DIR"/}"
+    break
+  fi
+  if ! grep -Fq '## Plugin Resource Resolution' "$codex_skill" ||
+     ! grep -Fq 'directory containing the absolute selected `SKILL.md` path, then ascend two directories' "$codex_skill"; then
+    BUILT_RESOURCE_FAILURE="Codex artifact lacks the binding contract: ${codex_skill#"$ROOT_DIR"/}"
+    break
+  fi
+done
+if [ -z "$BUILT_RESOURCE_FAILURE" ]; then
+  LEGACY_CODEX_RESOURCE_PATHS=$(grep -RInF --include='*.md' '${CLAUDE_PLUGIN_ROOT}/' \
+    "$ROOT_DIR/dist/codex/plugins/go-workflow/skills" \
+    "$ROOT_DIR/dist/codex/plugins/go-workflow/lib" \
+    "$ROOT_DIR/dist/codex/plugins/go-workflow/agents" \
+    "$CODEX_GOPHER_GUIDES_SKILL" || true)
+  if [ -n "$LEGACY_CODEX_RESOURCE_PATHS" ]; then
+    BUILT_RESOURCE_FAILURE="Codex artifacts contain Claude-only executable resource paths"
+  elif [ ! -f "$ROOT_DIR/dist/codex/plugins/go-workflow/lib/driver-interaction.md" ] ||
+       [ ! -x "$ROOT_DIR/dist/codex/plugins/go-workflow/scripts/setup-loop.sh" ] ||
+       [ ! -x "$ROOT_DIR/dist/codex/plugins/gopher-guides/scripts/cache-api.sh" ]; then
+    BUILT_RESOURCE_FAILURE="Codex artifacts omit representative bundled resources"
+  elif [ ! -f "$GEMINI_GO_WORKFLOW_SKILL" ] || [ ! -f "$GEMINI_GOPHER_GUIDES_SKILL" ]; then
+    BUILT_RESOURCE_FAILURE="Gemini artifacts omit representative skills"
+  elif grep -Fq '<PLUGIN_ROOT>' "$GEMINI_GO_WORKFLOW_SKILL" "$GEMINI_GOPHER_GUIDES_SKILL"; then
+    BUILT_RESOURCE_FAILURE="Gemini artifacts retain unresolved plugin-root notation"
+  elif ! grep -Fq '$HOME/.gemini/extensions/gopher-ai-go-workflow/lib/driver-interaction.md' "$GEMINI_GO_WORKFLOW_SKILL" ||
+       ! grep -Fq '$HOME/.gemini/extensions/gopher-ai-gopher-guides/scripts/cache-api.sh' "$GEMINI_GOPHER_GUIDES_SKILL"; then
+    BUILT_RESOURCE_FAILURE="Gemini artifacts lack installed extension resource paths"
+  fi
+fi
+if [ -n "$BUILT_RESOURCE_FAILURE" ]; then
+  echo "FAIL ($BUILT_RESOURCE_FAILURE)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 archive_members() {
   ruby -rzlib -rrubygems/package -e '
     Zlib::GzipReader.open(ARGV[0]) do |gzip|

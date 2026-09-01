@@ -20,7 +20,7 @@ When required intent cannot be inferred safely:
    state and pause it:
 
    ```bash
-   source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+   source "<PLUGIN_ROOT>/lib/loop-state.sh"
    pause_loop_for_driver "$ACTIVE_LOOP_STATE_FILE" "<missing intent>"
    ```
 

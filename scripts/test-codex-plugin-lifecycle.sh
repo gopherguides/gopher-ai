@@ -12,6 +12,7 @@ SERVER_ROOT="$TEST_ROOT/server"
 SERVER_STATE="$TEST_ROOT/server-state"
 TEST_HOME="$TEST_ROOT/home"
 CODEX_HOME="$TEST_HOME/.codex"
+PLUGIN_DATA_ROOT="$CODEX_HOME/plugins/data/go-workflow-gopher-ai"
 FIRST_WORKSPACE="$TEST_ROOT/first-workspace"
 SECOND_WORKSPACE="$TEST_ROOT/second-workspace"
 THIRD_WORKSPACE="$TEST_ROOT/third-workspace"
@@ -289,7 +290,7 @@ assert_session() {
     if grep -Eiq '(SessionStart|Stop) hook \(failed\)|hook exited with code [1-9][0-9]*|hook.*(not found|No such file)|exit(ed)? (with )?(code )?127' "$combined"; then
         fail "$label session reported a hook failure"
     fi
-    [[ -f "$CODEX_HOME/.gopher-ai-cleanup-v3-$version" ]] \
+    [[ -f "$PLUGIN_DATA_ROOT/.gopher-ai-cleanup-v3-$version" ]] \
         || fail "$label SessionStart hook did not create its version marker"
     grep -q 'stop-hook: entered' "$workspace/.local/state/loop-debug.log" \
         || fail "$label Stop hook did not record entry"
@@ -298,7 +299,7 @@ assert_session() {
 start_session first "$FIRST_WORKSPACE"
 FIRST_SESSION_PID=$SESSION_PID
 wait_for_session_request "$SERVER_STATE/1.requested" "$FIRST_SESSION_PID" "first Responses request"
-[[ -f "$CODEX_HOME/.gopher-ai-cleanup-v3-$FIRST_VERSION" ]] \
+[[ -f "$PLUGIN_DATA_ROOT/.gopher-ai-cleanup-v3-$FIRST_VERSION" ]] \
     || fail "first SessionStart hook did not run before the minimal turn"
 
 set_fixture_version "$SECOND_VERSION"
@@ -344,7 +345,7 @@ printf 'second=%s\n' "$SECOND_ROOT" >> "$LOG_DIR/roots.log"
 start_session second "$SECOND_WORKSPACE"
 SECOND_SESSION_PID=$SESSION_PID
 wait_for_session_request "$SERVER_STATE/2.requested" "$SECOND_SESSION_PID" "post-update Responses request"
-[[ -f "$CODEX_HOME/.gopher-ai-cleanup-v3-$SECOND_VERSION" ]] \
+[[ -f "$PLUGIN_DATA_ROOT/.gopher-ai-cleanup-v3-$SECOND_VERSION" ]] \
     || fail "post-update SessionStart hook did not run before the minimal turn"
 : > "$SERVER_STATE/2.release"
 finish_session "$SECOND_SESSION_PID" second

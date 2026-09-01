@@ -7,7 +7,7 @@ implementation, and review.
 
 ## Subagent Model Policy
 
-Each prompt under `${CLAUDE_PLUGIN_ROOT}/agents/` declares its default `model`
+Each prompt under `<PLUGIN_ROOT>/agents/` declares its default `model`
 frontmatter. Do not pass a per-dispatch model in this workflow unless the user
 explicitly requests a one-off override; doing so would mask the prompt's model
 policy.
@@ -71,7 +71,7 @@ Verify: `git -C "$WORKTREE_PATH" branch --show-current`
 
 ## Step 3: Explore Phase
 
-Read `${CLAUDE_PLUGIN_ROOT}/agents/explore-prompt.md` and fill in:
+Read `<PLUGIN_ROOT>/agents/explore-prompt.md` and fill in:
 
 - `{ISSUE_TITLE}` — from issue context
 - `{ISSUE_BODY}` — from issue context (body + comments)
@@ -126,7 +126,7 @@ Using the Explore results and approved approach:
 
 ## Step 6: Implementation Phase
 
-For each task, read `${CLAUDE_PLUGIN_ROOT}/agents/implementer-prompt.md` and fill in:
+For each task, read `<PLUGIN_ROOT>/agents/implementer-prompt.md` and fill in:
 
 - `{TASK_DESCRIPTION}` — from task decomposition
 - `{TARGET_FILES}` — files this agent may create/modify
@@ -167,7 +167,7 @@ git -C "$WORKTREE_PATH" fetch origin "$DEFAULT_BRANCH" 2>/dev/null || true
 git -C "$WORKTREE_PATH" diff "origin/${DEFAULT_BRANCH}...HEAD"
 ```
 
-Read `${CLAUDE_PLUGIN_ROOT}/agents/spec-review-prompt.md` and fill in:
+Read `<PLUGIN_ROOT>/agents/spec-review-prompt.md` and fill in:
 
 - `{ISSUE_TITLE}`, `{ISSUE_BODY}`, `{ACCEPTANCE_CRITERIA}` — from issue context
 - `{WORKTREE_PATH}` — working directory
@@ -182,7 +182,7 @@ Delegate the filled spec-review prompt through the active surface.
 
 ## Step 8: Code Quality Review
 
-Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md` and fill in `{WORKTREE_PATH}`, `{CHANGED_FILES}`, `{DIFF}`, `{PATTERNS}` (from Explore), `{REPO_CONVENTIONS}` (from CLAUDE.md/AGENTS.md).
+Read `<PLUGIN_ROOT>/agents/quality-review-prompt.md` and fill in `{WORKTREE_PATH}`, `{CHANGED_FILES}`, `{DIFF}`, `{PATTERNS}` (from Explore), `{REPO_CONVENTIONS}` (from CLAUDE.md/AGENTS.md).
 
 Delegate the filled quality-review prompt through the active surface.
 
@@ -206,7 +206,7 @@ If any step fails, fix the issue and re-run until all green.
 
 ## Step 9.5: Coverage Verification
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow Steps A through F with:
+Read `<PLUGIN_ROOT>/lib/coverage/coverage-verification.md` and follow Steps A through F with:
 
 | Variable | Value |
 |----------|-------|

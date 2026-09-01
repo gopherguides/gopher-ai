@@ -27,7 +27,7 @@ WORKFLOW_STATE_PATH='[]'
 if [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
   echo "Re-entry detected — skipping setup-loop."
 else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "complete-issue-${ISSUE_NUM}" "COMPLETE" 100 "" \
+  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "complete-issue-${ISSUE_NUM}" "COMPLETE" 100 "" \
     '{"implementing":"Resume start-issue implementation from its component phase.","reviewing":"The prior in-session review is void; continue to E2E verification and shipping without restarting it.","verifying":"Resume E2E verification and shipping from the active component phase.","incomplete":"Report the persisted incomplete reason, emit the INCOMPLETE terminal marker, and stop without entering Phase 3."}' \
     "$STATE_FILE" '["COMPLETE","INCOMPLETE"]'
 fi
@@ -36,7 +36,7 @@ fi
 ## Persist Arguments Block
 
 ```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
 initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
 set_loop_field "$STATE_FILE" "issue_num" "$ISSUE_NUM" "$WORKFLOW_STATE_PATH"
 set_loop_field "$STATE_FILE" "flags" "$FLAGS" "$WORKFLOW_STATE_PATH"
@@ -57,7 +57,7 @@ fi
 ## Re-entry Check
 
 ```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
 if [ -f "$STATE_FILE" ]; then
   read_loop_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
   WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')

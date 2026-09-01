@@ -27,7 +27,7 @@ NUMBER="<issue-or-pr-number>"
 
 ```bash
 SOURCE_DIR="$(pwd)"
-"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
+"<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
 ```
 
 If the output starts with `ENV_FILES_FOUND=true`, follow the shared
@@ -40,13 +40,13 @@ structured input is unavailable; never infer consent.
 If copying environment files was explicitly authorized:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" create "$NUMBER" --source-dir "$SOURCE_DIR" --copy-env
+"<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$NUMBER" --source-dir "$SOURCE_DIR" --copy-env
 ```
 
 Otherwise:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" create "$NUMBER" --source-dir "$SOURCE_DIR" --no-copy-env
+"<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$NUMBER" --source-dir "$SOURCE_DIR" --no-copy-env
 ```
 
 The script detects PR vs issue, derives the standard branch and path, fetches

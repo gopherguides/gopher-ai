@@ -7,21 +7,28 @@ disable-model-invocation: true
 
 # Address PR Review Comments
 
+## Plugin Resource Resolution
+
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root before every resource read or command:
+
+- **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
+
 Before requesting decisions or delegating work, read
-`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+`<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
+Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving any workflow
 choice.
 
 Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:address-review` by
-reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+reading `<PLUGIN_ROOT>/lib/skill-arguments.md` with this Claude Code compatibility payload:
 <claude-skill-arguments>
 $ARGUMENTS
 </claude-skill-arguments>
 
 ```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/github-rest.sh"
+source "<PLUGIN_ROOT>/lib/github-rest.sh"
 ```
 
 ## Output Durability
@@ -105,7 +112,7 @@ Never infer composition from a generic inherited `STATE_FILE`:
 
 ```bash
 EMBEDDED_WORKFLOW=false
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
 RESOLVED_ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')
 if [ -z "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ "${RESOLVED_ORIGINAL_REPO_ROOT#/}" = "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ ! -d "$RESOLVED_ORIGINAL_REPO_ROOT" ]; then
   echo "Error: Could not resolve the absolute primary worktree root."
@@ -158,7 +165,7 @@ if [ -z "$INVARIANT_STATE_FILE" ] || [ ! -f "$INVARIANT_STATE_FILE" ]; then
   echo "Error: Cannot persist address-review invariant failure without loop state."
   exit 1
 fi
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
 if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
   set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$WORKFLOW_REASON" "incomplete"
   echo "ADDRESS_REVIEW_RESULT=incomplete"

@@ -8,7 +8,7 @@ Before entering the watch loop, update the loop state phase so that any stop-hoo
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
 LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
 if [ -f "$LOOP_STATE_FILE" ]; then
-  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  source "<PLUGIN_ROOT>/lib/loop-state.sh"
   set_loop_phase "$LOOP_STATE_FILE" "watching" "$WORKFLOW_STATE_PATH"
   echo "Phase set to: watching"
 fi
@@ -43,7 +43,7 @@ if [ -z "${STATE_FILE:-}" ] || [ ! -f "$STATE_FILE" ]; then
   exit 1
 fi
 
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
 set_loop_field "$STATE_FILE" "approval_result" "incomplete" "$WORKFLOW_STATE_PATH"
 set_loop_field "$STATE_FILE" "approval_reason" "$APPROVAL_REASON" "$WORKFLOW_STATE_PATH"
 echo "Address-review stopped without required bot approvals: $APPROVAL_REASON"
@@ -205,7 +205,7 @@ After the quiet period ends and new unresolved comments/threads exist:
 SAFE_LOOP_NAME=$(echo "address-review-${RESOLVED_PR:-auto}" | sed 's/[^a-zA-Z0-9_-]/-/g')
 LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"
 if [ -f "$LOOP_STATE_FILE" ]; then
-  source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+  source "<PLUGIN_ROOT>/lib/loop-state.sh"
   set_loop_phase "$LOOP_STATE_FILE" "fixing" "$WORKFLOW_STATE_PATH"
   echo "Phase reset to: fixing (new bot feedback detected)"
 fi
