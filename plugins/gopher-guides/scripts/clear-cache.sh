@@ -3,7 +3,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/cache-lock.sh"
 
 CACHE_FILE="${GOPHER_GUIDES_CACHE_FILE:-${XDG_CACHE_HOME:-$HOME/.cache}/gopher-ai/gopher-guides-cache.json}"
 LEGACY_CACHE_FILE="$PWD/.claude/gopher-guides-cache.json"
@@ -11,15 +10,8 @@ LEGACY_CACHE_FILE="$PWD/.claude/gopher-guides-cache.json"
 clear_cache_file() {
   local cache_file="${1:?Cache file is required}"
   mkdir -p "$(dirname "$cache_file")"
-  cache_lock_configure "$cache_file"
-  cache_lock_acquire
-  trap cache_lock_release EXIT
-  trap 'exit 1' HUP INT TERM
-  cache_lock_begin_mutation
-  rm -f -- "$cache_file"
-  cache_lock_end_mutation
-  cache_lock_release
-  trap - EXIT HUP INT TERM
+  "$SCRIPT_DIR/cache-lock.sh" "${cache_file}.lock" \
+    "$SCRIPT_DIR/cache-mutate.sh" clear "$cache_file"
 }
 
 clear_cache_file "$CACHE_FILE"

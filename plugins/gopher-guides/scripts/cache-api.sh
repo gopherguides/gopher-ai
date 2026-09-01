@@ -12,7 +12,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/cache-lock.sh"
 
 ENDPOINT="${1:-}"
 JSON_DATA="${2:-}"
@@ -43,15 +42,7 @@ esac
 
 # Create cache dir
 mkdir -p "$(dirname "$CACHE_FILE")"
-cache_lock_configure "$CACHE_FILE"
-CACHE_TEMP=""
-
-release_cache_write() {
-  if [ -n "$CACHE_TEMP" ]; then
-    rm -f "$CACHE_TEMP"
-  fi
-  cache_lock_release
-}
+CACHE_EPOCH=$("$SCRIPT_DIR/cache-mutate.sh" epoch "$CACHE_FILE")
 
 # Generate cache key from endpoint + data
 hash_input() {
@@ -103,23 +94,8 @@ NOW=$(date +%s)
 CACHE_ENTRY=$(jq -n --arg resp "$RESPONSE" --argjson ts "$NOW" --arg ep "$ENDPOINT" \
   '{response: $resp, cached_at: $ts, endpoint: $ep}')
 
-cache_lock_acquire
-trap release_cache_write EXIT
-trap 'exit 1' HUP INT TERM
-CACHE_TEMP=$(mktemp "${CACHE_FILE}.tmp.XXXXXX")
-
-if [ -f "$CACHE_FILE" ] && jq -e 'type == "object"' "$CACHE_FILE" >/dev/null 2>&1; then
-  jq --arg key "$CACHE_KEY" --argjson entry "$CACHE_ENTRY" \
-    '.[$key] = $entry' "$CACHE_FILE" > "$CACHE_TEMP"
-else
-  jq -n --arg key "$CACHE_KEY" --argjson entry "$CACHE_ENTRY" \
-    '{($key): $entry}' > "$CACHE_TEMP"
-fi
-cache_lock_begin_mutation
-mv "$CACHE_TEMP" "$CACHE_FILE"
-CACHE_TEMP=""
-cache_lock_end_mutation
-cache_lock_release
-trap - EXIT HUP INT TERM
+printf '%s\n' "$CACHE_ENTRY" |
+  "$SCRIPT_DIR/cache-lock.sh" "${CACHE_FILE}.lock" \
+    "$SCRIPT_DIR/cache-mutate.sh" update "$CACHE_FILE" "$CACHE_KEY" "$CACHE_EPOCH"
 
 echo "$RESPONSE"

@@ -255,14 +255,16 @@ if [ -z "$BUILT_RESOURCE_FAILURE" ]; then
     BUILT_RESOURCE_FAILURE="Codex artifacts contain Claude-only executable resource paths"
   elif [ ! -f "$ROOT_DIR/dist/codex/plugins/go-workflow/lib/driver-interaction.md" ] ||
        [ ! -x "$ROOT_DIR/dist/codex/plugins/go-workflow/scripts/setup-loop.sh" ] ||
-       [ ! -f "$ROOT_DIR/dist/codex/plugins/gopher-guides/scripts/cache-lock.sh" ] ||
+       [ ! -x "$ROOT_DIR/dist/codex/plugins/gopher-guides/scripts/cache-lock.sh" ] ||
+       [ ! -x "$ROOT_DIR/dist/codex/plugins/gopher-guides/scripts/cache-mutate.sh" ] ||
        [ ! -x "$ROOT_DIR/dist/codex/plugins/gopher-guides/scripts/cache-api.sh" ] ||
        [ ! -x "$ROOT_DIR/dist/codex/plugins/gopher-guides/scripts/clear-cache.sh" ]; then
     BUILT_RESOURCE_FAILURE="Codex artifacts omit representative bundled resources"
   elif [ ! -f "$GEMINI_GO_WORKFLOW_SKILL" ] ||
        [ ! -f "$GEMINI_GOPHER_GUIDES_SKILL" ] ||
        [ ! -f "$GEMINI_GOPHER_GUIDES_CLEAR_SKILL" ] ||
-       [ ! -f "$ROOT_DIR/dist/gemini/gopher-ai-gopher-guides/scripts/cache-lock.sh" ] ||
+       [ ! -x "$ROOT_DIR/dist/gemini/gopher-ai-gopher-guides/scripts/cache-lock.sh" ] ||
+       [ ! -x "$ROOT_DIR/dist/gemini/gopher-ai-gopher-guides/scripts/cache-mutate.sh" ] ||
        [ ! -x "$ROOT_DIR/dist/gemini/gopher-ai-gopher-guides/scripts/clear-cache.sh" ]; then
     BUILT_RESOURCE_FAILURE="Gemini artifacts omit representative skills"
   elif [ -e "$GEMINI_GO_DEV_ROUTER" ]; then
