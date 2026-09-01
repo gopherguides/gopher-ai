@@ -19,6 +19,8 @@ THIRD_WORKSPACE="$TEST_ROOT/third-workspace"
 LOG_DIR="$TEST_ROOT/logs"
 PORT_FILE="$TEST_ROOT/server.port"
 ACTIVE_PIDS=""
+ACTIVE_PGIDS=""
+OWNED_PID=""
 PROBE_COMMAND="printf '%s\n' 'probe.go:1:1: undefined: lifecycleProbe' >&2; exit 1"
 PROBE_PROMPT="Run the lifecycle-post-tool-use-probe sentinel with the shell tool."
 HOOK_INPUT_CAPTURE="$LOG_DIR/post-tool-use.input.json"
@@ -26,6 +28,131 @@ HOOK_OUTPUT_CAPTURE="$LOG_DIR/post-tool-use.output.json"
 
 fail() {
     printf 'FAIL: %s\n' "$*" >&2
+    return 1
+}
+
+register_pid() {
+    ACTIVE_PIDS="$ACTIVE_PIDS $1"
+}
+
+unregister_pid() {
+    local removed_pid="$1"
+    local retained_pids=""
+    local pid
+    for pid in $ACTIVE_PIDS; do
+        if [[ "$pid" != "$removed_pid" ]]; then
+            retained_pids="$retained_pids $pid"
+        fi
+    done
+    ACTIVE_PIDS="$retained_pids"
+}
+
+register_pgid() {
+    ACTIVE_PGIDS="$ACTIVE_PGIDS $1"
+}
+
+unregister_pgid() {
+    local removed_pgid="$1"
+    local retained_pgids=""
+    local pgid
+    for pgid in $ACTIVE_PGIDS; do
+        if [[ "$pgid" != "$removed_pgid" ]]; then
+            retained_pgids="$retained_pgids $pgid"
+        fi
+    done
+    ACTIVE_PGIDS="$retained_pgids"
+}
+
+start_owned_process() {
+    python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@" &
+    OWNED_PID=$!
+    register_pid "$OWNED_PID"
+    register_pgid "$OWNED_PID"
+}
+
+terminate_process_group() {
+    local pgid="$1"
+    local attempts="${2:-50}"
+    local timeout_marker="$TEST_ROOT/process-group-$pgid.timeout"
+    local watchdog_pid
+    if ! kill -0 -- "-$pgid" 2>/dev/null; then
+        return 0
+    fi
+    (
+        local attempt
+        for attempt in $(seq 1 "$attempts"); do
+            if ! kill -0 -- "-$pgid" 2>/dev/null; then
+                exit 0
+            fi
+            sleep 0.1
+        done
+        if kill -0 -- "-$pgid" 2>/dev/null; then
+            : > "$timeout_marker"
+            kill -KILL -- "-$pgid" 2>/dev/null || true
+        fi
+    ) &
+    watchdog_pid=$!
+    kill -TERM -- "-$pgid" 2>/dev/null || true
+    wait "$pgid" 2>/dev/null || true
+    unregister_pid "$pgid"
+    while kill -0 -- "-$pgid" 2>/dev/null && [[ ! -f "$timeout_marker" ]]; do
+        sleep 0.1
+    done
+    kill "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
+    [[ ! -f "$timeout_marker" ]]
+}
+
+terminate_active_process_groups() {
+    local timed_out=false
+    local pgid
+    for pgid in $ACTIVE_PGIDS; do
+        if ! terminate_process_group "$pgid"; then
+            timed_out=true
+        fi
+    done
+    ACTIVE_PGIDS=""
+    [[ "$timed_out" == false ]]
+}
+
+terminate_active_processes() {
+    local timed_out=false
+    local pid watchdog_pid timeout_marker
+    for pid in $ACTIVE_PIDS; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" 2>/dev/null || true
+            continue
+        fi
+        timeout_marker="$TEST_ROOT/process-$pid.timeout"
+        (
+            sleep 5
+            if kill -0 "$pid" 2>/dev/null; then
+                : > "$timeout_marker"
+                kill -KILL "$pid" 2>/dev/null || true
+            fi
+        ) &
+        watchdog_pid=$!
+        kill -TERM "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+        kill "$watchdog_pid" 2>/dev/null || true
+        wait "$watchdog_pid" 2>/dev/null || true
+        if [[ -f "$timeout_marker" ]]; then
+            timed_out=true
+        fi
+    done
+    ACTIVE_PIDS=""
+    [[ "$timed_out" == false ]]
+}
+
+remove_test_root() {
+    local attempt remove_error=""
+    for attempt in $(seq 1 20); do
+        if remove_error=$(rm -rf -- "$TEST_ROOT" 2>&1) && [[ ! -e "$TEST_ROOT" ]]; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    printf 'FAIL: lifecycle temporary tree cleanup did not drain: %s\n' "$remove_error" >&2
     return 1
 }
 
@@ -58,14 +185,23 @@ dump_diagnostics() {
 cleanup() {
     local status=$?
     trap - EXIT INT TERM
-    local pid
-    for pid in $ACTIVE_PIDS; do
-        kill "$pid" 2>/dev/null || true
-    done
+    local cleanup_failure=""
+    if ! terminate_active_process_groups; then
+        cleanup_failure="owned lifecycle process groups did not drain within 5 seconds"
+    fi
+    if ! terminate_active_processes; then
+        cleanup_failure="${cleanup_failure:+$cleanup_failure; }owned lifecycle processes did not drain within 5 seconds"
+    fi
+    if [[ -n "$cleanup_failure" ]]; then
+        printf 'FAIL: %s\n' "$cleanup_failure" >&2
+        status=1
+    fi
     if [[ "$status" -ne 0 ]]; then
         dump_diagnostics
     fi
-    rm -rf -- "$TEST_ROOT"
+    if ! remove_test_root; then
+        status=1
+    fi
     exit "$status"
 }
 
@@ -96,6 +232,55 @@ mkdir -p \
     "$SECOND_WORKSPACE" \
     "$THIRD_WORKSPACE" \
     "$LOG_DIR"
+
+wait_for_marker() {
+    local marker="$1"
+    local attempt
+    for attempt in $(seq 1 50); do
+        [[ -f "$marker" ]] && return 0
+        sleep 0.1
+    done
+    return 1
+}
+
+assert_process_group_drain() {
+    local fixture_root="$TEST_ROOT/process-group-regression"
+    local paused_marker="$fixture_root/paused-started"
+    local resistant_marker="$fixture_root/resistant-started"
+    local paused_pid resistant_pid
+    mkdir -p "$fixture_root"
+    start_owned_process bash -c '
+        trap "exit 0" TERM
+        mkdir -p "$1/.tmp/plugins-clone-paused/plugins"
+        : > "$1/paused-started"
+        sleep 30 &
+        wait
+    ' _ "$fixture_root"
+    paused_pid="$OWNED_PID"
+    wait_for_marker "$paused_marker" || fail "paused process-group fixture did not start"
+    terminate_process_group "$paused_pid" \
+        || fail "paused owned process group did not drain after TERM"
+    wait "$paused_pid" 2>/dev/null || true
+    unregister_pid "$paused_pid"
+    unregister_pgid "$paused_pid"
+    start_owned_process bash -c '
+        trap "" TERM
+        mkdir -p "$1/.tmp/plugins-clone-resistant/plugins"
+        : > "$1/resistant-started"
+        while :; do sleep 1; done
+    ' _ "$fixture_root"
+    resistant_pid="$OWNED_PID"
+    wait_for_marker "$resistant_marker" || fail "resistant process-group fixture did not start"
+    if terminate_process_group "$resistant_pid" 2; then
+        fail "process-group drain accepted a TERM-resistant writer"
+    fi
+    wait "$resistant_pid" 2>/dev/null || true
+    unregister_pid "$resistant_pid"
+    unregister_pgid "$resistant_pid"
+    rm -rf -- "$fixture_root"
+}
+
+assert_process_group_drain
 
 for plugin_dir in "$ROOT_DIR"/plugins/*; do
     [[ -f "$plugin_dir/.codex-plugin/plugin.json" ]] || continue
@@ -159,7 +344,7 @@ python3 "$SCRIPT_DIR/test-codex-plugin-lifecycle-server.py" \
     --state-dir "$SERVER_STATE" \
     > "$LOG_DIR/server.stdout" 2> "$LOG_DIR/server.stderr" &
 SERVER_PID=$!
-ACTIVE_PIDS="$ACTIVE_PIDS $SERVER_PID"
+register_pid "$SERVER_PID"
 
 wait_for_file() {
     local path="$1"
@@ -181,6 +366,10 @@ wait_for_session_request() {
         [[ -f "$path" ]] && return 0
         if ! kill -0 "$pid" 2>/dev/null; then
             wait "$pid" 2>/dev/null || true
+            unregister_pid "$pid"
+            if ! kill -0 -- "-$pid" 2>/dev/null; then
+                unregister_pgid "$pid"
+            fi
             fail "$description process exited before contacting the Responses server"
         fi
         sleep 0.1
@@ -201,26 +390,26 @@ for attempt in $(seq 1 100); do
     sleep 0.1
 done
 
-run_codex() {
-    env \
+run_installer() {
+    local installer_pid installer_status
+    start_owned_process env \
         HOME="$TEST_HOME" \
         CODEX_HOME="$CODEX_HOME" \
-        OPENAI_API_KEY=dummy \
-        CODEX_LIFECYCLE_HOOK_INPUT="${CODEX_LIFECYCLE_HOOK_INPUT:-}" \
-        CODEX_LIFECYCLE_HOOK_OUTPUT="${CODEX_LIFECYCLE_HOOK_OUTPUT:-}" \
-        codex "$@"
-}
-
-run_installer() {
-    (
-        cd "$TEST_ROOT"
-        env \
-            HOME="$TEST_HOME" \
-            CODEX_HOME="$CODEX_HOME" \
-            GOPHER_AI_REPO="$MARKETPLACE_URL" \
-            GOPHER_AI_REF=main \
-            bash "$ROOT_DIR/scripts/install-codex.sh" --user
-    )
+        GOPHER_AI_REPO="$MARKETPLACE_URL" \
+        GOPHER_AI_REF=main \
+        bash -c 'cd "$1" && exec bash "$2" --user' \
+        _ "$TEST_ROOT" "$ROOT_DIR/scripts/install-codex.sh"
+    installer_pid="$OWNED_PID"
+    if wait "$installer_pid"; then
+        installer_status=0
+    else
+        installer_status=$?
+    fi
+    unregister_pid "$installer_pid"
+    if ! kill -0 -- "-$installer_pid" 2>/dev/null; then
+        unregister_pgid "$installer_pid"
+    fi
+    return "$installer_status"
 }
 
 if ! run_installer > "$LOG_DIR/installer-first.stdout" 2> "$LOG_DIR/installer-first.stderr"; then
@@ -244,9 +433,13 @@ start_session() {
     local hook_input="${4:-}"
     local hook_output="${5:-}"
     local sandbox_mode="${6:-read-only}"
-    CODEX_LIFECYCLE_HOOK_INPUT="$hook_input" \
-    CODEX_LIFECYCLE_HOOK_OUTPUT="$hook_output" \
-    run_codex exec \
+    start_owned_process env \
+        HOME="$TEST_HOME" \
+        CODEX_HOME="$CODEX_HOME" \
+        OPENAI_API_KEY=dummy \
+        CODEX_LIFECYCLE_HOOK_INPUT="$hook_input" \
+        CODEX_LIFECYCLE_HOOK_OUTPUT="$hook_output" \
+        codex exec \
         --cd "$workspace" \
         --skip-git-repo-check \
         --dangerously-bypass-hook-trust \
@@ -256,9 +449,8 @@ start_session() {
         -c "model_providers.lifecycle={ name = \"Lifecycle\", base_url = \"$RESPONSES_BASE_URL\", env_key = \"OPENAI_API_KEY\", wire_api = \"responses\", supports_websockets = false }" \
         "$prompt" \
         </dev/null \
-        > "$LOG_DIR/$label.stdout" 2> "$LOG_DIR/$label.stderr" &
-    SESSION_PID=$!
-    ACTIVE_PIDS="$ACTIVE_PIDS $SESSION_PID"
+        > "$LOG_DIR/$label.stdout" 2> "$LOG_DIR/$label.stderr"
+    SESSION_PID="$OWNED_PID"
 }
 
 finish_session() {
@@ -269,18 +461,24 @@ finish_session() {
         sleep 60
         if kill -0 "$pid" 2>/dev/null; then
             : > "$timeout_marker"
-            kill "$pid" 2>/dev/null || true
+            kill -TERM -- "-$pid" 2>/dev/null || true
         fi
     ) &
     local watchdog_pid=$!
-    ACTIVE_PIDS="$ACTIVE_PIDS $watchdog_pid"
+    register_pid "$watchdog_pid"
     local status
-    set +e
-    wait "$pid"
-    status=$?
-    set -e
+    if wait "$pid"; then
+        status=0
+    else
+        status=$?
+    fi
+    unregister_pid "$pid"
+    if ! kill -0 -- "-$pid" 2>/dev/null; then
+        unregister_pgid "$pid"
+    fi
     kill "$watchdog_pid" 2>/dev/null || true
     wait "$watchdog_pid" 2>/dev/null || true
+    unregister_pid "$watchdog_pid"
     [[ ! -f "$timeout_marker" ]] || fail "$label session timed out"
     [[ "$status" -eq 0 ]] || fail "$label session exited with code $status"
 }
