@@ -400,10 +400,10 @@ extract_frontmatter_value() {
     local key="$2"
 
     printf '%s\n' "$frontmatter" | awk -v key="$key" '
-        index($0, key ":") == 1 {
+        !found && index($0, key ":") == 1 {
             sub("^[^:]*:[[:space:]]*", "")
             print
-            exit
+            found = 1
         }
     '
 }

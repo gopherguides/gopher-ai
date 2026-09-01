@@ -39,6 +39,21 @@ else
   echo "OK"
 fi
 
+echo -n "Gemini frontmatter parsing drains large inputs... "
+FRONTMATTER_EXTRACTOR=$(sed -n '/^extract_frontmatter_value()/,/^}/p' "$ROOT_DIR/scripts/build-universal.sh")
+eval "$FRONTMATTER_EXTRACTOR"
+LARGE_FRONTMATTER=$(awk 'BEGIN {
+  print "description: expected"
+  for (i = 0; i < 20000; i++) print "padding-key: padding-value"
+}')
+if EXTRACTED_DESCRIPTION=$(extract_frontmatter_value "$LARGE_FRONTMATTER" description) &&
+   [ "$EXTRACTED_DESCRIPTION" = "expected" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
 if [ -x /opt/homebrew/bin/bash ] &&
    /opt/homebrew/bin/bash --version | sed -n '1p' | rg -q 'version 5\.3\.' &&
    command -v gtimeout >/dev/null 2>&1; then
