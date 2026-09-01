@@ -1036,7 +1036,7 @@ def cache_parser_failures():
         (
             [
                 "      - uses: &setup-node actions/setup-node@v7",
-                "        with: { package-manager-cache: false }",
+                "        with: { package-manager-cache: false } # disable caching",
             ],
             0,
             True,
@@ -1178,7 +1178,8 @@ def step_cache_status(lines, start, indentation, list_marker):
         with_indentation = len(with_entry[0]) + (2 if with_entry[1] else 0)
         if with_indentation != step_key_indentation:
             continue
-        with_value = SCALAR_PREFIX_PATTERN.sub("", with_entry[3], count=1).strip()
+        with_value = strip_yaml_comment(with_entry[3])
+        with_value = SCALAR_PREFIX_PATTERN.sub("", with_value, count=1).strip()
         if YAML_ALIAS_PATTERN.fullmatch(with_value):
             return "alias"
         if with_value.startswith("{"):
