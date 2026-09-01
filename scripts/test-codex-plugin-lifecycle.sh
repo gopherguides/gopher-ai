@@ -235,13 +235,14 @@ start_session() {
     local prompt="${3:-Reply with exactly lifecycle-ok and do not use tools.}"
     local hook_input="${4:-}"
     local hook_output="${5:-}"
+    local sandbox_mode="${6:-read-only}"
     CODEX_LIFECYCLE_HOOK_INPUT="$hook_input" \
     CODEX_LIFECYCLE_HOOK_OUTPUT="$hook_output" \
     run_codex exec \
         --cd "$workspace" \
         --skip-git-repo-check \
         --dangerously-bypass-hook-trust \
-        --sandbox read-only \
+        --sandbox "$sandbox_mode" \
         --json \
         -c 'model_provider="lifecycle"' \
         -c "model_providers.lifecycle={ name = \"Lifecycle\", base_url = \"$RESPONSES_BASE_URL\", env_key = \"OPENAI_API_KEY\", wire_api = \"responses\", supports_websockets = false }" \
@@ -349,7 +350,7 @@ wait_for_session_request "$SERVER_STATE/2.requested" "$SECOND_SESSION_PID" "post
 finish_session "$SECOND_SESSION_PID" second
 assert_session second "$SECOND_WORKSPACE" "$SECOND_VERSION"
 
-start_session probe "$THIRD_WORKSPACE" "$PROBE_PROMPT" "$HOOK_INPUT_CAPTURE" "$HOOK_OUTPUT_CAPTURE"
+start_session probe "$THIRD_WORKSPACE" "$PROBE_PROMPT" "$HOOK_INPUT_CAPTURE" "$HOOK_OUTPUT_CAPTURE" danger-full-access
 PROBE_SESSION_PID=$SESSION_PID
 wait_for_session_request "$SERVER_STATE/3.requested" "$PROBE_SESSION_PID" "probe Responses request"
 : > "$SERVER_STATE/3.release"

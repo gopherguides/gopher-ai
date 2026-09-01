@@ -266,8 +266,9 @@ echo -n "  Claude PostToolUse reads structured tool_output failures... "
 CLAUDE_COMPILE_OUTPUT=$(run_post_tool_use_fixture \
   "$POST_TOOL_USE_ROOT/claude-compilation.json" \
   "$POST_TOOL_USE_ROOT/claude-compilation.stderr")
+CLAUDE_COMPILE_ERROR=$(< "$POST_TOOL_USE_ROOT/claude-compilation.stderr")
 if [ -z "$CLAUDE_COMPILE_OUTPUT" ] &&
-   rg -q "Go compilation error detected" "$POST_TOOL_USE_ROOT/claude-compilation.stderr"; then
+   [[ "$CLAUDE_COMPILE_ERROR" == *"Go compilation error detected"* ]]; then
   echo "OK"
 else
   echo "FAIL"
