@@ -106,9 +106,9 @@ Do not create a lockfile for a different package manager.
 
 Read the config file without evaluating untrusted JavaScript. Extract: content
 configuration (becomes `@source` directives), direct `theme` namespace
-replacements, `theme.extend`, `safelist`, `prefix`, `corePlugins`, `darkMode`
-(becomes a custom variant and selector), `important`, and `plugins` (check v4
-compatibility).
+replacements, `theme.extend`, `safelist`, `prefix`, `separator`, `corePlugins`,
+`darkMode` (becomes a custom variant and selector), `important`, and `plugins`
+(check v4 compatibility).
 
 Support both v3 content forms:
 
@@ -171,11 +171,32 @@ class names.
 Before writing, enumerate the old and proposed prefixed utility sets. When
 builds are allowed, verify every migrated token produces the corresponding v4
 selector and equivalent declarations. If the prefix is computed, invalid for
-v4, combined with an unsupported custom separator, dynamically assembled, or
-otherwise cannot be rewritten and verified losslessly, retain the config,
-report the prefix migration as unresolved, and block completion. Do not assume
-that JavaScript `@config` alone preserves v3 `prefix` or `separator` behavior;
-keep the blocker until exact generated behavior is verified.
+v4, dynamically assembled, or otherwise cannot be rewritten and verified
+losslessly, retain the config, report the prefix migration as unresolved, and
+block completion. Do not assume that JavaScript `@config` alone preserves v3
+`prefix` behavior; keep the blocker until exact generated behavior is
+verified.
+
+### Custom Separator Preservation
+
+Parse the v3 `separator` independently of `prefix`, including when no prefix
+is configured. The default `:` separator needs no rewrite. For a static custom
+separator, inventory every confirmed v3 separator-form Tailwind token in
+source files, raw content, safelist entries, `@apply`, and plugin-generated
+usage. Rewrite each complete confirmed token to v4's `:` variant separator
+while preserving prefix, variant order, negative, arbitrary, and important
+semantics. Do not replace separator characters in ordinary text, arbitrary
+values, URLs, custom class names, or dynamically assembled candidates.
+
+Before writing, enumerate the complete old and proposed candidate sets from
+every location. When builds are allowed, compare the generated selector and
+declaration sets for every rewritten token and require exact equivalence. If
+the separator is computed, a token is ambiguous or dynamic, plugin output
+cannot be enumerated, or generated equivalence cannot be proven, retain the
+configuration unchanged, report separator migration as unresolved, and block
+completion and config removal. V4 `@config` does not support `separator`, so
+retaining or loading the JavaScript config is not evidence that custom
+separator behavior survived.
 
 ### Direct Theme Namespace Replacements
 
@@ -285,24 +306,27 @@ plugin's `strategy` option into an `@plugin` block instead of dropping it.
 
 ## Step 3: Generate v4 CSS Configuration
 
-Identify the existing Tailwind CSS entry that the selected build integration
-uses and bind it to `<CSS_ENTRY>`. If multiple files contain v3 directives,
-use the build configuration to identify the primary entry; ask before writing
-when repository evidence cannot disambiguate it.
+Identify every Tailwind CSS entry that a build integration compiles
+independently and bind the complete set to `<CSS_ENTRIES>`. Bind the entry used
+by the selected primary build command to `<CSS_ENTRY>`. Distinguish independent
+entries from CSS fragments using package scripts and Vite, PostCSS, or other
+build configuration; ask before writing when repository evidence cannot
+disambiguate them.
 
 For the CLI integration, derive a distinct sibling output path and bind it to `<CSS_OUTPUT>`: replace an `input.css` filename with `output.css`, or append
 `.generated.css` to another stem. Never use `<CSS_ENTRY>` itself as output.
 
 Determine the effective base directory for every v3 `content` pattern using
-the v3 configuration and project invocation context. Rebase every content glob
-from that base to the directory containing `<CSS_ENTRY>` before emitting an
-`@source` directive. Normalize separators to `/` and preserve glob syntax. For
-example, with `src/index.css` and a project-root v3 base,
-`./src/**/*.tsx` becomes `./**/*.tsx`, while `./public/**/*.html` becomes
-`../public/**/*.html`.
+the v3 configuration and project invocation context. For every entry in
+`<CSS_ENTRIES>`, rebase every content glob from that base to the directory
+containing that entry before emitting an `@source` directive. Normalize path
+separators to `/` and preserve glob syntax. For example, with `src/index.css`
+and a project-root v3 base, `./src/**/*.tsx` becomes `./**/*.tsx`, while
+`./public/**/*.html` becomes `../public/**/*.html`.
 
 Enumerate the files matched before and after rebasing. Do not write or report a
-migration as complete unless the generated `@source` directives resolve to the same files as the v3 content patterns.
+migration as complete unless the generated `@source` directives from every
+independently built entry resolve to the same files as the v3 content patterns.
 
 ### Boolean `important`
 
@@ -371,9 +395,13 @@ For hex → oklch conversion, use https://oklch.com/. Common conversions:
 | `#f59e0b` (amber-500) | `oklch(0.75 0.18 70)` |
 | `#ffffff` / `#000000` | `oklch(1 0 0)` / `oklch(0 0 0)` |
 
-Generate the converted configuration as a separate block before editing the
-selected CSS entry. Read the entire original `<CSS_ENTRY>` and merge that block
-in place. Never replace the entire CSS entry with the generated block.
+Generate an equivalent converted configuration block for every independently
+built entry before editing any entry. Rebase entry-relative `@source` and
+`@config` paths separately for each entry. Read every original entry in
+`<CSS_ENTRIES>` completely and merge its block in place. Read the entire
+original `<CSS_ENTRY>` and merge that block for the primary entry. Never
+replace the entire CSS entry with the generated block; apply this preservation
+rule to every entry.
 
 During the merge:
 
@@ -402,9 +430,9 @@ legacy directive spans and newly generated configuration excluded. Do not
 write unless the remaining existing content is identical and in the same
 order.
 
-With `--check`, render the proposed merged CSS entry or an exact diff in the
-report without writing it. Otherwise, apply the verified in-place merge to the
-selected CSS entry.
+With `--check`, render every proposed merged CSS entry or an exact diff in the
+report without writing it. Otherwise, apply the verified in-place merges to
+all entries only after every proposed entry passes the preservation checks.
 
 ## Step 4: Update CSS Files
 
@@ -420,11 +448,22 @@ Replace v3 directives:
 
 Existing `@apply` rules in your CSS continue to work unchanged.
 
-For every affected CSS file other than `<CSS_ENTRY>`, use the same
-directive-only replacement: place the equivalent selected Tailwind import or
-split-import set at the first legacy directive, remove only the remaining legacy directive spans, and
-preserve all custom imports, `@layer` blocks, comments, at-rules, and ordinary
-CSS. Do not insert the generated configuration block into secondary entries.
+For every independently built entry in `<CSS_ENTRIES>`, place the equivalent
+selected Tailwind import or split-import set in the legal import region and
+merge that entry's complete converted configuration block adjacent to it.
+Never omit converted configuration merely because an entry is secondary. For
+every affected CSS fragment that is not independently built, use the same
+directive-only replacement: place the equivalent import or split-import set at
+the first legacy directive, remove only the remaining legacy directive spans,
+and preserve all custom imports, `@layer` blocks, comments, at-rules, and
+ordinary CSS.
+
+Preserve entry-specific CSS and relative order in every entry. Build and
+verify every independent entry through its actual integration, compare the
+generated utility sets with v3, and require equivalent configuration behavior
+before allowing old-config removal. If any independent entry cannot receive
+and build the complete equivalent configuration, retain the old configuration
+and block migration completion.
 
 With `--check`, list every affected CSS file and show its proposed in-place
 replacement without editing it. Otherwise, apply the verified replacements.
@@ -632,13 +671,14 @@ these are TRUE:
 
 1. The v3 configuration and affected CSS files were parsed and analyzed
 2. Proposed CSS, dependency, script, PostCSS, and old-config changes were shown
-3. The preview report identifies unresolved plugin, core plugin, theme namespace, safelist, raw content, prefix, or color conversions
-4. Proposed `@source` paths preserve the v3 content matches from the selected CSS entry
+3. The preview report identifies unresolved plugin, core plugin, theme namespace, safelist, raw content, prefix, separator, or color conversions
+4. Proposed `@source` paths preserve the v3 content matches from every independently built CSS entry
 5. Boolean or selector-form `important` behavior is preserved or identified as an unresolved choice
 6. Direct theme resets and literal safelist inline sources preserve v3 semantics or are identified as unresolved
-7. Raw content and prefix semantics are preserved or identified as unresolved blockers
+7. Raw content, prefix, and separator semantics are preserved or identified as unresolved blockers
 8. Disabled core-plugin behavior is preserved or identified as an unresolved blocker
-9. No project files, dependencies, or generated CSS changed
+9. Every independently built entry would receive equivalent converted configuration while preserving its entry-specific CSS and order
+10. No project files, dependencies, or generated CSS changed
 
 Without `--check`, follow the selected integration path. Use only the migration completion criteria for the selected integration.
 
@@ -654,7 +694,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 6. No `@tailwind` directives remain in CSS files
 7. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
 8. Requested `--backup` and `--keep-config` behavior completed before destructive changes
-9. Generated `@source` directives preserve every v3 content match relative to the selected CSS entry
+9. Generated `@source` directives preserve every v3 content match relative to every independently built CSS entry
 10. v3 `important` behavior is preserved and verified
 11. Every direct theme namespace replacement is translated with its reset semantics or remains unresolved with the config retained
 12. Every safelist entry is translated losslessly to `@source inline()` or remains unresolved with the config retained
@@ -662,6 +702,8 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 14. Every raw content entry has an exactly equivalent v4 inline source or remains unresolved with the config retained
 15. The v3 prefix import and every prefixed utility are migrated and verified losslessly or remain unresolved with the config retained
 16. `corePlugins.preflight: false` uses verified split imports without preflight, and every other disabled core plugin remains unresolved with the config retained
+17. Every custom-separator token is rewritten to v4 colon form with generated equivalence verified, or remains unresolved with the config retained
+18. Every independently built CSS entry contains equivalent converted configuration, preserves its entry-specific CSS and order, and passes its actual build
 
 ### PostCSS Migration Completion Criteria
 
@@ -677,7 +719,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 8. No `@tailwind` directives remain in CSS files
 9. Every detected plugin dependency is installed and referenced by its generated `@plugin` directive
 10. Requested `--backup` and `--keep-config` behavior completed before destructive changes
-11. Generated `@source` directives preserve every v3 content match relative to the selected CSS entry
+11. Generated `@source` directives preserve every v3 content match relative to every independently built CSS entry
 12. v3 `important` behavior is preserved and verified
 13. Every direct theme namespace replacement is translated with its reset semantics or remains unresolved with the config retained
 14. Every safelist entry is translated losslessly to `@source inline()` or remains unresolved with the config retained
@@ -685,6 +727,8 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 16. Every raw content entry has an exactly equivalent v4 inline source or remains unresolved with the config retained
 17. The v3 prefix import and every prefixed utility are migrated and verified losslessly or remain unresolved with the config retained
 18. `corePlugins.preflight: false` uses verified split imports without preflight, and every other disabled core plugin remains unresolved with the config retained
+19. Every custom-separator token is rewritten to v4 colon form with generated equivalence verified, or remains unresolved with the config retained
+20. Every independently built CSS entry contains equivalent converted configuration, preserves its entry-specific CSS and order, and passes its actual build
 
 ```
 <done>COMPLETE</done>

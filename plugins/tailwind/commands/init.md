@@ -34,13 +34,16 @@ directory. Stop before any mutation when the path does not exist, is not a
 directory, or extra positional arguments remain. Bind `<INIT_TARGET>` once and
 do not re-derive or broaden it later.
 
-Treat `<INIT_TARGET>` as the operation root for the entire workflow. Execute
-every project shell command below with its working directory set to
-`<INIT_TARGET>`, including discovery, package-manager commands, integration
-configuration, and validation. Resolve every relative read and write path,
-including `package.json`, lockfiles, CSS entries, build configuration, and
-`.gitignore`, against `<INIT_TARGET>`. Do not inspect, install into, write to,
-or validate the invocation directory unless it is the same normalized path.
+Treat `<INIT_TARGET>` as the application and integration mutation scope for the
+entire workflow. Execute application discovery, file edits, integration
+configuration, and direct tool validation with `<INIT_TARGET>` as the working
+directory. Resolve every application path, including the member
+`package.json`, CSS entries, build configuration, and `.gitignore`, against
+`<INIT_TARGET>`. The only permitted ancestor discovery and mutation are the
+read-only package-ownership search and owning lockfile update described under
+Package Manager Selection. Do not treat the package root as a broader
+application mutation scope, and do not inspect or change the invocation
+directory unless it is `<INIT_TARGET>` or the owning package root.
 
 ## Loop Initialization
 
@@ -86,12 +89,26 @@ ls tailwind.config.* 2>/dev/null
 
 ## Package Manager Selection
 
-Read the `packageManager` field in `package.json` and inspect
+Starting at `<INIT_TARGET>`, walk only its ancestor directories and inspect
+package-manager ownership evidence without writing. Find the nearest ancestor
+that owns the target through a package-manager declaration, lockfile, or
+workspace configuration such as `package.json` `workspaces` or
+`pnpm-workspace.yaml`. Confirm that the workspace configuration actually
+includes `<INIT_TARGET>`, then bind that ancestor to `<PACKAGE_ROOT>` and bind
+the requested member's concrete package name or root-relative path to
+`<WORKSPACE_MEMBER>`. For a standalone project, `<PACKAGE_ROOT>` and
+`<INIT_TARGET>` are the same directory.
+
+At the owning root, read the `packageManager` field and inspect
 `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, and `bun.lockb`.
-Use the declared manager when it agrees with the lockfile. Otherwise, use the
-single lockfile already present. If the signals conflict, ask which manager is
-authoritative and stop before changing dependencies. If neither signal exists,
-default to npm.
+Use the declared manager when it agrees with the owning lockfile. Otherwise,
+use the single owning lockfile already present. Treat competing ownership
+roots, a member declaration that disagrees with its owning root, multiple
+manager lockfiles, or a workspace that does not clearly include the requested
+target as conflicting signals. Ask which root and manager are authoritative
+and stop before changing dependencies. If no ownership evidence exists at the
+target or any ancestor, bind `<PACKAGE_ROOT>` to `<INIT_TARGET>` and default to
+npm.
 
 Use the selected manager for every dependency and script command:
 
@@ -103,8 +120,14 @@ Use the selected manager for every dependency and script command:
 | Bun | `bun add -d <PACKAGES>` | `bun run <SCRIPT>` |
 
 Do not create a lockfile for a different package manager.
-Run the selected package manager with `<INIT_TARGET>` as its working directory
-so its manifest and lockfile updates cannot land in another project.
+When `<PACKAGE_ROOT>` equals `<INIT_TARGET>`, run the selected package manager
+there normally. For a workspace member, run it from `<PACKAGE_ROOT>` with that
+manager's explicit workspace/member selector bound to `<WORKSPACE_MEMBER>`.
+Never run an unscoped install or script command at the workspace root for a
+member request. Verify that dependency changes affect only the requested
+member manifest and the owning lockfile; do not modify unrelated packages.
+Never create a lockfile in the member or at a different ancestor when the
+owning workspace already has one.
 
 If existing Tailwind detected, ask via `AskUserQuestion`:
 
@@ -273,8 +296,10 @@ output. Do not add example paths that the selected CLI script does not write.
 ## Step 8: Verify Selected Integration
 
 Run only the verification path for the selected integration.
-Run every verification command with `<INIT_TARGET>` as its working directory
-and validate only artifacts associated with that target.
+Run direct tool verification with `<INIT_TARGET>` as its working directory. If
+verification invokes a package-manager script for a workspace member, run it
+from `<PACKAGE_ROOT>` with the explicit `<WORKSPACE_MEMBER>` selector. Validate
+only application files and artifacts associated with `<INIT_TARGET>`.
 
 ### CLI Verification
 
@@ -376,9 +401,11 @@ applicable item is TRUE.
 ### Target Scope Completion Criteria
 
 1. `<INIT_TARGET>` is one concrete normalized absolute directory
-2. Every discovery and package-manager command used `<INIT_TARGET>` as its working directory
-3. Every project read, write, integration edit, and validation stayed within `<INIT_TARGET>`
-4. No file in the invocation directory changed unless it is `<INIT_TARGET>`
+2. Every application discovery, integration edit, and direct tool command used `<INIT_TARGET>` as its working directory
+3. `<PACKAGE_ROOT>` is the nearest verified package or workspace owner of `<INIT_TARGET>`
+4. Every workspace package-manager command explicitly targeted `<WORKSPACE_MEMBER>` and changed no unrelated package
+5. Every application read, write, integration edit, and validation stayed within `<INIT_TARGET>`; only the verified owning lockfile could change at `<PACKAGE_ROOT>`
+6. No file in the invocation directory changed unless it is `<INIT_TARGET>` or the verified owning package root
 
 ### CLI Completion Criteria
 
