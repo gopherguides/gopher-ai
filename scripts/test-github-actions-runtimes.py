@@ -791,6 +791,20 @@ def parser_failures():
     _, multiline_continuations = flow_step_lines(multiline_flow_lines)
     if multiline_continuations != {2, 3, 4}:
         failures.append("flow parser missed multiline continuation fixture")
+    flow_steps_lines = [
+        "jobs:",
+        "  test:",
+        "    steps: [ { uses: actions/checkout@v4 } ]",
+    ]
+    if unsupported_steps_collections(flow_steps_lines) != [2]:
+        failures.append("policy missed flow-style steps collection fixture")
+    alias_steps_lines = [
+        "jobs:",
+        "  test:",
+        "    steps: *shared-steps",
+    ]
+    if unsupported_steps_collections(alias_steps_lines) != [2]:
+        failures.append("policy missed aliased steps collection fixture")
     block_lines = [
         "    steps:",
         "      - name: Example",
@@ -1123,6 +1137,21 @@ def coverage_failures():
     ]
 
 
+def unsupported_steps_collections(lines):
+    scalar_content = block_scalar_content_indices(lines)
+    unsupported = []
+    for index, line in enumerate(lines):
+        if index in scalar_content:
+            continue
+        entry = block_mapping_entry(line)
+        if not entry or entry[1] or entry[2] != "steps":
+            continue
+        value = SCALAR_PREFIX_PATTERN.sub("", entry[3], count=1).strip()
+        if value and not value.startswith("#"):
+            unsupported.append(index)
+    return unsupported
+
+
 def step_cache_status(lines, start, indentation, list_marker):
     step_start = start
     step_indentation = indentation
@@ -1218,6 +1247,14 @@ def main():
     for path in workflow_files():
         lines = path.read_text().splitlines()
         normalized_lines = [normalize_workflow_line(line) for line in lines]
+        policy_lines = (
+            normalized_lines if PLUGIN_TEMPLATES in path.parents else lines
+        )
+        for index in unsupported_steps_collections(policy_lines):
+            location = f"{path.relative_to(ROOT)}:{index + 1}"
+            failures.append(
+                f"{location}: steps must use a block-style sequence"
+            )
         scalar_content = block_scalar_content_indices(lines)
         normalized_scalar_content = (
             block_scalar_content_indices(normalized_lines)
