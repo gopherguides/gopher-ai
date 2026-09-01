@@ -27,16 +27,23 @@ assert_contains() {
   local file="$1"
   local text="$2"
 
-  rg -Fq -- "$text" "$file" || fail "${file#"$ROOT_DIR/"} is missing: $text"
+  awk -v text="$text" 'index($0, text) { found = 1; exit } END { exit found ? 0 : 1 }' "$file" ||
+    fail "${file#"$ROOT_DIR/"} is missing: $text"
 }
 
 assert_not_contains() {
   local file="$1"
   local text="$2"
 
-  if rg -Fq -- "$text" "$file"; then
+  if awk -v text="$text" 'index($0, text) { found = 1; exit } END { exit found ? 0 : 1 }' "$file"; then
     fail "${file#"$ROOT_DIR/"} unexpectedly contains: $text"
   fi
+}
+
+matches() {
+  local pattern="$1"
+
+  awk -v pattern="$pattern" '$0 ~ pattern { found = 1; exit } END { exit found ? 0 : 1 }'
 }
 
 for skill_name in "${WORKFLOW_SKILLS[@]}"; do
@@ -46,8 +53,8 @@ for skill_name in "${WORKFLOW_SKILLS[@]}"; do
   [ -f "$command_file" ] || fail "missing command body: plugins/go-dev/commands/$skill_name.md"
 
   metadata=$(frontmatter "$skill_file") || fail "$skill_name has invalid frontmatter"
-  printf '%s\n' "$metadata" | rg -q "^name: $skill_name$" || fail "$skill_name has the wrong frontmatter name"
-  printf '%s\n' "$metadata" | rg -q '^description: .+' || fail "$skill_name is missing a description"
+  printf '%s\n' "$metadata" | matches "^name: $skill_name$" || fail "$skill_name has the wrong frontmatter name"
+  printf '%s\n' "$metadata" | matches '^description: .+' || fail "$skill_name is missing a description"
   assert_contains "$skill_file" '## Plugin Resource Resolution'
   assert_contains "$skill_file" 'directory containing the absolute selected'
   assert_contains "$skill_file" 'then ascend two directories'
@@ -59,14 +66,14 @@ done
 for skill_name in "${EXPLICIT_SKILLS[@]}"; do
   skill_file="$PLUGIN_DIR/skills/$skill_name/SKILL.md"
   policy_file="$PLUGIN_DIR/skills/$skill_name/agents/openai.yaml"
-  frontmatter "$skill_file" | rg -q '^disable-model-invocation: true$' || fail "$skill_name is not explicit-only"
+  frontmatter "$skill_file" | matches '^disable-model-invocation: true$' || fail "$skill_name is not explicit-only"
   [ -f "$policy_file" ] || fail "$skill_name is missing agents/openai.yaml"
-  rg -q '^  allow_implicit_invocation: false$' "$policy_file" || fail "$skill_name policy allows implicit invocation"
+  matches '^  allow_implicit_invocation: false$' < "$policy_file" || fail "$skill_name policy allows implicit invocation"
 done
 
 for skill_name in explain validate-skills; do
   skill_file="$PLUGIN_DIR/skills/$skill_name/SKILL.md"
-  if frontmatter "$skill_file" | rg -q '^disable-model-invocation:'; then
+  if frontmatter "$skill_file" | matches '^disable-model-invocation:'; then
     fail "$skill_name must remain auto-discoverable"
   fi
   [ ! -e "$PLUGIN_DIR/skills/$skill_name/agents/openai.yaml" ] || fail "$skill_name has an explicit-only policy"
@@ -87,7 +94,7 @@ VALIDATE_SKILL="$PLUGIN_DIR/skills/validate-skills/SKILL.md"
 VALIDATE_COMMAND="$PLUGIN_DIR/commands/validate-skills.md"
 assert_contains "$VALIDATE_SKILL" '<PLUGIN_ROOT>/scripts/validate-skills.py'
 assert_contains "$VALIDATE_SKILL" "\$go-dev:validate-skills"
-if rg -q '(^|[[:space:]`])/validate-skills([[:space:]`]|$)' "$VALIDATE_SKILL"; then
+if matches '(^|[[:space:]`])/validate-skills([[:space:]`]|$)' < "$VALIDATE_SKILL"; then
   fail "validate-skills suggests a Claude-only slash command"
 fi
 assert_contains "$VALIDATE_COMMAND" "\${CLAUDE_PLUGIN_ROOT}/scripts/validate-skills.py"
@@ -169,7 +176,7 @@ assert default["blocks_found"] == 2
 PY
 
 DEFAULT_OUTPUT=$(cd "$FIXTURE_ROOT" && "$VALIDATOR")
-printf '%s\n' "$DEFAULT_OUTPUT" | rg -q '^## Validation Report$' || fail "no-argument validation did not render a report"
+printf '%s\n' "$DEFAULT_OUTPUT" | matches '^## Validation Report$' || fail "no-argument validation did not render a report"
 
 set +e
 INVALID_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json invalid.md)

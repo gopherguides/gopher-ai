@@ -644,6 +644,9 @@ else
   fi
   for asset in \
     "gopher-ai-go-workflow/lib/ship/local-review.md" \
+    "gopher-ai-go-dev/commands/bench.md" \
+    "gopher-ai-go-dev/lib/codex-command-adapter.md" \
+    "gopher-ai-go-dev/scripts/validate-skills.py" \
     "gopher-ai-llm-tools/prompts/codex-review.md" \
     "gopher-ai-go-web/templates/deploy/Dockerfile" \
     "gopher-ai-go-web/references/convert-to-go-project.md"; do

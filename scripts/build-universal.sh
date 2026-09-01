@@ -255,6 +255,7 @@ build_gemini() {
             for cmd_file in "${plugin_dir}commands/"*.md; do
                 if [[ -f "$cmd_file" ]]; then
                     cmd_name=$(basename "$cmd_file" .md)
+                    cp "$cmd_file" "$ext_dir/commands/"
                     convert_command_to_toml "$cmd_file" "$cmd_name" > "$ext_dir/commands/${cmd_name}.toml"
                 fi
             done
