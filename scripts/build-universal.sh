@@ -92,7 +92,7 @@ gopher-ai is a Go-focused development toolkit distributed as both Claude Code pl
 | Plugin | Description | Skills |
 |--------|-------------|--------|
 | `go-workflow` | Issue-to-PR workflow automation | start-issue, create-worktree, commit, create-pr, ship, remove-worktree, prune-worktree, address-review |
-| `go-dev` | Go development tools and best practices | go-best-practices, go-profiling-optimization, systematic-debugging, validate-skills |
+| `go-dev` | Go development tools and best practices | bench, build-fix, explain, go, go-profiling-optimization, lint-fix, profile, refactor-clean, test-gen, validate-skills, verify |
 | `gopher-guides` | Gopher Guides training materials | gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | second-opinion, gemini-image |
 | `go-web` | Go web scaffolding (Templ + HTMX) | templui, htmx |

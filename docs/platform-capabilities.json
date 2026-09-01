@@ -392,7 +392,7 @@
         },
         {
           "kind": "skill",
-          "path": "plugins/go-dev/skills/go-profiling-optimization/SKILL.md"
+          "path": "plugins/go-dev/skills/profile/SKILL.md"
         }
       ],
       "platforms": {
@@ -402,6 +402,29 @@
             "go-dev:profile"
           ],
           "skill_names": [
+            "go-dev:profile"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-dev:profile"
+        }
+      }
+    },
+    {
+      "id": "go-dev.go-profiling-optimization",
+      "plugin": "go-dev",
+      "summary": "Apply advanced Go profiling and performance optimization guidance.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/go-profiling-optimization/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
             "go-dev:go-profiling-optimization"
           ]
         },
@@ -449,6 +472,10 @@
         {
           "kind": "command",
           "path": "plugins/go-dev/commands/bench.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/bench/SKILL.md"
         }
       ],
       "platforms": {
@@ -456,12 +483,14 @@
           "disposition": "command",
           "names": [
             "go-dev:bench"
+          ],
+          "skill_names": [
+            "go-dev:bench"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+          "disposition": "skill",
+          "name": "go-dev:bench"
         }
       }
     },
@@ -473,6 +502,10 @@
         {
           "kind": "command",
           "path": "plugins/go-dev/commands/build-fix.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/build-fix/SKILL.md"
         }
       ],
       "platforms": {
@@ -480,12 +513,14 @@
           "disposition": "command",
           "names": [
             "go-dev:build-fix"
+          ],
+          "skill_names": [
+            "go-dev:build-fix"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+          "disposition": "skill",
+          "name": "go-dev:build-fix"
         }
       }
     },
@@ -521,6 +556,10 @@
         {
           "kind": "command",
           "path": "plugins/go-dev/commands/explain.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/explain/SKILL.md"
         }
       ],
       "platforms": {
@@ -528,12 +567,14 @@
           "disposition": "command",
           "names": [
             "go-dev:explain"
+          ],
+          "skill_names": [
+            "go-dev:explain"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+          "disposition": "skill",
+          "name": "go-dev:explain"
         }
       }
     },
@@ -545,6 +586,10 @@
         {
           "kind": "command",
           "path": "plugins/go-dev/commands/lint-fix.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/lint-fix/SKILL.md"
         }
       ],
       "platforms": {
@@ -552,12 +597,14 @@
           "disposition": "command",
           "names": [
             "go-dev:lint-fix"
+          ],
+          "skill_names": [
+            "go-dev:lint-fix"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+          "disposition": "skill",
+          "name": "go-dev:lint-fix"
         }
       }
     },
@@ -569,6 +616,10 @@
         {
           "kind": "command",
           "path": "plugins/go-dev/commands/refactor-clean.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/refactor-clean/SKILL.md"
         }
       ],
       "platforms": {
@@ -576,12 +627,14 @@
           "disposition": "command",
           "names": [
             "go-dev:refactor-clean"
+          ],
+          "skill_names": [
+            "go-dev:refactor-clean"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+          "disposition": "skill",
+          "name": "go-dev:refactor-clean"
         }
       }
     },
@@ -593,6 +646,10 @@
         {
           "kind": "command",
           "path": "plugins/go-dev/commands/test-gen.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/test-gen/SKILL.md"
         }
       ],
       "platforms": {
@@ -600,12 +657,14 @@
           "disposition": "command",
           "names": [
             "go-dev:test-gen"
+          ],
+          "skill_names": [
+            "go-dev:test-gen"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+          "disposition": "skill",
+          "name": "go-dev:test-gen"
         }
       }
     },
@@ -617,6 +676,10 @@
         {
           "kind": "command",
           "path": "plugins/go-dev/commands/verify.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/verify/SKILL.md"
         }
       ],
       "platforms": {
@@ -624,12 +687,14 @@
           "disposition": "command",
           "names": [
             "go-dev:verify"
+          ],
+          "skill_names": [
+            "go-dev:verify"
           ]
         },
         "codex": {
-          "disposition": "unsupported",
-          "documentation": "docs/platform-capabilities.md#current-matrix",
-          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+          "disposition": "skill",
+          "name": "go-dev:verify"
         }
       }
     },

@@ -19,6 +19,7 @@ bash "$ROOT_DIR/scripts/test-github-rest.sh"
 bash "$ROOT_DIR/scripts/test-gopher-ai-review-action.sh"
 bash "$ROOT_DIR/scripts/test-tmux-start.sh"
 bash "$ROOT_DIR/scripts/test-cancel-loop.sh"
+bash "$ROOT_DIR/scripts/test-go-dev-codex-skills.sh"
 
 python3 "$ROOT_DIR/scripts/test-codex-skill-arguments.py" --static-only
 
