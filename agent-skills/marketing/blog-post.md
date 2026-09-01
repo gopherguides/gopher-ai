@@ -162,10 +162,10 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.22'
+          go-version: '1.26.7'
       - name: Install tools
         run: |
           go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest

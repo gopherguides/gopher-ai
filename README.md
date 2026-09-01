@@ -517,6 +517,7 @@ Contributions welcome! Please open an issue or PR.
 ```bash
 git clone https://github.com/gopherguides/gopher-ai
 cd gopher-ai
+python3 -m pip install --requirement requirements-test.txt
 ./scripts/install-hooks.sh  # Install pre-commit hooks
 ```
 

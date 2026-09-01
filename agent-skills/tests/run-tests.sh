@@ -145,7 +145,7 @@ fi
 header "CI Workflow Validation"
 
 CI_WORKFLOW="${AGENT_SKILLS_CI_WORKFLOW:-$ROOT_DIR/../.github/workflows/agent-skills-ci.yml}"
-SETUP_GO_COUNT=$(rg -c 'uses: actions/setup-go@v5' "$CI_WORKFLOW" || true)
+SETUP_GO_COUNT=$(rg -c 'uses: actions/setup-go@v7' "$CI_WORKFLOW" || true)
 PINNED_GO_COUNT=$(rg -c "go-version: '1\.26\.7'" "$CI_WORKFLOW" || true)
 
 if [[ "$SETUP_GO_COUNT" -gt 0 && "$PINNED_GO_COUNT" == "$SETUP_GO_COUNT" ]]; then
