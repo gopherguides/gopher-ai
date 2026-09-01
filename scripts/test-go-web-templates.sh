@@ -342,6 +342,8 @@ else
     "shared creation workflow must preserve database confirmation"
   require_literal "$CREATE_WORKFLOW" 'create the project at `./$ARGUMENTS/`' \
     "shared creation workflow must define the generated project location"
+  require_literal "$CREATE_WORKFLOW" 'If `./$ARGUMENTS` already exists, stop before creating or modifying any files' \
+    "shared creation workflow must reject an existing project target"
   require_literal "$CREATE_WORKFLOW" "go build -o" \
     "shared creation workflow must verify the generated project build"
   require_literal "$CREATE_WORKFLOW" "On Codex, skip loop initialization" \

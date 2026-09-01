@@ -246,6 +246,7 @@ Before creating any files, validate the project name:
 1. **Check for path traversal**: If `$ARGUMENTS` contains `/`, `..`, or starts with `.`, display error: "Project name cannot contain path separators or relative paths"
 2. **Check for valid characters**: If `$ARGUMENTS` contains characters other than `a-z`, `A-Z`, `0-9`, `-`, or `_`, display error: "Project name must contain only alphanumeric characters, hyphens, and underscores"
 3. **Check for reserved names**: If `$ARGUMENTS` is empty or matches system directories, display error
+4. **Check for an existing target**: If `./$ARGUMENTS` already exists, stop before creating or modifying any files and display error: "Project target already exists; choose a new project name"
 
 Only proceed if validation passes.
 
