@@ -24,6 +24,7 @@ Or install via marketplace:
 | `/go-workflow:create-pr` | Create a PR following the repo template |
 | `/go-workflow:e2e-verify [PR]` | Run browser E2E verification on a PR |
 | `/go-workflow:ship` | Verify, push, watch CI/reviews, and merge |
+| `/go-workflow:cancel-loop [loop-name]` | Cancel active persistent workflow state |
 | `/go-workflow:create-worktree <number>` | Create a new git worktree for isolated issue work |
 | `/go-workflow:remove-worktree` | Interactively select and remove a git worktree |
 | `/go-workflow:prune-worktree` | Batch cleanup of all completed issue worktrees |
@@ -32,7 +33,7 @@ Or install via marketplace:
 
 | Mode | Skills |
 |------|--------|
-| Slash-only | `start-issue`, `address-review`, `worktree` (`/create-worktree`, `/remove-worktree`, `/prune-worktree`), `e2e-verify`, `ship`, `complete-issue`, `tmux-start` |
+| Slash-only | `start-issue`, `address-review`, `cancel-loop`, `worktree` (`/create-worktree`, `/remove-worktree`, `/prune-worktree`), `e2e-verify`, `ship`, `complete-issue`, `tmux-start` |
 | Auto-triggerable | `commit`, `create-pr`, `review-deep` |
 
 Slash-only skills still run through their slash commands, but their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$go-workflow:<skill>` in Codex. Codex requires the qualified plugin name; bare skill names are not resolver aliases. In Claude Code, type the slash command directly; `$go-workflow:start-issue` is Codex syntax and causes a blocked Skill-tool invocation. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".

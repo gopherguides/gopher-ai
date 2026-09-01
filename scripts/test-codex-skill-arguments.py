@@ -16,6 +16,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 WORKFLOW_ROOT = ROOT_DIR / "plugins/go-workflow"
 ARGUMENT_SKILLS = {
     "address-review",
+    "cancel-loop",
     "complete-issue",
     "e2e-verify",
     "review-deep",
@@ -28,6 +29,7 @@ COMPATIBILITY_PAYLOAD = (
 )
 PROBES = (
     ("tmux-start", "$go-workflow:tmux-start 325"),
+    ("cancel-loop", "$go-workflow:cancel-loop ship"),
     ("ship", "$go-workflow:ship --no-merge"),
 )
 
@@ -336,7 +338,7 @@ def main():
         if test_root is not None:
             cleanup_temp_tree(test_root)
 
-    print("Codex skill argument probes passed: positional argument and flag.")
+    print("Codex skill argument probes passed: positional targets and flag.")
 
 
 if __name__ == "__main__":

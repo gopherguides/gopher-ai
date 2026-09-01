@@ -12,7 +12,7 @@ The Codex plugin set currently includes `go-workflow`, `go-dev`, `gopher-guides`
 
 | Plugin | Description | Skills |
 |--------|-------------|--------|
-| `go-workflow` | Issue-to-PR workflow automation | start-issue, worktree, commit, create-pr, ship, address-review, review-deep, complete-issue, e2e-verify, tmux-start |
+| `go-workflow` | Issue-to-PR workflow automation | start-issue, worktree, cancel-loop, commit, create-pr, ship, address-review, review-deep, complete-issue, e2e-verify, tmux-start |
 | `go-dev` | Go development tools and best practices | go, go-profiling-optimization, validate-skills |
 | `gopher-guides` | Gopher Guides training materials | gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | second-opinion, gemini-image |
@@ -30,6 +30,7 @@ skill names as aliases.
 | `$go-workflow:worktree create <number>` | Create isolated git worktree for an issue or PR |
 | `$go-workflow:commit` | Auto-generate conventional commit message |
 | `$go-workflow:create-pr` | Create PR following repo template |
+| `$go-workflow:cancel-loop [loop-name]` | Cancel active persistent workflow state |
 | `$go-workflow:ship` | Ship a PR: verify, push, create PR, watch CI, merge |
 | `$go-workflow:worktree remove` | Interactively remove a single worktree |
 | `$go-workflow:worktree prune` | Batch cleanup of completed worktrees |

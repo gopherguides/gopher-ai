@@ -12,7 +12,7 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | **OpenAI Codex CLI** | 6 plugins; capabilities vary | Repository-backed, user-wide, or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
-Shipped surface: 36 Claude Code commands across 7 plugins; 20 Codex skills across 6 plugins; 8 optional Codex MCP tools.
+Shipped surface: 36 Claude Code commands across 7 plugins; 21 Codex skills across 6 plugins; 8 optional Codex MCP tools.
 
 See the [platform capability matrix](docs/platform-capabilities.md) for exact
 qualified names and workflows that are not yet available on Codex.
@@ -146,6 +146,7 @@ Issue-to-PR workflow automation with git worktree management.
 | `create-pr` | Create a PR following the repo template |
 | `e2e-verify [PR]` | Run browser E2E verification on a PR |
 | `ship` | Verify, push, watch CI/reviews, and merge |
+| `cancel-loop [loop-name]` | Cancel active persistent workflow state |
 | `create-worktree <number>` | Create a new git worktree for a GitHub issue |
 | `remove-worktree` | Interactively select and remove a git worktree |
 | `prune-worktree` | Batch cleanup of all completed issue worktrees |
@@ -154,7 +155,7 @@ Workflow skill invocation modes:
 
 | Mode | Skills |
 |------|--------|
-| Slash-only | `start-issue`, `address-review`, `worktree` (`/create-worktree`, `/remove-worktree`, `/prune-worktree`), `e2e-verify`, `ship`, `complete-issue`, `tmux-start` |
+| Slash-only | `start-issue`, `address-review`, `cancel-loop`, `worktree` (`/create-worktree`, `/remove-worktree`, `/prune-worktree`), `e2e-verify`, `ship`, `complete-issue`, `tmux-start` |
 | Auto-triggerable | `commit`, `create-pr`, `review-deep` |
 
 Slash-only skills require explicit invocation, and their descriptions are omitted from the always-loaded auto-invoked skill list. Use `/go-workflow:<command>` in Claude Code or `$go-workflow:<skill>` in Codex. Codex requires the qualified plugin name; bare skill names are not resolver aliases. In Claude Code, type the slash command directly; `$go-workflow:start-issue` is Codex syntax and causes a blocked Skill-tool invocation. Auto-triggerable skills remain available from natural-language requests such as "commit these changes" or "review my changes".
