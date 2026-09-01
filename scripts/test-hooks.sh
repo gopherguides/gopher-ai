@@ -93,16 +93,20 @@ fi
 POST_TOOL_USE_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-post-tool-use.XXXXXX")
 POST_TOOL_USE_HOOK="$ROOT_DIR/plugins/go-workflow/hooks/post-tool-use.sh"
 
-printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"main.go:12:3: undefined: missingName"}' \
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"Process exited with code 1\nFinal output:\nmain.go:12:3: undefined: missingName"}' \
   > "$POST_TOOL_USE_ROOT/codex-compilation.json"
 printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"","stderr":"dial tcp 192.0.2.1:443: i/o timeout","exit_code":1}}' \
   > "$POST_TOOL_USE_ROOT/codex-timeout.json"
 printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"golangci-lint returned an error","exit_code":1}}' \
   > "$POST_TOOL_USE_ROOT/codex-lint.json"
-printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"open protected.txt: permission denied"}' \
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"Process exited with code 1\nFinal output:\nopen protected.txt: permission denied"}' \
   > "$POST_TOOL_USE_ROOT/codex-permission.json"
 printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"build completed","exit_code":0}}' \
   > "$POST_TOOL_USE_ROOT/codex-normal.json"
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":{"stdout":"main.go:12:3: undefined: archivedDiagnostic","exit_code":0}}' \
+  > "$POST_TOOL_USE_ROOT/codex-success-diagnostic.json"
+printf '%s\n' '{"turn_id":"turn-codex","tool_name":"Bash","tool_response":"Process exited with code 0\nFinal output:\ncontext deadline exceeded with status 429"}' \
+  > "$POST_TOOL_USE_ROOT/codex-success-transient.json"
 jq -n --arg output "$(awk 'BEGIN { for (line = 1; line <= 201; line++) print "line " line }')" \
   '{turn_id: "turn-codex", tool_name: "Bash", tool_response: $output}' \
   > "$POST_TOOL_USE_ROOT/codex-long-output.json"
@@ -229,6 +233,23 @@ CODEX_NORMAL_OUTPUT=$(run_post_tool_use_fixture \
   "$POST_TOOL_USE_ROOT/codex-normal.stderr")
 if [ -z "$CODEX_NORMAL_OUTPUT" ] &&
    [ ! -s "$POST_TOOL_USE_ROOT/codex-normal.stderr" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Codex PostToolUse ignores failure text from successful commands... "
+CODEX_SUCCESS_DIAGNOSTIC_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-success-diagnostic.json" \
+  "$POST_TOOL_USE_ROOT/codex-success-diagnostic.stderr")
+CODEX_SUCCESS_TRANSIENT_OUTPUT=$(run_post_tool_use_fixture \
+  "$POST_TOOL_USE_ROOT/codex-success-transient.json" \
+  "$POST_TOOL_USE_ROOT/codex-success-transient.stderr")
+if [ -z "$CODEX_SUCCESS_DIAGNOSTIC_OUTPUT" ] &&
+   [ -z "$CODEX_SUCCESS_TRANSIENT_OUTPUT" ] &&
+   [ ! -s "$POST_TOOL_USE_ROOT/codex-success-diagnostic.stderr" ] &&
+   [ ! -s "$POST_TOOL_USE_ROOT/codex-success-transient.stderr" ]; then
   echo "OK"
 else
   echo "FAIL"

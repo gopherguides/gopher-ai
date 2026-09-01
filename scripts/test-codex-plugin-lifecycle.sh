@@ -364,7 +364,7 @@ jq -e --arg command "$PROBE_COMMAND" '
     .tool_name == "Bash" and
     (.tool_use_id | type == "string" and length > 0) and
     .tool_input.command == $command and
-    (.tool_response | type == "string" and contains("lifecycleProbe")) and
+    (.tool_response | type == "string" and contains("lifecycleProbe") and test("exited with code 1"; "i")) and
     (has("tool_output") | not)
 ' "$HOOK_INPUT_CAPTURE" >/dev/null \
     || fail "PostToolUse input did not match the Codex hook payload"

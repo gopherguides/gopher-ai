@@ -54,6 +54,25 @@ detect_permission_error() {
   printf '%s\n' "$TOOL_OUTPUT" | grep -qiE 'permission denied|403 Forbidden|EACCES|not authorized'
 }
 
+codex_command_failed() {
+  printf '%s\n' "$HOOK_INPUT" | jq -e '
+    .tool_response |
+    if type == "object" then
+      if (.exit_code? // .exitCode?) != null then
+        (((.exit_code? // .exitCode?) | tonumber? // 0) != 0)
+      elif has("success") then
+        .success == false
+      else
+        false
+      end
+    elif type == "string" then
+      test("(^|\\n)[[:space:]]*(Process|Command) exited with code [1-9][0-9]*[[:space:]]*(\\n|$)"; "i")
+    else
+      false
+    end
+  ' >/dev/null 2>&1
+}
+
 emit_codex_block() {
   local reason="$1"
   local guidance="$2"
@@ -81,31 +100,36 @@ emit_codex_context() {
 }
 
 if [ "$PLATFORM" = "codex" ]; then
-  if detect_network_timeout; then
+  CODEX_COMMAND_FAILED=false
+  if codex_command_failed; then
+    CODEX_COMMAND_FAILED=true
+  fi
+
+  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_network_timeout; then
     emit_codex_block \
       "Network timeout detected after the Bash command ran." \
       "Do not retry automatically. Retry only after assessing whether repeating the command is safe and idempotent and whether the prior attempt may have produced side effects."
     exit 0
   fi
-  if detect_rate_limit; then
+  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_rate_limit; then
     emit_codex_block \
       "Rate limit detected after the Bash command ran." \
       "Do not retry automatically. Retry only after assessing whether repeating the command is safe and idempotent and whether the prior attempt may have produced side effects."
     exit 0
   fi
-  if detect_compilation_error; then
+  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_compilation_error; then
     emit_codex_block \
       "Go compilation error detected." \
       "Fix the reported compilation errors before proceeding."
     exit 0
   fi
-  if detect_lint_error; then
+  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_lint_error; then
     emit_codex_block \
       "Lint failures detected." \
       "Review and fix the reported lint failures before committing."
     exit 0
   fi
-  if detect_permission_error; then
+  if [ "$CODEX_COMMAND_FAILED" = true ] && detect_permission_error; then
     emit_codex_block \
       "Permission denied by the Bash command." \
       "Check credentials and access rights before proceeding."
