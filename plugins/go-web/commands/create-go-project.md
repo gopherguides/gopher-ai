@@ -6,7 +6,10 @@ allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(go:*)", "Bash(git:*)", "Bash(npm:
 
 # Create Go Project
 
+Bind the injected `$ARGUMENTS` value to `SKILL_ARGS` without evaluating or re-tokenizing
+it.
+
 Bind `<PLUGIN_ROOT>` in the shared workflow to `${CLAUDE_PLUGIN_ROOT}`.
 
 Read `${CLAUDE_PLUGIN_ROOT}/references/create-go-project.md` completely and follow it,
-passing `$ARGUMENTS` as the project name.
+passing `SKILL_ARGS` as the project name.

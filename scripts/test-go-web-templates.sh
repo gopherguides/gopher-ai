@@ -49,6 +49,21 @@ reject_literal() {
   esac
 }
 
+require_before() {
+  local file="$1"
+  local first="$2"
+  local second="$3"
+  local label="$4"
+  local first_line
+  local second_line
+
+  first_line=$(rg -n -F -m 1 -- "$first" "$file" | cut -d: -f1 || true)
+  second_line=$(rg -n -F -m 1 -- "$second" "$file" | cut -d: -f1 || true)
+  if [ -z "$first_line" ] || [ -z "$second_line" ] || [ "$first_line" -ge "$second_line" ]; then
+    fail "$label"
+  fi
+}
+
 write_fixture_support() {
   local fixture="$1"
 
@@ -345,12 +360,20 @@ else
     "shared creation workflow must not select the generic SQLite helper"
   require_literal "$CREATE_WORKFLOW" "Ask the user which database they want to use" \
     "shared creation workflow must preserve database confirmation"
-  require_literal "$CREATE_WORKFLOW" 'create the project at `./$ARGUMENTS/`' \
+  require_literal "$CREATE_WORKFLOW" 'create the project at `./$SKILL_ARGS/`' \
     "shared creation workflow must define the generated project location"
-  require_literal "$CREATE_WORKFLOW" 'If `./$ARGUMENTS` already exists, stop before creating or modifying any files' \
+  require_literal "$CREATE_WORKFLOW" 'If `./$SKILL_ARGS` already exists, stop before creating or modifying any files' \
     "shared creation workflow must reject an existing project target"
+  require_literal "$CREATE_WORKFLOW" '`SKILL_ARGS` must already contain the project name' \
+    "shared creation workflow must require a portable argument binding"
+  reject_literal "$CREATE_WORKFLOW" '$ARGUMENTS' \
+    "shared creation workflow must not consume a surface-specific argument token"
   require_literal "$CREATE_WORKFLOW" "go build -o" \
     "shared creation workflow must verify the generated project build"
+  require_before "$CREATE_WORKFLOW" \
+    'Replace `internal/database/migrations/001_initial.sql` with the actual domain table(s) and indexes' \
+    '"./tmp/$SKILL_ARGS" &' \
+    "shared creation workflow must replace the domain migration before starting the server"
   require_literal "$CREATE_WORKFLOW" "On Codex, skip loop initialization" \
     "shared creation workflow must not initialize Claude loop state on Codex"
   require_literal "$CREATE_WORKFLOW" "On Codex, do not emit a completion marker" \
@@ -370,12 +393,16 @@ done
 
 require_literal "$CREATE_COMMAND" "$CREATE_COMMAND_WORKFLOW_ROUTE" \
   "create-go-project command must route to the shared creation workflow"
+require_literal "$CREATE_COMMAND" 'Bind the injected `$ARGUMENTS` value to `SKILL_ARGS`' \
+  "create-go-project command must bind Claude arguments to the portable contract"
 
 if [ ! -f "$CREATE_SKILL" ]; then
   fail "missing create-go-project Codex skill"
 else
   require_literal "$CREATE_SKILL" "ascend two directories" \
     "create-go-project skill must resolve its concrete plugin root on Codex"
+  require_literal "$CREATE_SKILL" 'Bind the project name to `SKILL_ARGS`' \
+    "create-go-project skill must bind Codex arguments to the portable contract"
   require_literal "$CREATE_SKILL" "$CREATE_SKILL_WORKFLOW_ROUTE" \
     "create-go-project skill must route to the shared creation workflow"
 fi

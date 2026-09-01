@@ -6,6 +6,12 @@ The caller must bind `<PLUGIN_ROOT>` to the concrete absolute path of the `go-we
 directory before reading resources or running commands. Do not treat `<PLUGIN_ROOT>` as a
 literal path.
 
+## Invocation Argument Contract
+
+`SKILL_ARGS` must already contain the project name supplied through the active surface.
+Preserve it literally, trim only surrounding whitespace, and never evaluate it as shell code
+or read it from an environment variable.
+
 ## Cross-Platform Interaction
 
 When the workflow needs a user choice, use the active surface's native structured-input
@@ -13,7 +19,7 @@ mechanism when available. Otherwise, ask the user directly and stop before any m
 depends on the answer. Present the database, optional service, admin dashboard, deployment,
 and build-method choices one at a time.
 
-**If `$ARGUMENTS` is empty or not provided:**
+**If `$SKILL_ARGS` is empty or not provided:**
 
 Display usage information and ask for input:
 
@@ -51,9 +57,9 @@ Ask the user: "What would you like to name your project?"
 
 ---
 
-**If `$ARGUMENTS` is provided:**
+**If `$SKILL_ARGS` is provided:**
 
-Create a new Go project named `$ARGUMENTS`. Follow this interactive flow:
+Create a new Go project named `$SKILL_ARGS`. Follow this interactive flow:
 
 ## Step 1: Gather Project Requirements
 
@@ -235,7 +241,7 @@ if [ ! -x "<PLUGIN_ROOT>/scripts/setup-loop.sh" ]; then
   echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart the active agent."
   exit 1
 else
-  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "create-go-project-$ARGUMENTS" "COMPLETE"
+  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "create-go-project-$SKILL_ARGS" "COMPLETE"
 fi
 ```
 
@@ -243,10 +249,10 @@ fi
 
 Before creating any files, validate the project name:
 
-1. **Check for path traversal**: If `$ARGUMENTS` contains `/`, `..`, or starts with `.`, display error: "Project name cannot contain path separators or relative paths"
-2. **Check for valid characters**: If `$ARGUMENTS` contains characters other than `a-z`, `A-Z`, `0-9`, `-`, or `_`, display error: "Project name must contain only alphanumeric characters, hyphens, and underscores"
-3. **Check for reserved names**: If `$ARGUMENTS` is empty or matches system directories, display error
-4. **Check for an existing target**: If `./$ARGUMENTS` already exists, stop before creating or modifying any files and display error: "Project target already exists; choose a new project name"
+1. **Check for path traversal**: If `$SKILL_ARGS` contains `/`, `..`, or starts with `.`, display error: "Project name cannot contain path separators or relative paths"
+2. **Check for valid characters**: If `$SKILL_ARGS` contains characters other than `a-z`, `A-Z`, `0-9`, `-`, or `_`, display error: "Project name must contain only alphanumeric characters, hyphens, and underscores"
+3. **Check for reserved names**: If `$SKILL_ARGS` is empty or matches system directories, display error
+4. **Check for an existing target**: If `./$SKILL_ARGS` already exists, stop before creating or modifying any files and display error: "Project target already exists; choose a new project name"
 
 Only proceed if validation passes.
 
@@ -257,8 +263,8 @@ All static file templates for this command live in the plugin template library a
 `<PLUGIN_ROOT>/templates/README.md`.
 
 **How to use a template:** Read the template file, replace every occurrence of the placeholder
-`{{PROJECT_NAME}}` with `$ARGUMENTS`, and Write the result to the target path inside
-`./$ARGUMENTS/`. The Makefile additionally uses `{{DATABASE_TYPE}}` — replace it with
+`{{PROJECT_NAME}}` with `$SKILL_ARGS`, and Write the result to the target path inside
+`./$SKILL_ARGS/`. The Makefile additionally uses `{{DATABASE_TYPE}}` — replace it with
 `postgres`, `sqlite3`, or `mysql` to match the selected database. Everything else in a template
 is literal content (`${DATABASE_URL}`, `$(BINARY_NAME)`, and `${PORT:-3000}` are NOT
 placeholders — write them verbatim). Preserve the Makefile's tab indentation exactly.
@@ -269,7 +275,7 @@ deployment target). Never read variants for options the user did not select.
 
 ## Step 2: Create Project Structure
 
-After gathering requirements, create the project at `./$ARGUMENTS/`.
+After gathering requirements, create the project at `./$SKILL_ARGS/`.
 
 ### Core Files (always)
 
@@ -277,7 +283,7 @@ Copy each template (Read template → replace `{{PROJECT_NAME}}` → Write targe
 this order (dependencies matter). `<db>` is the selected database: `postgres`, `sqlite`, or
 `mysql`.
 
-| Template (`<PLUGIN_ROOT>/templates/`) | Target in `./$ARGUMENTS/` | Notes |
+| Template (`<PLUGIN_ROOT>/templates/`) | Target in `./$SKILL_ARGS/` | Notes |
 |---|---|---|
 | core/go.mod | go.mod | Add the database driver and service SDK requires (see below) |
 | core/gitignore | .gitignore | |
@@ -440,14 +446,14 @@ Create a `CLAUDE.md` in the project root following the content guide in
 
 ---
 
-## Step 3: Initialize and Finalize
+## Step 3: Initialize the Project
 
 After creating all files:
 
 1. **Initialize git:**
 
    ```bash
-   cd "./$ARGUMENTS" || exit 1
+   cd "./$SKILL_ARGS" || exit 1
    git init
    ```
 
@@ -475,61 +481,21 @@ After creating all files:
    fi
    ```
 
-   **IMPORTANT:** This step is required before `make generate` or `make dev` will work, because the server requires DATABASE_URL to be set.
-
-4. **Format generated Go files:**
-
-   ```bash
-   go fmt ./...
-   ```
-
-5. **Generate code:**
-
-   ```bash
-   make generate
-   ```
-
-6. **Verify the project builds and runs:**
-
-   Before committing, verify everything works:
-
-   ```bash
-   # Build to check for compilation errors
-   go build -o "./tmp/$ARGUMENTS" ./cmd/server
-   echo "✓ Build succeeded"
-
-   # Quick start/stop test to verify DATABASE_URL is set correctly
-   "./tmp/$ARGUMENTS" &
-   SERVER_PID=$!
-   sleep 2
-
-   # Check if server started (health endpoint)
-   if curl -s "http://localhost:${PORT:-3000}/health" > /dev/null; then
-       echo "✓ Server started successfully"
-   else
-       echo "✗ Server failed to start - check configuration"
-   fi
-
-   # Stop the test server
-   kill "$SERVER_PID" 2>/dev/null || true
-   ```
-
-6. **Create initial commit:**
-
-   ```bash
-   git add .
-   git commit -m "Initial project setup with Go + Templ + HTMX + Tailwind"
-   ```
+   **IMPORTANT:** This step is required before generation or verification because the server
+   requires `DATABASE_URL` to be set. Do not generate code, apply migrations, or start the
+   server until Step 4 replaces the generic schema and queries with the requested domain.
 
 ---
 
 ## Step 4: Implement Requested Functionality
 
-**CRITICAL: Do not stop at scaffolding.** After the project structure is created, CONTINUE to implement what the user actually asked for.
+**CRITICAL: Do not stop at scaffolding.** After the project structure is created, CONTINUE to
+implement what the user actually asked for. Finish the domain-specific files in this step
+before running any generator, migration, or server command.
 
 ### Analyze the User's Request
 
-Parse `$ARGUMENTS` and earlier conversation context to determine:
+Parse `$SKILL_ARGS` and earlier conversation context to determine:
 
 1. **Domain entities** - What data does the app manage?
    - "notes app" → Note entity (title, content)
@@ -574,9 +540,9 @@ After generating domain-specific code:
    go fmt ./...
    ```
 
-2. **Regenerate code:**
+2. **Generate code from the domain schema and queries:**
    ```bash
-   go generate ./...
+   make generate
    ```
 
 3. **Run tests:**
@@ -584,14 +550,33 @@ After generating domain-specific code:
    go test -v ./...
    ```
 
-4. **Build to verify compilation:**
+4. **Build and smoke-test the server:**
    ```bash
-   go build ./cmd/server
+   go build -o "./tmp/$SKILL_ARGS" ./cmd/server
+   echo "✓ Build succeeded"
+
+   "./tmp/$SKILL_ARGS" &
+   SERVER_PID=$!
+   sleep 2
+
+   if curl -s "http://localhost:${PORT:-3000}/health" > /dev/null; then
+       echo "✓ Server started successfully"
+   else
+       echo "✗ Server failed to start - check configuration"
+   fi
+
+   kill "$SERVER_PID" 2>/dev/null || true
    ```
 
 5. **Check for errors:**
    ```bash
    cat tmp/air-combined.log 2>/dev/null || echo "No log file yet"
+   ```
+
+6. **Create the initial commit:**
+   ```bash
+   git add .
+   git commit -m "Initial project setup with Go + Templ + HTMX + Tailwind"
    ```
 
 **DO NOT STOP until:**
@@ -611,8 +596,8 @@ After project creation, display a summary to the user showing:
 
 **Project Created Header:**
 
-- Project name: $ARGUMENTS
-- Location: ./$ARGUMENTS
+- Project name: $SKILL_ARGS
+- Location: ./$SKILL_ARGS
 
 **Files Created Table:**
 
