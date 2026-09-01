@@ -58,26 +58,39 @@ category.
 
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-audit" "COMPLETE"; fi`
 
-## Step 1: Discover Template Files
+## Step 1: Discover Project Sources
 
 ```bash
-fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -e astro -e php -e blade.php -e erb -e hbs "<AUDIT_TARGET>" 2>/dev/null
+fd -e js -e jsx -e ts -e tsx -e html -e htm -e templ -e vue -e svelte -e astro -e php -e erb -e hbs -e md -e mdx -e ejs -e twig -e liquid -e njk -e nunjucks -e pug -e jade -e haml -e slim -e razor -e cshtml "<AUDIT_TARGET>" 2>/dev/null
 fd -e css "<AUDIT_TARGET>" 2>/dev/null
 ```
 
+Use the same project-complete Tailwind source model as optimize. The command
+above is a baseline, not an allowlist. Tailwind scans non-ignored plain-text
+project sources, so add every target-scoped text source selected by the active
+build integration or an `@source` rule. Exclude CSS, binaries, lockfiles,
+`node_modules`, and ignored paths according to Tailwind's detection rules.
+
+Bind the resulting complete plain-text set once to `<AUDIT_SOURCE_FILES>` and
+the complete CSS set to `<AUDIT_CSS_FILES>`. The source set must include plain
+JavaScript and TypeScript and must never omit an integration-associated source
+merely because its extension is absent from the baseline. Reuse these exact
+bindings for category checks, report counts, auto-fixes, and completion; do not
+rediscover a narrower set later.
+
 Run only the discovery needed by the selected categories:
 
-- Consistency and Performance: discover supported templates and CSS.
-- Best Practices: discover supported templates; inspect CSS only when needed
+- Consistency and Performance: use `<AUDIT_SOURCE_FILES>` and `<AUDIT_CSS_FILES>`.
+- Best Practices: use `<AUDIT_SOURCE_FILES>`; inspect `<AUDIT_CSS_FILES>` only when needed
   to report an existing extraction target.
-- Tailwind v4 Compliance: discover CSS plus the project-level package,
+- Tailwind v4 Compliance: use `<AUDIT_CSS_FILES>` plus the project-level package,
   Tailwind, PostCSS, and build configuration needed for version detection.
 
-Retain a separate complete discovered file set for every selected category,
-report, and auto-fix step. Do not truncate discovery output. When
+Derive each selected category's file set only from the retained complete
+bindings. Do not truncate discovery output. When
 `<AUDIT_TARGET>` is a file, use it as the complete set for a selected category
-when its extension is relevant to that category. Report zero applicable files
-instead of widening discovery beyond the target.
+when it is a Tailwind-scanned plain-text source or relevant CSS. Report zero
+applicable files instead of widening discovery beyond the target.
 
 ## Step 2: Audit Categories
 
@@ -130,9 +143,9 @@ Bad:  "hover:bg-gray-50 flex bg-white p-4 text-sm shadow-sm w-full gap-4 items-c
 
 **Component extraction** — find class combinations that appear 3+ times:
 
-```bash
-grep -ohr 'class="[^"]*"' --include="*.html" --include="*.templ" --include="*.jsx" "<AUDIT_TARGET>" | sort | uniq -c | sort -rn
-```
+Analyze the complete `<AUDIT_SOURCE_FILES>` binding for repeated static class
+combinations. Do not fall back to an HTML/Templ/JSX-only grep or rediscover a
+smaller extension set.
 
 Repeated patterns become `@layer components` rules:
 
@@ -187,7 +200,7 @@ they do not alter migration state.
 
 **Project:** [project root]
 **Audit target:** [concrete target]
-**Files scanned:** X templates, Y CSS files
+**Files scanned:** X Tailwind plain-text sources, Y CSS files
 
 ### Summary
 
@@ -230,8 +243,9 @@ Apply only fixes belonging to `<AUDIT_CATEGORIES>`:
 - Tailwind v4 Compliance: on confirmed v4 projects, apply only v4-to-v4 syntax
   corrections that do not require dependency or configuration changes.
 
-Limit every change to the complete discovered file set for the selected
-category under `<AUDIT_TARGET>`.
+Limit every change to the retained `<AUDIT_SOURCE_FILES>` and
+`<AUDIT_CSS_FILES>` applicable to the selected category. Never mutate a file
+outside those target-scoped bindings.
 
 **Do NOT auto-fix:** conflicting utilities based on HTML token order;
 component extraction (naming requires user input); color choices (subjective);
@@ -260,7 +274,7 @@ Remaining issues: X (require manual review)
 
 DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
-1. Every supported file in the complete discovered file set scanned
+1. Every file in the complete retained `<AUDIT_SOURCE_FILES>` and applicable `<AUDIT_CSS_FILES>` bindings was scanned
 2. Only the selected categories were inspected and included in the audit report
 3. If `--fix` provided: only selected-category fixes were applied, ambiguous conflicts remain for manual review, and selected v3 migration findings remain unchanged
 4. A summary containing only selected-category counts is displayed

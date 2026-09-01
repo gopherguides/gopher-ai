@@ -106,8 +106,9 @@ Do not create a lockfile for a different package manager.
 
 Read the config file without evaluating untrusted JavaScript. Extract: content
 configuration (becomes `@source` directives), direct `theme` namespace
-replacements, `theme.extend`, `safelist`, `darkMode` (becomes a custom variant
-and selector), `important`, and `plugins` (check v4 compatibility).
+replacements, `theme.extend`, `safelist`, `prefix`, `darkMode` (becomes a
+custom variant and selector), `important`, and `plugins` (check v4
+compatibility).
 
 Support both v3 content forms:
 
@@ -117,8 +118,64 @@ Support both v3 content forms:
   use the directory containing the v3 configuration as the effective base.
 - For object-form content with `content.relative` false or absent, use the
   project invocation root as the effective base.
-- Treat raw-content objects separately from file globs; report them for manual
-  conversion rather than dropping them or passing them to `@source` as paths.
+- Treat raw-content objects separately from file globs and apply the lossless
+  conversion gate below. Never drop them or pass them to `@source` as paths.
+
+### Raw Content Preservation
+
+For every v3 `{ raw: <CONTENT>, extension: <TYPE> }` content entry, parse the
+raw value only when it is a static string. Enumerate the exact complete class
+candidates that the project's v3 scanner derives from that string, including
+variants and arbitrary values. Emit one safely escaped `@source inline()` input
+for each exact candidate, or use brace expansion only when its fully expanded
+set is provably identical.
+
+Prove equivalence by comparing the complete candidate and generated-utility
+sets for the isolated v3 raw entry with the proposed v4 inline sources. A
+successful build alone is insufficient. Do not infer candidates from dynamic
+JavaScript, interpolation, concatenation, a computed raw value, or an extractor
+whose v3 behavior cannot be reproduced exactly.
+
+If exact equivalence cannot be proven, retain the configuration at its original
+path, add the rebased `@config` directive when it remains useful for supported
+fields, and report the raw entry as unresolved. Retaining the JavaScript config
+through `@config` alone is not proof that raw-content semantics are equivalent
+in v4. Block configuration removal and migration completion until an explicit
+v4 source produces the same utility set.
+
+### Prefix Preservation
+
+Parse the v3 `prefix` value and inventory every prefixed utility in source
+files, raw content, safelist entries, `@apply`, and plugin-generated usage. For
+a static v3 prefix of the form `<PREFIX>-` that is accepted by v4, remove the
+trailing hyphen and configure the single Tailwind import with `prefix()`:
+
+```css
+@import "tailwindcss" prefix(<PREFIX>);
+```
+
+Compose `prefix()` on the same legal import as other modifiers. For example,
+boolean important plus prefix becomes:
+
+```css
+@import "tailwindcss" prefix(<PREFIX>) important;
+```
+
+V4 prefixes are variant-like and must lead the complete utility. Rewrite only
+confirmed Tailwind tokens, preserving their variant, negative, arbitrary, and
+important semantics. Examples include `tw-flex` to `tw:flex`,
+`hover:tw-bg-red-500` to `tw:hover:bg-red-500`, and `-tw-mt-4` to
+`tw:-mt-4`. Do not perform substring replacement in ordinary text or custom
+class names.
+
+Before writing, enumerate the old and proposed prefixed utility sets. When
+builds are allowed, verify every migrated token produces the corresponding v4
+selector and equivalent declarations. If the prefix is computed, invalid for
+v4, combined with an unsupported custom separator, dynamically assembled, or
+otherwise cannot be rewritten and verified losslessly, retain the config,
+report the prefix migration as unresolved, and block completion. Do not assume
+that JavaScript `@config` alone preserves v3 `prefix` or `separator` behavior;
+keep the blocker until exact generated behavior is verified.
 
 ### Direct Theme Namespace Replacements
 
@@ -216,7 +273,8 @@ migration as complete unless the generated `@source` directives resolve to the s
 ### Boolean `important`
 
 When the v3 configuration sets `important: true`, preserve that behavior by
-using this import instead of the normal import:
+adding `important` to the selected import, including an existing `prefix()` or
+`source()` modifier. Without other modifiers, use:
 
 ```css
 @import "tailwindcss" important;
@@ -403,8 +461,8 @@ without renaming or deleting the existing file. With `--keep-config`, keep the
 file unchanged as required by the Preservation Flags section.
 
 Before offering any disposition, check direct theme replacements, safelist
-entries, plugins, and every other parsed configuration field for unresolved
-semantics. If any field is unresolved or `<CSS_ENTRY>` contains `@config`, keep
+entries, raw content, prefix, plugins, and every other parsed configuration
+field for unresolved semantics. If any field is unresolved or `<CSS_ENTRY>` contains `@config`, keep
 the configuration unchanged at its original path, report why it remains
 required, and do not offer deletion or rename. Otherwise, use
 `AskUserQuestion`: "Migration complete. What should we do with `tailwind.config.js`?"
@@ -428,6 +486,12 @@ literal safelist entry is represented by an equivalent `@source inline()` and,
 when builds are allowed, generates the expected utility. Treat any unresolved
 theme or safelist conversion as a migration blocker even when the build exits
 successfully.
+
+Verify every raw content entry has an exactly equivalent candidate and utility
+set from its v4 inline sources. When a v3 prefix exists, verify the Tailwind
+import contains the correct `prefix()` modifier and every migrated source token
+uses the prefix-first v4 form and generates its expected selector. Treat either
+unresolved conversion as a blocker even when the build succeeds.
 
 Without `--check`, run only the verification path for the selected integration.
 
@@ -475,6 +539,8 @@ dependencies were changed. Otherwise, use the completion report below.
 - X custom colors → @theme variables
 - Y content paths → @source directives
 - W safelist entries → @source inline() directives
+- R raw content entries → verified @source inline() directives
+- Prefix → prefix() import modifier plus migrated utility tokens
 - Z plugins → @plugin directives
 - Dark mode → class-based custom variant plus `.dark` overrides
 - tailwind.config.js — removed (or kept per user choice)
@@ -486,6 +552,7 @@ dependencies were changed. Otherwise, use the completion report below.
 - [ ] Check responsive breakpoints
 - [ ] Verify plugins work correctly
 - [ ] Resolve any retained direct theme namespace or safelist conversion
+- [ ] Resolve any retained raw content or prefix conversion
 ```
 
 Use only the next steps for the selected integration.
@@ -522,11 +589,12 @@ these are TRUE:
 
 1. The v3 configuration and affected CSS files were parsed and analyzed
 2. Proposed CSS, dependency, script, PostCSS, and old-config changes were shown
-3. The preview report identifies unresolved plugin, theme namespace, safelist, or color conversions
+3. The preview report identifies unresolved plugin, theme namespace, safelist, raw content, prefix, or color conversions
 4. Proposed `@source` paths preserve the v3 content matches from the selected CSS entry
 5. Boolean or selector-form `important` behavior is preserved or identified as an unresolved choice
 6. Direct theme resets and literal safelist inline sources preserve v3 semantics or are identified as unresolved
-7. No project files, dependencies, or generated CSS changed
+7. Raw content and prefix semantics are preserved or identified as unresolved blockers
+8. No project files, dependencies, or generated CSS changed
 
 Without `--check`, follow the selected integration path. Use only the migration completion criteria for the selected integration.
 
@@ -547,6 +615,8 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 11. Every direct theme namespace replacement is translated with its reset semantics or remains unresolved with the config retained
 12. Every safelist entry is translated losslessly to `@source inline()` or remains unresolved with the config retained
 13. The old configuration was not removed or renamed while any parsed field remained unresolved or referenced by `@config`
+14. Every raw content entry has an exactly equivalent v4 inline source or remains unresolved with the config retained
+15. The v3 prefix import and every prefixed utility are migrated and verified losslessly or remain unresolved with the config retained
 
 ### PostCSS Migration Completion Criteria
 
@@ -567,6 +637,8 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 13. Every direct theme namespace replacement is translated with its reset semantics or remains unresolved with the config retained
 14. Every safelist entry is translated losslessly to `@source inline()` or remains unresolved with the config retained
 15. The old configuration was not removed or renamed while any parsed field remained unresolved or referenced by `@config`
+16. Every raw content entry has an exactly equivalent v4 inline source or remains unresolved with the config retained
+17. The v3 prefix import and every prefixed utility are migrated and verified losslessly or remain unresolved with the config retained
 
 ```
 <done>COMPLETE</done>
