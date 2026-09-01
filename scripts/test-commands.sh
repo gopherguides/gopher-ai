@@ -161,15 +161,16 @@ file_contains() {
 ADDRESS_REVIEW_BOT_REGISTRY="$ROOT_DIR/plugins/go-workflow/skills/address-review/bot-registry.md"
 ADDRESS_REVIEW_DISCOVERY="$ROOT_DIR/plugins/go-workflow/skills/address-review/setup-and-discovery.md"
 GO_WORKFLOW_README="$ROOT_DIR/plugins/go-workflow/README.md"
-CODEX_CONNECTOR_REGISTRY_ROW='| `chatgpt-codex-connector[bot]` | Current-head `codex-pull-request-review-summary` issue comment has either a connector-authored `+1` reaction or a clean-result comment, and no unresolved inline comments from the connector | Current-head summary has unresolved inline comments from the connector | `@codex review` |'
+CODEX_CONNECTOR_REGISTRY_ROW='| `chatgpt-codex-connector[bot]` | Connector-authored `+1` reaction on the current-head `codex-pull-request-review-summary`, or a separate connector-authored clean-result comment with matching `Reviewed commit:` evidence; either requires no unresolved inline comments from the connector | Current-head summary has unresolved inline comments from the connector | `@codex review` |'
 
 echo -n "Address-review registers current-head Codex connector re-review... "
 if ! file_contains "$CODEX_CONNECTOR_REGISTRY_ROW" "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'PR_HEAD_SHA' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'repos/$REPO_SLUG/issues/comments/$COMMENT_ID/reactions' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
-   ! file_contains 'Didn’t find any major issues' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'find any major issues' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'Reviewed commit:' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'CODEX_CLEAN_RESULT_BODY' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'contains("find any major issues")' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'independently from the persistent summary' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'CODEX_REACTION_APPROVED' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'CODEX_CLEAN_RESULT_APPROVED' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
@@ -199,7 +200,7 @@ codex_connector_approved() {
   reviewed_commit=$(sed -n 's/.*Reviewed commit:[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$clean_result_body" | head -1)
   reaction_approved=$(jq -r 'any(.[]; .content == "+1" and .user.login == "chatgpt-codex-connector[bot]")' <<< "$reactions")
   clean_result_approved=false
-  if grep -Fq 'Didn’t find any major issues' <<< "$clean_result_body"; then
+  if grep -Fq 'find any major issues' <<< "$clean_result_body"; then
     clean_result_approved=true
   fi
 
@@ -212,8 +213,8 @@ codex_connector_approved() {
 echo -n "Codex connector approval requires a clean current-head result... "
 CODEX_TEST_HEAD="0123456789abcdef0123456789abcdef01234567"
 CODEX_SUMMARY=$'<!-- codex-pull-request-review-summary -->\n| Code Review | Complete | `0123456` |'
-CODEX_CLEAN_RESULT=$'Didn’t find any major issues\nReviewed commit: `0123456`'
-CODEX_WRONG_HEAD_RESULT=$'Didn’t find any major issues\nReviewed commit: `abcdef0`'
+CODEX_CLEAN_RESULT=$'Codex Review: Didn\'t find any major issues.\nReviewed commit: `0123456`'
+CODEX_WRONG_HEAD_RESULT=$'Codex Review: Didn’t find any major issues.\nReviewed commit: `abcdef0`'
 CODEX_COMBINED_SUMMARY=$'<!-- codex-pull-request-review-summary -->\nDidn’t find any major issues\nReviewed commit: `0123456`'
 CODEX_NO_REACTIONS='[]'
 CODEX_PLUS_ONE='[{"content":"+1","user":{"login":"chatgpt-codex-connector[bot]"}}]'
