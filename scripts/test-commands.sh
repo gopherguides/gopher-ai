@@ -4,6 +4,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+FIXTURE_TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+case "$FIXTURE_TMP_BASE/" in
+  "$ROOT_DIR/"*)
+    export GIT_CEILING_DIRECTORIES="$FIXTURE_TMP_BASE${GIT_CEILING_DIRECTORIES:+:$GIT_CEILING_DIRECTORIES}"
+    ;;
+esac
 
 ERRORS=0
 
@@ -400,6 +406,9 @@ elif ! (
   source "$ROOT_DIR/plugins/go-workflow/lib/loop-state.sh"
   COMPOSITION_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-composition-state.XXXXXX")
   trap 'rm -rf "$COMPOSITION_ROOT"' EXIT
+  cd "$COMPOSITION_ROOT"
+  COMPOSITION_ROOT=$(pwd -P)
+  [ "$(resolve_loop_owner_root)" = "$COMPOSITION_ROOT" ]
   mkdir -p "$COMPOSITION_ROOT/.local/state"
   STATE_FILE="$COMPOSITION_ROOT/.local/state/complete-issue-302.loop.local.json"
   printf '%s\n' '{"schema_version":2,"owner_workflow":"complete-issue","loop_name":"complete-issue-302","completion_promise":"COMPLETE","terminal_promises":["COMPLETE","INCOMPLETE"],"phase":"implementing","components":{}}' > "$STATE_FILE"
