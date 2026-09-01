@@ -33,7 +33,11 @@ ACTION_USES_PATTERN = re.compile(
     re.IGNORECASE,
 )
 USES_ALIAS_PATTERN = re.compile(
-    r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*\*[A-Za-z0-9_-]+'''
+    r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*\*[^\s,\[\]{}]+'''
+)
+STEP_ALIAS_PATTERN = re.compile(
+    r'''^(\s*)-\s*(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
+    r'''\*[^\s,\[\]{}]+\s*(?:#.*)?$'''
 )
 INLINE_WITH_PATTERN = re.compile(
     r'''^(\s*)(["']?)with\2\s*:\s*'''
@@ -360,6 +364,13 @@ def block_uses_context(line):
     return indentation, bool(list_marker), "", "", False
 
 
+def step_alias_context(line):
+    match = STEP_ALIAS_PATTERN.match(line)
+    if not match:
+        return None
+    return match.group(1), True, "", "", False
+
+
 def find_action_reference(line):
     match = ACTION_USES_PATTERN.search(line)
     return None if match is None else (match.group(3).lower(), match.group(4))
@@ -435,6 +446,10 @@ def parse_explicit_action(lines, start):
 
 
 def unparsed_action_reference(lines, start, line):
+    alias_context = step_alias_context(line)
+    if alias_context and action_is_step_key(lines, start, alias_context):
+        return "alias", None
+
     explicit_value = explicit_uses_value(lines, start)
     if explicit_value:
         indentation, list_marker, value = explicit_value
@@ -512,6 +527,17 @@ def parser_failures():
         failures.append("action fallback missed unrecognized syntax fixture")
     if not USES_ALIAS_PATTERN.search("      - uses: *checkout"):
         failures.append("action fallback missed alias fixture")
+    step_alias_lines = [
+        "env: &checkout { uses: actions/checkout@v4 }",
+        "jobs:",
+        "  test:",
+        "    steps:",
+        "      - *checkout",
+    ]
+    if unparsed_action_reference(
+        step_alias_lines, 4, step_alias_lines[4]
+    ) != ("alias", None):
+        failures.append("action fallback missed whole-step alias fixture")
     unrecognized_lines = [
         "    steps:",
         "      - name: Checkout",
