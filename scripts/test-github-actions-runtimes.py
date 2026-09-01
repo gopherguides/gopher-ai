@@ -43,6 +43,10 @@ BLOCK_SCALAR_USES_PATTERN = re.compile(
     r'''^(\s*)(-\s+)?(["']?)uses\3\s*:\s*'''
     r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*[>|][0-9+-]*\s*(?:#.*)?$'''
 )
+EXPLICIT_USES_PATTERN = re.compile(
+    r'''^(\s*)(-\s+)?\?\s*'''
+    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)uses\3\s*(?:#.*)?$'''
+)
 ACTION_SCALAR_PATTERN = re.compile(
     r'''^(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)$''',
     re.IGNORECASE,
@@ -281,6 +285,50 @@ def parse_block_scalar_action(lines, start):
     return indentation, bool(list_marker), action.lower(), action_ref, False
 
 
+def explicit_uses_value(lines, start):
+    match = EXPLICIT_USES_PATTERN.match(lines[start])
+    if not match:
+        return None
+
+    indentation, list_marker, _ = match.groups()
+    value_indentation = len(indentation) + (2 if list_marker else 0)
+    for index in range(start + 1, len(lines)):
+        if not lines[index].strip():
+            continue
+        value_match = re.match(r"^(\s*):\s*(.*)$", lines[index])
+        if not value_match or len(value_match.group(1)) != value_indentation:
+            return None
+        value = value_match.group(2).strip()
+        if re.match(
+            r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*[>|][0-9+-]*''', value
+        ):
+            content = []
+            for content_line in lines[index + 1 :]:
+                if not content_line.strip():
+                    continue
+                content_match = re.match(r"^(\s*)(.*)$", content_line)
+                if len(content_match.group(1)) <= value_indentation:
+                    break
+                content.append(content_match.group(2).strip())
+            if len(content) != 1:
+                return None
+            value = content[0]
+        return indentation, bool(list_marker), value
+    return None
+
+
+def parse_explicit_action(lines, start):
+    explicit_value = explicit_uses_value(lines, start)
+    if not explicit_value:
+        return None
+    indentation, list_marker, value = explicit_value
+    match = ACTION_VALUE_PATTERN.match(value)
+    if not match:
+        return None
+    _, action, action_ref = match.groups()
+    return indentation, list_marker, action.lower(), action_ref, False
+
+
 def parser_failures():
     cases = {
         "      - uses: actions/checkout@v7": ("actions/checkout", "v7"),
@@ -362,6 +410,31 @@ def parser_failures():
         bare_item_lines, 2, bare_item_action
     ):
         failures.append("action parser missed bare sequence fixture")
+    explicit_lines = [
+        "    steps:",
+        "      - ? uses",
+        "        : actions/checkout@v4",
+    ]
+    explicit_action = parse_explicit_action(explicit_lines, 1)
+    if explicit_action is None or explicit_action[2:4] != (
+        "actions/checkout",
+        "v4",
+    ):
+        failures.append("action parser missed explicit key fixture")
+    elif not action_is_step_key(explicit_lines, 1, explicit_action):
+        failures.append("action parser misplaced explicit key fixture")
+    explicit_scalar_lines = [
+        "    steps:",
+        "      - ? uses",
+        "        : >-",
+        "            actions/checkout@v4",
+    ]
+    explicit_scalar_action = parse_explicit_action(explicit_scalar_lines, 1)
+    if explicit_scalar_action is None or explicit_scalar_action[2:4] != (
+        "actions/checkout",
+        "v4",
+    ):
+        failures.append("action parser missed explicit scalar fixture")
     block_scalar_lines = [
         "      - uses: >-",
         "          actions/checkout@v4",
@@ -500,11 +573,23 @@ def cache_parser_failures():
             0,
             True,
         ),
+        (
+            [
+                "      - ? uses",
+                "        : actions/setup-node@v7",
+                "        with:",
+                "          package-manager-cache: false",
+            ],
+            0,
+            True,
+        ),
     )
     failures = []
     for lines, uses_index, expected in cases:
-        parsed = parse_action(lines[uses_index]) or parse_block_scalar_action(
-            lines, uses_index
+        parsed = (
+            parse_action(lines[uses_index])
+            or parse_block_scalar_action(lines, uses_index)
+            or parse_explicit_action(lines, uses_index)
         )
         actual = action_has_cache_disabled(lines, uses_index, parsed)
         if actual != expected:
@@ -629,24 +714,37 @@ def main():
         lines = path.read_text().splitlines()
         normalized_lines = [normalize_workflow_line(line) for line in lines]
         for index, line in enumerate(lines):
-            parsed = parse_action(line) or parse_block_scalar_action(lines, index)
+            parsed = (
+                parse_action(line)
+                or parse_block_scalar_action(lines, index)
+                or parse_explicit_action(lines, index)
+            )
             scanned_lines = lines
             candidate_line = line
             if not parsed and PLUGIN_TEMPLATES in path.parents:
                 candidate_line = normalized_lines[index]
-                parsed = parse_action(candidate_line) or parse_block_scalar_action(
-                    normalized_lines, index
+                parsed = (
+                    parse_action(candidate_line)
+                    or parse_block_scalar_action(normalized_lines, index)
+                    or parse_explicit_action(normalized_lines, index)
                 )
                 scanned_lines = normalized_lines
             if not parsed:
-                flow_step = flow_step_mapping(candidate_line)
                 fallback_line = candidate_line
-                if flow_step:
+                explicit_value = explicit_uses_value(scanned_lines, index)
+                if explicit_value:
+                    indentation, list_marker, value = explicit_value
+                    uses_context = indentation, list_marker, "", "", False
+                    if not action_is_step_key(scanned_lines, index, uses_context):
+                        continue
+                    fallback_line = f"uses: {value}"
+                flow_step = flow_step_mapping(candidate_line)
+                if not explicit_value and flow_step:
                     uses_value = flow_mapping_value(flow_step[1], "uses")
                     if uses_value is None:
                         continue
                     fallback_line = f"uses: {uses_value}"
-                else:
+                elif not explicit_value:
                     uses_context = block_uses_context(candidate_line)
                     if uses_context and not action_is_step_key(
                         scanned_lines, index, uses_context
