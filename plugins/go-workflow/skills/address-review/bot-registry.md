@@ -21,8 +21,8 @@ Reference table of known review bots. Used ONLY for matching against bots actual
   `repos/$REPO_SLUG/issues/comments/$COMMENT_ID/reactions`. A
   connector-authored `+1` reaction on that current-head summary is one approval
   signal. Select the newest connector-authored issue comment containing
-  `find any major issues` independently from the persistent summary, allowing
-  either straight or curly apostrophe punctuation around the preceding word.
+  `Didn't find any major issues` independently from the persistent summary,
+  allowing either a straight or curly apostrophe.
   That clean-result comment is a second approval signal only when it contains
   `Reviewed commit:` followed by a commit prefix matching `PR_HEAD_SHA`.
   Either signal counts as current-head approval only when the connector has no
@@ -45,7 +45,7 @@ fi
 CODEX_CLEAN_RESULT_COMMENT=$(jq -c '[
   .[]
   | select(.user.login == "chatgpt-codex-connector[bot]")
-  | select(.body | contains("find any major issues"))
+  | select(.body | test("Didn[\u0027’]t find any major issues"))
 ] | sort_by(.created_at) | last // empty' <<< "$ISSUE_COMMENTS")
 CODEX_CLEAN_RESULT_BODY=$(jq -r '.body // empty' <<< "$CODEX_CLEAN_RESULT_COMMENT")
 CODEX_REVIEWED_COMMIT=$(sed -n 's/.*Reviewed commit:[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$CODEX_CLEAN_RESULT_BODY" | head -1)
