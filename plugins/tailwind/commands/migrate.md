@@ -106,8 +106,8 @@ Do not create a lockfile for a different package manager.
 
 Read the config file without evaluating untrusted JavaScript. Extract: content
 configuration (becomes `@source` directives), direct `theme` namespace
-replacements, `theme.extend`, `safelist`, `prefix`, `darkMode` (becomes a
-custom variant and selector), `important`, and `plugins` (check v4
+replacements, `theme.extend`, `safelist`, `prefix`, `corePlugins`, `darkMode`
+(becomes a custom variant and selector), `important`, and `plugins` (check v4
 compatibility).
 
 Support both v3 content forms:
@@ -213,6 +213,40 @@ the namespace as unresolved:
 Do not remove or rename a configuration referenced by `@config`. Do not report
 the migration as complete until every unresolved direct theme replacement is
 preserved by a verified alternative.
+
+### Core Plugin Preservation
+
+Parse every v3 `corePlugins` setting. The lossless supported disabled-plugin
+mapping is `corePlugins: { preflight: false }`. Replace the combined Tailwind
+import with the official v4 split imports and omit only the preflight import:
+
+```css
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+```
+
+Compose existing import modifiers on the split imports according to what they
+affect. Apply `prefix(<PREFIX>)` to both the theme and utilities imports. Apply
+`source(...)` and boolean `important` only to the utilities import. For example,
+prefix plus boolean important becomes:
+
+```css
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme) prefix(<PREFIX>);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(<PREFIX>) important;
+```
+
+Do not emit `@import "tailwindcss/preflight.css" layer(base);` when preflight is
+disabled. Preserve every unrelated import and keep all generated imports in
+CSS's legal import region.
+
+Any other disabled core plugin, array-form allowlist, computed `corePlugins`
+value, or combination that cannot be represented with verified v4 CSS is
+unresolved. Keep the v3 configuration unchanged, report each unsupported
+setting, and block migration completion and config removal. JavaScript
+`@config` does not support `corePlugins` in v4, so retaining or loading the
+config is not evidence that the disabled behavior survived.
 
 ### Safelist Preservation
 
@@ -345,12 +379,13 @@ During the merge:
 
 1. Replace only the three legacy `@tailwind base;`,
    `@tailwind components;`, and `@tailwind utilities;` directive spans. Insert
-   the selected Tailwind import where the first legacy directive appeared when
+   the selected Tailwind import or split-import set where the first legacy directive appeared when
    that location is still in CSS's legal import region. Otherwise, insert it
    after any `@charset` and existing imports but before the first ordinary rule
    or non-import at-rule, without moving existing content. Remove the other
    legacy directive spans. If the entry already has the equivalent Tailwind
-   import, remove the legacy spans without adding a second import.
+   import or equivalent split-import set, remove the legacy spans without
+   adding duplicate imports.
 2. Insert the converted `@source`, `@source inline()`, `@theme`, `@config`,
    `@custom-variant`, dark selector, and `@plugin` configuration adjacent to
    that import. Merge generated
@@ -386,8 +421,8 @@ Replace v3 directives:
 Existing `@apply` rules in your CSS continue to work unchanged.
 
 For every affected CSS file other than `<CSS_ENTRY>`, use the same
-directive-only replacement: place one equivalent Tailwind import at the first
-legacy directive, remove only the remaining legacy directive spans, and
+directive-only replacement: place the equivalent selected Tailwind import or
+split-import set at the first legacy directive, remove only the remaining legacy directive spans, and
 preserve all custom imports, `@layer` blocks, comments, at-rules, and ordinary
 CSS. Do not insert the generated configuration block into secondary entries.
 
@@ -461,7 +496,7 @@ without renaming or deleting the existing file. With `--keep-config`, keep the
 file unchanged as required by the Preservation Flags section.
 
 Before offering any disposition, check direct theme replacements, safelist
-entries, raw content, prefix, plugins, and every other parsed configuration
+entries, raw content, prefix, core plugins, plugins, and every other parsed configuration
 field for unresolved semantics. If any field is unresolved or `<CSS_ENTRY>` contains `@config`, keep
 the configuration unchanged at its original path, report why it remains
 required, and do not offer deletion or rename. Otherwise, use
@@ -492,6 +527,12 @@ set from its v4 inline sources. When a v3 prefix exists, verify the Tailwind
 import contains the correct `prefix()` modifier and every migrated source token
 uses the prefix-first v4 form and generates its expected selector. Treat either
 unresolved conversion as a blocker even when the build succeeds.
+
+When `corePlugins.preflight` is false, verify the final CSS uses the split
+theme and utilities imports, contains no preflight import, still generates
+expected utilities, and omits representative preflight reset behavior. For any
+other disabled core plugin, keep the migration unresolved until equivalent
+generated behavior is demonstrated; a successful v4 build is insufficient.
 
 Without `--check`, run only the verification path for the selected integration.
 
@@ -541,6 +582,7 @@ dependencies were changed. Otherwise, use the completion report below.
 - W safelist entries → @source inline() directives
 - R raw content entries → verified @source inline() directives
 - Prefix → prefix() import modifier plus migrated utility tokens
+- Core plugins → split imports without preflight, or retained unresolved config
 - Z plugins → @plugin directives
 - Dark mode → class-based custom variant plus `.dark` overrides
 - tailwind.config.js — removed (or kept per user choice)
@@ -553,6 +595,7 @@ dependencies were changed. Otherwise, use the completion report below.
 - [ ] Verify plugins work correctly
 - [ ] Resolve any retained direct theme namespace or safelist conversion
 - [ ] Resolve any retained raw content or prefix conversion
+- [ ] Resolve unsupported disabled core plugins
 ```
 
 Use only the next steps for the selected integration.
@@ -589,12 +632,13 @@ these are TRUE:
 
 1. The v3 configuration and affected CSS files were parsed and analyzed
 2. Proposed CSS, dependency, script, PostCSS, and old-config changes were shown
-3. The preview report identifies unresolved plugin, theme namespace, safelist, raw content, prefix, or color conversions
+3. The preview report identifies unresolved plugin, core plugin, theme namespace, safelist, raw content, prefix, or color conversions
 4. Proposed `@source` paths preserve the v3 content matches from the selected CSS entry
 5. Boolean or selector-form `important` behavior is preserved or identified as an unresolved choice
 6. Direct theme resets and literal safelist inline sources preserve v3 semantics or are identified as unresolved
 7. Raw content and prefix semantics are preserved or identified as unresolved blockers
-8. No project files, dependencies, or generated CSS changed
+8. Disabled core-plugin behavior is preserved or identified as an unresolved blocker
+9. No project files, dependencies, or generated CSS changed
 
 Without `--check`, follow the selected integration path. Use only the migration completion criteria for the selected integration.
 
@@ -603,7 +647,7 @@ Without `--check`, follow the selected integration path. Use only the migration 
 DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
 1. v3 config parsed and analyzed
-2. CSS file updated with `@import "tailwindcss"` and `@theme`
+2. CSS file updated with the selected combined or split Tailwind imports and `@theme`
 3. `tailwindcss` and `@tailwindcss/cli` updated to v4
 4. CLI build scripts added to `package.json`
 5. The selected package manager's `css` script succeeds and generates non-empty output CSS at `<CSS_OUTPUT>`
@@ -617,13 +661,14 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 13. The old configuration was not removed or renamed while any parsed field remained unresolved or referenced by `@config`
 14. Every raw content entry has an exactly equivalent v4 inline source or remains unresolved with the config retained
 15. The v3 prefix import and every prefixed utility are migrated and verified losslessly or remain unresolved with the config retained
+16. `corePlugins.preflight: false` uses verified split imports without preflight, and every other disabled core plugin remains unresolved with the config retained
 
 ### PostCSS Migration Completion Criteria
 
 DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
 1. v3 config parsed and analyzed
-2. CSS file updated with `@import "tailwindcss"` and `@theme`
+2. CSS file updated with the selected combined or split Tailwind imports and `@theme`
 3. `tailwindcss`, `@tailwindcss/postcss`, and `postcss` updated to v4
 4. `@tailwindcss/postcss` registered in the PostCSS configuration
 5. CSS entry connected to the existing PostCSS pipeline
@@ -639,6 +684,7 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 15. The old configuration was not removed or renamed while any parsed field remained unresolved or referenced by `@config`
 16. Every raw content entry has an exactly equivalent v4 inline source or remains unresolved with the config retained
 17. The v3 prefix import and every prefixed utility are migrated and verified losslessly or remain unresolved with the config retained
+18. `corePlugins.preflight: false` uses verified split imports without preflight, and every other disabled core plugin remains unresolved with the config retained
 
 ```
 <done>COMPLETE</done>

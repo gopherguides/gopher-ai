@@ -139,7 +139,7 @@ the package set for the selected integration:
 | Vite | `tailwindcss @tailwindcss/vite` |
 | PostCSS | `tailwindcss @tailwindcss/postcss postcss` |
 
-## Step 5: Create CSS Entry File
+## Step 5: Create or Merge CSS Entry File
 
 CSS path by project type:
 
@@ -156,7 +156,32 @@ derive a distinct sibling output path and bind it to `<CSS_OUTPUT>`: replace an
 stem. Never use the entry file itself as the output. Resolve how the project
 serves that output and bind its browser-facing URL to `<PUBLIC_CSS_URL>`.
 
-Create with v4 syntax:
+If `<CSS_ENTRY>` does not exist, create it with the full v4 template below.
+Use this full template only for a new file.
+
+If `<CSS_ENTRY>` already exists, read the entire file before editing and
+perform a verified in-place merge. Never overwrite an existing CSS entry, even
+when the user selected Reinstall. Build only the minimal missing Tailwind
+import and configuration fragments instead of inserting the full template.
+
+For an existing entry:
+
+1. Preserve every existing import, rule, comment, at-rule, declaration, and
+   their relative order. Insert a missing Tailwind import after any `@charset`
+   and existing imports but before the first ordinary rule or non-import
+   at-rule, without moving existing content.
+2. Reuse an equivalent existing Tailwind import instead of adding a duplicate.
+   Merge only missing `@source`, `@theme`, `@custom-variant`, dark-selector, and
+   `@layer` configuration. Deduplicate exact directives and declarations.
+3. Treat incompatible Tailwind import modifiers, a theme variable with a
+   different existing value, a conflicting custom variant, or another
+   semantic mismatch as conflicting Tailwind configuration. Ask which value or
+   behavior is authoritative and stop before writing the dependent change.
+4. Compare the original and proposed content with only the proposed insertions
+   excluded. Do not write unless all original content remains identical and in
+   the same order.
+
+For an absent entry, create this template with v4 syntax:
 
 ```css
 @import "tailwindcss";
@@ -340,6 +365,14 @@ Use only the completion criteria for the selected integration, together with
 the Target Scope criteria. DO NOT output `<done>COMPLETE</done>` until every
 applicable item is TRUE.
 
+### CSS Entry Preservation Criteria
+
+1. A new `<CSS_ENTRY>` received the full template only when the file was absent
+2. An existing `<CSS_ENTRY>` was read completely and changed only by a verified in-place merge
+3. Every pre-existing import, rule, comment, at-rule, declaration, and relative order was preserved
+4. The Tailwind import remains in CSS's legal import region and no equivalent directive was duplicated
+5. Conflicting Tailwind configuration was resolved explicitly before any dependent write
+
 ### Target Scope Completion Criteria
 
 1. `<INIT_TARGET>` is one concrete normalized absolute directory
@@ -350,7 +383,7 @@ applicable item is TRUE.
 ### CLI Completion Criteria
 
 1. Dependencies installed
-2. CSS entry file created with `@import "tailwindcss"`
+2. CSS entry file created or losslessly merged with `@import "tailwindcss"`
 3. Build scripts added to `package.json`
 4. The selected package manager's `css` script succeeds with zero errors
 5. Output CSS is generated at the concrete `<CSS_OUTPUT>` path
@@ -359,7 +392,7 @@ applicable item is TRUE.
 ### Vite Completion Criteria
 
 1. `tailwindcss` and `@tailwindcss/vite` installed
-2. CSS entry file created with `@import "tailwindcss"`
+2. CSS entry file created or losslessly merged with `@import "tailwindcss"`
 3. Tailwind plugin registered in the Vite configuration
 4. CSS entry file imported from the application entry point
 5. Existing Vite build succeeds and processes the CSS entry without errors
@@ -367,7 +400,7 @@ applicable item is TRUE.
 ### PostCSS Completion Criteria
 
 1. `tailwindcss`, `@tailwindcss/postcss`, and `postcss` installed
-2. CSS entry file created with `@import "tailwindcss"`
+2. CSS entry file created or losslessly merged with `@import "tailwindcss"`
 3. `@tailwindcss/postcss` registered in the PostCSS configuration
 4. CSS entry file connected to the existing PostCSS pipeline
 5. Existing PostCSS-backed build succeeds with zero errors

@@ -215,15 +215,30 @@ counts and label the CSS-only difference as "not observed in static source",
 not "unused". Do not make an unused-class conclusion for the affected source
 scope until its dynamic candidates are enumerated or safelisted.
 
-After building the static inventory, compare it with generated CSS:
+After building the static inventory, parse `<GENERATED_CSS>` with an already
+available standards-compliant CSS selector parser or a read-only equivalent
+that provides the same guarantees. Traverse every qualified rule and extract
+complete class-selector identifiers from the selector syntax tree. CSS-unescape
+each identifier before writing the complete unique set to
+`<TEMP_DIR>/css-classes.txt`.
+
+The extraction must preserve full utility identities such as
+`hover:bg-red-500`, `w-1/2`, arbitrary values like `bg-[#123456]`, important
+forms like `font-bold!`, and negative forms like `-mt-4`. Do not use a grep
+character-class regex, truncate selector output, or compare raw escaped CSS
+spelling with source tokens.
+
+Do not install a parser solely for optimization analysis. If no available
+parser or read-only capability can parse selectors and CSS-unescape class
+identifiers correctly, report generated class count and CSS-only comparison as
+unavailable. Continue with source coverage and the other safe metrics instead
+of producing partial or false unused-class counts.
+
+After the parser writes the complete class set, compare it with static source:
 
 ```bash
-
-# Class names in generated CSS
-grep -oE '\.[a-zA-Z][a-zA-Z0-9_-]*' "<GENERATED_CSS>" | sed 's/\.//' | sort -u > "<TEMP_DIR>/css-classes.txt"
-
 # CSS-only (unused only when no unresolved dynamic expressions exist)
-comm -23 "<TEMP_DIR>/css-classes.txt" "<TEMP_DIR>/used-classes.txt" | head -50
+comm -23 "<TEMP_DIR>/css-classes.txt" "<TEMP_DIR>/used-classes.txt"
 ```
 
 **Note:** Some CSS-only classes may be used by third-party libraries or be
@@ -347,9 +362,10 @@ DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 3. Every supported source extension used the same complete discovery and analysis set
 4. Static `class` and `className` literals in all supported quote forms were inventoried
 5. Dynamic expressions were reported and excluded from unused-class conclusions
-6. The report identifies the concrete `<OPTIMIZE_TARGET>` and excludes unrelated projects
-7. If `--fix`: safe optimizations applied only to the selected target integration
-8. No missing build dependency was installed solely for analysis
+6. Generated class identifiers were fully parsed and CSS-unescaped, or their dependent metrics were marked unavailable
+7. The report identifies the concrete `<OPTIMIZE_TARGET>` and excludes unrelated projects
+8. If `--fix`: safe optimizations applied only to the selected target integration
+9. No missing build dependency was installed solely for analysis
 
 ```
 <done>COMPLETE</done>
