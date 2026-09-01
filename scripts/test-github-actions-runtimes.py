@@ -22,10 +22,6 @@ BLOCK_ACTION_PATTERN = re.compile(
     r'''(?:\s*(?:#.*)?)$''',
     re.IGNORECASE,
 )
-BLOCK_USES_KEY_PATTERN = re.compile(
-    r'''^(\s*)(-\s+)?(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
-    r'''(["']?)uses\3\s*:'''
-)
 ACTION_USES_PATTERN = re.compile(
     r'''(?:^|[\s{,])(["']?)uses\1\s*:\s*'''
     r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)'''
@@ -42,14 +38,6 @@ STEP_ALIAS_PATTERN = re.compile(
 INLINE_WITH_PATTERN = re.compile(
     r'''^(\s*)(["']?)with\2\s*:\s*'''
     r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*\{([^{}]*)\}\s*(?:#.*)?$'''
-)
-BLOCK_SCALAR_USES_PATTERN = re.compile(
-    r'''^(\s*)(-\s+)?(["']?)uses\3\s*:\s*'''
-    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*[>|][0-9+-]*\s*(?:#.*)?$'''
-)
-EXPLICIT_USES_PATTERN = re.compile(
-    r'''^(\s*)(-\s+)?\?\s*'''
-    r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*(["']?)uses\3\s*(?:#.*)?$'''
 )
 ACTION_SCALAR_PATTERN = re.compile(
     r'''^(actions/(?:checkout|setup-go|setup-node))@([^\s,#}"']+)$''',
@@ -207,12 +195,8 @@ def split_flow_text(value, delimiter):
 
 
 def flow_key(value):
-    value = re.sub(
-        r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*''', "", value.strip()
-    )
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        return value[1:-1]
-    return value
+    decoded = decode_yaml_scalar(value)
+    return value.strip() if decoded is None else decoded
 
 
 def parse_flow_mapping(value):
@@ -280,17 +264,81 @@ def flow_mapping_value(entries, key):
     return None
 
 
+def block_mapping_entry(line):
+    match = re.match(r"^(\s*)(-\s+)?(.*)$", line)
+    if not match:
+        return None
+    indentation, list_marker, body = match.groups()
+    pair = split_flow_text(body, ":")
+    if pair is None or len(pair) < 2:
+        return None
+    key = decode_yaml_scalar(pair[0])
+    if key is None:
+        return None
+    return indentation, bool(list_marker), key, ":".join(pair[1:]).strip()
+
+
+def explicit_mapping_key_context(line):
+    match = re.match(r"^(\s*)(-\s+)?\?\s*(.*)$", line)
+    if not match:
+        return None
+    indentation, list_marker, key_value = match.groups()
+    key = decode_yaml_scalar(key_value)
+    if key is None:
+        return None
+    return indentation, bool(list_marker), key
+
+
+def is_block_scalar_value(value):
+    value = SCALAR_PREFIX_PATTERN.sub("", value.strip(), count=1)
+    return bool(re.fullmatch(r"[>|][0-9+-]*\s*(?:#.*)?", value))
+
+
+def block_scalar_header_indentation(line):
+    entry = block_mapping_entry(line)
+    if entry and is_block_scalar_value(entry[3]):
+        return len(entry[0])
+
+    match = re.match(r"^(\s*)-\s*(.*)$", line)
+    if match and is_block_scalar_value(match.group(2)):
+        return len(match.group(1))
+
+    match = re.match(r"^(\s*):\s*(.*)$", line)
+    if match and is_block_scalar_value(match.group(2)):
+        return len(match.group(1))
+    return None
+
+
+def block_scalar_content_indices(lines):
+    content_indices = set()
+    header_indentation = None
+    for index, line in enumerate(lines):
+        if header_indentation is not None:
+            if not line.strip():
+                content_indices.add(index)
+                continue
+            indentation = len(line) - len(line.lstrip())
+            if indentation > header_indentation:
+                content_indices.add(index)
+                continue
+            header_indentation = None
+
+        header_indentation = block_scalar_header_indentation(line)
+    return content_indices
+
+
 def enclosing_steps_index(lines, start):
+    scalar_content = block_scalar_content_indices(lines)
     for candidate in range(start - 1, -1, -1):
-        match = re.match(
-            r'''^(\s*)(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
-            r'''(["']?)steps\2\s*:\s*'''
-            r'''(?:(?:&|!)[^\s,\[\]{}]+\s*)*(?:#.*)?$''',
-            lines[candidate],
-        )
-        if not match:
+        if candidate in scalar_content:
             continue
-        steps_indentation = len(match.group(1))
+        entry = block_mapping_entry(lines[candidate])
+        if not entry or entry[1] or entry[2] != "steps":
+            continue
+        value = SCALAR_PREFIX_PATTERN.sub("", entry[3], count=1).strip()
+        if value and not value.startswith("#"):
+            continue
+        steps_indentation = len(entry[0])
         enclosed = True
         for line in lines[candidate + 1 : start + 1]:
             if not line.strip():
@@ -346,8 +394,7 @@ def parse_action(line):
 
     uses_context = block_uses_context(line)
     if uses_context:
-        match = BLOCK_USES_KEY_PATTERN.match(line)
-        parsed_value = parse_action_value(line[match.end() :])
+        parsed_value = parse_action_value(block_mapping_entry(line)[3])
         if parsed_value:
             action, action_ref = parsed_value
             indentation, list_marker, _, _, _ = uses_context
@@ -357,11 +404,11 @@ def parse_action(line):
 
 
 def block_uses_context(line):
-    match = BLOCK_USES_KEY_PATTERN.match(line)
-    if not match:
+    entry = block_mapping_entry(line)
+    if not entry or entry[2] != "uses":
         return None
-    indentation, list_marker, _ = match.groups()
-    return indentation, bool(list_marker), "", "", False
+    indentation, list_marker, _, _ = entry
+    return indentation, list_marker, "", "", False
 
 
 def step_alias_context(line):
@@ -377,11 +424,11 @@ def find_action_reference(line):
 
 
 def parse_block_scalar_action(lines, start):
-    match = BLOCK_SCALAR_USES_PATTERN.match(lines[start])
-    if not match:
+    entry = block_mapping_entry(lines[start])
+    if not entry or entry[2] != "uses" or not is_block_scalar_value(entry[3]):
         return None
 
-    indentation, list_marker, _ = match.groups()
+    indentation, list_marker, _, _ = entry
     key_indentation = len(indentation) + (2 if list_marker else 0)
     content = []
     for line in lines[start + 1 :]:
@@ -398,15 +445,15 @@ def parse_block_scalar_action(lines, start):
     if not action_match:
         return None
     action, action_ref = action_match.groups()
-    return indentation, bool(list_marker), action.lower(), action_ref, False
+    return indentation, list_marker, action.lower(), action_ref, False
 
 
 def explicit_uses_value(lines, start):
-    match = EXPLICIT_USES_PATTERN.match(lines[start])
-    if not match:
+    context = explicit_mapping_key_context(lines[start])
+    if not context or context[2] != "uses":
         return None
 
-    indentation, list_marker, _ = match.groups()
+    indentation, list_marker, _ = context
     value_indentation = len(indentation) + (2 if list_marker else 0)
     for index in range(start + 1, len(lines)):
         if not lines[index].strip():
@@ -429,7 +476,7 @@ def explicit_uses_value(lines, start):
             if len(content) != 1:
                 return None
             value = content[0]
-        return indentation, bool(list_marker), value
+        return indentation, list_marker, value
     return None
 
 
@@ -512,6 +559,14 @@ def parser_failures():
             "actions/setup-go",
             "v6",
         ),
+        r'      - "\u0075ses": actions/checkout@v4': (
+            "actions/checkout",
+            "v4",
+        ),
+        r'      - { "\u0075ses": actions/setup-go@v6 }': (
+            "actions/setup-go",
+            "v6",
+        ),
     }
     failures = []
     for line, expected in cases.items():
@@ -555,6 +610,18 @@ def parser_failures():
     for index in range(1, len(noise_lines)):
         if unparsed_action_reference(noise_lines, index, noise_lines[index]):
             failures.append("action fallback promoted non-step text fixture")
+    block_scalar_lines = [
+        "    steps:",
+        "      - run: |",
+        "          cat <<'EOF'",
+        "          steps:",
+        "            - uses: actions/checkout@v4",
+        "          EOF",
+        "      - uses: actions/checkout@v7",
+    ]
+    scalar_content = block_scalar_content_indices(block_scalar_lines)
+    if 4 not in scalar_content or 6 in scalar_content:
+        failures.append("block scalar boundary parser failed fixture")
     nested_flow_line = (
         '      - { run: echo "$uses", env: { uses: actions/checkout@v4 } }'
     )
@@ -610,6 +677,17 @@ def parser_failures():
         failures.append("action parser missed explicit key fixture")
     elif not action_is_step_key(explicit_lines, 1, explicit_action):
         failures.append("action parser misplaced explicit key fixture")
+    escaped_explicit_lines = [
+        "    steps:",
+        r'      - ? "\u0075ses"',
+        "        : actions/checkout@v4",
+    ]
+    escaped_explicit_action = parse_explicit_action(escaped_explicit_lines, 1)
+    if escaped_explicit_action is None or escaped_explicit_action[2:4] != (
+        "actions/checkout",
+        "v4",
+    ):
+        failures.append("action parser missed escaped explicit key fixture")
     explicit_scalar_lines = [
         "    steps:",
         "      - ? uses",
@@ -900,7 +978,15 @@ def main():
     for path in workflow_files():
         lines = path.read_text().splitlines()
         normalized_lines = [normalize_workflow_line(line) for line in lines]
+        scalar_content = block_scalar_content_indices(lines)
+        normalized_scalar_content = (
+            block_scalar_content_indices(normalized_lines)
+            if PLUGIN_TEMPLATES in path.parents
+            else set()
+        )
         for index, line in enumerate(lines):
+            if index in scalar_content or index in normalized_scalar_content:
+                continue
             parsed = (
                 parse_action(line)
                 or parse_block_scalar_action(lines, index)
