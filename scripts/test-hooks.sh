@@ -272,7 +272,7 @@ run_runtime_location_tests() {
   printf '%s\n' '{"old":true}' > "$cache_clear_race"
   (
     writer_candidate="${cache_clear_race}.lock.writer"
-    printf '%s %s %s\n' "$$" "$(date +%s)" "$RANDOM" > "$writer_candidate"
+    printf '%s %s %s\n' "$$" "$(( $(date +%s) - 11 ))" "$RANDOM" > "$writer_candidate"
     ln "$writer_candidate" "${cache_clear_race}.lock"
     : > "$cache_clear_race_ready"
     while [ ! -e "$cache_clear_race_release" ]; do
@@ -293,7 +293,12 @@ run_runtime_location_tests() {
   clear_attempt=0
   while [ "$clear_attempt" -lt 100 ]; do
     if [ -f "${cache_clear_race}.lock.${cache_clear_pid}" ]; then
-      cache_clear_waited=true
+      sleep 0.2
+      if kill -0 "$cache_clear_pid" 2>/dev/null &&
+         [ -f "${cache_clear_race}.lock" ] &&
+         [ -f "$cache_clear_race" ]; then
+        cache_clear_waited=true
+      fi
       break
     fi
     if ! kill -0 "$cache_clear_pid" 2>/dev/null; then

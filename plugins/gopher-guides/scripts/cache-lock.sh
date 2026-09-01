@@ -4,7 +4,6 @@ CACHE_LOCK_FILE=""
 CACHE_LOCK_CANDIDATE=""
 CACHE_LOCK_RECLAIM_DIR=""
 CACHE_LOCK_OWNER=""
-CACHE_LOCK_STALE_SECONDS=10
 
 cache_lock_configure() {
   local cache_file="${1:?Cache file is required}"
@@ -28,11 +27,9 @@ cache_lock_owner() {
 }
 
 cache_lock_is_abandoned() {
-  local lock_age
   local lock_created
   local lock_owner
   local lock_pid
-  local now
   lock_owner=$(cat "$CACHE_LOCK_FILE" 2>/dev/null || true)
   lock_pid=${lock_owner%% *}
   case "$lock_pid" in
@@ -45,9 +42,7 @@ cache_lock_is_abandoned() {
     ''|*[!0-9]*) return 0 ;;
   esac
   kill -0 "$lock_pid" 2>/dev/null || return 0
-  now=$(date +%s)
-  lock_age=$((now - lock_created))
-  [ "$lock_age" -lt 0 ] || [ "$lock_age" -ge "$CACHE_LOCK_STALE_SECONDS" ]
+  return 1
 }
 
 cache_lock_reclaim_abandoned() {
