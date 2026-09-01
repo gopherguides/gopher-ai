@@ -134,12 +134,12 @@ run_runtime_location_tests() {
   local cache_lock_portable_output cache_lock_portable_reused_output
   local cache_clear_race cache_clear_race_bin cache_clear_race_output cache_clear_race_ready
   local cache_clear_race_release cache_clear_writer_output cache_clear_writer_pid
-  local cache_clear_output_file cache_clear_pid cache_clear_trace_file clear_attempt
+  local cache_clear_output_file cache_clear_pid clear_attempt
   local clear_cache_command default_clear_output expected_default_clear_output override_clear_output
   local default_cache_valid=false override_cache_valid=false compatibility_cache_valid=false
   local cache_lock_smoke_valid=false cache_lock_portable_orphan_valid=false
   local cache_lock_portable_reused_valid=false cache_lock_portable_valid=false
-  local cache_clear_race_started=false cache_clear_race_valid=false cache_clear_race_status=true
+  local cache_clear_race_cleared=false cache_clear_race_valid=false cache_clear_race_status=true
   local corrupt_cache_valid=false parallel_cache_valid=false parallel_status=true writer writer_pid
 
   cache_fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-guides-cache.XXXXXX")
@@ -169,7 +169,6 @@ run_runtime_location_tests() {
   cache_clear_race_release="$cache_fixture/clear-race-release"
   cache_clear_writer_output="$cache_fixture/clear-race-writer-output"
   cache_clear_output_file="$cache_fixture/clear-race-clear-output"
-  cache_clear_trace_file="$cache_fixture/clear-race-clear-trace"
   clear_cache_command=$(sed -n 's/^!`\(.*\)`$/\1/p' "$clear_cache")
 
   mkdir -p "$cache_home" "$cache_bin" "$cache_parallel_bin" "$cache_parallel_barrier" \
@@ -332,10 +331,10 @@ run_runtime_location_tests() {
   GOPHER_GUIDES_CACHE_FILE="$cache_clear_race" \
     GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
     XDG_CACHE_HOME="$cache_fixture/unused-xdg" HOME="$cache_home" \
-    bash -x "$clear_cache_script" > "$cache_clear_output_file" 2> "$cache_clear_trace_file" &
+    "$clear_cache_script" > "$cache_clear_output_file" &
   cache_clear_pid=$!
   clear_attempt=0
-  while ! rg -q '/cache-lock\.sh' "$cache_clear_trace_file" 2>/dev/null &&
+  while [ "$(cat "${cache_clear_race}.epoch" 2>/dev/null || true)" != 1 ] &&
         [ "$clear_attempt" -lt 200 ]; do
     if ! kill -0 "$cache_clear_pid" 2>/dev/null; then
       break
@@ -343,14 +342,14 @@ run_runtime_location_tests() {
     clear_attempt=$((clear_attempt + 1))
     sleep 0.01
   done
-  if rg -q '/cache-lock\.sh' "$cache_clear_trace_file" 2>/dev/null; then
-    cache_clear_race_started=true
+  if [ "$(cat "${cache_clear_race}.epoch" 2>/dev/null || true)" = 1 ]; then
+    cache_clear_race_cleared=true
   fi
   : > "$cache_clear_race_release"
   wait "$cache_clear_writer_pid" || cache_clear_race_status=false
   wait "$cache_clear_pid" || cache_clear_race_status=false
   cache_clear_race_output=$(cat "$cache_clear_output_file")
-  if [ "$cache_clear_race_started" = true ] &&
+  if [ "$cache_clear_race_cleared" = true ] &&
      [ "$cache_clear_race_status" = true ] &&
      [ "$(cat "$cache_clear_writer_output")" = '{"result":"ok"}' ] &&
      [ ! -e "$cache_clear_race" ] &&
