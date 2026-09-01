@@ -9,7 +9,7 @@ Remove cached API responses to force fresh data on next query.
 
 ## Execute
 
-!`rm -f .claude/gopher-guides-cache.json && echo "✓ Gopher Guides cache cleared"`
+!`CACHE_FILE="${GOPHER_GUIDES_CACHE_FILE:-${XDG_CACHE_HOME:-$HOME/.cache}/gopher-ai/gopher-guides-cache.json}"; rm -f "$CACHE_FILE" && echo "✓ Gopher Guides cache cleared"`
 
 ## Result
 

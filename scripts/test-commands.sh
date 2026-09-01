@@ -157,14 +157,66 @@ file_contains() {
   awk -v needle="$needle" 'index($0, needle) { found = 1 } END { exit found ? 0 : 1 }' "$file"
 }
 
+echo -n "Shared skill resources use the cross-platform plugin-root contract... "
+GO_WORKFLOW_SKILLS="$ROOT_DIR/plugins/go-workflow/skills"
+GO_WORKFLOW_SKILL_RESOURCES=(
+  "$GO_WORKFLOW_SKILLS"
+  "$ROOT_DIR/plugins/go-workflow/lib"
+  "$ROOT_DIR/plugins/go-workflow/agents"
+)
+GOPHER_GUIDES_SKILL="$ROOT_DIR/plugins/gopher-guides/skills/gopher-guides/SKILL.md"
+RESOURCE_CONTRACT_FAILURE=""
+RESOURCE_SKILLS=("$GO_WORKFLOW_SKILLS"/*/SKILL.md "$GOPHER_GUIDES_SKILL")
+for resource_skill in "${RESOURCE_SKILLS[@]}"; do
+  if ! file_contains '## Plugin Resource Resolution' "$resource_skill" ||
+     ! file_contains '`<PLUGIN_ROOT>` is notation' "$resource_skill" ||
+     ! file_contains 'concrete absolute plugin root before every resource read or command' "$resource_skill" ||
+     ! file_contains 'directory containing the absolute selected `SKILL.md` path, then ascend two directories' "$resource_skill" ||
+     ! file_contains 'injected `${CLAUDE_PLUGIN_ROOT}`' "$resource_skill"; then
+    RESOURCE_CONTRACT_FAILURE="${resource_skill#"$ROOT_DIR"/} lacks the complete binding contract"
+    break
+  fi
+done
+
+LEGACY_SKILL_RESOURCE_PATHS=$(rg -n --glob '*.md' '\$\{CLAUDE_PLUGIN_ROOT\}/' \
+  "${GO_WORKFLOW_SKILL_RESOURCES[@]}" "$GOPHER_GUIDES_SKILL" || true)
+CODEX_RESOURCE_PROBE="$ROOT_DIR/scripts/probe-codex-skill-resources.sh"
+if [ -n "$RESOURCE_CONTRACT_FAILURE" ]; then
+  echo "FAIL ($RESOURCE_CONTRACT_FAILURE)"
+  ERRORS=$((ERRORS + 1))
+elif [ -n "$LEGACY_SKILL_RESOURCE_PATHS" ]; then
+  echo "FAIL (Claude-only executable resource paths remain)"
+  echo "$LEGACY_SKILL_RESOURCE_PATHS"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$ROOT_DIR/plugins/go-workflow/lib/driver-interaction.md" ] ||
+     [ ! -x "$ROOT_DIR/plugins/go-workflow/scripts/setup-loop.sh" ] ||
+     [ ! -x "$ROOT_DIR/plugins/gopher-guides/scripts/cache-api.sh" ]; then
+  echo "FAIL (representative bundled resources are missing)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -x "$CODEX_RESOURCE_PROBE" ]; then
+  echo "FAIL (live Codex resource probe is missing or not executable)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'codex exec' "$CODEX_RESOURCE_PROBE" ||
+     ! file_contains '--sandbox read-only' "$CODEX_RESOURCE_PROBE" ||
+     ! file_contains 'env -u PLUGIN_ROOT -u PLUGIN_DATA -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PLUGIN_DATA' "$CODEX_RESOURCE_PROBE" ||
+     ! file_contains 'GO_WORKFLOW_PLUGIN_ROOT=' "$CODEX_RESOURCE_PROBE" ||
+     ! file_contains 'GOPHER_GUIDES_PLUGIN_ROOT=' "$CODEX_RESOURCE_PROBE" ||
+     ! file_contains 'scripts/cache-api.sh' "$CODEX_RESOURCE_PROBE" ||
+     ! file_contains 'Usage: cache-api.sh <endpoint> <json-data>' "$CODEX_RESOURCE_PROBE"; then
+  echo "FAIL (live Codex resource probe lacks required safety or evidence checks)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 if [ -n "$BLOCKED_COMPOSITION" ]; then
   echo "FAIL"
   echo "$BLOCKED_COMPOSITION"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'Read `${CLAUDE_PLUGIN_ROOT}/skills/start-issue/SKILL.md`' "$COMPLETE_ISSUE_SKILL"; then
+elif ! file_contains 'Read `<PLUGIN_ROOT>/skills/start-issue/SKILL.md`' "$COMPLETE_ISSUE_SKILL"; then
   echo "FAIL (complete-issue does not load start-issue directly)"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'Read `${CLAUDE_PLUGIN_ROOT}/skills/e2e-verify/SKILL.md`' "$COMPLETE_ISSUE_SKILL"; then
+elif ! file_contains 'Read `<PLUGIN_ROOT>/skills/e2e-verify/SKILL.md`' "$COMPLETE_ISSUE_SKILL"; then
   echo "FAIL (complete-issue does not load e2e-verify directly)"
   ERRORS=$((ERRORS + 1))
 elif ! file_contains 'skills/ship/SKILL.md' "$E2E_FINISH"; then
@@ -300,7 +352,7 @@ else
   cp "$ADDRESS_REVIEW_SKILL" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/address-review/SKILL.md"
   cp "$ADDRESS_REVIEW_LOOP" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/address-review/loop-management.md"
 
-  seed_composition_mutation "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/start-issue/SKILL.md" '"${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "nested" "COMPLETE"'
+  seed_composition_mutation "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/start-issue/SKILL.md" '"<PLUGIN_ROOT>/scripts/setup-loop.sh" "nested" "COMPLETE"'
   if validate_composition_contract "$COMPOSITION_MUTATION_ROOT"; then
     COMPOSITION_FAILURE="validator accepted an embedded setup-loop mutation"
   fi

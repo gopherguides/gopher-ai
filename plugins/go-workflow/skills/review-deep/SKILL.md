@@ -6,14 +6,21 @@ argument-hint: "[PR-number|--issue <N>] [--post] [--scope <hint>] [--no-fix] [--
 
 # Deep Review: Full-Context Code Review + Fix
 
+## Plugin Resource Resolution
+
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root before every resource read or command:
+
+- **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
+
 Performs a thorough code review with full PR/issue context, then fixes all actionable findings.
 Combines the depth of spec review, quality review, and Go-specific analysis in a single pass.
 
 Before requesting decisions or delegating work, read
-`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+`<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving review
+Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving review
 coverage or post-review actions.
 
 Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:review-deep` by

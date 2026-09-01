@@ -4,7 +4,7 @@ Loaded by `skills/ship/SKILL.md` Phase 4.
 
 ## 11a. Discover review bots
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/bot-registry.md` for the bot registry table.
+Read `<PLUGIN_ROOT>/skills/address-review/bot-registry.md` for the bot registry table.
 
 Query all author sources. Formal reviews and top-level PR comments have REST
 endpoints. Review-thread comments remain the GraphQL exception because REST
@@ -111,7 +111,7 @@ set_loop_field "$STATE_FILE" "discovered_bots" "$DISCOVERED_BOTS_CSV" "$WORKFLOW
 
 ## 11b. Poll for bot approval
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/address-review/watch-loop.md` and follow Steps 12a-12d. Outcomes:
+Read `<PLUGIN_ROOT>/skills/address-review/watch-loop.md` and follow Steps 12a-12d. Outcomes:
 
 - **All bots approved** → proceed to Step 13 (merging)
 - **New comments / `CHANGES_REQUESTED`** → go to Step 12 (address feedback)

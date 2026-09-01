@@ -151,8 +151,26 @@ resolve_symlink_path() {
   printf '%s\n' "$resolved_path"
 }
 
+repository_state_file() {
+  local common_dir repository_root
+  common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
+  case "$common_dir" in
+    /*)
+      ;;
+    *)
+      repository_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+      common_dir=$(cd "$repository_root" && cd "$common_dir" && pwd -P) || return 1
+      ;;
+  esac
+  printf '%s/gopher-ai/worktree-state.json\n' "${common_dir%/}"
+}
+
 check_worktree_path() {
-  local state_file="${HOME}/.claude/worktree-state.json"
+  local state_file="" legacy_state_file="${HOME}/.claude/worktree-state.json"
+  repository_state_file >/dev/null 2>&1 && state_file=$(repository_state_file)
+  if [ -z "$state_file" ] || [ ! -f "$state_file" ]; then
+    state_file="$legacy_state_file"
+  fi
   [ -f "$state_file" ] || return 0
 
   local worktree_path original_path target_path=""

@@ -105,7 +105,7 @@ Failure** procedure. Do not continue to the ship workflow.
 ## Ship Workflow Handoff
 
 The ship skill is user-only. Do not call it with the Skill tool. Read
-`${CLAUDE_PLUGIN_ROOT}/skills/ship/SKILL.md` and execute its instructions
+`<PLUGIN_ROOT>/skills/ship/SKILL.md` and execute its instructions
 directly.
 
 - **`ship` mode** → Treat an empty string as the ship workflow's `SKILL_ARGS`

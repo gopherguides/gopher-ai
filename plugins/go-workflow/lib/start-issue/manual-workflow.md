@@ -12,7 +12,7 @@ flow for simple issues where subagent overhead is not justified.
 4. **TDD Red — IRON LAW: No fix code before this test.** If you already wrote fix code, DELETE IT. Write a failing test. Run it. Verify it fails FOR THE RIGHT REASON. **Red flag: test passes immediately = wrong test.**
 5. **TDD Green**: implement minimal fix. Run test. Verify it passes.
 6. **Verify**: `go -C "$WORKTREE_PATH" build ./...` + `go -C "$WORKTREE_PATH" test ./...` + `(cd "$WORKTREE_PATH" && golangci-lint run)` (if installed)
-7. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md`, follow Steps A-F
+7. **Coverage**: Read `<PLUGIN_ROOT>/lib/coverage/coverage-verification.md`, follow Steps A-F
 8. **Security review**: `(cd "$WORKTREE_PATH" && govulncheck ./...)`, scan for secrets/injection/traversal
 9. **Submit**: commit with `git -C "$WORKTREE_PATH"`, push that explicit head, and create the PR with `gh pr create --repo "$REPO_SLUG" --head "$(git -C "$WORKTREE_PATH" branch --show-current)"` using the template from orchestrated Step 11
 10. **Watch CI**: `gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --watch`, fix failures
@@ -26,7 +26,7 @@ flow for simple issues where subagent overhead is not justified.
 5. **TDD Red — IRON LAW: No implementation code before these tests.** If you already wrote code, DELETE IT. Write comprehensive tests (happy path, edge cases, errors). Each test = ONE behavior. Run them. Verify they fail FOR THE RIGHT REASONS. **Red flag: test passes immediately = wrong test.**
 6. **TDD Green**: implement minimal code. Run tests. Verify all pass.
 7. **Verify**: `go -C "$WORKTREE_PATH" build ./...` + `go -C "$WORKTREE_PATH" test ./...` + `(cd "$WORKTREE_PATH" && golangci-lint run)` (if installed)
-8. **Coverage**: Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md`, follow Steps A-F
+8. **Coverage**: Read `<PLUGIN_ROOT>/lib/coverage/coverage-verification.md`, follow Steps A-F
 9. **Security review**: `(cd "$WORKTREE_PATH" && govulncheck ./...)`, scan for secrets/injection/traversal
 10. **Submit**: commit with `git -C "$WORKTREE_PATH"`, push that explicit head, and create the PR with `gh pr create --repo "$REPO_SLUG" --head "$(git -C "$WORKTREE_PATH" branch --show-current)"` using the template from orchestrated Step 11
 11. **Watch CI**: `gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --watch`, fix failures

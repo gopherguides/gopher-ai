@@ -2,7 +2,7 @@
 # Cache wrapper for Gopher Guides API calls
 # Usage: cache-api.sh <endpoint> <json-data>
 #
-# Caches responses to .claude/gopher-guides-cache.json
+# Caches responses under the user's cache directory
 # TTL: 24h for practices/examples, 1h for audit/review
 #
 # Examples:
@@ -13,7 +13,7 @@ set -euo pipefail
 
 ENDPOINT="${1:-}"
 JSON_DATA="${2:-}"
-CACHE_FILE=".claude/gopher-guides-cache.json"
+CACHE_FILE="${GOPHER_GUIDES_CACHE_FILE:-${XDG_CACHE_HOME:-$HOME/.cache}/gopher-ai/gopher-guides-cache.json}"
 
 if [ -z "$ENDPOINT" ] || [ -z "$JSON_DATA" ]; then
   echo "Usage: cache-api.sh <endpoint> <json-data>" >&2
@@ -40,6 +40,27 @@ esac
 
 # Create cache dir
 mkdir -p "$(dirname "$CACHE_FILE")"
+LOCK_DIR="${CACHE_FILE}.lock"
+CACHE_TEMP=""
+
+release_cache_lock() {
+  if [ -n "$CACHE_TEMP" ]; then
+    rm -f "$CACHE_TEMP"
+  fi
+  rmdir "$LOCK_DIR" 2>/dev/null || true
+}
+
+acquire_cache_lock() {
+  local attempt=0
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge 200 ]; then
+      echo "Error: Timed out waiting for the Gopher Guides cache lock" >&2
+      return 1
+    fi
+    sleep 0.05
+  done
+}
 
 # Generate cache key from endpoint + data
 hash_input() {
@@ -91,13 +112,21 @@ NOW=$(date +%s)
 CACHE_ENTRY=$(jq -n --arg resp "$RESPONSE" --argjson ts "$NOW" --arg ep "$ENDPOINT" \
   '{response: $resp, cached_at: $ts, endpoint: $ep}')
 
-# Update cache file (create if doesn't exist)
+acquire_cache_lock
+trap release_cache_lock EXIT
+trap 'exit 1' HUP INT TERM
+CACHE_TEMP=$(mktemp "${CACHE_FILE}.tmp.XXXXXX")
+
 if [ -f "$CACHE_FILE" ]; then
   jq --arg key "$CACHE_KEY" --argjson entry "$CACHE_ENTRY" \
-    '.[$key] = $entry' "$CACHE_FILE" > "${CACHE_FILE}.tmp" && mv "${CACHE_FILE}.tmp" "$CACHE_FILE"
+    '.[$key] = $entry' "$CACHE_FILE" > "$CACHE_TEMP"
 else
   jq -n --arg key "$CACHE_KEY" --argjson entry "$CACHE_ENTRY" \
-    '{($key): $entry}' > "$CACHE_FILE"
+    '{($key): $entry}' > "$CACHE_TEMP"
 fi
+mv "$CACHE_TEMP" "$CACHE_FILE"
+CACHE_TEMP=""
+rmdir "$LOCK_DIR"
+trap - EXIT HUP INT TERM
 
 echo "$RESPONSE"

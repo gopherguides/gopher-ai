@@ -5,7 +5,7 @@ Loaded by `skills/ship/SKILL.md` Phase 1. Owns the full review/fix/verify/covera
 ## Step 5: Review Phase
 
 ```bash
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
 set_loop_phase "$STATE_FILE" "reviewing" "$WORKFLOW_STATE_PATH"
 PASS=$(get_loop_field "$STATE_FILE" "pass" "$WORKFLOW_STATE_PATH")
 PASS="${PASS:-0}"
@@ -286,7 +286,7 @@ the state file before resolving so every review pass uses the same model.
 OLLAMA_MODEL=${OLLAMA_MODEL:-$(get_loop_field "$STATE_FILE" "ollama_model" "$WORKFLOW_STATE_PATH")}
 if [ -z "$OLLAMA_MODEL" ]; then
   set +e
-  OLLAMA_MODEL=$(cd "$WORKTREE_PATH" && "${CLAUDE_PLUGIN_ROOT}/scripts/select-ollama-model.sh" 2>"/tmp/ollama-select-stderr-$$")
+  OLLAMA_MODEL=$(cd "$WORKTREE_PATH" && "<PLUGIN_ROOT>/scripts/select-ollama-model.sh" 2>"/tmp/ollama-select-stderr-$$")
   OLLAMA_SELECT_EXIT_CODE=$?
   OLLAMA_SELECT_STDERR=$(cat "/tmp/ollama-select-stderr-$$" 2>/dev/null)
   rm -f "/tmp/ollama-select-stderr-$$"
@@ -348,7 +348,7 @@ This section runs only when the driver selected agent-based review for an
 unpinned backend or the user explicitly authorized replacing a pinned backend.
 
 1. Set `CODEX_EXEC_FALLBACK=true`
-2. Read `${CLAUDE_PLUGIN_ROOT}/agents/quality-review-prompt.md`. Adapt for the detected project language (replace Go-specific criteria when not a Go project).
+2. Read `<PLUGIN_ROOT>/agents/quality-review-prompt.md`. Adapt for the detected project language (replace Go-specific criteria when not a Go project).
 3. Fill template variables: `{WORKTREE_PATH}`, `{CHANGED_FILES}`, `{DIFF}`, `{PATTERNS}` ("Follow existing project conventions"), `{REPO_CONVENTIONS}` (from CLAUDE.md/AGENTS.md if present)
 4. Delegate synchronously through the active surface with the filled prompt,
    selecting sonnet when the surface supports model choice, and wait for the
@@ -471,7 +471,7 @@ set_loop_phase "$STATE_FILE" "coverage-check" "$WORKFLOW_STATE_PATH"
 
 **Skip when:** `PASS < MAX_PASSES - 1` AND findings were not clean. Proceed to Step 7.6.
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/coverage/coverage-verification.md` and follow Steps A through F with:
+Read `<PLUGIN_ROOT>/lib/coverage/coverage-verification.md` and follow Steps A through F with:
 
 | Variable | Value |
 |----------|-------|

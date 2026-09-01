@@ -7,15 +7,22 @@ disable-model-invocation: true
 
 # Start Issue in tmux Window
 
+## Plugin Resource Resolution
+
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root before every resource read or command:
+
+- **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
+
 Before requesting decisions, read
-`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+`<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving target or
+Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving target or
 secret-copy intent.
 
 Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:tmux-start` by
-reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+reading `<PLUGIN_ROOT>/lib/skill-arguments.md` with this Claude Code compatibility payload:
 <claude-skill-arguments>
 $ARGUMENTS
 </claude-skill-arguments>
@@ -44,7 +51,7 @@ and stop before creating a worktree or tmux window.
 ## Clear Worktree State
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true
+"<PLUGIN_ROOT>/scripts/worktree-state.sh" clear 2>/dev/null || true
 ```
 
 ## Issue Number
@@ -59,7 +66,7 @@ worktree:
 
 ```bash
 SOURCE_DIR="$(pwd)"
-"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
+"<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
 ```
 
 If the output starts with `ENV_FILES_FOUND=true`, follow the shared
@@ -80,13 +87,13 @@ SURFACE="<claude-or-codex>"
 If copying environment files was explicitly authorized:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --copy-env
+"<PLUGIN_ROOT>/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --copy-env
 ```
 
 Otherwise:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --no-copy-env
+"<PLUGIN_ROOT>/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --no-copy-env
 ```
 
 The script validates prerequisites, creates or reuses the standard issue

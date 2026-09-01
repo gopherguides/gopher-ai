@@ -7,11 +7,18 @@ disable-model-invocation: true
 
 # Start Issue
 
+## Plugin Resource Resolution
+
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root before every resource read or command:
+
+- **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
+
 Before requesting decisions, entering a planning workflow, or delegating work,
-read `${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+read `<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving any workflow
+Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving any workflow
 choice.
 
 Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:start-issue` by reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
@@ -55,7 +62,7 @@ response and stop without initializing the loop or claiming completion.
 
 ## Subagent Model Policy
 
-Default orchestrated mode uses model frontmatter from `${CLAUDE_PLUGIN_ROOT}/agents/*.md`:
+Default orchestrated mode uses model frontmatter from `<PLUGIN_ROOT>/agents/*.md`:
 
 | Role | Model policy |
 |-------|--------------|
@@ -82,7 +89,7 @@ Clear any leftover worktree state from a prior session so it cannot affect a
 fresh `$go-workflow:start-issue` invocation:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh" clear 2>/dev/null || true
+"<PLUGIN_ROOT>/scripts/worktree-state.sh" clear 2>/dev/null || true
 ```
 
 ## Security Validation & Flag Parsing
@@ -124,7 +131,7 @@ Never infer composition from a generic inherited `STATE_FILE`:
 
 ```bash
 EMBEDDED_WORKFLOW=false
-source "${CLAUDE_PLUGIN_ROOT}/lib/loop-state.sh"
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
 CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
 RESOLVED_ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')
 if [ -z "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ "${RESOLVED_ORIGINAL_REPO_ROOT#/}" = "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ ! -d "$RESOLVED_ORIGINAL_REPO_ROOT" ]; then
@@ -200,11 +207,11 @@ if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
   echo "Embedded start-issue is using the caller-owned loop state."
 elif [ -n "$EXISTING_PHASE" ]; then
   echo "Re-entry detected (phase: $EXISTING_PHASE) — skipping setup-loop."
-elif [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then
+elif [ ! -x "<PLUGIN_ROOT>/scripts/setup-loop.sh" ]; then
   echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."
   exit 1
 else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "start-issue-$ISSUE_NUM" "COMPLETE" "" "" '{}' \
+  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "start-issue-$ISSUE_NUM" "COMPLETE" "" "" '{}' \
     "$STATE_FILE" '["COMPLETE","INCOMPLETE"]'
   initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
   set_loop_field "$STATE_FILE" "original_repo_root" "$ORIGINAL_REPO_ROOT" '[]'
@@ -275,7 +282,7 @@ choice.
 
 ## If the driver selected "create worktree"
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/start-issue/worktree-create.md` and follow the
+→ Read `<PLUGIN_ROOT>/lib/start-issue/worktree-create.md` and follow the
 full procedure: capture `SOURCE_DIR`, derive `WORKTREE_NAME`/`BRANCH_NAME` from
 issue title, fetch and create the worktree, search for env files
 (`.env`/`.env.local`/`.envrc`) and offer to copy with directory structure
@@ -401,7 +408,7 @@ branch creation, implementation, or a completion claim.
 
 ### Subagent-Orchestrated (default — when `NO_AGENTS=false`)
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/start-issue/orchestrated-workflow.md` for the
+→ Read `<PLUGIN_ROOT>/lib/start-issue/orchestrated-workflow.md` for the
 full 12-step procedure: duplicate check (bugs only), branch creation, Explore
 subagent dispatch, design approach (features only), task decomposition +
 parallel-dispatch decision, Implementer subagent dispatch (parallel or
@@ -411,7 +418,7 @@ detection + creation), watch CI.
 
 ### Manual (`--no-agents` fallback)
 
-→ Read `${CLAUDE_PLUGIN_ROOT}/lib/start-issue/manual-workflow.md` for the
+→ Read `<PLUGIN_ROOT>/lib/start-issue/manual-workflow.md` for the
 single-session bug and feature flows. Both follow the same shape: explore/design
 → TDD red (IRON LAW: no implementation code before failing tests) → green →
 verify → coverage → security → submit → watch CI.
@@ -494,6 +501,6 @@ Use extended thinking for complex analysis.
 
 ## Further Reading
 
-- `${CLAUDE_PLUGIN_ROOT}/lib/start-issue/worktree-create.md` — full worktree creation procedure (env-file copy, state-file registration)
-- `${CLAUDE_PLUGIN_ROOT}/lib/start-issue/orchestrated-workflow.md` — 12-step subagent-orchestrated flow (Explore → Implementer → spec/quality review → verify → coverage → security → submit → CI)
-- `${CLAUDE_PLUGIN_ROOT}/lib/start-issue/manual-workflow.md` — single-session bug + feature flows for `--no-agents`
+- `<PLUGIN_ROOT>/lib/start-issue/worktree-create.md` — full worktree creation procedure (env-file copy, state-file registration)
+- `<PLUGIN_ROOT>/lib/start-issue/orchestrated-workflow.md` — 12-step subagent-orchestrated flow (Explore → Implementer → spec/quality review → verify → coverage → security → submit → CI)
+- `<PLUGIN_ROOT>/lib/start-issue/manual-workflow.md` — single-session bug + feature flows for `--no-agents`

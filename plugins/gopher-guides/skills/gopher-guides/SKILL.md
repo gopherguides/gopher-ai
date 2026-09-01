@@ -5,6 +5,13 @@ description: "Authoritative Gopher Guides Go training materials accessed via RES
 
 # Gopher Guides Professional Training
 
+## Plugin Resource Resolution
+
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root before every resource read or command:
+
+- **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
+
 Access official Gopher Guides training materials via API for authoritative Go best practices.
 
 ## Important: Always Use `--variable`/`--expand-header` Syntax
@@ -36,30 +43,30 @@ curl -s --variable %GOPHER_GUIDES_API_KEY \
 Use the cache wrapper script for all API calls. It automatically caches responses
 (24h for practices/examples, 1h for audit/review) to avoid redundant API calls.
 
-The cache wrapper is at `${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh`.
+The cache wrapper is at `<PLUGIN_ROOT>/scripts/cache-api.sh`.
 
 ### For "what's the best way to..." questions
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh" practices '{"topic": "error handling"}'
+"<PLUGIN_ROOT>/scripts/cache-api.sh" practices '{"topic": "error handling"}'
 ```
 
 ### For code review/audit
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh" audit '{"code": "<user code here>", "focus": "error-handling"}'
+"<PLUGIN_ROOT>/scripts/cache-api.sh" audit '{"code": "<user code here>", "focus": "error-handling"}'
 ```
 
 ### For "show me an example of..."
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh" examples '{"topic": "table driven tests"}'
+"<PLUGIN_ROOT>/scripts/cache-api.sh" examples '{"topic": "table driven tests"}'
 ```
 
 ### For PR/diff review
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/cache-api.sh" review '{"diff": "<diff output>"}'
+"<PLUGIN_ROOT>/scripts/cache-api.sh" review '{"diff": "<diff output>"}'
 ```
 
 ### Direct API calls (bypassing cache)
@@ -76,7 +83,7 @@ curl -s -X POST --variable %GOPHER_GUIDES_API_KEY \
 
 ### Cache Management
 
-- Cache location: `.claude/gopher-guides-cache.json`
+- Cache location: `${GOPHER_GUIDES_CACHE_FILE:-${XDG_CACHE_HOME:-$HOME/.cache}/gopher-ai/gopher-guides-cache.json}`
 - Clear cache: Use `/clear-cache` command
 
 ## Response Handling

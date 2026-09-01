@@ -275,7 +275,7 @@ rewrite_gemini_plugin_paths() {
     local content
 
     while IFS= read -r -d '' file; do
-        if ! grep -qE '\$\{?CLAUDE_PLUGIN_ROOT\}?' "$file" 2>/dev/null; then
+        if ! grep -qE '\$\{?CLAUDE_PLUGIN_ROOT\}?|<PLUGIN_ROOT>' "$file" 2>/dev/null; then
             continue
         fi
 
@@ -284,6 +284,7 @@ rewrite_gemini_plugin_paths() {
         content=${content//\$\{CLAUDE_PLUGIN_ROOT:-\}/$gemini_root}
         content=${content//\$\{CLAUDE_PLUGIN_ROOT\}/$gemini_root}
         content=${content//\$CLAUDE_PLUGIN_ROOT/$gemini_root}
+        content=${content//<PLUGIN_ROOT>/$gemini_root}
         printf '%s' "$content" > "$file"
     done < <(find "$ext_dir" -type f -print0)
 }

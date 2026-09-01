@@ -6,13 +6,20 @@ disable-model-invocation: true
 
 # Worktree
 
+## Plugin Resource Resolution
+
+`<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root before every resource read or command:
+
+- **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
+- **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
+
 Manage git worktrees for isolated per-issue/per-PR work. Three sub-actions, each in its own sibling file.
 
 Before requesting decisions, read
-`${CLAUDE_PLUGIN_ROOT}/lib/driver-interaction.md` and follow its
+`<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
 cross-platform capability-binding rules.
 
-Read `${CLAUDE_PLUGIN_ROOT}/lib/decision-gates.md` before resolving action,
+Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving action,
 target, consent, or cleanup choices.
 
 ## Action selection
@@ -36,7 +43,7 @@ mutating worktrees.
 - **Title slug**: lowercase, alnum + hyphens, derived from `gh issue view --json title`
 - **Identifier rule**: `issue-<NUM>-` prefix is the trusted issue marker on a branch — `fix/2fa-login` contains a number but is NOT an issue branch
 - **Default branch**: `git remote show origin | grep 'HEAD branch'` (handles repos with `main` vs `master` vs custom)
-- **State file**: `${CLAUDE_PLUGIN_ROOT}/scripts/worktree-state.sh` registers the active worktree so the pre-tool-use hook blocks accidental edits to the source repo
+- **State file**: `<PLUGIN_ROOT>/scripts/worktree-state.sh` registers the active worktree so the pre-tool-use hook blocks accidental edits to the source repo
 
 ## Prerequisites (all three)
 
