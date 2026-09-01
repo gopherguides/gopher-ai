@@ -347,6 +347,9 @@
           "disposition": "command",
           "names": [
             "go-workflow:cancel-loop"
+          ],
+          "skill_names": [
+            "go-workflow:cancel-loop"
           ]
         },
         "codex": {

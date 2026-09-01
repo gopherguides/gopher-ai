@@ -32,6 +32,20 @@ assert_eq() {
   fi
 }
 
+file_contains() {
+  local needle="$1" file="$2"
+  awk -v needle="$needle" 'index($0, needle) { found = 1 } END { exit found ? 0 : 1 }' "$file"
+}
+
+count_loop_files() {
+  local state_dir="$1" file count=0
+  for file in "$state_dir"/*.loop.local.json; do
+    [ -f "$file" ] || continue
+    count=$((count + 1))
+  done
+  printf '%s\n' "$count"
+}
+
 fixture() {
   local name="$1"
   local repo="$FIXTURE_BASE/$name"
@@ -53,18 +67,18 @@ if [ -f "$SKILL_FILE" ]; then
       END { print name && hint && explicit ? "true" : "false" }
     ' "$SKILL_FILE")"
   assert_eq "skill uses the portable plugin resource contract" "true" \
-    "$(rg -q '## Plugin Resource Resolution' "$SKILL_FILE" &&
-       rg -q 'directory containing the absolute selected `SKILL.md` path, then ascend two directories' "$SKILL_FILE" &&
-       rg -q 'injected `\$\{CLAUDE_PLUGIN_ROOT\}`' "$SKILL_FILE" && echo true || echo false)"
+    "$(file_contains '## Plugin Resource Resolution' "$SKILL_FILE" &&
+       file_contains "directory containing the absolute selected \`SKILL.md\` path, then ascend two directories" "$SKILL_FILE" &&
+       file_contains "injected \`\${CLAUDE_PLUGIN_ROOT}\`" "$SKILL_FILE" && echo true || echo false)"
   assert_eq "skill binds qualified Codex arguments" "true" \
-    "$(rg -q 'SKILL_ARGS.*\$go-workflow:cancel-loop' "$SKILL_FILE" &&
-       rg -q '<claude-skill-arguments>' "$SKILL_FILE" &&
-       rg -q '^\$ARGUMENTS$' "$SKILL_FILE" && echo true || echo false)"
+    "$(file_contains "SKILL_ARGS\` for \`\$go-workflow:cancel-loop\`" "$SKILL_FILE" &&
+       file_contains '<claude-skill-arguments>' "$SKILL_FILE" &&
+       file_contains "\$ARGUMENTS" "$SKILL_FILE" && echo true || echo false)"
   assert_eq "skill delegates cancellation to the shared helper" "true" \
-    "$(rg -Fq '"<PLUGIN_ROOT>/scripts/cleanup-loop.sh" "$SKILL_ARGS"' "$SKILL_FILE" && echo true || echo false)"
+    "$(file_contains "\"<PLUGIN_ROOT>/scripts/cleanup-loop.sh\" \"\$SKILL_ARGS\"" "$SKILL_FILE" && echo true || echo false)"
   assert_eq "skill documents Codex and Claude invocation separately" "true" \
-    "$(rg -Fq 'Codex: `$go-workflow:cancel-loop [loop-name]`' "$SKILL_FILE" &&
-       rg -Fq 'Claude Code: `/go-workflow:cancel-loop [loop-name]`' "$SKILL_FILE" && echo true || echo false)"
+    "$(file_contains "Codex: \`\$go-workflow:cancel-loop [loop-name]\`" "$SKILL_FILE" &&
+       file_contains "Claude Code: \`/go-workflow:cancel-loop [loop-name]\`" "$SKILL_FILE" && echo true || echo false)"
 else
   assert_eq "cancel-loop skill exists" "true" "false"
 fi
@@ -80,14 +94,14 @@ assert_eq "capability inventory exposes the Codex skill" "true" \
     .platforms.codex.name == "go-workflow:cancel-loop"
   ' "$CAPABILITIES_FILE" >/dev/null && echo true || echo false)"
 assert_eq "platform matrix lists the qualified Codex skill" "true" \
-  "$(rg -Fq '$go-workflow:cancel-loop' "$MATRIX_FILE" &&
-     ! rg -Fq '`cancel-loop` is unsupported ([#332]' "$MATRIX_FILE" && echo true || echo false)"
+  "$(file_contains "\$go-workflow:cancel-loop" "$MATRIX_FILE" &&
+     ! file_contains "\`cancel-loop\` is unsupported ([#332]" "$MATRIX_FILE" && echo true || echo false)"
 
 EMPTY_REPO=$(fixture empty)
 EMPTY_OUTPUT=$(cd "$EMPTY_REPO" && bash "$CLEANUP_SCRIPT")
 assert_eq "no active loop reports no removal" "No active loops found." "$EMPTY_OUTPUT"
 assert_eq "no active loop leaves the state directory empty" "0" \
-  "$(fd -d 1 -t f --glob '*.loop.local.json' "$EMPTY_REPO/.local/state" | wc -l | tr -d ' ')"
+  "$(count_loop_files "$EMPTY_REPO/.local/state")"
 
 ACTIVE_REPO=$(fixture active)
 ACTIVE_STATE="$ACTIVE_REPO/.local/state/ship.loop.local.json"
