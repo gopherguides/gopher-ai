@@ -44,7 +44,8 @@ ACTION_SCALAR_PATTERN = re.compile(
     re.IGNORECASE,
 )
 FALSE_VALUE_PATTERN = re.compile(
-    r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*(?:false|"false"|'false')$'''
+    r'''^(?:(?:&|!)[^\s,\[\]{}]+\s+)*(?:false|"false"|'false')$''',
+    re.IGNORECASE,
 )
 LIST_ITEM_PATTERN = re.compile(r"^(\s*)-(?:\s+|$)")
 SCALAR_PREFIX_PATTERN = re.compile(
@@ -726,6 +727,15 @@ def cache_parser_failures():
         ),
         (
             [
+                "      - uses: actions/setup-node@v7",
+                "        with:",
+                "          package-manager-cache: FALSE",
+            ],
+            0,
+            True,
+        ),
+        (
+            [
                 "      -",
                 "        uses: actions/setup-node@v7",
                 "        with:",
@@ -809,6 +819,13 @@ def cache_parser_failures():
         (
             [
                 "      - { uses: actions/setup-node@v7, with: { package-manager-cache: false } }",
+            ],
+            0,
+            True,
+        ),
+        (
+            [
+                "      - { uses: actions/setup-node@v7, with: { package-manager-cache: 'False' } }",
             ],
             0,
             True,
@@ -943,6 +960,7 @@ def step_has_cache_disabled(lines, start, indentation, list_marker):
                 r'''(?:(?:&|!)[^\s,\[\]{}]+\s+)*'''
                 r'''(?:false|"false"|'false')\s*(?:#.*)?$''',
                 line,
+                re.IGNORECASE,
             ):
                 return True
     return False
