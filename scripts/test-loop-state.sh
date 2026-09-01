@@ -7,6 +7,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 LOOP_LIB="$ROOT_DIR/shared/lib/loop-state.sh"
 SETUP_LOOP="$ROOT_DIR/shared/scripts/setup-loop.sh"
 LOOP_TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+LOOP_TMP_BASE=$(cd "$LOOP_TMP_BASE" && pwd -P) || exit 1
 case "$LOOP_TMP_BASE/" in
   "$ROOT_DIR/"*)
     export GIT_CEILING_DIRECTORIES="$LOOP_TMP_BASE${GIT_CEILING_DIRECTORIES:+:$GIT_CEILING_DIRECTORIES}"
