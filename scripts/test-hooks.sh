@@ -133,7 +133,8 @@ run_runtime_location_tests() {
   local cache_lock_portable_orphan_output
   local cache_lock_portable_output cache_lock_portable_reused_output
   local cache_clear_race cache_clear_race_bin cache_clear_race_output cache_clear_race_ready
-  local cache_clear_race_release cache_clear_writer_output cache_clear_writer_pid clear_attempt
+  local cache_clear_race_release cache_clear_writer_output cache_clear_writer_pid
+  local cache_clear_output_file cache_clear_pid clear_attempt
   local clear_cache_command default_clear_output expected_default_clear_output override_clear_output
   local default_cache_valid=false override_cache_valid=false compatibility_cache_valid=false
   local cache_lock_smoke_valid=false cache_lock_portable_orphan_valid=false
@@ -167,6 +168,7 @@ run_runtime_location_tests() {
   cache_clear_race_ready="$cache_fixture/clear-race-ready"
   cache_clear_race_release="$cache_fixture/clear-race-release"
   cache_clear_writer_output="$cache_fixture/clear-race-writer-output"
+  cache_clear_output_file="$cache_fixture/clear-race-clear-output"
   clear_cache_command=$(sed -n 's/^!`\(.*\)`$/\1/p' "$clear_cache")
 
   mkdir -p "$cache_home" "$cache_bin" "$cache_parallel_bin" "$cache_parallel_barrier" \
@@ -326,12 +328,15 @@ run_runtime_location_tests() {
     clear_attempt=$((clear_attempt + 1))
     sleep 0.01
   done
-  cache_clear_race_output=$(GOPHER_GUIDES_CACHE_FILE="$cache_clear_race" \
+  GOPHER_GUIDES_CACHE_FILE="$cache_clear_race" \
     GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
     XDG_CACHE_HOME="$cache_fixture/unused-xdg" HOME="$cache_home" \
-    "$clear_cache_script") || cache_clear_race_status=false
+    "$clear_cache_script" > "$cache_clear_output_file" &
+  cache_clear_pid=$!
   : > "$cache_clear_race_release"
   wait "$cache_clear_writer_pid" || cache_clear_race_status=false
+  wait "$cache_clear_pid" || cache_clear_race_status=false
+  cache_clear_race_output=$(cat "$cache_clear_output_file")
   if [ "$cache_clear_race_status" = true ] &&
      [ "$(cat "$cache_clear_writer_output")" = '{"result":"ok"}' ] &&
      [ ! -e "$cache_clear_race" ] &&
