@@ -1,7 +1,7 @@
 ---
 name: optimize
 description: "Analyzes Tailwind CSS bundle size, source coverage, class usage, and build performance. Use for read-only optimization reports; use --fix only when safe project changes are requested."
-argument-hint: "[--report|--fix|--verbose]"
+argument-hint: "[path] [--report|--fix|--verbose]"
 ---
 
 # Optimize Tailwind CSS

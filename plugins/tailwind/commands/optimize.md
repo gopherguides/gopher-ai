@@ -1,5 +1,5 @@
 ---
-argument-hint: "[--report|--fix]"
+argument-hint: "[path] [--report|--fix|--verbose]"
 description: "Analyze and optimize Tailwind CSS output"
 allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(node:*)", "Bash(grep:*)", "Bash(ls:*)", "Bash(fd:*)", "Bash(wc:*)", "Bash(gzip:*)", "Bash(comm:*)", "Bash(sed:*)", "Bash(time:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities"]
 ---
@@ -10,9 +10,11 @@ allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(node:*)", "Bash(grep:*)", "Bash(l
 
 Analyze Tailwind CSS output and provide optimization recommendations.
 
-**Usage:** `/tailwind-optimize [options]`
+**Usage:** `/tailwind-optimize [path] [options]`
 
 - `/tailwind-optimize` — quick analysis
+- `/tailwind-optimize ./apps/storefront` — analyze one project or subtree
+- `/tailwind-optimize ./src/app.css` — analyze a specific Tailwind entry
 - `/tailwind-optimize --report` — detailed report
 - `/tailwind-optimize --fix` — apply safe optimizations
 
@@ -24,7 +26,29 @@ Proceed with optimization analysis.
 
 **If `$ARGUMENTS` is provided:**
 
-Parse arguments: `--report` (detailed markdown report), `--fix` (apply safe optimizations), `--verbose` (show all findings).
+Parse arguments:
+
+- **Path** — directory or file (default: current directory)
+- `--report` — detailed markdown report
+- `--fix` — apply safe optimizations
+- `--verbose` — show all findings
+
+Bind the requested or implicitly derived path to `<OPTIMIZE_TARGET>` as a
+concrete normalized path. If no path was supplied, bind the current directory.
+Stop with a clear error when the target does not exist. Resolve the containing
+project or package root to `<PROJECT_ROOT>` for build configuration and local
+dependency lookup, but never use `<PROJECT_ROOT>` as a replacement discovery
+target.
+
+When `<OPTIMIZE_TARGET>` is a directory, limit CSS entries, generated
+artifacts, and templates to that subtree. When it is a CSS file, bind that file
+directly to `<CSS_ENTRY>` and derive `<TEMPLATE_FILES>` only from its `@source`
+rules and the selected integration's content scope. When it is a supported
+template file, use that file as the complete `<TEMPLATE_FILES>` set and locate
+only the Tailwind entry associated with its containing integration. For any
+other file type, stop with a clear unsupported-target error.
+Retain the complete `<TEMPLATE_FILES>` set for every later analysis and fix;
+do not widen discovery to `.`.
 
 ## Loop Initialization
 
@@ -33,12 +57,18 @@ Parse arguments: `--report` (detailed markdown report), `--fix` (apply safe opti
 ## Step 1: Find CSS Files
 
 ```bash
-grep -rl '@import.*tailwindcss' --include="*.css" . 2>/dev/null
-ls **/output.css dist/**/*.css build/**/*.css public/**/*.css 2>/dev/null
+grep -rl '@import.*tailwindcss' --include="*.css" "<OPTIMIZE_TARGET>" 2>/dev/null
+fd -e css "<OPTIMIZE_TARGET>" 2>/dev/null
 ```
 
 Use the selected integration's build configuration to identify the primary
-Tailwind entry among the discovered files. Bind the selected Tailwind CSS entry to `<CSS_ENTRY>`. If multiple candidates remain, ask which entry to analyze. Bind an existing built artifact to `<GENERATED_CSS>` when one can be identified; otherwise leave it unavailable and report that limitation.
+Tailwind entry among the target-scoped files. Bind the selected Tailwind CSS entry to `<CSS_ENTRY>`.
+If multiple target-associated candidates remain, ask which entry to analyze.
+Bind an existing built artifact to `<GENERATED_CSS>`
+only when the selected integration associates it with `<CSS_ENTRY>`; otherwise
+leave it unavailable and report that limitation. Never select an entry or
+artifact from an unrelated project merely because it is beneath
+`<PROJECT_ROOT>`.
 
 Choose a unique directory under the active temporary directory and bind its
 concrete path to `<TEMP_DIR>` for every disposable analysis file.
@@ -53,14 +83,14 @@ Check for the v4 CLI package itself rather than a potentially v3-owned shared
 binary:
 
 ```bash
-ls node_modules/@tailwindcss/cli/package.json 2>/dev/null
+ls "<PROJECT_ROOT>/node_modules/@tailwindcss/cli/package.json" 2>/dev/null
 ```
 
 When it exists, read `node_modules/@tailwindcss/cli/package.json`, select its
 `bin` string or `tailwindcss` bin entry, and resolve that relative path against
 the package directory. Verify that the resolved entry remains inside
-`node_modules/@tailwindcss/cli`, exists, and is a file. Bind its concrete path
-to `<LOCAL_CLI_ENTRY>`; otherwise treat the CLI as unavailable.
+`<PROJECT_ROOT>/node_modules/@tailwindcss/cli`, exists, and is a file. Bind its
+concrete path to `<LOCAL_CLI_ENTRY>`; otherwise treat the CLI as unavailable.
 
 Choose a unique directory under the active temporary directory, replace
 `<TEMP_DIR>` below with that concrete path, and write both measurements there
@@ -87,7 +117,7 @@ When the project uses Vite or PostCSS without a local Tailwind CLI, inspect
 existing generated CSS artifacts without rebuilding or overwriting them:
 
 ```bash
-fd -e css . dist build public .next 2>/dev/null
+fd -e css "<OPTIMIZE_TARGET>" 2>/dev/null
 wc -c "<GENERATED_CSS>"
 gzip -c "<GENERATED_CSS>" | wc -c
 ```
@@ -112,15 +142,20 @@ Most Tailwind projects ship < 10 KB CSS gzipped.
 ## Step 3: Analyze Source Coverage
 
 ```bash
-fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -d 5 2>/dev/null | wc -l
-fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -d 5 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn
+fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte "<OPTIMIZE_TARGET>" 2>/dev/null | wc -l
+fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte "<OPTIMIZE_TARGET>" 2>/dev/null | sed 's/.*\.//' | sort | uniq -c | sort -rn
 grep '@source' "<CSS_ENTRY>"
 ```
+
+For a file target, replace the discovery commands with direct inspection of
+the bound `<CSS_ENTRY>` or `<TEMPLATE_FILES>` described above. In all cases,
+bind the complete target-scoped result to `<TEMPLATE_FILES>` and use that exact
+set below.
 
 For each `@source` pattern, verify files are found:
 
 ```bash
-fd -e js -e jsx ./src 2>/dev/null | wc -l   # for @source "./src/**/*.{js,jsx}"
+fd -e js -e jsx "<RESOLVED_SOURCE_DIRECTORY>" 2>/dev/null | wc -l
 ```
 
 | Issue | Symptom | Fix |
@@ -137,7 +172,7 @@ continue with template class inventory.
 
 ```bash
 # Used classes in templates
-grep -ohr 'class="[^"]*"' --include="*.html" --include="*.templ" --include="*.jsx" --include="*.tsx" . 2>/dev/null | \
+grep -oh 'class="[^"]*"' "<TEMPLATE_FILES>" 2>/dev/null | \
   sed 's/class="//g' | sed 's/"//g' | tr ' ' '\n' | sort -u > "<TEMP_DIR>/used-classes.txt"
 
 # Class names in generated CSS
@@ -205,6 +240,8 @@ applying changes, then report that project-build timing separately.
 | Production | XXX KB | [assessment] |
 | Gzipped | XXX KB | [assessment] |
 
+**Optimization target:** [concrete target]
+
 ### Source Coverage
 
 | Source Pattern | Files Found | Status |
@@ -239,6 +276,11 @@ applying changes, then report that project-build timing separately.
 
 Auto-apply: add missing `@source` for uncovered template directories; replace `**/*` with specific patterns; add `--minify` to production build scripts.
 
+Apply changes only to `<CSS_ENTRY>` and the selected integration associated
+with `<OPTIMIZE_TARGET>`. Derive missing sources only from the complete
+`<TEMPLATE_FILES>` set. Do not change another workspace or application found
+under `<PROJECT_ROOT>`.
+
 **Do NOT auto-fix:** class removal (may break dynamic classes); theme variable removal (may be used elsewhere); source-path reduction (may cause missing classes).
 
 ## Notes
@@ -253,10 +295,11 @@ Auto-apply: add missing `@source` for uncovered template directories; replace `*
 DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
 1. Bundle size measured wherever a local CLI or existing generated CSS made it safely available; every unavailable metric has a recorded limitation
-2. Source coverage analyzed
+2. Source coverage analyzed for the complete target-scoped `<TEMPLATE_FILES>` set
 3. Optimization report generated
-4. If `--fix`: safe optimizations applied
-5. No missing build dependency was installed solely for analysis
+4. The report identifies the concrete `<OPTIMIZE_TARGET>` and excludes unrelated projects
+5. If `--fix`: safe optimizations applied only to the selected target integration
+6. No missing build dependency was installed solely for analysis
 
 ```
 <done>COMPLETE</done>

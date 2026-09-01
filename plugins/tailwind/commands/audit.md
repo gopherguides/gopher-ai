@@ -38,6 +38,22 @@ file, analyze that file directly; if it is a directory, discover every
 supported file beneath it. Stop with a clear error when the target does not
 exist.
 
+Parse `--focus` into `<AUDIT_FOCUS>` using this allowlist, then bind its
+selected categories to `<AUDIT_CATEGORIES>`:
+
+| Focus value | Selected category |
+|-------------|-------------------|
+| `consistency` | Consistency |
+| `performance` | Performance |
+| `practices` | Best Practices |
+| `v4` | Tailwind v4 Compliance |
+
+Reject any other focus value with a clear error. Without `--focus`, bind
+`<AUDIT_FOCUS>` to `all` and bind all four categories. Discovery, checks,
+report sections, auto-fixes, counts, and completion criteria must operate only
+on `<AUDIT_CATEGORIES>`; do not inspect, report, or modify an unselected
+category.
+
 ## Loop Initialization
 
 !`if [ ! -x "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" ]; then echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."; exit 1; else "${CLAUDE_PLUGIN_ROOT}/scripts/setup-loop.sh" "tailwind-audit" "COMPLETE"; fi`
@@ -49,9 +65,19 @@ fd -e html -e htm -e templ -e jsx -e tsx -e vue -e svelte -e astro -e php -e bla
 fd -e css "<AUDIT_TARGET>" 2>/dev/null
 ```
 
-Retain the complete discovered file set for every category, report, and
-auto-fix step. Do not truncate discovery output. When `<AUDIT_TARGET>` is a
-file, use it as the complete set when its extension is supported.
+Run only the discovery needed by the selected categories:
+
+- Consistency and Performance: discover supported templates and CSS.
+- Best Practices: discover supported templates; inspect CSS only when needed
+  to report an existing extraction target.
+- Tailwind v4 Compliance: discover CSS plus the project-level package,
+  Tailwind, PostCSS, and build configuration needed for version detection.
+
+Retain a separate complete discovered file set for every selected category,
+report, and auto-fix step. Do not truncate discovery output. When
+`<AUDIT_TARGET>` is a file, use it as the complete set for a selected category
+when its extension is relevant to that category. Report zero applicable files
+instead of widening discovery beyond the target.
 
 ## Step 2: Audit Categories
 
@@ -61,12 +87,21 @@ Mixed spacing units (`p-4` alongside `padding: 16px`); arbitrary values where th
 
 | Issue | Example | Fix |
 |-------|---------|-----|
-| Duplicate spacing | `p-4 p-6` | Remove `p-4` |
-| Conflicting display | `flex block` | Choose one |
-| Redundant color | `bg-blue-500 bg-red-500` | Remove one |
-| Overridden responsive | `md:flex md:block` | Remove one |
+| Exact duplicate | `p-4 p-4` | Remove the repeated token |
+| Conflicting spacing | `p-4 p-6` | Review the intended value |
+| Conflicting display | `flex block` | Review the intended display |
+| Conflicting color | `bg-blue-500 bg-red-500` | Review the intended color |
+| Conflicting responsive | `md:flex md:block` | Review the intended display |
 
 Inconsistent color usage: hardcoded hex (`bg-[#3b82f6]`) when theme color exists (`bg-primary`); mixing `blue-400`/`500`/`600` randomly.
+
+Class token order does not determine the effective winner for conflicting
+utilities; Tailwind's generated stylesheet order controls equal-specificity
+rules. Never infer the intended or effective winner from which class appears
+last in HTML. Report conflicting utilities for manual review unless the
+project's generated stylesheet and active variants establish the effective
+winner and the user's intent independently. Do not auto-fix conflicting
+utilities when either fact is ambiguous.
 
 ### Category 2: Performance
 
@@ -134,7 +169,8 @@ grep -rl '@tailwind' --include="*.css" "<AUDIT_TARGET>" 2>/dev/null
 
 ## v3 Migration Guard
 
-Treat a project as v3 when the installed Tailwind major version is v3 or its
+Apply this guard only when Tailwind v4 Compliance is in
+`<AUDIT_CATEGORIES>`. Treat a project as v3 when the installed Tailwind major version is v3 or its
 CSS still uses v3 `@tailwind` directives. A JavaScript configuration alone is
 only a review signal because v4 can load one explicitly with `@config`. When `--fix` is present and a v3 project is detected, apply this guard. Keep every v3 compliance finding read-only. Do not replace `@tailwind` directives, remove the JavaScript configuration, or alter Tailwind/PostCSS dependencies as an audit auto-fix.
 
@@ -157,10 +193,7 @@ they do not alter migration state.
 
 | Category | Issues | Auto-fixable |
 |----------|--------|--------------|
-| Consistency | X | Y |
-| Performance | X | Y |
-| Best Practices | X | Y |
-| v4 Compliance | X | Y |
+| [Each selected category only] | X | Y |
 | **Total** | **X** | **Y** |
 
 ### Findings (per category)
@@ -181,14 +214,28 @@ they do not alter migration state.
 [Any v3 patterns that need migration]
 ```
 
+Include only rows and findings for `<AUDIT_CATEGORIES>`. Include Component
+Extraction Candidates only when Best Practices is selected. Include v4
+Migration Needed only when Tailwind v4 Compliance is selected. Counts and
+totals must exclude unselected categories.
+
 ## Step 4: Auto-Fix (if `--fix`)
 
-Auto-apply: remove duplicate utilities (keep last), convert inline styles, and
-reorder classes to convention. On confirmed v4 projects, apply only v4-to-v4
-syntax corrections that do not require dependency or configuration changes.
-Limit every change to the complete discovered file set under `<AUDIT_TARGET>`.
+Apply only fixes belonging to `<AUDIT_CATEGORIES>`:
 
-**Do NOT auto-fix:** component extraction (naming requires user input); color choices (subjective); arbitrary values (may be intentional).
+- Consistency: remove repeated occurrences of the exact same utility token,
+  retaining one identical token. Do not choose between conflicting utilities.
+- Performance: convert only unambiguous inline styles to equivalent utilities.
+- Best Practices: reorder class strings to the documented convention.
+- Tailwind v4 Compliance: on confirmed v4 projects, apply only v4-to-v4 syntax
+  corrections that do not require dependency or configuration changes.
+
+Limit every change to the complete discovered file set for the selected
+category under `<AUDIT_TARGET>`.
+
+**Do NOT auto-fix:** conflicting utilities based on HTML token order;
+component extraction (naming requires user input); color choices (subjective);
+arbitrary values (may be intentional).
 
 ```
 ## Auto-Fix Results
@@ -214,9 +261,9 @@ Remaining issues: X (require manual review)
 DO NOT output `<done>COMPLETE</done>` until ALL of these are TRUE:
 
 1. Every supported file in the complete discovered file set scanned
-2. Audit report generated
-3. If `--fix` provided: permitted auto-fixes applied and v3 migration findings left unchanged
-4. Summary displayed
+2. Only the selected categories were inspected and included in the audit report
+3. If `--fix` provided: only selected-category fixes were applied, ambiguous conflicts remain for manual review, and selected v3 migration findings remain unchanged
+4. A summary containing only selected-category counts is displayed
 
 ```
 <done>COMPLETE</done>

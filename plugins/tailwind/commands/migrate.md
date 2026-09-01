@@ -215,8 +215,38 @@ For hex → oklch conversion, use https://oklch.com/. Common conversions:
 | `#f59e0b` (amber-500) | `oklch(0.75 0.18 70)` |
 | `#ffffff` / `#000000` | `oklch(1 0 0)` / `oklch(0 0 0)` |
 
-With `--check`, render this proposed CSS in the report without writing it.
-Otherwise, write it to the selected CSS entry file.
+Generate the converted configuration as a separate block before editing the
+selected CSS entry. Read the entire original `<CSS_ENTRY>` and merge that block
+in place. Never replace the entire CSS entry with the generated block.
+
+During the merge:
+
+1. Replace only the three legacy `@tailwind base;`,
+   `@tailwind components;`, and `@tailwind utilities;` directive spans. Insert
+   the selected Tailwind import where the first legacy directive appeared when
+   that location is still in CSS's legal import region. Otherwise, insert it
+   after any `@charset` and existing imports but before the first ordinary rule
+   or non-import at-rule, without moving existing content. Remove the other
+   legacy directive spans. If the entry already has the equivalent Tailwind
+   import, remove the legacy spans without adding a second import.
+2. Insert the converted `@source`, `@theme`, `@custom-variant`, dark selector,
+   and `@plugin` configuration adjacent to that import. Merge generated
+   declarations into compatible existing v4 blocks and preserve existing
+   declarations. Deduplicate exact directives; if an existing declaration has
+   the same name but a different value, stop and ask which value is
+   authoritative before writing.
+3. Preserve every custom import, `@layer` block, `@apply` rule, at-rule,
+   comment, and ordinary CSS rule in its original order. Do not rewrite,
+   relocate, or discard non-legacy content.
+
+Before writing, compare the original and proposed content with the three
+legacy directive spans and newly generated configuration excluded. Do not
+write unless the remaining existing content is identical and in the same
+order.
+
+With `--check`, render the proposed merged CSS entry or an exact diff in the
+report without writing it. Otherwise, apply the verified in-place merge to the
+selected CSS entry.
 
 ## Step 4: Update CSS Files
 
@@ -232,8 +262,14 @@ Replace v3 directives:
 
 Existing `@apply` rules in your CSS continue to work unchanged.
 
-With `--check`, list every affected CSS file and its proposed replacements but
-do not edit it. Otherwise, apply the replacements.
+For every affected CSS file other than `<CSS_ENTRY>`, use the same
+directive-only replacement: place one equivalent Tailwind import at the first
+legacy directive, remove only the remaining legacy directive spans, and
+preserve all custom imports, `@layer` blocks, comments, at-rules, and ordinary
+CSS. Do not insert the generated configuration block into secondary entries.
+
+With `--check`, list every affected CSS file and show its proposed in-place
+replacement without editing it. Otherwise, apply the verified replacements.
 
 ## Step 5: Update package.json
 

@@ -6,6 +6,10 @@ argument-hint: "[path] [--fix|--report|--focus=<area>]"
 
 # Audit Tailwind CSS
 
+`--focus` is allowlisted to `consistency`, `performance`, `practices`, or `v4`.
+A focused run limits discovery, reporting, fixes, counts, and completion checks
+to that category.
+
 ## Plugin Resource Resolution
 
 `<PLUGIN_ROOT>` is notation. Replace it with a concrete absolute plugin root

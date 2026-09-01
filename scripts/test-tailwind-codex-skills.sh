@@ -93,6 +93,8 @@ for contract in \
   'MCP tools are supplementary'; do
   assert_contains "$ADAPTER" "$contract"
 done
+assert_contains "$ADAPTER" 'optimize binds it to `<OPTIMIZE_TARGET>`'
+assert_contains "$ADAPTER" 'back to the current directory. Never broaden a target-scoped operation to the'
 
 DARK_MODE_GUIDANCE=(
   "$PLUGIN_DIR/README.md"
@@ -137,6 +139,12 @@ assert_contains "$MIGRATE_COMMAND" '### Selector-form `important`'
 assert_contains "$MIGRATE_COMMAND" 'Do not translate a selector value to the boolean `important` import.'
 assert_contains "$MIGRATE_COMMAND" 'derive a distinct sibling output path and bind it to `<CSS_OUTPUT>`'
 assert_contains "$MIGRATE_COMMAND" '"css": "tailwindcss -i <CSS_ENTRY> -o <CSS_OUTPUT> --minify"'
+assert_contains "$MIGRATE_COMMAND" 'Read the entire original `<CSS_ENTRY>` and merge that block'
+assert_contains "$MIGRATE_COMMAND" 'Never replace the entire CSS entry with the generated block.'
+assert_contains "$MIGRATE_COMMAND" 'Replace only the three legacy `@tailwind base;`'
+assert_contains "$MIGRATE_COMMAND" "CSS's legal import region"
+assert_contains "$MIGRATE_COMMAND" 'Preserve every custom import, `@layer` block, `@apply` rule, at-rule,'
+assert_contains "$MIGRATE_COMMAND" 'apply the verified in-place merge'
 assert_not_matches "$MIGRATE_COMMAND" 'tailwindcss -i \./src/input\.css'
 for integration in CLI PostCSS; do
   assert_contains "$MIGRATE_COMMAND" "### $integration Verification"
@@ -182,10 +190,19 @@ assert_contains "$OPTIMIZE_COMMAND" 'Do not install `@tailwindcss/cli` solely fo
 assert_contains "$OPTIMIZE_COMMAND" 'record the measurement limitation and continue'
 assert_not_matches "$OPTIMIZE_COMMAND" 'npx[[:space:]]'
 assert_contains "$OPTIMIZE_COMMAND" 'Bind the selected Tailwind CSS entry to `<CSS_ENTRY>`'
+assert_contains "$OPTIMIZE_COMMAND" 'Bind the requested or implicitly derived path to `<OPTIMIZE_TARGET>`'
+assert_contains "$OPTIMIZE_COMMAND" 'Retain the complete `<TEMPLATE_FILES>` set'
+assert_contains "$OPTIMIZE_COMMAND" '"<OPTIMIZE_TARGET>"'
+assert_contains "$OPTIMIZE_COMMAND" '"<TEMPLATE_FILES>"'
+assert_contains "$OPTIMIZE_COMMAND" 'Apply changes only to `<CSS_ENTRY>` and the selected integration associated'
 assert_contains "$OPTIMIZE_COMMAND" 'grep '\''@source'\'' "<CSS_ENTRY>"'
 assert_contains "$OPTIMIZE_COMMAND" '"<GENERATED_CSS>"'
 assert_not_matches "$OPTIMIZE_COMMAND" '-i[[:space:]]+input\.css'
 assert_not_matches "$OPTIMIZE_COMMAND" '/tmp/'
+assert_not_matches "$OPTIMIZE_COMMAND" 'class="\[\^"\]\*".*[[:space:]]\.[[:space:]]+2>/dev/null'
+
+OPTIMIZE_SKILL="$PLUGIN_DIR/skills/optimize/SKILL.md"
+assert_contains "$OPTIMIZE_SKILL" 'argument-hint: "[path] [--report|--fix|--verbose]"'
 
 AUDIT_COMMAND="$PLUGIN_DIR/commands/audit.md"
 assert_contains "$AUDIT_COMMAND" '## v3 Migration Guard'
@@ -196,7 +213,18 @@ assert_contains "$AUDIT_COMMAND" '`$tailwind:migrate`'
 assert_contains "$AUDIT_COMMAND" 'Bind the requested path to `<AUDIT_TARGET>`'
 assert_contains "$AUDIT_COMMAND" 'complete discovered file set'
 assert_contains "$AUDIT_COMMAND" '"<AUDIT_TARGET>"'
+assert_contains "$AUDIT_COMMAND" 'Parse `--focus` into `<AUDIT_FOCUS>` using this allowlist'
+assert_contains "$AUDIT_COMMAND" '`<AUDIT_FOCUS>` to `all` and bind all four categories.'
+assert_contains "$AUDIT_COMMAND" 'report sections, auto-fixes, counts, and completion criteria must operate only'
+assert_contains "$AUDIT_COMMAND" 'Include only rows and findings for `<AUDIT_CATEGORIES>`.'
+assert_contains "$AUDIT_COMMAND" 'Apply only fixes belonging to `<AUDIT_CATEGORIES>`'
+assert_contains "$AUDIT_COMMAND" 'Class token order does not determine the effective winner'
+assert_contains "$AUDIT_COMMAND" 'Do not auto-fix conflicting'
 assert_not_matches "$AUDIT_COMMAND" 'head -100'
 assert_not_matches "$AUDIT_COMMAND" 'head -20'
+
+AUDIT_SKILL="$PLUGIN_DIR/skills/audit/SKILL.md"
+assert_contains "$AUDIT_SKILL" '`--focus` is allowlisted to `consistency`, `performance`, `practices`, or `v4`.'
+assert_contains "$AUDIT_SKILL" 'limits discovery, reporting, fixes, counts, and completion checks'
 
 printf 'Tailwind Codex workflow skill tests passed.\n'
