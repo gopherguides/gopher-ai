@@ -513,18 +513,20 @@ else
   echo "OK"
 fi
 
-echo -n "Codex distribution includes project conversion workflow... "
-CODEX_CONVERSION_ERRORS=""
+echo -n "Codex distribution includes go-web project workflows... "
+CODEX_GO_WEB_ERRORS=""
 for asset in \
+  "plugins/go-web/skills/create-go-project/SKILL.md" \
+  "plugins/go-web/references/create-go-project.md" \
   "plugins/go-web/skills/convert-to-go-project/SKILL.md" \
   "plugins/go-web/references/convert-to-go-project.md"; do
   if [ ! -f "$ROOT_DIR/dist/codex/$asset" ]; then
-    CODEX_CONVERSION_ERRORS="$CODEX_CONVERSION_ERRORS\n  missing dist/codex/$asset"
+    CODEX_GO_WEB_ERRORS="$CODEX_GO_WEB_ERRORS\n  missing dist/codex/$asset"
   fi
 done
-if [ -n "$CODEX_CONVERSION_ERRORS" ]; then
+if [ -n "$CODEX_GO_WEB_ERRORS" ]; then
   echo "FAIL"
-  printf '%b\n' "$CODEX_CONVERSION_ERRORS"
+  printf '%b\n' "$CODEX_GO_WEB_ERRORS"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
@@ -655,6 +657,8 @@ else
     "gopher-ai-go-dev/scripts/validate-skills.py" \
     "gopher-ai-llm-tools/prompts/codex-review.md" \
     "gopher-ai-go-web/templates/deploy/Dockerfile" \
+    "gopher-ai-go-web/skills/create-go-project/SKILL.md" \
+    "gopher-ai-go-web/references/create-go-project.md" \
     "gopher-ai-go-web/references/convert-to-go-project.md"; do
     if [ ! -f "$ROOT_DIR/dist/gemini/$asset" ]; then
       GEMINI_RUNTIME_ERRORS="$GEMINI_RUNTIME_ERRORS\n  missing dist/gemini/$asset"
@@ -725,6 +729,8 @@ else
   done
   MISSING_GO_WEB_ASSETS=""
   for asset in \
+    "plugins/go-web/skills/create-go-project/SKILL.md" \
+    "plugins/go-web/references/create-go-project.md" \
     "plugins/go-web/skills/convert-to-go-project/SKILL.md" \
     "plugins/go-web/references/convert-to-go-project.md"; do
     if [ ! -f "$TMP_REPO/$asset" ]; then
@@ -736,7 +742,7 @@ else
     [ "$ACTUAL_COUNT" -ne "$CODEX_PLUGIN_COUNT" ] && echo "expected $CODEX_PLUGIN_COUNT plugins, got $ACTUAL_COUNT"
     [ -n "$BAD_PATHS" ] && echo "bad plugin paths:$BAD_PATHS"
     [ -n "$MISSING_DIRS" ] && echo "missing plugin dirs:$MISSING_DIRS"
-    [ -n "$MISSING_GO_WEB_ASSETS" ] && echo "missing go-web project conversion assets:$MISSING_GO_WEB_ASSETS"
+    [ -n "$MISSING_GO_WEB_ASSETS" ] && echo "missing go-web project workflow assets:$MISSING_GO_WEB_ASSETS"
     ERRORS=$((ERRORS + 1))
   else
     echo "OK"

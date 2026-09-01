@@ -22,12 +22,13 @@ Or install via marketplace:
 
 ## Codex Skills
 
-Codex exposes these skills under the `go-web` plugin. Use the qualified name
-shown below to invoke project conversion explicitly; all three skills can also
-activate automatically when their guidance applies.
+Codex exposes these skills under the `go-web` plugin. Use the qualified names
+shown below to invoke project creation and conversion explicitly; all four
+skills can also activate automatically when their guidance applies.
 
 | Skill | Invocation | Description |
 |-------|------------|-------------|
+| `go-web:create-go-project` | `$go-web:create-go-project <project-name>` | Create a greenfield project with the recommended Go web stack |
 | `go-web:convert-to-go-project` | `$go-web:convert-to-go-project [target-directory]` | Convert an existing project to the recommended Go web stack |
 | `go-web:templui` | Auto-invoked | templUI components, interpolation, and Script() requirements |
 | `go-web:htmx` | Auto-invoked | HTMX attributes, swap patterns, and Go handler integration |
@@ -57,6 +58,9 @@ Vercel + Neon PostgreSQL (free tier)
 ```text
 # Claude Code: create a new project
 /create-go-project myapp
+
+# Codex: create a new project
+$go-web:create-go-project myapp
 
 # Claude Code: convert an existing project
 /convert-to-go-project ./my-project

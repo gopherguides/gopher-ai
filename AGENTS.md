@@ -16,7 +16,7 @@ The Codex plugin set currently includes `go-workflow`, `go-dev`, `gopher-guides`
 | `go-dev` | Go development tools and best practices | bench, build-fix, explain, go, go-profiling-optimization, lint-fix, profile, refactor-clean, test-gen, validate-skills, verify |
 | `gopher-guides` | Gopher Guides training materials | gopher-guides |
 | `llm-tools` | Multi-LLM second opinions and delegation | gemini, gemini-image, ollama, second-opinion |
-| `go-web` | Go web scaffolding (Templ + HTMX) | templui, htmx, convert-to-go-project |
+| `go-web` | Go web scaffolding (Templ + HTMX) | create-go-project, convert-to-go-project, templui, htmx |
 | `tailwind` | Tailwind CSS v4 tools | tailwind-best-practices |
 
 ## Workflow Skills (go-workflow plugin)
@@ -50,15 +50,16 @@ $go-workflow:worktree prune
 # Cleans up worktrees for closed issues.
 ```
 
-## Project Conversion Skill (go-web plugin)
+## Project Creation and Conversion Skills (go-web plugin)
 
-In Codex, invoke the conversion skill with its qualified plugin name:
+In Codex, invoke the project workflows with their qualified plugin names:
 
 ```text
+$go-web:create-go-project <project-name>
 $go-web:convert-to-go-project [target-directory]
 ```
 
-Codex does not resolve a bare `convert-to-go-project` skill name as an alias.
+Codex does not resolve bare go-web skill names as aliases.
 
 ## Installation
 

@@ -32,6 +32,7 @@ STALE_REPOSITORY_GUIDANCE = (
     "Plugins load automatically from .agents/plugins/marketplace.json",
     "Codex reads `.agents/plugins/marketplace.json` on startup",
 )
+REQUIRED_CODEX_SKILLS = {"go-web:create-go-project"}
 
 
 class AppServerClient:
@@ -138,6 +139,11 @@ def declared_surface(matrix):
         )
     if not plugin_names or not skill_names:
         raise AssertionError("capability matrix declares no Codex plugin skill surface")
+    missing_required = sorted(REQUIRED_CODEX_SKILLS - set(skill_names))
+    if missing_required:
+        raise AssertionError(
+            f"capability matrix is missing required Codex skills: {missing_required}"
+        )
     return plugin_names, skill_names
 
 

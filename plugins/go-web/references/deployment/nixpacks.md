@@ -1,6 +1,13 @@
 # Nixpacks Deployment (Railway, Coolify, Dokploy, self-hosted)
 
-Loaded on demand when the user selects the Nixpacks build method. Copy `${CLAUDE_PLUGIN_ROOT}/templates/deploy/nixpacks.toml` to the project root as `nixpacks.toml`.
+## Plugin Resource Contract
+
+`<PLUGIN_ROOT>` denotes the concrete absolute path to the `go-web` plugin directory. Use the
+caller's binding when available. If the caller has not bound it, resolve it directly: on Codex,
+start from the selected skill's absolute `SKILL.md` path and ascend two directories; on Claude
+Code, use the injected plugin root.
+
+Loaded on demand when the user selects the Nixpacks build method. Copy `<PLUGIN_ROOT>/templates/deploy/nixpacks.toml` to the project root as `nixpacks.toml`.
 
 **CRITICAL Nixpacks rules (learned the hard way):**
 
@@ -30,4 +37,4 @@ nixPkgs = ["go_1_25", "nodejs_20", "sqlite"]
 
 The app's `DATABASE_URL` defaults to `data/<project>.db` which resolves to `/app/data/<project>.db` in the container.
 
-**For Railway:** also copy `${CLAUDE_PLUGIN_ROOT}/templates/deploy/railway.toml` to the project root as `railway.toml`.
+**For Railway:** also copy `<PLUGIN_ROOT>/templates/deploy/railway.toml` to the project root as `railway.toml`.
