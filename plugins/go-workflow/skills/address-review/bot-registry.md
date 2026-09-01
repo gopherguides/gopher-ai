@@ -6,6 +6,7 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 
 | Login | Approval Signal | Has Issues Signal | Re-review Trigger |
 |---|---|---|---|
+| `chatgpt-codex-connector[bot]` | Current-head `codex-pull-request-review-summary` issue comment has a connector-authored `+1` reaction and no unresolved inline comments from the connector | Current-head summary has unresolved inline comments from the connector | `@codex review` |
 | `coderabbitai[bot]` | Formal `APPROVED` review state (requires `request_changes_workflow` in `.coderabbit.yaml`) | `CHANGES_REQUESTED` review with inline comments | `@coderabbitai full review` |
 | `greptileai` | Greptile status check passes + no inline comments posted | Inline comments on specific file changes | `@greptileai` |
 | `copilot-pull-request-review[bot]` | `COMMENTED` review with no inline file comments ("did not comment on any files") | `COMMENTED` review with inline suggestions | Re-request review button in PR sidebar _(no `@` mention trigger)_ |
@@ -13,6 +14,16 @@ Reference table of known review bots. Used ONLY for matching against bots actual
 
 ## Bot Detection Logic
 
+- **Codex connector**: Only when discovered as `chatgpt-codex-connector[bot]`,
+  select its newest REST issue comment containing
+  `codex-pull-request-review-summary`. Confirm the commit displayed in that
+  summary is the prefix of `PR_HEAD_SHA`, then load
+  `repos/$REPO_SLUG/issues/comments/$COMMENT_ID/reactions`. A
+  connector-authored `+1` reaction plus no unresolved inline comments from the
+  connector is current-head approval. Unresolved connector inline comments
+  while that summary targets `PR_HEAD_SHA` are actionable findings. A running
+  summary, missing `+1`, or summary for another commit is pending or stale and
+  cannot satisfy approval. Re-trigger with `@codex review`.
 - **CodeRabbit**: Only bot that uses formal GitHub review states. Use `github_pr_reviews "$PR_NUM"`, select the newest `coderabbitai[bot]` review by `submitted_at`, and treat `APPROVED` as done.
 - **Greptile**: Uses a **status check** (not review states). Use `github_check_snapshot "$PR_HEAD_SHA"`; a successful Greptile item plus no new inline comments means Greptile is satisfied.
 - **Copilot**: Always posts `COMMENTED` formal reviews (never `APPROVED` or `CHANGES_REQUESTED`). Inspect its REST formal reviews. If its newest body says it "did not comment on any files" or has no inline comments, it found no issues. It cannot be re-triggered via comment; use the re-request review button in the GitHub PR sidebar.
@@ -42,6 +53,12 @@ FORMAL_REVIEWS=$(cd "$WORKTREE_PATH" && github_pr_reviews "$PR_NUM") || {
 }
 FORMAL_REVIEWERS=$(jq -r '.[].user.login // empty' <<< "$FORMAL_REVIEWS")
 
+ISSUE_COMMENT_PAGES=$(gh api --paginate --slurp "repos/$REPO_SLUG/issues/$PR_NUM/comments?per_page=100") || {
+  WORKFLOW_RESULT=INCOMPLETE
+  WORKFLOW_REASON=issue-comment-api-failure
+}
+ISSUE_COMMENT_REVIEWERS=$(jq -r '.[][] | .user.login // empty' <<< "$ISSUE_COMMENT_PAGES")
+
 THREAD_RESULT=$(cd "$WORKTREE_PATH" && gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {
@@ -66,18 +83,25 @@ THREAD_REVIEWERS=$(jq -r '
   .data.repository.pullRequest.reviewThreads.nodes[]?.comments.nodes[]?.author.login // empty
 ' <<< "$THREAD_RESULT")
 
-ACTUAL_REVIEWERS=$(printf '%s\n%s\n' "$FORMAL_REVIEWERS" "$THREAD_REVIEWERS" | jq -Rsc '
+if printf '%s\n' "$ISSUE_COMMENT_REVIEWERS" | grep -qx 'chatgpt-codex-connector\[bot\]'; then
+  THREAD_REVIEWERS=$(printf '%s\n' "$THREAD_REVIEWERS" | sed 's/^chatgpt-codex-connector$/chatgpt-codex-connector[bot]/')
+fi
+
+ACTUAL_REVIEWERS=$(printf '%s\n%s\n%s\n' "$FORMAL_REVIEWERS" "$ISSUE_COMMENT_REVIEWERS" "$THREAD_REVIEWERS" | jq -Rsc '
   split("\n") | map(select(length > 0)) | unique | .[]
 ')
 
 echo "Actual reviewers on PR: $ACTUAL_REVIEWERS"
 ```
 
-If PR metadata, formal reviews, or review threads cannot be loaded, follow the
+If PR metadata, formal reviews, issue comments, or review threads cannot be loaded, follow the
 top-level **Hard Invariant Failure** procedure. An API failure must not produce
 an empty reviewer set.
 
-Cross-reference this list with the Step 3 reviewer list. Only proceed with reviewers that appear in BOTH.
+Cross-reference this list with the Step 3 reviewer list. When the canonical
+Codex issue-comment author was discovered, treat its GraphQL thread alias
+`chatgpt-codex-connector` as `chatgpt-codex-connector[bot]` in both lists.
+Only proceed with reviewers that appear in both normalized lists.
 
 If the reviewer list is empty (no reviewers left feedback), skip this entire step.
 
@@ -106,6 +130,9 @@ fi
 3. If it matches but has no trigger command (e.g., `copilot-pull-request-review[bot]`) → skip, log: "Skipping <login>: no re-trigger mechanism available"
 4. If it's on the ignore list (`github-actions[bot]`, `dependabot[bot]`, etc.) → skip silently
 5. If it doesn't match any registry entry and looks like a bot (contains `[bot]` or `bot` suffix) → skip, log: "Skipping unknown bot <login>: no trigger command known"
+
+For `chatgpt-codex-connector[bot]`, this lookup produces `@codex review` only
+when discovered in the actual reviewer list and the Step 3 feedback list.
 
 **Never iterate the Bot Registry to find bots. Always iterate actual reviewers and look up triggers.**
 
