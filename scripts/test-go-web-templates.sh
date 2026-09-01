@@ -8,7 +8,8 @@ TEMPLATE_DIR="$ROOT_DIR/plugins/go-web/templates"
 CONVERSION_COMMAND="$ROOT_DIR/plugins/go-web/commands/convert-to-go-project.md"
 CONVERSION_SKILL="$ROOT_DIR/plugins/go-web/skills/convert-to-go-project/SKILL.md"
 CONVERSION_WORKFLOW="$ROOT_DIR/plugins/go-web/references/convert-to-go-project.md"
-CONVERSION_WORKFLOW_ROUTE='Read `${CLAUDE_PLUGIN_ROOT}/references/convert-to-go-project.md`'
+CONVERSION_COMMAND_WORKFLOW_ROUTE='Read `${CLAUDE_PLUGIN_ROOT}/references/convert-to-go-project.md`'
+CONVERSION_SKILL_WORKFLOW_ROUTE='Read `<PLUGIN_ROOT>/references/convert-to-go-project.md`'
 CREATE_COMMAND="$ROOT_DIR/plugins/go-web/commands/create-go-project.md"
 CREATE_SKILL="$ROOT_DIR/plugins/go-web/skills/create-go-project/SKILL.md"
 CREATE_WORKFLOW="$ROOT_DIR/plugins/go-web/references/create-go-project.md"
@@ -415,40 +416,54 @@ if [ ! -f "$CONVERSION_WORKFLOW" ]; then
   fail "missing shared convert-to-go-project workflow"
 else
   require_literal "$CONVERSION_WORKFLOW" \
-    '| Express.js / Fastify / other Node HTTP | `${CLAUDE_PLUGIN_ROOT}/references/migrations/express.md` |' \
+    '| Express.js / Fastify / other Node HTTP | `<PLUGIN_ROOT>/references/migrations/express.md` |' \
     "shared conversion workflow must route Node HTTP frameworks to the Express migration guide"
   require_literal "$CONVERSION_WORKFLOW" \
-    '| Django / Flask / FastAPI | `${CLAUDE_PLUGIN_ROOT}/references/migrations/django-flask.md` |' \
+    '| Django / Flask / FastAPI | `<PLUGIN_ROOT>/references/migrations/django-flask.md` |' \
     "shared conversion workflow must route Python frameworks to the Django and Flask migration guide"
   require_literal "$CONVERSION_WORKFLOW" \
-    '| Laravel / other PHP | `${CLAUDE_PLUGIN_ROOT}/references/migrations/laravel.md` |' \
+    '| Laravel / other PHP | `<PLUGIN_ROOT>/references/migrations/laravel.md` |' \
     "shared conversion workflow must route PHP frameworks to the Laravel migration guide"
   require_literal "$CONVERSION_WORKFLOW" \
-    '| Next.js / React SPA | `${CLAUDE_PLUGIN_ROOT}/references/migrations/nextjs.md` |' \
+    '| Next.js / React SPA | `<PLUGIN_ROOT>/references/migrations/nextjs.md` |' \
     "shared conversion workflow must route React frameworks to the Next.js migration guide"
   require_literal "$CONVERSION_WORKFLOW" \
     '| `go.mod` | Go (existing) | Already Go - extend rather than convert |' \
     "shared conversion workflow must extend existing Go projects rather than replace them"
   require_literal "$CONVERSION_WORKFLOW" \
-    '`${CLAUDE_PLUGIN_ROOT}/references/migrations/client-side-templui.md`' \
+    '`<PLUGIN_ROOT>/references/migrations/client-side-templui.md`' \
     "shared conversion workflow must route client-side interactivity to the templUI migration guide"
-  require_literal "$CONVERSION_WORKFLOW" '`${CLAUDE_PLUGIN_ROOT}/templates/`' \
+  require_literal "$CONVERSION_WORKFLOW" '`<PLUGIN_ROOT>/templates/`' \
     "shared conversion workflow must use the plugin template library"
-  require_literal "$CONVERSION_WORKFLOW" '`${CLAUDE_PLUGIN_ROOT}/templates/README.md`' \
+  require_literal "$CONVERSION_WORKFLOW" '`<PLUGIN_ROOT>/templates/README.md`' \
     "shared conversion workflow must use the plugin template manifest"
+  reject_literal "$CONVERSION_WORKFLOW" '${CLAUDE_PLUGIN_ROOT}' \
+    "shared conversion workflow must not depend on a Claude-only plugin root"
+  require_literal "$CONVERSION_WORKFLOW" 'On Codex, skip loop initialization' \
+    "shared conversion workflow must not initialize Claude loop state on Codex"
+  require_literal "$CONVERSION_WORKFLOW" 'On Codex, do not emit a completion marker' \
+    "shared conversion workflow must not emit Claude completion markers on Codex"
   require_literal "$CONVERSION_WORKFLOW" "app/testutil.<db>.go" \
     "shared conversion workflow must select the database-specific test helper"
   reject_literal "$CONVERSION_WORKFLOW" "app/testutil.go" \
     "shared conversion workflow must not select the generic SQLite helper"
 fi
 
-require_literal "$CONVERSION_COMMAND" "$CONVERSION_WORKFLOW_ROUTE" \
+require_literal "$CONVERSION_COMMAND" "$CONVERSION_COMMAND_WORKFLOW_ROUTE" \
   "convert-to-go-project command must route to the shared conversion workflow"
+require_literal "$CONVERSION_COMMAND" 'Bind the injected `$ARGUMENTS` value to `SKILL_ARGS`' \
+  "convert-to-go-project command must bind Claude arguments to the portable contract"
+require_literal "$CONVERSION_COMMAND" 'Bind `<PLUGIN_ROOT>` in the shared workflow to `${CLAUDE_PLUGIN_ROOT}`' \
+  "convert-to-go-project command must bind the portable plugin root on Claude"
 
 if [ ! -f "$CONVERSION_SKILL" ]; then
   fail "missing convert-to-go-project Codex skill"
 else
-  require_literal "$CONVERSION_SKILL" "$CONVERSION_WORKFLOW_ROUTE" \
+  require_literal "$CONVERSION_SKILL" 'ascend two directories' \
+    "convert-to-go-project skill must resolve its concrete plugin root on Codex"
+  require_literal "$CONVERSION_SKILL" 'Bind the optional target directory to `SKILL_ARGS`' \
+    "convert-to-go-project skill must bind Codex arguments to the portable contract"
+  require_literal "$CONVERSION_SKILL" "$CONVERSION_SKILL_WORKFLOW_ROUTE" \
     "convert-to-go-project skill must route to the shared conversion workflow"
 fi
 

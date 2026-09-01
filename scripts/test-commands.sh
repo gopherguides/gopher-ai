@@ -299,6 +299,8 @@ elif ! file_contains 'codex exec' "$CODEX_RESOURCE_PROBE" ||
      ! file_contains 'env -u PLUGIN_ROOT -u PLUGIN_DATA -u CLAUDE_PLUGIN_ROOT -u CLAUDE_PLUGIN_DATA' "$CODEX_RESOURCE_PROBE" ||
      ! file_contains 'GO_WORKFLOW_PLUGIN_ROOT=' "$CODEX_RESOURCE_PROBE" ||
      ! file_contains 'GOPHER_GUIDES_PLUGIN_ROOT=' "$CODEX_RESOURCE_PROBE" ||
+     ! file_contains 'GO_WEB_PLUGIN_ROOT=' "$CODEX_RESOURCE_PROBE" ||
+     ! file_contains 'references/convert-to-go-project.md' "$CODEX_RESOURCE_PROBE" ||
      ! file_contains 'scripts/cache-api.sh' "$CODEX_RESOURCE_PROBE" ||
      ! file_contains 'Usage: cache-api.sh <endpoint> <json-data>' "$CODEX_RESOURCE_PROBE"; then
   echo "FAIL (live Codex resource probe lacks required safety or evidence checks)"

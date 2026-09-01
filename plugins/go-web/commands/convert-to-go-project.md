@@ -6,5 +6,9 @@ allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(go:*)", "Bash(git:*)", "Bash(npm:
 
 # Convert to Go Project
 
+Bind the injected `$ARGUMENTS` value to `SKILL_ARGS` without evaluating or re-tokenizing it.
+
+Bind `<PLUGIN_ROOT>` in the shared workflow to `${CLAUDE_PLUGIN_ROOT}`.
+
 Read `${CLAUDE_PLUGIN_ROOT}/references/convert-to-go-project.md` completely and follow it,
-passing `$ARGUMENTS` as the optional target directory.
+passing `SKILL_ARGS` as the optional target directory.
