@@ -320,17 +320,16 @@ generate_gemini_extension_json() {
         mcp_servers=$(jq -c '.' "$mcp_json")
     fi
 
-    cat << EOF
-{
-  "name": "gopher-ai-$plugin_name",
-  "version": "$VERSION",
-  "description": "$description",
-  "contextFileName": "GEMINI.md",
-  "mcpServers": $mcp_servers,
-  "excludeTools": [],
-  "settings": []
-}
-EOF
+    printf '%s\n' \
+        '{' \
+        "  \"name\": \"gopher-ai-$plugin_name\"," \
+        "  \"version\": \"$VERSION\"," \
+        "  \"description\": \"$description\"," \
+        '  "contextFileName": "GEMINI.md",' \
+        "  \"mcpServers\": $mcp_servers," \
+        '  "excludeTools": [],' \
+        '  "settings": []' \
+        '}'
 }
 
 generate_gemini_md() {
@@ -339,28 +338,25 @@ generate_gemini_md() {
 
     marketplace_desc=$(jq -r --arg name "$plugin_name" '.plugins[] | select(.name == $name) | .description // ""' "$ROOT_DIR/.claude-plugin/marketplace.json")
 
-    cat << EOF
-# Gopher AI: $plugin_name
-
-$marketplace_desc
-
-## About
-
-This extension is part of the gopher-ai toolkit for Go developers, created by [Gopher Guides](https://gopherguides.com).
-
-## Skills
-
-Skills in this extension activate automatically based on context. Check the \`skills/\` directory for available skills.
-
-## Commands
-
-Commands are available in the \`commands/\` directory. Each command is defined as a TOML file.
-
-## Links
-
-- [Gopher Guides Training](https://gopherguides.com)
-- [GitHub Repository](https://github.com/gopherguides/gopher-ai)
-EOF
+    printf '# Gopher AI: %s\n\n' "$plugin_name"
+    printf '%s\n\n' "$marketplace_desc"
+    printf '%s\n' \
+        '## About' \
+        '' \
+        'This extension is part of the gopher-ai toolkit for Go developers, created by [Gopher Guides](https://gopherguides.com).' \
+        '' \
+        '## Skills' \
+        '' \
+        "Skills in this extension activate automatically based on context. Check the \`skills/\` directory for available skills." \
+        '' \
+        '## Commands' \
+        '' \
+        "Commands are available in the \`commands/\` directory. Each command is defined as a TOML file." \
+        '' \
+        '## Links' \
+        '' \
+        '- [Gopher Guides Training](https://gopherguides.com)' \
+        '- [GitHub Repository](https://github.com/gopherguides/gopher-ai)'
 }
 
 convert_command_to_toml() {
@@ -393,11 +389,8 @@ convert_command_to_toml() {
     body=${body//\$ARGUMENTS/\{\{args\}\}}
     body=$(convert_gemini_prompt_body "$body")
 
-    cat << EOF
-# Generated from $cmd_name.md
-# gopher-ai v$VERSION
-description = "$description"
-EOF
+    printf '# Generated from %s.md\n# gopher-ai v%s\ndescription = "%s"\n' \
+        "$cmd_name" "$VERSION" "$description"
 
     emit_toml_multiline_string "prompt" "$body"
 }
@@ -406,13 +399,13 @@ extract_frontmatter_value() {
     local frontmatter="$1"
     local key="$2"
 
-    awk -v key="$key" '
-        index($0, key ":") == 1 {
+    printf '%s\n' "$frontmatter" | awk -v key="$key" '
+        !found && index($0, key ":") == 1 {
             sub("^[^:]*:[[:space:]]*", "")
             print
-            exit
+            found = 1
         }
-    ' <<< "$frontmatter"
+    '
 }
 
 strip_wrapping_quotes() {
@@ -467,7 +460,7 @@ emit_toml_multiline_string() {
 convert_gemini_prompt_body() {
     local value="$1"
 
-    awk '
+    printf '%s\n' "$value" | awk '
         function convert_inline(line,    out, i, c, cmd, escaped) {
             out = ""
             i = 1
@@ -521,7 +514,7 @@ convert_gemini_prompt_body() {
             }
             print line
         }
-    ' <<< "$value"
+    '
 }
 
 create_archive() {

@@ -50,6 +50,10 @@ if [ ! -f "$REST_LIB" ]; then
   exit 1
 fi
 
+if rg -q '<<<' "$REST_LIB"; then
+  fail "GitHub REST helpers feed JSON through Bash here-strings"
+fi
+
 source "$REST_LIB"
 
 current_pr=$(
