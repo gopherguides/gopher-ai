@@ -22,7 +22,7 @@ Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving a missing
 target or other workflow choice.
 
 Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:e2e-verify` by
-reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+reading `<PLUGIN_ROOT>/lib/skill-arguments.md` with this Claude Code compatibility payload:
 <claude-skill-arguments>
 $ARGUMENTS
 </claude-skill-arguments>

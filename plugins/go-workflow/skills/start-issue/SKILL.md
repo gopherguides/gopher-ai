@@ -21,7 +21,7 @@ cross-platform capability-binding rules.
 Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving any workflow
 choice.
 
-Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:start-issue` by reading `${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md` with this Claude Code compatibility payload:
+Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:start-issue` by reading `<PLUGIN_ROOT>/lib/skill-arguments.md` with this Claude Code compatibility payload:
 <claude-skill-arguments>
 $ARGUMENTS
 </claude-skill-arguments>

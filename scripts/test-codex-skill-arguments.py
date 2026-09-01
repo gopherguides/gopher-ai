@@ -128,7 +128,7 @@ def assert_static_contract():
 
         skill_name = skill_file.parent.name
         discovered.add(skill_name)
-        if "`${CLAUDE_PLUGIN_ROOT}/lib/skill-arguments.md`" not in text:
+        if "`<PLUGIN_ROOT>/lib/skill-arguments.md`" not in text:
             raise AssertionError(f"{skill_name} does not load the shared argument contract")
         if f"`$go-workflow:{skill_name}`" not in text:
             raise AssertionError(f"{skill_name} does not identify its qualified invocation")
