@@ -1,0 +1,1305 @@
+{
+  "schema_version": 1,
+  "plugins": [
+    {
+      "name": "go-workflow",
+      "platforms": {
+        "claude_code": {
+          "status": "supported"
+        },
+        "codex": {
+          "status": "supported"
+        }
+      }
+    },
+    {
+      "name": "go-dev",
+      "platforms": {
+        "claude_code": {
+          "status": "supported"
+        },
+        "codex": {
+          "status": "supported"
+        }
+      }
+    },
+    {
+      "name": "productivity",
+      "platforms": {
+        "claude_code": {
+          "status": "supported"
+        },
+        "codex": {
+          "status": "unsupported",
+          "reason": "intentionally_claude_only"
+        }
+      }
+    },
+    {
+      "name": "gopher-guides",
+      "platforms": {
+        "claude_code": {
+          "status": "supported"
+        },
+        "codex": {
+          "status": "supported"
+        }
+      }
+    },
+    {
+      "name": "llm-tools",
+      "platforms": {
+        "claude_code": {
+          "status": "supported"
+        },
+        "codex": {
+          "status": "supported"
+        }
+      }
+    },
+    {
+      "name": "go-web",
+      "platforms": {
+        "claude_code": {
+          "status": "supported"
+        },
+        "codex": {
+          "status": "supported"
+        }
+      }
+    },
+    {
+      "name": "tailwind",
+      "platforms": {
+        "claude_code": {
+          "status": "supported"
+        },
+        "codex": {
+          "status": "supported"
+        }
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "go-workflow.start-issue",
+      "plugin": "go-workflow",
+      "summary": "Start issue implementation with TDD and pull request submission.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/start-issue/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-workflow:start-issue"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:start-issue"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.address-review",
+      "plugin": "go-workflow",
+      "summary": "Address pull request feedback and resolve review threads.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/address-review/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-workflow:address-review"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:address-review"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.commit",
+      "plugin": "go-workflow",
+      "summary": "Create a conventional commit from staged changes.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/commit/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-workflow:commit"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:commit"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.complete-issue",
+      "plugin": "go-workflow",
+      "summary": "Take an issue through implementation and merge.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/complete-issue/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-workflow:complete-issue"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:complete-issue"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.create-pr",
+      "plugin": "go-workflow",
+      "summary": "Create a pull request using the repository template.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/create-pr/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-workflow:create-pr"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:create-pr"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.e2e-verify",
+      "plugin": "go-workflow",
+      "summary": "Run browser-based end-to-end pull request verification.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/e2e-verify/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-workflow:e2e-verify"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:e2e-verify"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.review-deep",
+      "plugin": "go-workflow",
+      "summary": "Deep-review a branch or pull request and fix findings.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/review-deep/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-workflow:review-deep"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:review-deep"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.ship",
+      "plugin": "go-workflow",
+      "summary": "Verify, publish, review, and merge a pull request.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/ship/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-workflow:ship"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:ship"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.tmux-start",
+      "plugin": "go-workflow",
+      "summary": "Start issue work in an isolated tmux window and worktree.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/tmux-start/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-workflow:tmux-start"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:tmux-start"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.worktree",
+      "plugin": "go-workflow",
+      "summary": "Create, remove, or prune issue and pull request worktrees.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-workflow/commands/create-worktree.md"
+        },
+        {
+          "kind": "command",
+          "path": "plugins/go-workflow/commands/prune-worktree.md"
+        },
+        {
+          "kind": "command",
+          "path": "plugins/go-workflow/commands/remove-worktree.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-workflow/skills/worktree/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-workflow:create-worktree",
+            "go-workflow:prune-worktree",
+            "go-workflow:remove-worktree"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-workflow:worktree"
+        }
+      }
+    },
+    {
+      "id": "go-workflow.cancel-loop",
+      "plugin": "go-workflow",
+      "summary": "Cancel an active persistent workflow loop.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-workflow/commands/cancel-loop.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-workflow:cancel-loop"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/332"
+        }
+      }
+    },
+    {
+      "id": "go-dev.go",
+      "plugin": "go-dev",
+      "summary": "Apply idiomatic Go design, testing, and debugging guidance.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/go/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-dev:go"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-dev:go"
+        }
+      }
+    },
+    {
+      "id": "go-dev.profile",
+      "plugin": "go-dev",
+      "summary": "Profile and optimize Go performance.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/profile.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/go-profiling-optimization/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:profile"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-dev:go-profiling-optimization"
+        }
+      }
+    },
+    {
+      "id": "go-dev.validate-skills",
+      "plugin": "go-dev",
+      "summary": "Validate shell code blocks in command and skill Markdown.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/validate-skills.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-dev/skills/validate-skills/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:validate-skills"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-dev:validate-skills"
+        }
+      }
+    },
+    {
+      "id": "go-dev.bench",
+      "plugin": "go-dev",
+      "summary": "Generate, run, and analyze Go benchmarks.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/bench.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:bench"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+        }
+      }
+    },
+    {
+      "id": "go-dev.build-fix",
+      "plugin": "go-dev",
+      "summary": "Diagnose and repair build failures until clean.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/build-fix.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:build-fix"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+        }
+      }
+    },
+    {
+      "id": "go-dev.cancel-loop",
+      "plugin": "go-dev",
+      "summary": "Cancel an active persistent development loop.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/cancel-loop.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:cancel-loop"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+        }
+      }
+    },
+    {
+      "id": "go-dev.explain",
+      "plugin": "go-dev",
+      "summary": "Explain Go code with structural diagrams.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/explain.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:explain"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+        }
+      }
+    },
+    {
+      "id": "go-dev.lint-fix",
+      "plugin": "go-dev",
+      "summary": "Repair Go lint findings.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/lint-fix.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:lint-fix"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+        }
+      }
+    },
+    {
+      "id": "go-dev.refactor-clean",
+      "plugin": "go-dev",
+      "summary": "Remove dead Go code and reduce complexity.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/refactor-clean.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:refactor-clean"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+        }
+      }
+    },
+    {
+      "id": "go-dev.test-gen",
+      "plugin": "go-dev",
+      "summary": "Generate comprehensive Go tests.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/test-gen.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:test-gen"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+        }
+      }
+    },
+    {
+      "id": "go-dev.verify",
+      "plugin": "go-dev",
+      "summary": "Run the full pre-push Go verification workflow.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-dev/commands/verify.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-dev:verify"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/333"
+        }
+      }
+    },
+    {
+      "id": "productivity.changelog",
+      "plugin": "productivity",
+      "summary": "Generate a changelog from Git history.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/productivity/commands/changelog.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "productivity:changelog"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix"
+        }
+      }
+    },
+    {
+      "id": "productivity.gopher-ai-refresh",
+      "plugin": "productivity",
+      "summary": "Refresh installed gopher-ai plugins.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/productivity/commands/gopher-ai-refresh.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "productivity:gopher-ai-refresh"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix"
+        }
+      }
+    },
+    {
+      "id": "productivity.release",
+      "plugin": "productivity",
+      "summary": "Create a versioned project release.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/productivity/commands/release.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "productivity:release"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix"
+        }
+      }
+    },
+    {
+      "id": "productivity.standup",
+      "plugin": "productivity",
+      "summary": "Generate standup notes from Git activity.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/productivity/commands/standup.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "productivity:standup"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix"
+        }
+      }
+    },
+    {
+      "id": "productivity.weekly-summary",
+      "plugin": "productivity",
+      "summary": "Generate a weekly summary from Git activity.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/productivity/commands/weekly-summary.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "productivity:weekly-summary"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix"
+        }
+      }
+    },
+    {
+      "id": "gopher-guides.gopher-guides",
+      "plugin": "gopher-guides",
+      "summary": "Retrieve authoritative Gopher Guides training guidance.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/gopher-guides/skills/gopher-guides/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "gopher-guides:gopher-guides"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "gopher-guides:gopher-guides"
+        }
+      }
+    },
+    {
+      "id": "gopher-guides.clear-cache",
+      "plugin": "gopher-guides",
+      "summary": "Clear the Gopher Guides API response cache.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/gopher-guides/commands/clear-cache.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "gopher-guides:clear-cache"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/337"
+        }
+      }
+    },
+    {
+      "id": "llm-tools.gemini-image",
+      "plugin": "llm-tools",
+      "summary": "Generate and edit images with Gemini.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/llm-tools/commands/gemini-image.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/llm-tools/skills/gemini-image/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "llm-tools:gemini-image"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "llm-tools:gemini-image"
+        }
+      }
+    },
+    {
+      "id": "llm-tools.second-opinion",
+      "plugin": "llm-tools",
+      "summary": "Request a second model opinion on consequential decisions.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/llm-tools/skills/second-opinion/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "llm-tools:second-opinion"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "llm-tools:second-opinion"
+        }
+      }
+    },
+    {
+      "id": "llm-tools.cancel-loop",
+      "plugin": "llm-tools",
+      "summary": "Cancel an active persistent LLM workflow.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/llm-tools/commands/cancel-loop.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "llm-tools:cancel-loop"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/335"
+        }
+      }
+    },
+    {
+      "id": "llm-tools.codex",
+      "plugin": "llm-tools",
+      "summary": "Delegate a task to Codex from Claude Code.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/llm-tools/commands/codex.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "llm-tools:codex"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/335"
+        }
+      }
+    },
+    {
+      "id": "llm-tools.convert",
+      "plugin": "llm-tools",
+      "summary": "Convert between formats, languages, and data structures.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/llm-tools/commands/convert.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "llm-tools:convert"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/335"
+        }
+      }
+    },
+    {
+      "id": "llm-tools.gemini",
+      "plugin": "llm-tools",
+      "summary": "Delegate a task to the Gemini CLI.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/llm-tools/commands/gemini.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "llm-tools:gemini"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/335"
+        }
+      }
+    },
+    {
+      "id": "llm-tools.llm-compare",
+      "plugin": "llm-tools",
+      "summary": "Compare answers from multiple language models.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/llm-tools/commands/llm-compare.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "llm-tools:llm-compare"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/335"
+        }
+      }
+    },
+    {
+      "id": "llm-tools.ollama",
+      "plugin": "llm-tools",
+      "summary": "Delegate a private task to local Ollama models.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/llm-tools/commands/ollama.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "llm-tools:ollama"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/335"
+        }
+      }
+    },
+    {
+      "id": "llm-tools.review-loop",
+      "plugin": "llm-tools",
+      "summary": "Iterate model review, repair, and verification until clean.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/llm-tools/commands/review-loop.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "llm-tools:review-loop"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/335"
+        }
+      }
+    },
+    {
+      "id": "go-web.convert-to-go-project",
+      "plugin": "go-web",
+      "summary": "Convert an existing project to Go, Templ, HTMX, and Tailwind.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-web/commands/convert-to-go-project.md"
+        },
+        {
+          "kind": "skill",
+          "path": "plugins/go-web/skills/convert-to-go-project/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-web:convert-to-go-project"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-web:convert-to-go-project"
+        }
+      }
+    },
+    {
+      "id": "go-web.htmx",
+      "plugin": "go-web",
+      "summary": "Apply HTMX patterns in Go and Templ applications.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-web/skills/htmx/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-web:htmx"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-web:htmx"
+        }
+      }
+    },
+    {
+      "id": "go-web.templui",
+      "plugin": "go-web",
+      "summary": "Build templUI components and client interactions.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-web/skills/templui/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-web:templui"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-web:templui"
+        }
+      }
+    },
+    {
+      "id": "go-web.cancel-loop",
+      "plugin": "go-web",
+      "summary": "Cancel an active persistent Go web workflow.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-web/commands/cancel-loop.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-web:cancel-loop"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/334"
+        }
+      }
+    },
+    {
+      "id": "go-web.create-go-project",
+      "plugin": "go-web",
+      "summary": "Create a Go web project from scratch.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/go-web/commands/create-go-project.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "go-web:create-go-project"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/334"
+        }
+      }
+    },
+    {
+      "id": "tailwind.tailwind-best-practices",
+      "plugin": "tailwind",
+      "summary": "Apply Tailwind CSS v4 syntax and best practices.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/tailwind/skills/tailwind-best-practices/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "tailwind:tailwind-best-practices"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "tailwind:tailwind-best-practices"
+        }
+      }
+    },
+    {
+      "id": "tailwind.audit",
+      "plugin": "tailwind",
+      "summary": "Audit Tailwind usage for consistency and best practices.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/tailwind/commands/audit.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "tailwind:audit"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/336"
+        }
+      }
+    },
+    {
+      "id": "tailwind.cancel-loop",
+      "plugin": "tailwind",
+      "summary": "Cancel an active persistent Tailwind workflow.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/tailwind/commands/cancel-loop.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "tailwind:cancel-loop"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/336"
+        }
+      }
+    },
+    {
+      "id": "tailwind.init",
+      "plugin": "tailwind",
+      "summary": "Initialize Tailwind CSS v4 in an existing project.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/tailwind/commands/init.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "tailwind:init"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/336"
+        }
+      }
+    },
+    {
+      "id": "tailwind.migrate",
+      "plugin": "tailwind",
+      "summary": "Migrate Tailwind CSS v3 configuration to v4.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/tailwind/commands/migrate.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "tailwind:migrate"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/336"
+        }
+      }
+    },
+    {
+      "id": "tailwind.optimize",
+      "plugin": "tailwind",
+      "summary": "Analyze and optimize generated Tailwind CSS.",
+      "sources": [
+        {
+          "kind": "command",
+          "path": "plugins/tailwind/commands/optimize.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "command",
+          "names": [
+            "tailwind:optimize"
+          ]
+        },
+        "codex": {
+          "disposition": "unsupported",
+          "documentation": "docs/platform-capabilities.md#current-matrix",
+          "issue": "https://github.com/gopherguides/gopher-ai/issues/336"
+        }
+      }
+    },
+    {
+      "id": "tailwind.supplementary-mcp-tools",
+      "plugin": "tailwind",
+      "summary": "Look up Tailwind guidance and generate focused examples through MCP.",
+      "sources": [
+        {
+          "kind": "mcp_manifest",
+          "path": "plugins/tailwind/.mcp.json"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "mcp_tool",
+          "names": [
+            "mcp__tailwindcss__search_tailwind_docs",
+            "mcp__tailwindcss__get_tailwind_utilities",
+            "mcp__tailwindcss__get_tailwind_colors",
+            "mcp__tailwindcss__get_tailwind_config_guide",
+            "mcp__tailwindcss__install_tailwind",
+            "mcp__tailwindcss__convert_css_to_tailwind",
+            "mcp__tailwindcss__generate_color_palette",
+            "mcp__tailwindcss__generate_component_template"
+          ]
+        },
+        "codex": {
+          "disposition": "mcp_tool",
+          "names": [
+            "mcp__tailwindcss__search_tailwind_docs",
+            "mcp__tailwindcss__get_tailwind_utilities",
+            "mcp__tailwindcss__get_tailwind_colors",
+            "mcp__tailwindcss__get_tailwind_config_guide",
+            "mcp__tailwindcss__install_tailwind",
+            "mcp__tailwindcss__convert_css_to_tailwind",
+            "mcp__tailwindcss__generate_color_palette",
+            "mcp__tailwindcss__generate_component_template"
+          ]
+        }
+      }
+    }
+  ]
+}

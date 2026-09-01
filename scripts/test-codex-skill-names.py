@@ -8,35 +8,22 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections import Counter
 from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-TOP_LEVEL_DOCUMENTATION_FILES = (
-    ROOT_DIR / "AGENTS.md",
-    ROOT_DIR / "README.md",
-    ROOT_DIR / "plugins/go-workflow/README.md",
+MATRIX_PATH = ROOT_DIR / "docs/platform-capabilities.json"
+README_PATH = ROOT_DIR / "README.md"
+COUNT_PATTERN = re.compile(
+    r"Shipped surface: (\d+) Claude Code commands across (\d+) plugins; "
+    r"(\d+) Codex skills across (\d+) plugins; "
+    r"(\d+) optional Codex MCP tools\."
 )
-PACKAGED_DOCUMENTATION_DIRS = (
-    ROOT_DIR / "plugins/go-workflow/skills",
-    ROOT_DIR / "plugins/go-workflow/lib",
-)
-QUALIFIED_SKILL_PATTERN = re.compile(r"\$(go-workflow:[a-z][a-z0-9-]*)")
-BARE_SKILL_PATTERN = re.compile(r"\$([a-z][a-z0-9-]*)(?![a-z0-9_-])")
-WORKTREE_SLASH_COMMANDS = {"create-worktree", "remove-worktree", "prune-worktree"}
-
-
-def documentation_files():
-    packaged_files = (
-        path
-        for directory in PACKAGED_DOCUMENTATION_DIRS
-        for path in directory.rglob("*.md")
-    )
-    return (*TOP_LEVEL_DOCUMENTATION_FILES, *packaged_files)
 
 
 class AppServerClient:
-    def __init__(self, env):
+    def __init__(self, env, cwd):
         self.process = subprocess.Popen(
             ["codex", "app-server", "--stdio"],
             stdin=subprocess.PIPE,
@@ -45,6 +32,7 @@ class AppServerClient:
             text=True,
             bufsize=1,
             env=env,
+            cwd=cwd,
         )
         self.messages = queue.Queue()
         self.stderr = []
@@ -70,7 +58,7 @@ class AppServerClient:
         request_id = self.next_request_id
         self.next_request_id += 1
         self.send({"method": method, "id": request_id, "params": params})
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + 30
         deferred = []
         while time.monotonic() < deadline:
             try:
@@ -100,109 +88,195 @@ class AppServerClient:
                 self.process.wait(timeout=5)
 
 
-def run_codex(env, *args):
+def load_matrix():
+    try:
+        matrix = json.loads(MATRIX_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError as error:
+        raise AssertionError(f"missing capability matrix: {MATRIX_PATH}") from error
+    except json.JSONDecodeError as error:
+        raise AssertionError(f"invalid capability matrix: {error}") from error
+    if matrix.get("schema_version") != 1:
+        raise AssertionError(
+            f"unsupported capability matrix schema: {matrix.get('schema_version')}"
+        )
+    return matrix
+
+
+def declared_surface(matrix):
+    plugin_names = [
+        plugin["name"]
+        for plugin in matrix["plugins"]
+        if plugin["platforms"]["codex"]["status"] == "supported"
+    ]
+    skill_names = [
+        capability["platforms"]["codex"]["name"]
+        for capability in matrix["capabilities"]
+        if capability["platforms"]["codex"]["disposition"] == "skill"
+    ]
+    duplicate_plugins = sorted(
+        name for name, count in Counter(plugin_names).items() if count > 1
+    )
+    duplicate_skills = sorted(
+        name for name, count in Counter(skill_names).items() if count > 1
+    )
+    if duplicate_plugins or duplicate_skills:
+        raise AssertionError(
+            "capability matrix contains duplicates: "
+            f"plugins={duplicate_plugins}, skills={duplicate_skills}"
+        )
+    if not plugin_names or not skill_names:
+        raise AssertionError("capability matrix declares no Codex plugin skill surface")
+    return plugin_names, skill_names
+
+
+def assert_readme_counts(matrix, plugin_names, skill_names):
+    command_count = sum(
+        source["kind"] == "command"
+        for capability in matrix["capabilities"]
+        for source in capability["sources"]
+    )
+    mcp_tool_count = sum(
+        len(capability["platforms"]["codex"]["names"])
+        for capability in matrix["capabilities"]
+        if capability["platforms"]["codex"]["disposition"] == "mcp_tool"
+    )
+    expected = (
+        command_count,
+        len(matrix["plugins"]),
+        len(skill_names),
+        len(plugin_names),
+        mcp_tool_count,
+    )
+    match = COUNT_PATTERN.search(README_PATH.read_text(encoding="utf-8"))
+    if not match:
+        raise AssertionError("README.md is missing the shipped-surface count statement")
+    actual = tuple(int(value) for value in match.groups())
+    if actual != expected:
+        raise AssertionError(
+            f"stale README shipped-surface counts: expected {expected}, got {actual}"
+        )
+
+
+def run_codex(env, cwd, *args):
     subprocess.run(
         ["codex", *args],
-        cwd=ROOT_DIR,
+        cwd=cwd,
         env=env,
         check=True,
         capture_output=True,
         text=True,
+        timeout=60,
     )
 
 
-def documented_skill_names():
-    names = set()
-    for path in documentation_files():
-        names.update(QUALIFIED_SKILL_PATTERN.findall(path.read_text(encoding="utf-8")))
-    if not names:
-        raise AssertionError("documentation contains no qualified go-workflow skills")
-    return names
+def query_resolver(env, cwd):
+    client = AppServerClient(env, cwd)
+    try:
+        client.request(
+            "initialize",
+            {
+                "clientInfo": {
+                    "name": "gopher_ai_skill_name_probe",
+                    "title": "Gopher AI Skill Name Probe",
+                    "version": "1.0.0",
+                },
+                "capabilities": {"experimentalApi": True},
+            },
+        )
+        client.send({"method": "initialized", "params": {}})
+        return client.request(
+            "skills/list",
+            {"cwds": [str(cwd)], "forceReload": True},
+        )
+    finally:
+        client.close()
 
 
-def documented_bare_names():
-    names = set()
-    for path in documentation_files():
-        names.update(BARE_SKILL_PATTERN.findall(path.read_text(encoding="utf-8")))
-    return names
+def assert_resolver_surface(response, plugin_names, skill_names):
+    if len(response["data"]) != 1:
+        raise AssertionError(
+            f"expected one workspace entry, got {len(response['data'])}"
+        )
+    entry = response["data"][0]
+    if entry["errors"]:
+        raise AssertionError(f"skills/list returned errors: {entry['errors']}")
+
+    resolver_name_list = [skill["name"] for skill in entry["skills"]]
+    duplicate_names = sorted(
+        name for name, count in Counter(resolver_name_list).items() if count > 1
+    )
+    if duplicate_names:
+        raise AssertionError(f"skills/list returned duplicate names: {duplicate_names}")
+
+    resolver_names = set(resolver_name_list)
+    expected_names = set(skill_names)
+    prefixes = tuple(f"{plugin}:" for plugin in plugin_names)
+    gopher_ai_qualified_names = {
+        name for name in resolver_names if name.startswith(prefixes)
+    }
+    missing = sorted(expected_names - gopher_ai_qualified_names)
+    unexpected = sorted(gopher_ai_qualified_names - expected_names)
+    if missing or unexpected:
+        raise AssertionError(
+            "gopher-ai qualified skill surface differs from the matrix: "
+            f"missing={missing}, unexpected={unexpected}"
+        )
+
+    suffixes = {name.split(":", 1)[1] for name in expected_names}
+    bare_aliases = sorted(suffixes & resolver_names)
+    if bare_aliases:
+        raise AssertionError(
+            f"skills/list unexpectedly advertised bare aliases: {bare_aliases}"
+        )
 
 
 def main():
-    temp_base = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
-    with tempfile.TemporaryDirectory(prefix="gopher-ai-skill-names-", dir=temp_base) as root:
-        test_root = Path(root)
-        codex_home = test_root / ".codex"
+    matrix = load_matrix()
+    plugin_names, skill_names = declared_surface(matrix)
+    assert_readme_counts(matrix, plugin_names, skill_names)
+
+    temp_base = (
+        os.environ.get("TMPDIR")
+        or os.environ.get("TMP")
+        or os.environ.get("TEMP")
+        or "/tmp"
+    )
+    temp_base_path = Path(temp_base).resolve()
+    with tempfile.TemporaryDirectory(
+        prefix="gopher-ai-skill-home-", dir=temp_base
+    ) as home_root, tempfile.TemporaryDirectory(
+        prefix="gopher-ai-skill-cwd-", dir=temp_base
+    ) as cwd_root:
+        test_home = Path(home_root)
+        clean_cwd = Path(cwd_root).resolve()
+        codex_home = test_home / ".codex"
         codex_home.mkdir()
         env = os.environ.copy()
-        env.update({"HOME": str(test_root), "CODEX_HOME": str(codex_home)})
-
-        run_codex(env, "plugin", "marketplace", "add", str(ROOT_DIR), "--json")
-        run_codex(env, "plugin", "add", "go-workflow@gopher-ai", "--json")
-
-        client = AppServerClient(env)
-        try:
-            client.request(
-                "initialize",
-                {
-                    "clientInfo": {
-                        "name": "gopher_ai_skill_name_probe",
-                        "title": "Gopher AI Skill Name Probe",
-                        "version": "1.0.0",
-                    },
-                    "capabilities": {"experimentalApi": True},
-                },
-            )
-            client.send({"method": "initialized", "params": {}})
-            response = client.request(
-                "skills/list",
-                {"cwds": [str(ROOT_DIR)], "forceReload": True},
-            )
-        finally:
-            client.close()
-
-        if len(response["data"]) != 1:
-            raise AssertionError(
-                f"expected one workspace entry, got {len(response['data'])}"
+        env.update({"HOME": str(test_home), "CODEX_HOME": str(codex_home)})
+        if temp_base_path.is_relative_to(ROOT_DIR.resolve()):
+            existing_ceiling = env.get("GIT_CEILING_DIRECTORIES")
+            env["GIT_CEILING_DIRECTORIES"] = os.pathsep.join(
+                value
+                for value in (str(temp_base_path), existing_ceiling)
+                if value
             )
 
-        entry = response["data"][0]
-        if entry["errors"]:
-            raise AssertionError(f"skills/list returned errors: {entry['errors']}")
-
-        resolver_names = {skill["name"] for skill in entry["skills"]}
-        workflow_resolver_names = {
-            name for name in resolver_names if name.startswith("go-workflow:")
-        }
-        documented_names = documented_skill_names()
-        missing_names = documented_names - resolver_names
-        if missing_names:
-            raise AssertionError(
-                f"documented skills missing from skills/list: {sorted(missing_names)}"
+        run_codex(env, clean_cwd, "plugin", "marketplace", "add", str(ROOT_DIR), "--json")
+        for plugin_name in plugin_names:
+            run_codex(
+                env,
+                clean_cwd,
+                "plugin",
+                "add",
+                f"{plugin_name}@gopher-ai",
+                "--json",
             )
+        response = query_resolver(env, clean_cwd)
 
-        bare_aliases = {
-            name.removeprefix("go-workflow:") for name in documented_names
-        } & resolver_names
-        if bare_aliases:
-            raise AssertionError(
-                f"skills/list unexpectedly advertised bare aliases: {sorted(bare_aliases)}"
-            )
-
-        resolver_suffixes = {
-            name.removeprefix("go-workflow:") for name in workflow_resolver_names
-        }
-        bare_references = documented_bare_names() & (
-            resolver_suffixes | WORKTREE_SLASH_COMMANDS
-        )
-        if bare_references:
-            raise AssertionError(
-                "documentation contains bare Codex skill references: "
-                f"{sorted(bare_references)}"
-            )
-
+    assert_resolver_surface(response, plugin_names, skill_names)
     print(
-        "Codex qualified skill-name probe passed: "
-        + ", ".join(sorted(documented_names))
+        "Codex all-plugin qualified skill-name probe passed: "
+        f"{len(skill_names)} skills: {', '.join(sorted(skill_names))}"
     )
 
 

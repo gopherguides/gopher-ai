@@ -6,19 +6,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const capabilityMatrixPath = resolve(root, "docs/platform-capabilities.json");
 const claudeManifestPath = resolve(root, "plugins/tailwind/.claude-plugin/plugin.json");
 const mcpManifestPath = resolve(root, "plugins/tailwind/.mcp.json");
 const protocolVersion = "2026-07-28";
 const legacyProtocolVersion = "2024-11-05";
-const requiredTools = [
-  "search_tailwind_docs",
-  "get_tailwind_utilities",
-  "get_tailwind_colors",
-  "convert_css_to_tailwind",
-  "generate_component_template",
-  "install_tailwind",
-  "get_tailwind_config_guide",
-];
 
 function assert(condition, message) {
   if (!condition) {
@@ -30,10 +22,30 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
-const [claudeManifest, mcpManifest] = await Promise.all([
+const [capabilityMatrix, claudeManifest, mcpManifest] = await Promise.all([
+  readJson(capabilityMatrixPath),
   readJson(claudeManifestPath),
   readJson(mcpManifestPath),
 ]);
+const toolCapability = capabilityMatrix.capabilities?.find(
+  (capability) => capability.id === "tailwind.supplementary-mcp-tools",
+);
+const toolPrefix = "mcp__tailwindcss__";
+const declaredToolNames = toolCapability?.platforms?.codex?.names;
+
+assert(
+  Array.isArray(declaredToolNames) && declaredToolNames.length > 0,
+  "capability matrix is missing the Tailwind MCP tool surface",
+);
+assert(
+  declaredToolNames.every((name) => name.startsWith(toolPrefix)),
+  "capability matrix contains a non-Tailwind MCP tool name",
+);
+const requiredTools = declaredToolNames.map((name) => name.slice(toolPrefix.length));
+assert(
+  new Set(requiredTools).size === requiredTools.length,
+  "capability matrix contains duplicate Tailwind MCP tool names",
+);
 const claudeConfig = claudeManifest.mcpServers?.tailwindcss;
 const serverConfig = mcpManifest.tailwindcss;
 
@@ -204,13 +216,23 @@ try {
   );
   assert(toolsResponse.result?.tools, "tools/list did not return tools");
 
-  const advertisedTools = new Set(
-    toolsResponse.result.tools.map((tool) => tool.name),
+  const advertisedToolNames = toolsResponse.result.tools.map((tool) => tool.name);
+  const advertisedTools = new Set(advertisedToolNames);
+  assert(
+    advertisedTools.size === advertisedToolNames.length,
+    "tools/list returned duplicate tool names",
   );
   const missingTools = requiredTools.filter((tool) => !advertisedTools.has(tool));
+  const unexpectedTools = [...advertisedTools].filter(
+    (tool) => !requiredTools.includes(tool),
+  );
   assert(
     missingTools.length === 0,
     `tools/list is missing required tools: ${missingTools.join(", ")}`,
+  );
+  assert(
+    unexpectedTools.length === 0,
+    `tools/list returned undeclared tools: ${unexpectedTools.join(", ")}`,
   );
 
   process.stdout.write(

@@ -9,14 +9,13 @@ Gopher AI provides skills and commands for the three major AI coding assistants:
 | Platform | Status | Install Method |
 |----------|--------|----------------|
 | **Claude Code** | Full support | Plugin marketplace |
-| **OpenAI Codex CLI** | Full plugin support | Repo-local, installer script, or manual |
+| **OpenAI Codex CLI** | 6 plugins; capabilities vary | Repo-local, installer script, or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
 
-**What's included:**
-- 7 modules (go-workflow, go-dev, productivity, gopher-guides, llm-tools, go-web, tailwind)
-- 6 auto-invoked reference skills for Go best practices, second opinions, and more
-- 8 workflow skills for issue-to-PR automation (via Codex plugins and Claude Code commands)
-- 20+ slash commands for development workflows
+Shipped surface: 36 Claude Code commands across 7 plugins; 20 Codex skills across 6 plugins; 8 optional Codex MCP tools.
+
+See the [platform capability matrix](docs/platform-capabilities.md) for exact
+qualified names and workflows that are not yet available on Codex.
 
 ## Quick Start
 
