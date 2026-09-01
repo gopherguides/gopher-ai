@@ -45,6 +45,7 @@ fi
 CODEX_CLEAN_RESULT_COMMENT=$(jq -c '[
   .[]
   | select(.user.login == "chatgpt-codex-connector[bot]")
+  | select((.body | contains("codex-pull-request-review-summary")) | not)
   | select(.body | test("Didn[\u0027’]t find any major issues"))
 ] | sort_by(.created_at) | last // empty' <<< "$ISSUE_COMMENTS")
 CODEX_CLEAN_RESULT_BODY=$(jq -r '.body // empty' <<< "$CODEX_CLEAN_RESULT_COMMENT")

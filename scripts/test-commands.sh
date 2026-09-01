@@ -170,6 +170,7 @@ if ! file_contains "$CODEX_CONNECTOR_REGISTRY_ROW" "$ADDRESS_REVIEW_BOT_REGISTRY
    ! file_contains "Didn't find any major issues" "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'Reviewed commit:' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'CODEX_CLEAN_RESULT_BODY' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
+   ! file_contains 'contains("codex-pull-request-review-summary")) | not' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains '| select(.body | test("Didn[' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 't find any major issues"))' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
    ! file_contains 'independently from the persistent summary' "$ADDRESS_REVIEW_BOT_REGISTRY" ||
@@ -191,12 +192,18 @@ fi
 
 codex_connector_approved() {
   local summary_body="$1"
-  local clean_result_body="$2"
+  local issue_comments="$2"
   local reactions="$3"
   local head_sha="$4"
   local unresolved_threads="$5"
-  local summary_commit reviewed_commit reaction_approved clean_result_approved
+  local clean_result_body summary_commit reviewed_commit reaction_approved clean_result_approved
 
+  clean_result_body=$(jq -r '[
+    .[]
+    | select(.user.login == "chatgpt-codex-connector[bot]")
+    | select((.body | contains("codex-pull-request-review-summary")) | not)
+    | select(.body | test("Didn[\u0027’]t find any major issues"))
+  ] | sort_by(.created_at) | last.body // ""' <<< "$issue_comments")
   summary_commit=$(sed -n 's/.*`\([0-9a-fA-F]\{7,40\}\)`.*/\1/p' <<< "$summary_body" | head -1)
   reviewed_commit=$(sed -n 's/.*Reviewed commit:[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$clean_result_body" | head -1)
   reaction_approved=$(jq -r 'any(.[]; .content == "+1" and .user.login == "chatgpt-codex-connector[bot]")' <<< "$reactions")
@@ -218,14 +225,19 @@ CODEX_CLEAN_RESULT=$'Codex Review: Didn\'t find any major issues.\nReviewed comm
 CODEX_WRONG_HEAD_RESULT=$'Codex Review: Didn’t find any major issues.\nReviewed commit: `abcdef0`'
 CODEX_NON_CLEAN_RESULT=$'Codex Review: Did find any major issues.\nReviewed commit: `0123456`'
 CODEX_COMBINED_SUMMARY=$'<!-- codex-pull-request-review-summary -->\nDidn’t find any major issues\nReviewed commit: `0123456`'
+CODEX_CLEAN_COMMENTS=$(jq -nc --arg body "$CODEX_CLEAN_RESULT" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
+CODEX_WRONG_HEAD_COMMENTS=$(jq -nc --arg body "$CODEX_WRONG_HEAD_RESULT" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
+CODEX_NON_CLEAN_COMMENTS=$(jq -nc --arg body "$CODEX_NON_CLEAN_RESULT" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
+CODEX_COMBINED_SUMMARY_COMMENTS=$(jq -nc --arg body "$CODEX_COMBINED_SUMMARY" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
+CODEX_NO_COMMENTS='[]'
 CODEX_NO_REACTIONS='[]'
 CODEX_PLUS_ONE='[{"content":"+1","user":{"login":"chatgpt-codex-connector[bot]"}}]'
-if ! codex_connector_approved "$CODEX_SUMMARY" "$CODEX_CLEAN_RESULT" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
-   codex_connector_approved "$CODEX_SUMMARY" "$CODEX_WRONG_HEAD_RESULT" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
-   codex_connector_approved "$CODEX_SUMMARY" "$CODEX_NON_CLEAN_RESULT" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
-   codex_connector_approved "$CODEX_SUMMARY" "$CODEX_CLEAN_RESULT" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 1 ||
-   ! codex_connector_approved "$CODEX_SUMMARY" "" "$CODEX_PLUS_ONE" "$CODEX_TEST_HEAD" 0 ||
-   codex_connector_approved "$CODEX_COMBINED_SUMMARY" "" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0; then
+if ! codex_connector_approved "$CODEX_SUMMARY" "$CODEX_CLEAN_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
+   codex_connector_approved "$CODEX_SUMMARY" "$CODEX_WRONG_HEAD_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
+   codex_connector_approved "$CODEX_SUMMARY" "$CODEX_NON_CLEAN_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
+   codex_connector_approved "$CODEX_SUMMARY" "$CODEX_CLEAN_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 1 ||
+   ! codex_connector_approved "$CODEX_SUMMARY" "$CODEX_NO_COMMENTS" "$CODEX_PLUS_ONE" "$CODEX_TEST_HEAD" 0 ||
+   codex_connector_approved "$CODEX_COMBINED_SUMMARY" "$CODEX_COMBINED_SUMMARY_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0; then
   echo "FAIL (separate clean-result, wrong-head, unresolved-thread, reaction, or combined-body path regressed)"
   ERRORS=$((ERRORS + 1))
 else
