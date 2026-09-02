@@ -19,6 +19,11 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../lib/loop-state.sh"
 
+new_loop_instance_id() {
+  local created_at="$1"
+  printf '%s-%s-%s%s\n' "$created_at" "$$" "$RANDOM" "$RANDOM"
+}
+
 SAFE_LOOP_NAME=$(printf '%s\n' "$LOOP_NAME" | sed 's/[^a-zA-Z0-9_-]/-/g')
 OWNER_STATE_DIR=$(loop_state_directory)
 mkdir -p "$OWNER_STATE_DIR"
@@ -87,7 +92,19 @@ if [ -f "$STATE_FILE" ]; then
       "$LOOP_NAME" >&2
     exit 1
   fi
-  printf "Loop already active: %s\n" "$LOOP_NAME"
+  STORED_SESSION_ID=$(jq -r '.session_id // empty' "$STATE_FILE")
+  STORED_LOOP_INSTANCE_ID=$(jq -r '.loop_instance_id // empty' "$STATE_FILE")
+  if [ -z "$STORED_SESSION_ID" ] && [ -z "$STORED_LOOP_INSTANCE_ID" ]; then
+    LEGACY_STARTED_AT=$(jq -r '.started_at // empty' "$STATE_FILE")
+    if [ -z "$LEGACY_STARTED_AT" ]; then
+      LEGACY_STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    fi
+    STORED_LOOP_INSTANCE_ID=$(new_loop_instance_id "$LEGACY_STARTED_AT")
+    set_loop_field "$STATE_FILE" "loop_instance_id" "$STORED_LOOP_INSTANCE_ID" '[]'
+    printf 'Loop initialized: %s [%s]\n' "$LOOP_NAME" "$STORED_LOOP_INSTANCE_ID"
+  else
+    printf "Loop already active: %s\n" "$LOOP_NAME"
+  fi
   exit 0
 fi
 
@@ -101,7 +118,7 @@ SESSION_ID="${CLAUDE_SESSION_ID:-}"
 WORKTREE_PATH=$(resolve_loop_worktree_root)
 SESSION_WORKTREE_PATH="$WORKTREE_PATH"
 STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-LOOP_INSTANCE_ID="${STARTED_AT}-$$-${RANDOM}${RANDOM}"
+LOOP_INSTANCE_ID=$(new_loop_instance_id "$STARTED_AT")
 
 MAX_ITER_JSON="null"
 if [ -n "$MAX_ITERATIONS" ]; then
