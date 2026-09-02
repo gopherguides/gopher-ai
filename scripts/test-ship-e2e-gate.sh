@@ -93,7 +93,7 @@ validate_released_linked_state_migration() {
     printf '  predicate canonical_state_created failed: %s is missing\n' "$canonical_state"
     failed=1
   fi
-  if ! printf '%s\n' "$output" | rg -qF "STATE=$canonical_state"; then
+  if ! grep -qF "STATE=$canonical_state" <<< "$output"; then
     printf '  predicate canonical_state_reported failed: expected STATE=%s\n' "$canonical_state"
     failed=1
   fi
@@ -137,11 +137,11 @@ set -e
 
 echo -n "Released linked-state migration diagnostics name failed predicates and bootstrap output... "
 if [ "$MIGRATION_DIAGNOSTIC_STATUS" -eq 0 ] ||
-   ! printf '%s\n' "$MIGRATION_DIAGNOSTIC_OUTPUT" | rg -qF 'predicate bootstrap_status failed' ||
-   ! printf '%s\n' "$MIGRATION_DIAGNOSTIC_OUTPUT" | rg -qF 'predicate canonical_state_created failed' ||
-   ! printf '%s\n' "$MIGRATION_DIAGNOSTIC_OUTPUT" | rg -qF 'predicate canonical_state_reported failed' ||
-   ! printf '%s\n' "$MIGRATION_DIAGNOSTIC_OUTPUT" | rg -qF 'captured bootstrap output:' ||
-   ! printf '%s\n' "$MIGRATION_DIAGNOSTIC_OUTPUT" | rg -qF 'bootstrap-sentinel'; then
+   ! grep -qF 'predicate bootstrap_status failed' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT" ||
+   ! grep -qF 'predicate canonical_state_created failed' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT" ||
+   ! grep -qF 'predicate canonical_state_reported failed' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT" ||
+   ! grep -qF 'captured bootstrap output:' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT" ||
+   ! grep -qF 'bootstrap-sentinel' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT"; then
   echo "FAIL"
   printf '%s\n' "$MIGRATION_DIAGNOSTIC_OUTPUT"
   ERRORS=$((ERRORS + 1))
