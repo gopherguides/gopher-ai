@@ -95,16 +95,11 @@ if [ -f "$STATE_FILE" ]; then
   STORED_SESSION_ID=$(jq -r '.session_id // empty' "$STATE_FILE")
   STORED_LOOP_INSTANCE_ID=$(jq -r '.loop_instance_id // empty' "$STATE_FILE")
   if [ -z "$STORED_SESSION_ID" ] && [ -z "$STORED_LOOP_INSTANCE_ID" ]; then
-    LEGACY_STARTED_AT=$(jq -r '.started_at // empty' "$STATE_FILE")
-    if [ -z "$LEGACY_STARTED_AT" ]; then
-      LEGACY_STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    fi
-    STORED_LOOP_INSTANCE_ID=$(new_loop_instance_id "$LEGACY_STARTED_AT")
-    set_loop_field "$STATE_FILE" "loop_instance_id" "$STORED_LOOP_INSTANCE_ID" '[]'
-    printf 'Loop initialized: %s [%s]\n' "$LOOP_NAME" "$STORED_LOOP_INSTANCE_ID"
-  else
-    printf "Loop already active: %s\n" "$LOOP_NAME"
+    printf "Error: cannot safely re-enter legacy ownerless loop '%s'; cancel it and restart.\n" \
+      "$LOOP_NAME" >&2
+    exit 1
   fi
+  printf "Loop already active: %s\n" "$LOOP_NAME"
   exit 0
 fi
 

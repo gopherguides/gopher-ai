@@ -1117,25 +1117,28 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-echo -n "  Loop setup backfills instance proof for legacy ownerless state... "
+echo -n "  Loop setup refuses proofless legacy ownerless re-entry... "
 LEGACY_BACKFILL_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-legacy-backfill.XXXXXX")
 LEGACY_BACKFILL_STATE="$LEGACY_BACKFILL_ROOT/.local/state/ship.loop.local.json"
 LEGACY_BACKFILL_TRANSCRIPT="$LEGACY_BACKFILL_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$LEGACY_BACKFILL_STATE")"
 printf '%s\n' \
-  '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship\nOutput <done>SHIPPED</done> when all completion criteria are met."}]}}' \
+  '{"role":"assistant","message":{"content":[{"type":"text","text":"Unrelated session output."}]}}' \
   > "$LEGACY_BACKFILL_TRANSCRIPT"
 jq -n \
   --arg started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg worktree_path "$LEGACY_BACKFILL_ROOT" \
   '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"ci-watch",original_prompt:"ship",started_at:$started_at,session_id:"",session_worktree_path:$worktree_path,worktree_path:$worktree_path}' \
   > "$LEGACY_BACKFILL_STATE"
+LEGACY_BACKFILL_BEFORE=$(cksum "$LEGACY_BACKFILL_STATE")
+set +e
 LEGACY_BACKFILL_SETUP_OUTPUT=$(
   cd "$LEGACY_BACKFILL_ROOT"
   env -u CLAUDE_SESSION_ID "$ROOT_DIR/shared/scripts/setup-loop.sh" \
-    "ship" "SHIPPED" 50 "ci-watch" '{}' "$LEGACY_BACKFILL_STATE" '["SHIPPED","INCOMPLETE"]'
+    "ship" "SHIPPED" 50 "ci-watch" '{}' "$LEGACY_BACKFILL_STATE" '["SHIPPED","INCOMPLETE"]' 2>&1
 )
-LEGACY_BACKFILL_INSTANCE=$(jq -r '.loop_instance_id // empty' "$LEGACY_BACKFILL_STATE")
+LEGACY_BACKFILL_STATUS=$?
+set -e
 jq -n --arg content "$LEGACY_BACKFILL_SETUP_OUTPUT" \
   '{role:"user",message:{content:[{type:"tool_result",content:$content}]}}' \
   >> "$LEGACY_BACKFILL_TRANSCRIPT"
@@ -1144,10 +1147,10 @@ LEGACY_BACKFILL_STOP_OUTPUT=$(
   jq -n --arg transcript "$LEGACY_BACKFILL_TRANSCRIPT" --arg session "owner-session" \
     '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
-if [ -n "$LEGACY_BACKFILL_INSTANCE" ] &&
-   printf '%s\n' "$LEGACY_BACKFILL_SETUP_OUTPUT" | grep -Fq "Loop initialized: ship [$LEGACY_BACKFILL_INSTANCE]" &&
-   printf '%s\n' "$LEGACY_BACKFILL_STOP_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
-   jq -e '.iteration == 2 and .session_id == "owner-session"' "$LEGACY_BACKFILL_STATE" >/dev/null 2>&1; then
+if [ "$LEGACY_BACKFILL_STATUS" -ne 0 ] &&
+   printf '%s\n' "$LEGACY_BACKFILL_SETUP_OUTPUT" | grep -Fq "cannot safely re-enter legacy ownerless loop 'ship'" &&
+   [ "$LEGACY_BACKFILL_BEFORE" = "$(cksum "$LEGACY_BACKFILL_STATE")" ] &&
+   [ -z "$LEGACY_BACKFILL_STOP_OUTPUT" ]; then
   echo "OK"
 else
   echo "FAIL"
