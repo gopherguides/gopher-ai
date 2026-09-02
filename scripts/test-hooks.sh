@@ -1058,12 +1058,17 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-echo -n "  Stop hook never claims an empty session ID from transcript evidence... "
+echo -n "  Stop hook claims ownerless state from exact transcript initialization evidence... "
 OWNER_CLAIM_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-owner-claim.XXXXXX")
 OWNER_CLAIM_STATE="$OWNER_CLAIM_ROOT/.local/state/ship.loop.local.json"
 OWNER_CLAIM_TRANSCRIPT="$OWNER_CLAIM_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$OWNER_CLAIM_STATE")"
-printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"ci-watch","original_prompt":"ship","session_id":""}' > "$OWNER_CLAIM_STATE"
+printf '%s\n' '{"role":"assistant","message":{"content":[]}}' > "$OWNER_CLAIM_TRANSCRIPT"
+(
+  cd "$OWNER_CLAIM_ROOT"
+  env -u CLAUDE_SESSION_ID "$ROOT_DIR/shared/scripts/setup-loop.sh" \
+    "ship" "SHIPPED" 50 "ci-watch" '{}' >/dev/null
+)
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship\nOutput <done>SHIPPED</done> when all completion criteria are met."}]}}' > "$OWNER_CLAIM_TRANSCRIPT"
 OWNER_CLAIM_BEFORE=$(cksum "$OWNER_CLAIM_STATE")
 OWNER_CLAIM_OUTPUT=$(
@@ -1071,8 +1076,30 @@ OWNER_CLAIM_OUTPUT=$(
   jq -n --arg transcript "$OWNER_CLAIM_TRANSCRIPT" --arg session "owner-session" \
     '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
-if [ -z "$OWNER_CLAIM_OUTPUT" ] &&
-   [ "$OWNER_CLAIM_BEFORE" = "$(cksum "$OWNER_CLAIM_STATE")" ]; then
+if printf '%s\n' "$OWNER_CLAIM_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+   jq -e '.iteration == 2 and .session_id == "owner-session"' "$OWNER_CLAIM_STATE" >/dev/null 2>&1 &&
+   [ "$OWNER_CLAIM_BEFORE" != "$(cksum "$OWNER_CLAIM_STATE")" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook ignores ownerless state without transcript initialization evidence... "
+UNCLAIMED_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-unclaimed.XXXXXX")
+UNCLAIMED_STATE="$UNCLAIMED_ROOT/.local/state/ship.loop.local.json"
+UNCLAIMED_TRANSCRIPT="$UNCLAIMED_ROOT/transcript.jsonl"
+mkdir -p "$(dirname "$UNCLAIMED_STATE")"
+printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"ci-watch","original_prompt":"ship","session_id":""}' > "$UNCLAIMED_STATE"
+printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"Unrelated session output."}]}}' > "$UNCLAIMED_TRANSCRIPT"
+UNCLAIMED_BEFORE=$(cksum "$UNCLAIMED_STATE")
+UNCLAIMED_OUTPUT=$(
+  cd "$UNCLAIMED_ROOT"
+  jq -n --arg transcript "$UNCLAIMED_TRANSCRIPT" --arg session "foreign-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if [ -z "$UNCLAIMED_OUTPUT" ] &&
+   [ "$UNCLAIMED_BEFORE" = "$(cksum "$UNCLAIMED_STATE")" ]; then
   echo "OK"
 else
   echo "FAIL"
@@ -1279,6 +1306,29 @@ STALE_WORKTREE_OUTPUT=$(
     '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
 if [ -z "$STALE_WORKTREE_OUTPUT" ] && [ ! -e "$STALE_WORKTREE_STATE" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook prunes foreign state whose worktree no longer exists... "
+FOREIGN_STALE_WORKTREE_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-foreign-stale-worktree.XXXXXX")
+FOREIGN_STALE_WORKTREE_STATE="$FOREIGN_STALE_WORKTREE_ROOT/.local/state/ship.loop.local.json"
+FOREIGN_STALE_WORKTREE_TRANSCRIPT="$FOREIGN_STALE_WORKTREE_ROOT/transcript.jsonl"
+mkdir -p "$(dirname "$FOREIGN_STALE_WORKTREE_STATE")"
+jq -n \
+  --arg owner "$FOREIGN_STALE_WORKTREE_ROOT" \
+  --arg missing "$FOREIGN_STALE_WORKTREE_ROOT/missing-worktree" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"pushing",original_prompt:"ship",session_id:"owner-session",session_worktree_path:$owner,worktree_path:$missing}' \
+  > "$FOREIGN_STALE_WORKTREE_STATE"
+printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"Unrelated session output."}]}}' > "$FOREIGN_STALE_WORKTREE_TRANSCRIPT"
+FOREIGN_STALE_WORKTREE_OUTPUT=$(
+  cd "$FOREIGN_STALE_WORKTREE_ROOT"
+  jq -n --arg transcript "$FOREIGN_STALE_WORKTREE_TRANSCRIPT" --arg session "foreign-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if [ -z "$FOREIGN_STALE_WORKTREE_OUTPUT" ] && [ ! -e "$FOREIGN_STALE_WORKTREE_STATE" ]; then
   echo "OK"
 else
   echo "FAIL"

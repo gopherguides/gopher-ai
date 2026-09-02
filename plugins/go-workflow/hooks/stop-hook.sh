@@ -69,6 +69,21 @@ block_stop() {
     '{"decision": "block", "reason": $reason, "systemMessage": $msg}'
 }
 
+transcript_proves_loop_initialization() {
+  local state_file="$1"
+  local loop_name
+
+  [ -n "$CURRENT_SESSION_ID" ] &&
+    [ -n "$TRANSCRIPT_PATH" ] &&
+    [ -f "$TRANSCRIPT_PATH" ] || return 1
+
+  loop_name=$(jq -r '.loop_name // empty' "$state_file" 2>/dev/null)
+  [ -n "$loop_name" ] || return 1
+
+  grep -Fq -- "Loop initialized: $loop_name\\n" "$TRANSCRIPT_PATH" ||
+    grep -Fq -- "Loop initialized: $loop_name\"" "$TRANSCRIPT_PATH"
+}
+
 session_owns_loop_state() {
   local state_file="$1"
   local stored_session_id
@@ -85,9 +100,12 @@ session_owns_loop_state() {
     [ "$stored_session_worktree_path" = "$CURRENT_WORKTREE_PATH" ] || return 1
   fi
 
-  [ -n "$stored_session_id" ] &&
-    [ -n "$CURRENT_SESSION_ID" ] &&
-    [ "$stored_session_id" = "$CURRENT_SESSION_ID" ]
+  if [ -n "$stored_session_id" ]; then
+    [ -n "$CURRENT_SESSION_ID" ] && [ "$stored_session_id" = "$CURRENT_SESSION_ID" ]
+    return
+  fi
+
+  transcript_proves_loop_initialization "$state_file"
 }
 
 state_is_stale_for_transcript() {
@@ -362,17 +380,17 @@ STATE_FILES=$(find_active_loops)
 OWNED_STATE_FILES=""
 while IFS= read -r CANDIDATE_STATE_FILE; do
   [ -n "$CANDIDATE_STATE_FILE" ] || continue
+  if state_has_stale_worktree "$CANDIDATE_STATE_FILE"; then
+    loop_log "stop-hook: pruning stale loop state '$CANDIDATE_STATE_FILE'"
+    cleanup_loop "$CANDIDATE_STATE_FILE"
+    continue
+  fi
   if state_has_explicit_session_mismatch "$CANDIDATE_STATE_FILE"; then
     loop_log "stop-hook: current session does not own loop state '$CANDIDATE_STATE_FILE', skipping"
     continue
   fi
   if state_is_stale_for_transcript "$CANDIDATE_STATE_FILE"; then
     loop_log "stop-hook: pruning timestamp-stale loop state '$CANDIDATE_STATE_FILE'"
-    cleanup_loop "$CANDIDATE_STATE_FILE"
-    continue
-  fi
-  if state_has_stale_worktree "$CANDIDATE_STATE_FILE"; then
-    loop_log "stop-hook: pruning stale loop state '$CANDIDATE_STATE_FILE'"
     cleanup_loop "$CANDIDATE_STATE_FILE"
     continue
   fi
@@ -441,6 +459,11 @@ if ! read_loop_state "$STATE_FILE" '[]' 2>/dev/null; then
   exit 0
 fi
 
+STORED_SESSION_ID=$(jq -r '.session_id // empty' "$STATE_FILE")
+if [ -z "$STORED_SESSION_ID" ] && [ -n "$CURRENT_SESSION_ID" ]; then
+  set_loop_field "$STATE_FILE" "session_id" "$CURRENT_SESSION_ID" '[]'
+  loop_log "stop-hook: claimed loop state '$STATE_FILE' for session '$CURRENT_SESSION_ID'"
+fi
 STORED_SESSION_WORKTREE_PATH=$(jq -r '.session_worktree_path // empty' "$STATE_FILE")
 if [ -z "$STORED_SESSION_WORKTREE_PATH" ]; then
   set_loop_field "$STATE_FILE" "session_worktree_path" "$CURRENT_WORKTREE_PATH" '[]'
