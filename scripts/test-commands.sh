@@ -1275,11 +1275,11 @@ fi
 
 echo -n "HOL scanner baseline remains strict and ASCII-safe... "
 HOL_SCANNER_WORKFLOW="$ROOT_DIR/.github/workflows/hol-plugin-scanner.yml"
-if ! file_contains 'min_score: 80' "$HOL_SCANNER_WORKFLOW"; then
-  echo "FAIL (minimum score threshold changed)"
+if ! HOL_SCANNER_POLICY=$(python3 -c 'import json, sys, yaml; workflow = yaml.safe_load(open(sys.argv[1], encoding="utf-8")); steps = [step for job in workflow.get("jobs", {}).values() for step in job.get("steps", []) if str(step.get("uses", "")).startswith("hashgraph-online/ai-plugin-scanner-action@")]; len(steps) == 1 or sys.exit("expected exactly one HOL scanner action step"); settings = steps[0].get("with", {}); print(json.dumps({"min_score": int(settings.get("min_score", -1)), "fail_on_severity": settings.get("fail_on_severity")}))' "$HOL_SCANNER_WORKFLOW"); then
+  echo "FAIL (active scanner policy could not be parsed)"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'fail_on_severity: high' "$HOL_SCANNER_WORKFLOW"; then
-  echo "FAIL (high-severity finding gate changed)"
+elif ! jq -e '.min_score == 80 and .fail_on_severity == "high"' <<< "$HOL_SCANNER_POLICY" >/dev/null; then
+  echo "FAIL (active scanner policy is not strict)"
   ERRORS=$((ERRORS + 1))
 elif LC_ALL=C rg -q '[^\x00-\x7F]' "$E2E_TEST_EXECUTION"; then
   echo "FAIL (E2E guidance contains non-ASCII text that triggers scanner obfuscation detection)"
