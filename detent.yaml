@@ -67,7 +67,16 @@ agent:
     # No max_session_context_multiplier: at 4x it capped sessions at ~1M tokens
     # (4 full-context turns) and killed legitimate work (#200 died 5x on it);
     # max_session_tokens is the sole runaway brake, matching the detent project.
-    max_session_tokens: 200000000
+    # Lowered 200M -> 50M (2026-08-19, operator, Aug 14-19 dispatch-loop
+    # incident): 200M is no ceiling at all. 50M clears every legitimate session
+    # class observed fleet-wide and still kills true runaways.
+    # Lifetime caps set HIGH (2026-08-22, operator doctrine): catch true runaways
+    # (81-dispatch class), never a successful long grind (#1890: 30 attempts,
+    # ~200M, MERGED). Defaults 15/40M would have parked it. Label
+    # allow-lifetime-limit overrides per issue.
+    lifetime_session_limit: 60
+    lifetime_token_limit: 500000000
+    max_session_tokens: 50000000
     max_session_token_override_label: allow-large-session
     max_concurrent_agents_by_state:
         Merging: 1
@@ -80,6 +89,12 @@ agent:
         - bug
         - enhancement
     auto_promote:
+        # Set explicitly 2026-08-19 (operator). Was relying on the built-in default of 3;
+        # the loop detector is the ONLY brake that discriminates wasted runs from
+        # productive ones, so it must not change silently. Evidence: pyroapex#1850
+        # ran 81 dispatches (71 recorded success) before this existed; detent#1915
+        # was caught at 3. See detent#1886/#1896.
+        no_progress_limit: 3
         enabled: true
         quiet_seconds: 0
         # gate_wait_state source: completed issues wait in In Progress for the PR
@@ -236,3 +251,13 @@ worker:
   # into their isolated environment. Shared-budget mode by design -- the
   # reserved-headroom brake throttles workers before the orchestrator starves.
   github_token: gh
+schedule_ownership:
+    # Added 2026-08-28 (operator). v0.85.0 (#1972) made scheduled work --
+    # backlog admission, routines, scheduled intake -- require a shared
+    # ownership lease. Projects without this block silently stopped ALL
+    # scheduled work on upgrade: no runs, no logs beyond one startup ERROR,
+    # and restarts reproduced it. Backlog stopped draining to Todo for 4 days.
+    # Cross-host lease so exactly one Detent instance runs these schedules.
+    enabled: true
+    key: gopher-ai
+    repository: gopherguides/gopher-ai
