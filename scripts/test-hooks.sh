@@ -1058,6 +1058,28 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
+echo -n "  Stop hook preserves fresh ownerless state for a later foreign transcript... "
+FOREIGN_OWNERLESS_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-foreign-ownerless.XXXXXX")
+FOREIGN_OWNERLESS_STATE="$FOREIGN_OWNERLESS_ROOT/.local/state/ship.loop.local.json"
+FOREIGN_OWNERLESS_TRANSCRIPT="$FOREIGN_OWNERLESS_ROOT/foreign-session.jsonl"
+mkdir -p "$(dirname "$FOREIGN_OWNERLESS_STATE")"
+printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","loop_instance_id":"owner-instance","iteration":4,"max_iterations":50,"completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"ci-watch","original_prompt":"ship","started_at":"2000-01-01T00:00:00Z","session_id":""}' > "$FOREIGN_OWNERLESS_STATE"
+printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"Unrelated session output."}]}}' > "$FOREIGN_OWNERLESS_TRANSCRIPT"
+FOREIGN_OWNERLESS_BEFORE=$(cksum "$FOREIGN_OWNERLESS_STATE")
+FOREIGN_OWNERLESS_OUTPUT=$(
+  cd "$FOREIGN_OWNERLESS_ROOT"
+  jq -n --arg transcript "$FOREIGN_OWNERLESS_TRANSCRIPT" --arg session "foreign-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if [ -z "$FOREIGN_OWNERLESS_OUTPUT" ] &&
+   [ -e "$FOREIGN_OWNERLESS_STATE" ] &&
+   [ "$FOREIGN_OWNERLESS_BEFORE" = "$(cksum "$FOREIGN_OWNERLESS_STATE")" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
 echo -n "  Stop hook claims ownerless state from exact transcript initialization evidence... "
 OWNER_CLAIM_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-owner-claim.XXXXXX")
 OWNER_CLAIM_STATE="$OWNER_CLAIM_ROOT/.local/state/ship.loop.local.json"

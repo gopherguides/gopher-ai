@@ -115,8 +115,15 @@ state_is_stale_for_transcript() {
   local started_at
   local transcript_birth
   local loop_epoch
+  local loop_instance_id
+  local stored_session_id
 
   [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ] || return 1
+  stored_session_id=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null)
+  loop_instance_id=$(jq -r '.loop_instance_id // empty' "$state_file" 2>/dev/null)
+  if [ -z "$stored_session_id" ] && [ -n "$loop_instance_id" ]; then
+    return 1
+  fi
   started_at=$(jq -r '.started_at // empty' "$state_file" 2>/dev/null)
   [ -n "$started_at" ] || return 1
 
