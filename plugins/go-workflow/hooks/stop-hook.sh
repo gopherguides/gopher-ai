@@ -71,6 +71,7 @@ block_stop() {
 
 transcript_proves_loop_initialization() {
   local state_file="$1"
+  local loop_instance_id
   local loop_name
 
   [ -n "$CURRENT_SESSION_ID" ] &&
@@ -78,10 +79,11 @@ transcript_proves_loop_initialization() {
     [ -f "$TRANSCRIPT_PATH" ] || return 1
 
   loop_name=$(jq -r '.loop_name // empty' "$state_file" 2>/dev/null)
-  [ -n "$loop_name" ] || return 1
+  loop_instance_id=$(jq -r '.loop_instance_id // empty' "$state_file" 2>/dev/null)
+  [ -n "$loop_name" ] && [ -n "$loop_instance_id" ] || return 1
 
-  grep -Fq -- "Loop initialized: $loop_name\\n" "$TRANSCRIPT_PATH" ||
-    grep -Fq -- "Loop initialized: $loop_name\"" "$TRANSCRIPT_PATH"
+  grep -Fq -- "Loop initialized: $loop_name [$loop_instance_id]\\n" "$TRANSCRIPT_PATH" ||
+    grep -Fq -- "Loop initialized: $loop_name [$loop_instance_id]\"" "$TRANSCRIPT_PATH"
 }
 
 session_owns_loop_state() {

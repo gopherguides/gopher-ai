@@ -1064,21 +1064,53 @@ OWNER_CLAIM_STATE="$OWNER_CLAIM_ROOT/.local/state/ship.loop.local.json"
 OWNER_CLAIM_TRANSCRIPT="$OWNER_CLAIM_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$OWNER_CLAIM_STATE")"
 printf '%s\n' '{"role":"assistant","message":{"content":[]}}' > "$OWNER_CLAIM_TRANSCRIPT"
-(
+OWNER_CLAIM_SETUP_OUTPUT=$(
   cd "$OWNER_CLAIM_ROOT"
   env -u CLAUDE_SESSION_ID "$ROOT_DIR/shared/scripts/setup-loop.sh" \
-    "ship" "SHIPPED" 50 "ci-watch" '{}' >/dev/null
+    "ship" "SHIPPED" 50 "ci-watch" '{}'
 )
-printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship\nOutput <done>SHIPPED</done> when all completion criteria are met."}]}}' > "$OWNER_CLAIM_TRANSCRIPT"
+OWNER_CLAIM_INSTANCE=$(jq -r '.loop_instance_id // empty' "$OWNER_CLAIM_STATE")
+jq -n --arg content "$OWNER_CLAIM_SETUP_OUTPUT" \
+  '{role:"user",message:{content:[{type:"tool_result",content:$content}]}}' \
+  > "$OWNER_CLAIM_TRANSCRIPT"
 OWNER_CLAIM_BEFORE=$(cksum "$OWNER_CLAIM_STATE")
 OWNER_CLAIM_OUTPUT=$(
   cd "$OWNER_CLAIM_ROOT"
   jq -n --arg transcript "$OWNER_CLAIM_TRANSCRIPT" --arg session "owner-session" \
     '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
-if printf '%s\n' "$OWNER_CLAIM_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
+if [ -n "$OWNER_CLAIM_INSTANCE" ] &&
+   printf '%s\n' "$OWNER_CLAIM_SETUP_OUTPUT" | grep -Fq "Loop initialized: ship [$OWNER_CLAIM_INSTANCE]" &&
+   printf '%s\n' "$OWNER_CLAIM_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
    jq -e '.iteration == 2 and .session_id == "owner-session"' "$OWNER_CLAIM_STATE" >/dev/null 2>&1 &&
    [ "$OWNER_CLAIM_BEFORE" != "$(cksum "$OWNER_CLAIM_STATE")" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook rejects historical name-only evidence for a new ownerless instance... "
+HISTORICAL_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-historical.XXXXXX")
+HISTORICAL_STATE="$HISTORICAL_ROOT/.local/state/ship.loop.local.json"
+HISTORICAL_TRANSCRIPT="$HISTORICAL_ROOT/transcript.jsonl"
+mkdir -p "$(dirname "$HISTORICAL_STATE")"
+printf '%s\n' \
+  '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship\nOutput <done>SHIPPED</done> when all completion criteria are met."}]}}' \
+  '{"role":"assistant","message":{"content":[{"type":"text","text":"<done>SHIPPED</done>"}]}}' \
+  > "$HISTORICAL_TRANSCRIPT"
+jq -n --arg started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{schema_version:2,owner_workflow:"ship",loop_name:"ship",loop_instance_id:"current-instance",iteration:1,max_iterations:50,completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],components:{},phase:"ci-watch",original_prompt:"ship",started_at:$started_at,session_id:""}' \
+  > "$HISTORICAL_STATE"
+HISTORICAL_BEFORE=$(cksum "$HISTORICAL_STATE")
+HISTORICAL_OUTPUT=$(
+  cd "$HISTORICAL_ROOT"
+  jq -n --arg transcript "$HISTORICAL_TRANSCRIPT" --arg session "foreign-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if [ -z "$HISTORICAL_OUTPUT" ] &&
+   [ -e "$HISTORICAL_STATE" ] &&
+   [ "$HISTORICAL_BEFORE" = "$(cksum "$HISTORICAL_STATE")" ]; then
   echo "OK"
 else
   echo "FAIL"

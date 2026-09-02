@@ -100,6 +100,8 @@ fi
 SESSION_ID="${CLAUDE_SESSION_ID:-}"
 WORKTREE_PATH=$(resolve_loop_worktree_root)
 SESSION_WORKTREE_PATH="$WORKTREE_PATH"
+STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+LOOP_INSTANCE_ID="${STARTED_AT}-$$-${RANDOM}${RANDOM}"
 
 MAX_ITER_JSON="null"
 if [ -n "$MAX_ITERATIONS" ]; then
@@ -131,7 +133,8 @@ jq -n \
   --arg completion_promise "$COMPLETION_PROMISE" \
   --argjson terminal_promises "$TERMINAL_PROMISES_JSON" \
   --arg phase "$INITIAL_PHASE" \
-  --arg started_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+  --arg started_at "$STARTED_AT" \
+  --arg loop_instance_id "$LOOP_INSTANCE_ID" \
   --arg session_id "$SESSION_ID" \
   --arg session_worktree_path "$SESSION_WORKTREE_PATH" \
   --arg worktree_path "$WORKTREE_PATH" \
@@ -147,6 +150,7 @@ jq -n \
     phase: $phase,
     bot_review_baseline: "",
     started_at: $started_at,
+    loop_instance_id: $loop_instance_id,
     session_id: $session_id,
     session_worktree_path: $session_worktree_path,
     worktree_path: $worktree_path,
@@ -156,5 +160,5 @@ jq -n \
     components: {}
   }' > "$TMP_FILE" && mv "$TMP_FILE" "$STATE_FILE"
 
-printf 'Loop initialized: %s\n' "$LOOP_NAME"
+printf 'Loop initialized: %s [%s]\n' "$LOOP_NAME" "$LOOP_INSTANCE_ID"
 printf 'Output <done>%s</done> when all completion criteria are met.\n' "$COMPLETION_PROMISE"
