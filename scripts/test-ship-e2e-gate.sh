@@ -124,14 +124,15 @@ validate_released_linked_state_migration() {
   return "$failed"
 }
 
+MIGRATION_DIAGNOSTIC_TMP=$(mktemp -d "$FIXTURE_TMP_BASE/gopher-ai-migration-diagnostic-XXXXXX")
 set +e
 MIGRATION_DIAGNOSTIC_OUTPUT=$(validate_released_linked_state_migration \
   9 \
-  "$FIXTURE_TMP_BASE/missing-linked-state" \
-  "$FIXTURE_TMP_BASE/missing-canonical-state" \
+  "$MIGRATION_DIAGNOSTIC_TMP/missing-linked-state" \
+  "$MIGRATION_DIAGNOSTIC_TMP/missing-canonical-state" \
   "bootstrap-sentinel" \
-  "$FIXTURE_TMP_BASE/missing-root" \
-  "$FIXTURE_TMP_BASE/missing-worktree" 2>&1)
+  "$MIGRATION_DIAGNOSTIC_TMP/missing-root" \
+  "$MIGRATION_DIAGNOSTIC_TMP/missing-worktree" 2>&1)
 MIGRATION_DIAGNOSTIC_STATUS=$?
 set -e
 
@@ -148,6 +149,7 @@ if [ "$MIGRATION_DIAGNOSTIC_STATUS" -eq 0 ] ||
 else
   echo "OK"
 fi
+rm -rf "$MIGRATION_DIAGNOSTIC_TMP"
 
 validate_ship_address_review_contract() {
   local file="$1"
