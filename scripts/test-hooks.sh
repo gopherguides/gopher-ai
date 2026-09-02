@@ -1041,7 +1041,7 @@ FOREIGN_SESSION_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-foreign-ses
 FOREIGN_SESSION_STATE="$FOREIGN_SESSION_ROOT/.local/state/ship.loop.local.json"
 FOREIGN_SESSION_TRANSCRIPT="$FOREIGN_SESSION_ROOT/foreign-session.jsonl"
 mkdir -p "$(dirname "$FOREIGN_SESSION_STATE")"
-printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","iteration":4,"max_iterations":50,"completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"ci-watch","original_prompt":"ship","session_id":"owner-session"}' > "$FOREIGN_SESSION_STATE"
+printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","iteration":4,"max_iterations":50,"completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"ci-watch","original_prompt":"ship","started_at":"2000-01-01T00:00:00Z","session_id":"owner-session"}' > "$FOREIGN_SESSION_STATE"
 printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"Unrelated session output."}]}}' > "$FOREIGN_SESSION_TRANSCRIPT"
 FOREIGN_SESSION_BEFORE=$(cksum "$FOREIGN_SESSION_STATE")
 FOREIGN_SESSION_OUTPUT=$(

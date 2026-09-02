@@ -113,6 +113,16 @@ state_is_stale_for_transcript() {
     [ "$transcript_birth" -gt "$loop_epoch" ]
 }
 
+state_has_explicit_session_mismatch() {
+  local state_file="$1"
+  local stored_session_id
+
+  stored_session_id=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null)
+  [ -n "$stored_session_id" ] &&
+    [ -n "$CURRENT_SESSION_ID" ] &&
+    [ "$stored_session_id" != "$CURRENT_SESSION_ID" ]
+}
+
 state_has_stale_worktree() {
   local state_file="$1"
   local field
@@ -352,6 +362,10 @@ STATE_FILES=$(find_active_loops)
 OWNED_STATE_FILES=""
 while IFS= read -r CANDIDATE_STATE_FILE; do
   [ -n "$CANDIDATE_STATE_FILE" ] || continue
+  if state_has_explicit_session_mismatch "$CANDIDATE_STATE_FILE"; then
+    loop_log "stop-hook: current session does not own loop state '$CANDIDATE_STATE_FILE', skipping"
+    continue
+  fi
   if state_is_stale_for_transcript "$CANDIDATE_STATE_FILE"; then
     loop_log "stop-hook: pruning timestamp-stale loop state '$CANDIDATE_STATE_FILE'"
     cleanup_loop "$CANDIDATE_STATE_FILE"
