@@ -1,11 +1,11 @@
 # Step 5: E2E Test Execution via Chrome DevTools MCP
 
 This step performs browser-based E2E testing of web-facing changes. For
-UI-visible diffs it is **mandatory and blocking** — failures stop the workflow
+UI-visible diffs it is **mandatory and blocking**; failures stop the workflow
 before any label, ship, or `VERIFIED` signal. It skips cleanly only when the
 project has no web UI or the diff contains no UI-visible files.
 
-**CRITICAL PRINCIPLE: Screenshots must be READ, not just captured.** A screenshot you don't look at is worthless. After every `take_screenshot`, you MUST read the image with your vision capabilities, describe what you see, and compare it against the spec/issue requirements. DOM-only checks (console errors, network requests) supplement visual verification — they do NOT substitute for it.
+**CRITICAL PRINCIPLE: Screenshots must be READ, not just captured.** A screenshot you don't look at is worthless. After every `take_screenshot`, you MUST read the image with your vision capabilities, describe what you see, and compare it against the spec/issue requirements. DOM-only checks (console errors, network requests) supplement visual verification; they do NOT substitute for it.
 
 ## 5a. Skip vs. Fail Decision
 
@@ -17,10 +17,10 @@ Skipping is allowed only when there is genuinely nothing to verify. If there
 
 - The project has NO web components (none of the indicators below are present), AND
 - No web-facing files were changed in the diff (both `WEB_CHANGES` and `HANDLER_CHANGES` empty), AND
-- The issue/PR body contains no layout-sensitive keywords (see §5a.1).
+- The issue/PR body contains no layout-sensitive keywords (see section 5a.1).
 
 **Fail** (set `E2E_RESULT="missing-browser-tooling"` and stop E2E) when the diff
-IS UI-visible (see §5a.1) and:
+IS UI-visible (see section 5a.1) and:
 
 - Chrome DevTools MCP tools are NOT available
   (neither `mcp__chrome-devtools__navigate_page` nor
@@ -47,11 +47,11 @@ done || true)
 ```
 
 If both `WEB_CHANGES` and `HANDLER_CHANGES` are empty AND no layout-sensitive
-keywords appear in the issue/PR body → skip E2E testing per the rule above.
+keywords appear in the issue/PR body, skip E2E testing per the rule above.
 
 ## 5a.1 UI-visible diff detection
 
-Both this step and `SKILL.md` §7 use the same definition. The diff is
+Both this step and `SKILL.md` section 7 use the same definition. The diff is
 **UI-visible** if ANY of these hold:
 
 - `WEB_CHANGES` is non-empty.
@@ -78,7 +78,7 @@ count, stop the E2E run, and proceed only to Step 6 so the failure is posted.
 Do not report `partial` or `skipped`, and do not continue after an MCP
 reconnection because the selected page and browser state are no longer proven.
 
-## 5b. Load the Spec (REQUIRED — do this BEFORE any browser testing)
+## 5b. Load the Spec (REQUIRED: do this BEFORE any browser testing)
 
 Before touching the browser, understand what you're verifying against. Read the PR description and linked issue to build a mental model of expected visual state:
 
@@ -120,9 +120,9 @@ This checklist is what you verify screenshots against. If you can't articulate w
 Detect the command beneath `$WORKTREE_PATH` and store the raw executable
 command in `DEV_SERVER_CMD`:
 
-1. Check for Air config: `.air.toml` or `air.toml` → command: `air`
-2. Check `Makefile` for targets: `run`, `serve`, `dev` → command: `make <target>`
-3. Check `package.json` scripts: `dev`, `start` → command: `npm run dev` or `npm start`
+1. Check for Air config: `.air.toml` or `air.toml`; command: `air`
+2. Check `Makefile` for targets: `run`, `serve`, `dev`; store the raw executable as `make <target>`
+3. Check `package.json` scripts: `dev`, `start`; store the raw executable as `npm run dev` or `npm start`
 4. Fallback for Go: `go run ./cmd/*/main.go` or `go run .`
 
 Detect the server port:
@@ -143,7 +143,7 @@ elif command -v goose >/dev/null 2>&1; then
 elif command -v migrate >/dev/null 2>&1; then
   (cd "$WORKTREE_PATH" && migrate -path ./migrations -database "$DATABASE_URL" up)
 else
-  echo "No migration tool detected — skipping migrations"
+  echo "No migration tool detected; skipping migrations"
 fi
 ```
 
@@ -153,7 +153,7 @@ Check if the port is already in use before starting:
 
 ```bash
 if curl -s -o /dev/null -w "%{http_code}" "http://localhost:$PORT" 2>/dev/null | grep -qE '^[1234]'; then
-  echo "Server already running on port $PORT — reusing"
+  echo "Server already running on port $PORT; reusing"
   SERVER_ALREADY_RUNNING=true
 else
   (cd "$WORKTREE_PATH" && $DEV_SERVER_CMD) &
@@ -173,11 +173,11 @@ done
 
 If the server fails to start within 30 seconds:
 
-- **UI-visible diff** (per §5a.1) → set `E2E_RESULT="fail"` with reason
+- **UI-visible diff** (per section 5a.1): set `E2E_RESULT="fail"` with reason
   `skipped-server-failed` (the reason string is preserved for state-file
   compatibility, but the result IS a fail). Stop E2E and proceed to Step 6 to
   post the failure comment. The Step 7 gate in `SKILL.md` will block shipping.
-- **Non-UI diff** → set `E2E_RESULT="skipped"` with reason
+- **Non-UI diff**: set `E2E_RESULT="skipped"` with reason
   `skipped-server-failed` and continue to Step 6. There was nothing visual to
   verify anyway.
 
@@ -204,7 +204,7 @@ Detect if the app requires authentication:
    - Use `mcp__chrome-devtools-mcp__click` on the submit/login button
    - Use `mcp__chrome-devtools-mcp__wait_for` to confirm navigation after login
    - Use `mcp__chrome-devtools-mcp__take_screenshot` to capture post-login state
-   - **READ the screenshot** — verify you're logged in and see the expected post-login page
+   - **READ the screenshot**; verify you're logged in and see the expected post-login page
 3. If no credentials found: skip login, test only public routes
 
 ## 5g. Visual Stabilization Protocol
@@ -226,7 +226,7 @@ If a page-scoped tool schema exposes an explicit page identifier, pass the
 same identifier to every page-scoped call. Otherwise, the current server's
 selected page is connection state: never assume it survives a tool error or
 MCP reconnect. A tool error or a lost selected-page target uses the
-`missing-browser-tooling` failure path in §5a.2.
+`missing-browser-tooling` failure path in section 5a.2.
 
 Remove the `document.activeElement?.blur()` statement when testing a
 focus-dependent state such as validation, keyboard navigation, or an active
@@ -312,18 +312,18 @@ Run the Visual Stabilization Protocol (section 5g) to ensure the page is fully r
 
 ### 3. Viewport Coverage (layout-sensitive diffs)
 
-If the diff is layout-sensitive (per §5a.1 — keywords like layout, responsive,
+If the diff is layout-sensitive (per section 5a.1, with keywords like layout, responsive,
 label, QR, card, print, grid, typography, media placement, mobile, desktop,
 breakpoint), capture multiple viewports per route, not just one:
 
 - If the spec names a viewport, test that one.
-- Otherwise capture **desktop 1280×720** and **narrow mobile 375×667** at minimum.
+- Otherwise capture **desktop 1280x720** and **narrow mobile 375x667** at minimum.
 - For print/label/QR work, navigate to and screenshot the **print/label
   surface itself** (e.g. the actual printable page, the QR-rendering
   component), not just the surrounding admin page.
 
 Use `mcp__chrome-devtools-mcp__resize_page` between captures, then re-run the
-Visual Stabilization Protocol (§5g) before each new screenshot.
+Visual Stabilization Protocol (section 5g) before each new screenshot.
 
 ### 4. Screenshot
 `mcp__chrome-devtools-mcp__take_screenshot` to capture the rendered page (per
@@ -344,13 +344,13 @@ viewport, if step 3 added more than one).
 overlapping elements, QR codes over text, images covering labels, clipped
 text, hidden buttons, overflowing content, unreadable wrapping, broken
 print/label layouts, mobile or desktop breakpoint breakage. Any of these on a
-tested route sets `E2E_RESULT='fail'` — record Expected/Observed/Verdict in
+tested route sets `E2E_RESULT='fail'`; record Expected/Observed/Verdict in
 the findings and stop. Do NOT continue to Step 7's finish actions; the gate in
 `SKILL.md` will block shipping.
 
-**Compare against the spec:** Check each item on the checklist you built in step 5b. If the spec says "add a user table with name and email columns" — verify you see a table with those columns. If the spec says "add a login form" — verify the form fields are visible and labeled correctly.
+**Compare against the spec:** Check each item on the checklist you built in step 5b. If the spec says "add a user table with name and email columns", verify you see a table with those columns. If the spec says "add a login form", verify the form fields are visible and labeled correctly.
 
-**Document what you see in detail.** Not just "looks good" — describe the actual visual state:
+**Document what you see in detail.** Do not just say "looks good"; describe the actual visual state:
 - "The dashboard shows a navigation sidebar on the left, main content area with a table of 3 users showing name and email columns, header with the app logo"
 - "The login form has email and password fields, a 'Sign In' button, and a 'Forgot Password' link below"
 
@@ -359,20 +359,20 @@ the findings and stop. Do NOT continue to Step 7's finish actions; the gate in
 **Uninspected screenshots are a fail.** If you call `take_screenshot` but skip
 the read+compare+document step, mark that route as
 `uninspected-screenshots`. When the run completes, if any route is in this
-state, set `E2E_RESULT='uninspected-screenshots'` — Step 7's gate treats this
+state, set `E2E_RESULT='uninspected-screenshots'`; Step 7's gate treats this
 the same as `fail`.
 
 ### 6. Console Check
-`mcp__chrome-devtools-mcp__list_console_messages` — check for JavaScript errors. Console errors supplement visual verification; they do not replace it. A page can have a clean console and still look broken.
+`mcp__chrome-devtools-mcp__list_console_messages`: check for JavaScript errors. Console errors supplement visual verification; they do not replace it. A page can have a clean console and still look broken.
 
 ### 7. Network Check
-`mcp__chrome-devtools-mcp__list_network_requests` — verify no failed requests (5xx responses). Supplementary, like the console check. A 5xx on a UI-visible diff is a `fail` per §5j.
+`mcp__chrome-devtools-mcp__list_network_requests`: verify no failed requests (5xx responses). Supplementary, like the console check. A 5xx on a UI-visible diff is a `fail` per section 5j.
 
 ### 8. Form Interaction (if the page contains forms related to changed code)
 - Use `mcp__chrome-devtools-mcp__fill` to populate form fields with test data
 - Use `mcp__chrome-devtools-mcp__click` to submit
 - **Take another screenshot AFTER submission**
-- **READ that screenshot** — verify the success/error state matches expectations
+- **READ that screenshot**; verify the success/error state matches expectations
 - Check console/network for errors
 
 **Record results** for each page tested: URL, visual verification findings (what you saw vs. what was expected), console errors (if any), network failures, spec compliance (pass/fail with explanation).
@@ -383,9 +383,9 @@ After testing the primary routes, look for edge cases related to the changed cod
 
 1. **Old/new code paths:** If the PR adds a migration or schema change, insert test data that exercises both the old format and new format to verify backwards compatibility
 2. **Empty states:** Navigate to pages that may render differently with no data (empty lists, first-time user views)
-   - **Screenshot and READ** — verify empty state messaging is present and looks correct
+   - **Screenshot and READ**; verify empty state messaging is present and looks correct
 3. **Error states:** If the PR changes validation or error handling, submit invalid inputs to verify error messages render correctly
-   - **Screenshot and READ** — verify error messages are visible, properly styled, and informative
+   - **Screenshot and READ**; verify error messages are visible, properly styled, and informative
 4. **Boundary values:** If the PR adds pagination, filters, or limits, test with values at the boundary (0 items, 1 item, max items)
 
 For each edge case tested, record: description, expected behavior, **what you actually saw in the screenshot**, pass/fail.
@@ -410,21 +410,21 @@ Collect results:
 - `PAGES_TESTED`: count of routes tested
 - Per-route results for the PR comment including **visual verification findings**
 
-**E2E failure handling on a UI-visible diff** (per §5a.1):
-- Visual discrepancy from spec → `E2E_RESULT='fail'`. Document
+**E2E failure handling on a UI-visible diff** (per section 5a.1):
+- Visual discrepancy from spec sets `E2E_RESULT='fail'`. Document
   Expected/Observed/Verdict in the findings and stop before any label/ship.
-- Page returning 5xx (or 4xx for a route the spec says should render) →
+- Page returning 5xx (or 4xx for a route the spec says should render) sets
   `E2E_RESULT='fail'`.
-- Console JavaScript errors → record in findings. Not load-bearing on their
+- Console JavaScript errors are recorded in findings. They are not load-bearing on their
   own, but combined with a visual defect they reinforce the fail.
-- MCP tool call fails on the first call or mid-test →
+- An MCP tool call failure on the first call or mid-test sets
   `E2E_RESULT='missing-browser-tooling'`. Preserve `PAGES_TESTED`; the browser
   cannot inspect what it cannot reach.
-- Any route where a screenshot was taken but not read → contributes to
+- Any route where a screenshot was taken but not read contributes to
   `E2E_RESULT='uninspected-screenshots'` (also a fail).
 
-On a non-UI diff (per §5a.1) the same conditions are still recorded as
-findings, but the Step 7 gate evaluates against `skipped` rather than `pass` —
+On a non-UI diff (per section 5a.1) the same conditions are still recorded as
+findings, but the Step 7 gate evaluates against `skipped` rather than `pass`;
 so non-UI diffs proceed even when E2E hit issues, because there was nothing
 visual to verify in the first place.
 
@@ -439,7 +439,7 @@ Before marking E2E testing as complete, confirm ALL of these:
 - [ ] I compared what I saw against the spec checklist and noted matches/discrepancies
 - [ ] My results include visual findings, not just "screenshot captured"
 - [ ] If I found visual discrepancies, I documented them with specific details
-- [ ] On a layout-sensitive diff (per §5a.1), every tested route was captured at the required viewport(s) — desktop 1280×720 + narrow mobile 375×667 minimum, or the spec-named viewport(s)
+- [ ] On a layout-sensitive diff (per section 5a.1), every tested route was captured at the required viewport(s): desktop 1280x720 + narrow mobile 375x667 minimum, or the spec-named viewport(s)
 - [ ] For print/label/QR work, I screenshotted the print/label surface itself, not just the surrounding admin page
 
-**If you cannot check all of these boxes on a UI-visible diff, set `E2E_RESULT='uninspected-screenshots'` — Step 7 will block shipping.**
+**If you cannot check all of these boxes on a UI-visible diff, set `E2E_RESULT='uninspected-screenshots'`; Step 7 will block shipping.**
