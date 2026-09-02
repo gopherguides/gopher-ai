@@ -5,6 +5,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+FIXTURE_TMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+case "$FIXTURE_TMP_BASE/" in
+  "$ROOT_DIR/"*)
+    export GIT_CEILING_DIRECTORIES="$FIXTURE_TMP_BASE${GIT_CEILING_DIRECTORIES:+:$GIT_CEILING_DIRECTORIES}"
+    ;;
+esac
 
 LOCAL_REVIEW="$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
 E2E_EXECUTION="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/e2e-test-execution.md"
@@ -19,6 +25,17 @@ COMPLETE_ISSUE="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"
 ADDRESS_BOTS="$ROOT_DIR/plugins/go-workflow/lib/ship/address-bots.md"
 
 ERRORS=0
+
+echo -n "Detent-scoped Git fixtures cannot discover the enclosing worktree... "
+case "$FIXTURE_TMP_BASE/" in
+  "$ROOT_DIR/"*)
+    case ":${GIT_CEILING_DIRECTORIES:-}:" in
+      *":$FIXTURE_TMP_BASE:"*) echo "OK" ;;
+      *) echo "FAIL"; ERRORS=$((ERRORS + 1)) ;;
+    esac
+    ;;
+  *) echo "OK" ;;
+esac
 
 fail() {
   echo "FAIL: $1"
@@ -54,6 +71,85 @@ ambiguous_output_names_files() {
     printf '%s\n' "$output" | grep -F "$owner_file" >/dev/null &&
     printf '%s\n' "$output" | grep -F "$stray_file" >/dev/null
 }
+
+validate_released_linked_state_migration() {
+  local status="$1"
+  local linked_state="$2"
+  local canonical_state="$3"
+  local output="$4"
+  local original_repo_root="$5"
+  local worktree_path="$6"
+  local failed=0
+
+  if [ "$status" -ne 0 ]; then
+    printf '  predicate bootstrap_status failed: expected 0, got %s\n' "$status"
+    failed=1
+  fi
+  if [ -e "$linked_state" ]; then
+    printf '  predicate linked_state_removed failed: %s still exists\n' "$linked_state"
+    failed=1
+  fi
+  if [ ! -f "$canonical_state" ]; then
+    printf '  predicate canonical_state_created failed: %s is missing\n' "$canonical_state"
+    failed=1
+  fi
+  if ! grep -qF "STATE=$canonical_state" <<< "$output"; then
+    printf '  predicate canonical_state_reported failed: expected STATE=%s\n' "$canonical_state"
+    failed=1
+  fi
+  if [ -f "$canonical_state" ] && ! jq -e \
+    --arg original_repo_root "$original_repo_root" \
+    --arg worktree_path "$worktree_path" '
+      .schema_version == 2 and
+      .owner_workflow == "ship" and
+      .phase == "ci-watch" and
+      .pass == 3 and
+      .pr_number == "302" and
+      .head_sha == "linked-legacy-head" and
+      .original_repo_root == $original_repo_root and
+      .worktree_path == $worktree_path and
+      .repo_slug == "example/project" and
+      (.terminal_promises | index("SHIPPED")) != null and
+      (.terminal_promises | index("INCOMPLETE")) != null
+    ' "$canonical_state" >/dev/null 2>&1; then
+    printf '  predicate migrated_state_shape failed: %s did not match the released-state contract\n' "$canonical_state"
+    failed=1
+  fi
+
+  if [ "$failed" -ne 0 ]; then
+    printf '  captured bootstrap output:\n'
+    printf '%s\n' "$output" | sed 's/^/    /'
+  fi
+
+  return "$failed"
+}
+
+MIGRATION_DIAGNOSTIC_TMP=$(mktemp -d "$FIXTURE_TMP_BASE/gopher-ai-migration-diagnostic-XXXXXX")
+set +e
+MIGRATION_DIAGNOSTIC_OUTPUT=$(validate_released_linked_state_migration \
+  9 \
+  "$MIGRATION_DIAGNOSTIC_TMP/missing-linked-state" \
+  "$MIGRATION_DIAGNOSTIC_TMP/missing-canonical-state" \
+  "bootstrap-sentinel" \
+  "$MIGRATION_DIAGNOSTIC_TMP/missing-root" \
+  "$MIGRATION_DIAGNOSTIC_TMP/missing-worktree" 2>&1)
+MIGRATION_DIAGNOSTIC_STATUS=$?
+set -e
+
+echo -n "Released linked-state migration diagnostics name failed predicates and bootstrap output... "
+if [ "$MIGRATION_DIAGNOSTIC_STATUS" -eq 0 ] ||
+   ! grep -qF 'predicate bootstrap_status failed' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT" ||
+   ! grep -qF 'predicate canonical_state_created failed' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT" ||
+   ! grep -qF 'predicate canonical_state_reported failed' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT" ||
+   ! grep -qF 'captured bootstrap output:' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT" ||
+   ! grep -qF 'bootstrap-sentinel' <<< "$MIGRATION_DIAGNOSTIC_OUTPUT"; then
+  echo "FAIL"
+  printf '%s\n' "$MIGRATION_DIAGNOSTIC_OUTPUT"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$MIGRATION_DIAGNOSTIC_TMP"
 
 validate_ship_address_review_contract() {
   local file="$1"
@@ -654,55 +750,47 @@ if [ "$LEGACY_LOOP_COUNT" -ne 1 ]; then
   fail "standalone ship re-entry must not create a second loop state file"
 fi
 
-LEGACY_LINK_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-legacy-link-root-XXXXXX")
-LEGACY_LINK_PARENT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-legacy-link-parent-XXXXXX")
-LEGACY_LINK_ROOT=$(cd "$LEGACY_LINK_ROOT" && pwd -P)
-LEGACY_LINK_WORKTREE="$LEGACY_LINK_PARENT/linked"
-git -C "$LEGACY_LINK_ROOT" init -q -b main
-git -C "$LEGACY_LINK_ROOT" config user.name "Ship Linked State Test"
-git -C "$LEGACY_LINK_ROOT" config user.email "ship-linked-state@example.com"
-git -C "$LEGACY_LINK_ROOT" commit --allow-empty -qm "test: initialize linked ship fixture"
-git -C "$LEGACY_LINK_ROOT" worktree add -q -b legacy-linked "$LEGACY_LINK_WORKTREE"
-LEGACY_LINK_WORKTREE=$(cd "$LEGACY_LINK_WORKTREE" && pwd -P)
-LEGACY_LINK_STATE="$LEGACY_LINK_WORKTREE/.local/state/ship.loop.local.json"
-LEGACY_LINK_CANONICAL="$LEGACY_LINK_ROOT/.local/state/ship.loop.local.json"
-mkdir -p "$(dirname "$LEGACY_LINK_STATE")"
-jq -n \
-  '{loop_name:"ship",iteration:7,max_iterations:50,completion_promise:"SHIPPED",phase:"ci-watch",original_prompt:"ship",session_id:"",awaiting_driver_input:false,driver_input_reason:"",phase_messages:{"ci-watch":"Resume linked-worktree CI."},pass:3,pr_number:"302",head_sha:"linked-legacy-head"}' \
-  > "$LEGACY_LINK_STATE"
+for LEGACY_LINK_ATTEMPT in 1 2 3 4 5; do
+  LEGACY_LINK_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-legacy-link-root-XXXXXX")
+  LEGACY_LINK_PARENT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-legacy-link-parent-XXXXXX")
+  LEGACY_LINK_ROOT=$(cd "$LEGACY_LINK_ROOT" && pwd -P)
+  LEGACY_LINK_WORKTREE="$LEGACY_LINK_PARENT/linked"
+  git -C "$LEGACY_LINK_ROOT" init -q -b main
+  git -C "$LEGACY_LINK_ROOT" config user.name "Ship Linked State Test"
+  git -C "$LEGACY_LINK_ROOT" config user.email "ship-linked-state@example.com"
+  git -C "$LEGACY_LINK_ROOT" commit --allow-empty -qm "test: initialize linked ship fixture"
+  git -C "$LEGACY_LINK_ROOT" worktree add -q -b legacy-linked "$LEGACY_LINK_WORKTREE"
+  LEGACY_LINK_WORKTREE=$(cd "$LEGACY_LINK_WORKTREE" && pwd -P)
+  LEGACY_LINK_STATE="$LEGACY_LINK_WORKTREE/.local/state/ship.loop.local.json"
+  LEGACY_LINK_CANONICAL="$LEGACY_LINK_ROOT/.local/state/ship.loop.local.json"
+  mkdir -p "$(dirname "$LEGACY_LINK_STATE")"
+  jq -n \
+    '{loop_name:"ship",iteration:7,max_iterations:50,completion_promise:"SHIPPED",phase:"ci-watch",original_prompt:"ship",session_id:"",awaiting_driver_input:false,driver_input_reason:"",phase_messages:{"ci-watch":"Resume linked-worktree CI."},pass:3,pr_number:"302",head_sha:"linked-legacy-head"}' \
+    > "$LEGACY_LINK_STATE"
 
-set +e
-LEGACY_LINK_OUTPUT=$(cd "$LEGACY_LINK_WORKTREE" && \
-  CLAUDE_PLUGIN_ROOT="$LEGACY_PLUGIN_ROOT" CALLER_LOOP_STATE_FILE="" CALLER_WORKFLOW_STATE_PATH="" ARGUMENTS="" \
-  bash -c '
-    gh() { printf "%s\n" "example/project"; }
-    source "$1"
-    printf "STATE=%s\nPATH=%s\nEMBEDDED=%s\n" "$STATE_FILE" "$WORKFLOW_STATE_PATH" "$SHIP_EMBEDDED"
-  ' _ "$SHIP_BOOTSTRAP_BLOCK" 2>&1)
-LEGACY_LINK_STATUS=$?
-set -e
+  set +e
+  LEGACY_LINK_OUTPUT=$(cd "$LEGACY_LINK_WORKTREE" && \
+    CLAUDE_PLUGIN_ROOT="$LEGACY_PLUGIN_ROOT" CALLER_LOOP_STATE_FILE="" CALLER_WORKFLOW_STATE_PATH="" ARGUMENTS="" \
+    bash -c '
+      gh() { printf "%s\n" "example/project"; }
+      source "$1"
+      printf "STATE=%s\nPATH=%s\nEMBEDDED=%s\n" "$STATE_FILE" "$WORKFLOW_STATE_PATH" "$SHIP_EMBEDDED"
+    ' _ "$SHIP_BOOTSTRAP_BLOCK" 2>&1)
+  LEGACY_LINK_STATUS=$?
+  set -e
 
-if [ "$LEGACY_LINK_STATUS" -ne 0 ] ||
-   [ -e "$LEGACY_LINK_STATE" ] ||
-   [ ! -f "$LEGACY_LINK_CANONICAL" ] ||
-   ! printf '%s\n' "$LEGACY_LINK_OUTPUT" | grep -qF "STATE=$LEGACY_LINK_CANONICAL" ||
-   ! jq -e \
-     --arg original_repo_root "$LEGACY_LINK_ROOT" \
-     --arg worktree_path "$LEGACY_LINK_WORKTREE" '
-       .schema_version == 2 and
-       .owner_workflow == "ship" and
-       .phase == "ci-watch" and
-       .pass == 3 and
-       .pr_number == "302" and
-       .head_sha == "linked-legacy-head" and
-       .original_repo_root == $original_repo_root and
-       .worktree_path == $worktree_path and
-       .repo_slug == "example/project" and
-       (.terminal_promises | index("SHIPPED")) != null and
-       (.terminal_promises | index("INCOMPLETE")) != null
-     ' "$LEGACY_LINK_CANONICAL" >/dev/null 2>&1; then
-  fail "single released-shape linked-worktree ship state must relocate and resume from the canonical path"
-fi
+  if ! validate_released_linked_state_migration \
+    "$LEGACY_LINK_STATUS" \
+    "$LEGACY_LINK_STATE" \
+    "$LEGACY_LINK_CANONICAL" \
+    "$LEGACY_LINK_OUTPUT" \
+    "$LEGACY_LINK_ROOT" \
+    "$LEGACY_LINK_WORKTREE"; then
+    fail "single released-shape linked-worktree ship state must relocate and resume from the canonical path (attempt $LEGACY_LINK_ATTEMPT of 5)"
+  fi
+
+  rm -rf "$LEGACY_LINK_ROOT" "$LEGACY_LINK_PARENT"
+done
 
 LEGACY_COLLISION_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-legacy-collision-root-XXXXXX")
 LEGACY_COLLISION_PARENT=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-legacy-collision-parent-XXXXXX")
@@ -850,8 +938,7 @@ if [ "$LEGACY_FOREIGN_PROMISE_STATUS" -eq 0 ] ||
   fail "foreign linked-worktree terminal promise must fail clearly without mutation"
 fi
 
-rm -rf "$LEGACY_LINK_ROOT" "$LEGACY_LINK_PARENT" \
-  "$LEGACY_COLLISION_ROOT" "$LEGACY_COLLISION_PARENT" \
+rm -rf "$LEGACY_COLLISION_ROOT" "$LEGACY_COLLISION_PARENT" \
   "$LEGACY_INVALID_ROOT" "$LEGACY_INVALID_PARENT"
 
 SHIP_RESULT_BLOCK=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-ship-result-XXXXXX")
