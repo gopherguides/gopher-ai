@@ -786,7 +786,7 @@ STOP_HOOK_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook.XXXXXX")
 STOP_HOOK_STATE="$STOP_HOOK_ROOT/.local/state/ship.loop.local.json"
 STOP_HOOK_TRANSCRIPT="$STOP_HOOK_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$STOP_HOOK_STATE")"
-printf '%s\n' '{"loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","phase":"pushing","original_prompt":"ship","session_id":"","awaiting_driver_input":false,"driver_input_reason":""}' > "$STOP_HOOK_STATE"
+printf '%s\n' '{"loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","phase":"pushing","original_prompt":"ship","session_id":"owner-session","awaiting_driver_input":false,"driver_input_reason":""}' > "$STOP_HOOK_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$STOP_HOOK_TRANSCRIPT"
 
 if (
@@ -795,7 +795,7 @@ if (
   pause_loop_for_driver "$STOP_HOOK_STATE" "dirty-tree-decision"
   "$ROOT_DIR/plugins/go-workflow/scripts/setup-loop.sh" \
     "ship" "SHIPPED" 50 "" '{}' >/dev/null
-  PAUSED_OUTPUT=$(jq -n --arg transcript "$STOP_HOOK_TRANSCRIPT" '{transcript_path: $transcript}' | bash "$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh")
+  PAUSED_OUTPUT=$(jq -n --arg transcript "$STOP_HOOK_TRANSCRIPT" --arg session "owner-session" '{transcript_path: $transcript, session_id: $session}' | bash "$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh")
   [ -z "$PAUSED_OUTPUT" ]
   jq -e '
     .iteration == 1 and
@@ -804,7 +804,7 @@ if (
     .driver_input_reason == "dirty-tree-decision"
   ' "$STOP_HOOK_STATE" >/dev/null
   resume_loop_after_driver "$STOP_HOOK_STATE"
-  RESUMED_OUTPUT=$(jq -n --arg transcript "$STOP_HOOK_TRANSCRIPT" '{transcript_path: $transcript}' | bash "$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh")
+  RESUMED_OUTPUT=$(jq -n --arg transcript "$STOP_HOOK_TRANSCRIPT" --arg session "owner-session" '{transcript_path: $transcript, session_id: $session}' | bash "$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh")
   printf '%s\n' "$RESUMED_OUTPUT" | jq -e '.decision == "block"' >/dev/null
   jq -e '
     .iteration == 2 and
@@ -943,20 +943,20 @@ if (
   cd "$STOP_HOOK_REASON_ROOT"
   REASON_FAILURES=0
   for STATE_JSON in \
-    '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","original_prompt":"","session_id":"","awaiting_driver_input":false,"driver_input_reason":""}' \
-    '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","session_id":"","awaiting_driver_input":false,"driver_input_reason":""}' \
-    '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","original_prompt":"   ","session_id":"","awaiting_driver_input":false,"driver_input_reason":""}' \
-    '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"custom","phase_messages":{"custom":"   "},"original_prompt":"Continue issue 302.","session_id":"","awaiting_driver_input":false,"driver_input_reason":""}'
+    '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","original_prompt":"","session_id":"owner-session","awaiting_driver_input":false,"driver_input_reason":""}' \
+    '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","session_id":"owner-session","awaiting_driver_input":false,"driver_input_reason":""}' \
+    '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","original_prompt":"   ","session_id":"owner-session","awaiting_driver_input":false,"driver_input_reason":""}' \
+    '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"custom","phase_messages":{"custom":"   "},"original_prompt":"Continue issue 302.","session_id":"owner-session","awaiting_driver_input":false,"driver_input_reason":""}'
   do
     printf '%s\n' "$STATE_JSON" > "$STOP_HOOK_REASON_STATE"
-    STOP_OUTPUT=$(jq -n --arg transcript "$STOP_HOOK_REASON_TRANSCRIPT" '{transcript_path: $transcript}' | bash "$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh")
+    STOP_OUTPUT=$(jq -n --arg transcript "$STOP_HOOK_REASON_TRANSCRIPT" --arg session "owner-session" '{transcript_path: $transcript, session_id: $session}' | bash "$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh")
     if ! printf '%s\n' "$STOP_OUTPUT" | has_nonempty_block_reason; then
       REASON_FAILURES=$((REASON_FAILURES + 1))
     fi
   done
 
-  printf '%s\n' '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","original_prompt":"Continue issue 302.","session_id":"","awaiting_driver_input":false,"driver_input_reason":""}' > "$STOP_HOOK_REASON_STATE"
-  STOP_OUTPUT=$(jq -n --arg transcript "$STOP_HOOK_REASON_TRANSCRIPT" '{transcript_path: $transcript}' | bash "$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh")
+  printf '%s\n' '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","original_prompt":"Continue issue 302.","session_id":"owner-session","awaiting_driver_input":false,"driver_input_reason":""}' > "$STOP_HOOK_REASON_STATE"
+  STOP_OUTPUT=$(jq -n --arg transcript "$STOP_HOOK_REASON_TRANSCRIPT" --arg session "owner-session" '{transcript_path: $transcript, session_id: $session}' | bash "$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh")
   if ! printf '%s\n' "$STOP_OUTPUT" | jq -e '.reason == "Continue issue 302."' >/dev/null; then
     REASON_FAILURES=$((REASON_FAILURES + 1))
   fi
@@ -977,13 +977,13 @@ sed \
   -e 's/^  REASON="Continue working on the task\."$/  REASON=""/' \
   -e 's/^    reason="Loop execution is blocked by invalid state\."$/    reason=""/' \
   "$REASON_MUTATION_ROOT/hooks/stop-hook.sh" > "$REASON_MUTATION_ROOT/hooks/stop-hook-mutated.sh"
-printf '%s\n' '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","original_prompt":"","session_id":""}' \
+printf '%s\n' '{"loop_name":"start-issue-302","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"","original_prompt":"","session_id":"owner-session"}' \
   > "$REASON_MUTATION_ROOT/.local/state/start-issue-302.loop.local.json"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: start-issue-302"}]}}' \
   > "$REASON_MUTATION_ROOT/transcript.jsonl"
 MUTATED_REASON_OUTPUT=$(
   cd "$REASON_MUTATION_ROOT"
-  jq -n --arg transcript "$REASON_MUTATION_ROOT/transcript.jsonl" '{transcript_path: $transcript}' | bash hooks/stop-hook-mutated.sh
+  jq -n --arg transcript "$REASON_MUTATION_ROOT/transcript.jsonl" --arg session "owner-session" '{transcript_path: $transcript, session_id: $session}' | bash hooks/stop-hook-mutated.sh
 )
 if grep -F -q 'REASON=""' "$REASON_MUTATION_ROOT/hooks/stop-hook-mutated.sh" &&
    ! printf '%s\n' "$MUTATED_REASON_OUTPUT" | has_nonempty_block_reason; then
@@ -996,21 +996,40 @@ fi
 CORE_STOP_HOOK="$ROOT_DIR/shared/hooks/stop-hook.sh"
 CORE_LOOP_LIB="$ROOT_DIR/shared/lib/loop-state.sh"
 
-echo -n "  Stop hook ignores a foreign transcript when legacy state has no session ID... "
+echo -n "  Stop hook exits immediately when stop_hook_active is true... "
+ACTIVE_STOP_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-active.XXXXXX")
+ACTIVE_STOP_STATE="$ACTIVE_STOP_ROOT/.local/state/ship.loop.local.json"
+ACTIVE_STOP_TRANSCRIPT="$ACTIVE_STOP_ROOT/owner-session.jsonl"
+mkdir -p "$(dirname "$ACTIVE_STOP_STATE")"
+printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"ci-watch","original_prompt":"ship","session_id":"owner-session"}' > "$ACTIVE_STOP_STATE"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$ACTIVE_STOP_TRANSCRIPT"
+ACTIVE_STOP_BEFORE=$(cksum "$ACTIVE_STOP_STATE")
+ACTIVE_STOP_OUTPUT=$(
+  cd "$ACTIVE_STOP_ROOT"
+  jq -n --arg transcript "$ACTIVE_STOP_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session, stop_hook_active: true}' | "$CORE_STOP_HOOK"
+)
+if [ -z "$ACTIVE_STOP_OUTPUT" ] &&
+   [ "$ACTIVE_STOP_BEFORE" = "$(cksum "$ACTIVE_STOP_STATE")" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook prunes timestamp-stale state with no session ID... "
 FOREIGN_LEGACY_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-foreign-legacy.XXXXXX")
 FOREIGN_LEGACY_STATE="$FOREIGN_LEGACY_ROOT/.local/state/start-issue-309.loop.local.json"
 FOREIGN_LEGACY_TRANSCRIPT="$FOREIGN_LEGACY_ROOT/foreign-session.jsonl"
 mkdir -p "$(dirname "$FOREIGN_LEGACY_STATE")"
 printf '%s\n' '{"schema_version":2,"owner_workflow":"start-issue","loop_name":"start-issue-309","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","terminal_promises":["COMPLETE","INCOMPLETE"],"components":{},"phase":"implementing","original_prompt":"issue 309","started_at":"2000-01-01T00:00:00Z","session_id":""}' > "$FOREIGN_LEGACY_STATE"
 printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"Unrelated session output."}]}}' > "$FOREIGN_LEGACY_TRANSCRIPT"
-FOREIGN_LEGACY_BEFORE=$(cksum "$FOREIGN_LEGACY_STATE")
 FOREIGN_LEGACY_OUTPUT=$(
   cd "$FOREIGN_LEGACY_ROOT"
   jq -n --arg transcript "$FOREIGN_LEGACY_TRANSCRIPT" --arg session "foreign-session" \
     '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
-if [ -z "$FOREIGN_LEGACY_OUTPUT" ] &&
-   [ "$FOREIGN_LEGACY_BEFORE" = "$(cksum "$FOREIGN_LEGACY_STATE")" ]; then
+if [ -z "$FOREIGN_LEGACY_OUTPUT" ] && [ ! -e "$FOREIGN_LEGACY_STATE" ]; then
   echo "OK"
 else
   echo "FAIL"
@@ -1039,20 +1058,40 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-echo -n "  Stop hook claims an empty session ID from owner transcript evidence... "
+echo -n "  Stop hook never claims an empty session ID from transcript evidence... "
 OWNER_CLAIM_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-owner-claim.XXXXXX")
 OWNER_CLAIM_STATE="$OWNER_CLAIM_ROOT/.local/state/ship.loop.local.json"
 OWNER_CLAIM_TRANSCRIPT="$OWNER_CLAIM_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$OWNER_CLAIM_STATE")"
 printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"ci-watch","original_prompt":"ship","session_id":""}' > "$OWNER_CLAIM_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship\nOutput <done>SHIPPED</done> when all completion criteria are met."}]}}' > "$OWNER_CLAIM_TRANSCRIPT"
+OWNER_CLAIM_BEFORE=$(cksum "$OWNER_CLAIM_STATE")
 OWNER_CLAIM_OUTPUT=$(
   cd "$OWNER_CLAIM_ROOT"
   jq -n --arg transcript "$OWNER_CLAIM_TRANSCRIPT" --arg session "owner-session" \
     '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
-if printf '%s\n' "$OWNER_CLAIM_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
-   jq -e '.iteration == 2 and .session_id == "owner-session"' "$OWNER_CLAIM_STATE" >/dev/null 2>&1; then
+if [ -z "$OWNER_CLAIM_OUTPUT" ] &&
+   [ "$OWNER_CLAIM_BEFORE" = "$(cksum "$OWNER_CLAIM_STATE")" ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "  Stop hook prunes timestamp-stale state before ownership handling... "
+STALE_SESSION_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-stale-session.XXXXXX")
+STALE_SESSION_STATE="$STALE_SESSION_ROOT/.local/state/e2e-verify-2052.loop.local.json"
+STALE_SESSION_TRANSCRIPT="$STALE_SESSION_ROOT/owner-session.jsonl"
+mkdir -p "$(dirname "$STALE_SESSION_STATE")"
+printf '%s\n' '{"schema_version":2,"owner_workflow":"e2e-verify","loop_name":"e2e-verify-2052","iteration":28,"max_iterations":30,"completion_promise":"VERIFIED","terminal_promises":["VERIFIED","E2E_FAIL","INCOMPLETE"],"components":{},"phase":"completed","original_prompt":"verify","started_at":"2000-01-01T00:00:00Z","session_id":"owner-session"}' > "$STALE_SESSION_STATE"
+printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"Unrelated session output."}]}}' > "$STALE_SESSION_TRANSCRIPT"
+STALE_SESSION_OUTPUT=$(
+  cd "$STALE_SESSION_ROOT"
+  jq -n --arg transcript "$STALE_SESSION_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+)
+if [ -z "$STALE_SESSION_OUTPUT" ] && [ ! -e "$STALE_SESSION_STATE" ]; then
   echo "OK"
 else
   echo "FAIL"
@@ -1076,14 +1115,14 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
-echo -n "  Stop hook filters concurrent loops by transcript ownership before ambiguity checks... "
+echo -n "  Stop hook filters concurrent loops by session ownership before ambiguity checks... "
 CONCURRENT_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-concurrent.XXXXXX")
 CONCURRENT_STATE_DIR="$CONCURRENT_ROOT/.local/state"
 CONCURRENT_OWNER_STATE="$CONCURRENT_STATE_DIR/start-issue-309.loop.local.json"
 CONCURRENT_FOREIGN_STATE="$CONCURRENT_STATE_DIR/ship.loop.local.json"
 CONCURRENT_TRANSCRIPT="$CONCURRENT_ROOT/transcript.jsonl"
 mkdir -p "$CONCURRENT_STATE_DIR"
-printf '%s\n' '{"schema_version":2,"owner_workflow":"start-issue","loop_name":"start-issue-309","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","terminal_promises":["COMPLETE","INCOMPLETE"],"components":{},"phase":"implementing","original_prompt":"issue 309","session_id":""}' > "$CONCURRENT_OWNER_STATE"
+printf '%s\n' '{"schema_version":2,"owner_workflow":"start-issue","loop_name":"start-issue-309","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","terminal_promises":["COMPLETE","INCOMPLETE"],"components":{},"phase":"implementing","original_prompt":"issue 309","session_id":"owner-session"}' > "$CONCURRENT_OWNER_STATE"
 printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","iteration":7,"max_iterations":50,"completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"ci-watch","original_prompt":"ship","session_id":"foreign-session"}' > "$CONCURRENT_FOREIGN_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: start-issue-309"}]}}' > "$CONCURRENT_TRANSCRIPT"
 CONCURRENT_FOREIGN_BEFORE=$(cksum "$CONCURRENT_FOREIGN_STATE")
@@ -1105,8 +1144,8 @@ echo -n "  Stop hook fails closed for the live duplicate-loop shape... "
 DUPLICATE_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-duplicates.XXXXXX")
 DUPLICATE_STATE_DIR="$DUPLICATE_ROOT/.local/state"
 mkdir -p "$DUPLICATE_STATE_DIR"
-printf '%s\n' '{"loop_name":"start-issue-301","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"implementing","original_prompt":"issue 301","session_id":""}' > "$DUPLICATE_STATE_DIR/start-issue-301.loop.local.json"
-printf '%s\n' '{"loop_name":"direct-smoke","iteration":1,"max_iterations":10,"completion_promise":"DONE","phase":"testing","original_prompt":"smoke","session_id":""}' > "$DUPLICATE_STATE_DIR/direct-smoke.loop.local.json"
+printf '%s\n' '{"loop_name":"start-issue-301","iteration":1,"max_iterations":50,"completion_promise":"COMPLETE","phase":"implementing","original_prompt":"issue 301","session_id":"owner-session"}' > "$DUPLICATE_STATE_DIR/start-issue-301.loop.local.json"
+printf '%s\n' '{"loop_name":"direct-smoke","iteration":1,"max_iterations":10,"completion_promise":"DONE","phase":"testing","original_prompt":"smoke","session_id":"owner-session"}' > "$DUPLICATE_STATE_DIR/direct-smoke.loop.local.json"
 DUPLICATE_OWNER_BEFORE=$(cksum "$DUPLICATE_STATE_DIR/start-issue-301.loop.local.json")
 DUPLICATE_STRAY_BEFORE=$(cksum "$DUPLICATE_STATE_DIR/direct-smoke.loop.local.json")
 DUPLICATE_TRANSCRIPT="$DUPLICATE_ROOT/transcript.jsonl"
@@ -1116,7 +1155,8 @@ printf '%s\n' \
   > "$DUPLICATE_TRANSCRIPT"
 DUPLICATE_OUTPUT=$(
   cd "$DUPLICATE_ROOT"
-  printf '%s\n' "{\"transcript_path\":\"$DUPLICATE_TRANSCRIPT\"}" | "$CORE_STOP_HOOK"
+  jq -n --arg transcript "$DUPLICATE_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$DUPLICATE_OUTPUT" | jq -e '
     .decision == "block" and
@@ -1137,14 +1177,15 @@ PROMISE_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-promises.XXXXXX")
 PROMISE_STATE="$PROMISE_ROOT/.local/state/e2e-verify-42.loop.local.json"
 PROMISE_TRANSCRIPT="$PROMISE_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$PROMISE_STATE")"
-printf '%s\n' '{"schema_version":2,"owner_workflow":"e2e-verify","loop_name":"e2e-verify-42","iteration":1,"max_iterations":30,"completion_promise":"VERIFIED","terminal_promises":["VERIFIED","E2E_FAIL","INCOMPLETE"],"components":{},"phase":"e2e-testing","original_prompt":"verify","session_id":""}' > "$PROMISE_STATE"
+printf '%s\n' '{"schema_version":2,"owner_workflow":"e2e-verify","loop_name":"e2e-verify-42","iteration":1,"max_iterations":30,"completion_promise":"VERIFIED","terminal_promises":["VERIFIED","E2E_FAIL","INCOMPLETE"],"components":{},"phase":"e2e-testing","original_prompt":"verify","session_id":"owner-session"}' > "$PROMISE_STATE"
 printf '%s\n' \
   '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: e2e-verify-42"}]}}' \
   '{"role":"assistant","message":{"content":[{"type":"text","text":"<done>E2E_FAIL</done>"}]}}' \
   > "$PROMISE_TRANSCRIPT"
 PROMISE_BLOCK=$(
   cd "$PROMISE_ROOT"
-  printf '%s\n' "{\"transcript_path\":\"$PROMISE_TRANSCRIPT\"}" | "$CORE_STOP_HOOK"
+  jq -n --arg transcript "$PROMISE_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
 PROMISE_BLOCK_OK=false
 if printf '%s\n' "$PROMISE_BLOCK" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
@@ -1158,7 +1199,8 @@ fi
 )
 PROMISE_COMPLETE=$(
   cd "$PROMISE_ROOT"
-  printf '%s\n' "{\"transcript_path\":\"$PROMISE_TRANSCRIPT\"}" | "$CORE_STOP_HOOK"
+  jq -n --arg transcript "$PROMISE_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
 if [ "$PROMISE_BLOCK_OK" = true ] && [ -z "$PROMISE_COMPLETE" ] && [ ! -e "$PROMISE_STATE" ]; then
   echo "OK"
@@ -1172,12 +1214,13 @@ INVALID_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-invalid.XXXXXX")
 INVALID_STATE="$INVALID_ROOT/.local/state/ship.loop.local.json"
 INVALID_TRANSCRIPT="$INVALID_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$INVALID_STATE")"
-printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"FOREIGN","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"pushing","original_prompt":"ship","session_id":""}' > "$INVALID_STATE"
+printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"FOREIGN","terminal_promises":["SHIPPED","INCOMPLETE"],"components":{},"phase":"pushing","original_prompt":"ship","session_id":"owner-session"}' > "$INVALID_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$INVALID_TRANSCRIPT"
 INVALID_BEFORE=$(cksum "$INVALID_STATE")
 INVALID_OUTPUT=$(
   cd "$INVALID_ROOT"
-  jq -n --arg transcript "$INVALID_TRANSCRIPT" '{transcript_path: $transcript}' | "$CORE_STOP_HOOK"
+  jq -n --arg transcript "$INVALID_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$INVALID_OUTPUT" | jq -e '
     .decision == "block" and
@@ -1196,11 +1239,12 @@ LEGACY_SHIP_ROOT=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-stop-hook-legacy-ship.XXX
 LEGACY_SHIP_STATE="$LEGACY_SHIP_ROOT/.local/state/ship.loop.local.json"
 LEGACY_SHIP_TRANSCRIPT="$LEGACY_SHIP_ROOT/transcript.jsonl"
 mkdir -p "$(dirname "$LEGACY_SHIP_STATE")"
-printf '%s\n' '{"loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","phase":"ci-watch","args":"--no-merge","head_sha":"abc123","original_prompt":"ship","session_id":""}' > "$LEGACY_SHIP_STATE"
+printf '%s\n' '{"loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","phase":"ci-watch","args":"--no-merge","head_sha":"abc123","original_prompt":"ship","session_id":"owner-session"}' > "$LEGACY_SHIP_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$LEGACY_SHIP_TRANSCRIPT"
 LEGACY_SHIP_OUTPUT=$(
   cd "$LEGACY_SHIP_ROOT"
-  jq -n --arg transcript "$LEGACY_SHIP_TRANSCRIPT" '{transcript_path: $transcript}' | "$CORE_STOP_HOOK"
+  jq -n --arg transcript "$LEGACY_SHIP_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
 )
 LEGACY_REENTRY=$(
   cd "$LEGACY_SHIP_ROOT"

@@ -17,6 +17,10 @@ set -euo pipefail
 HOOK_INPUT=$(cat)
 
 # Extract transcript path from hook input
+STOP_HOOK_ACTIVE=$(echo "$HOOK_INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null)
+if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
+  exit 0
+fi
 TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 CURRENT_SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null)
 HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null)
@@ -65,26 +69,15 @@ block_stop() {
     '{"decision": "block", "reason": $reason, "systemMessage": $msg}'
 }
 
-transcript_owns_loop() {
-  local loop_name="$1"
-
-  [ -n "$loop_name" ] &&
-    [ -n "$TRANSCRIPT_PATH" ] &&
-    [ -f "$TRANSCRIPT_PATH" ] &&
-    grep -Fq -- "Loop initialized: $loop_name" "$TRANSCRIPT_PATH"
-}
-
 session_owns_loop_state() {
   local state_file="$1"
   local stored_session_id
   local stored_session_worktree_path
-  local loop_name
 
   [ -f "$state_file" ] && [ -r "$state_file" ] && jq empty "$state_file" 2>/dev/null || return 1
 
   stored_session_id=$(jq -r '.session_id // empty' "$state_file" 2>/dev/null)
   stored_session_worktree_path=$(jq -r '.session_worktree_path // empty' "$state_file" 2>/dev/null)
-  loop_name=$(jq -r '.loop_name // empty' "$state_file" 2>/dev/null)
 
   if [ -n "$stored_session_worktree_path" ]; then
     [ -d "$stored_session_worktree_path" ] || return 1
@@ -92,12 +85,32 @@ session_owns_loop_state() {
     [ "$stored_session_worktree_path" = "$CURRENT_WORKTREE_PATH" ] || return 1
   fi
 
-  if [ -n "$stored_session_id" ]; then
-    [ -n "$CURRENT_SESSION_ID" ] && [ "$stored_session_id" = "$CURRENT_SESSION_ID" ]
-    return
+  [ -n "$stored_session_id" ] &&
+    [ -n "$CURRENT_SESSION_ID" ] &&
+    [ "$stored_session_id" = "$CURRENT_SESSION_ID" ]
+}
+
+state_is_stale_for_transcript() {
+  local state_file="$1"
+  local started_at
+  local transcript_birth
+  local loop_epoch
+
+  [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ] || return 1
+  started_at=$(jq -r '.started_at // empty' "$state_file" 2>/dev/null)
+  [ -n "$started_at" ] || return 1
+
+  if [[ "${OSTYPE:-}" == "darwin"* ]]; then
+    transcript_birth=$(stat -f %B "$TRANSCRIPT_PATH" 2>/dev/null || echo "0")
+    loop_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$started_at" +%s 2>/dev/null || echo "0")
+  else
+    transcript_birth=$(stat -c %W "$TRANSCRIPT_PATH" 2>/dev/null || echo "0")
+    loop_epoch=$(date -d "$started_at" +%s 2>/dev/null || echo "0")
   fi
 
-  transcript_owns_loop "$loop_name"
+  [ "$loop_epoch" -gt 0 ] &&
+    [ "$transcript_birth" -gt 0 ] &&
+    [ "$transcript_birth" -gt "$loop_epoch" ]
 }
 
 state_has_stale_worktree() {
@@ -339,6 +352,11 @@ STATE_FILES=$(find_active_loops)
 OWNED_STATE_FILES=""
 while IFS= read -r CANDIDATE_STATE_FILE; do
   [ -n "$CANDIDATE_STATE_FILE" ] || continue
+  if state_is_stale_for_transcript "$CANDIDATE_STATE_FILE"; then
+    loop_log "stop-hook: pruning timestamp-stale loop state '$CANDIDATE_STATE_FILE'"
+    cleanup_loop "$CANDIDATE_STATE_FILE"
+    continue
+  fi
   if state_has_stale_worktree "$CANDIDATE_STATE_FILE"; then
     loop_log "stop-hook: pruning stale loop state '$CANDIDATE_STATE_FILE'"
     cleanup_loop "$CANDIDATE_STATE_FILE"
@@ -409,11 +427,6 @@ if ! read_loop_state "$STATE_FILE" '[]' 2>/dev/null; then
   exit 0
 fi
 
-STORED_SESSION_ID=$(jq -r '.session_id // empty' "$STATE_FILE")
-if [ -z "$STORED_SESSION_ID" ] && [ -n "$CURRENT_SESSION_ID" ]; then
-  set_loop_field "$STATE_FILE" "session_id" "$CURRENT_SESSION_ID" '[]'
-  loop_log "stop-hook: claimed loop state '$STATE_FILE' for session '$CURRENT_SESSION_ID'"
-fi
 STORED_SESSION_WORKTREE_PATH=$(jq -r '.session_worktree_path // empty' "$STATE_FILE")
 if [ -z "$STORED_SESSION_WORKTREE_PATH" ]; then
   set_loop_field "$STATE_FILE" "session_worktree_path" "$CURRENT_WORKTREE_PATH" '[]'

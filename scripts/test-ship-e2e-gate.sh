@@ -474,12 +474,13 @@ git -C "$HEADLESS_TMP" add validated.txt
 cp "$STOP_HOOK" "$HEADLESS_TMP/hooks/stop-hook.sh"
 cp "$LOOP_LIB" "$HEADLESS_TMP/lib/loop-state.sh"
 cat > "$HEADLESS_TMP/.local/state/ship.loop.local.json" <<'EOF'
-{"loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","phase":"reviewing","original_prompt":"ship"}
+{"loop_name":"ship","iteration":1,"max_iterations":50,"completion_promise":"SHIPPED","phase":"reviewing","original_prompt":"ship","session_id":"owner-session"}
 EOF
 HEADLESS_TRANSCRIPT="$HEADLESS_TMP/transcript.jsonl"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$HEADLESS_TRANSCRIPT"
 HEADLESS_OUTPUT=$(cd "$HEADLESS_TMP" && \
-  jq -n --arg transcript "$HEADLESS_TRANSCRIPT" '{transcript_path: $transcript}' | bash hooks/stop-hook.sh)
+  jq -n --arg transcript "$HEADLESS_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | bash hooks/stop-hook.sh)
 HEADLESS_STATE=$(jq -c '{phase,review_result,review_skip_reason}' \
   "$HEADLESS_TMP/.local/state/ship.loop.local.json")
 rm -rf "$HEADLESS_TMP"
@@ -606,10 +607,12 @@ cp "$ROOT_DIR/plugins/go-workflow/lib/loop-state.sh" "$FRESH_PLUGIN_ROOT/lib/loo
 cp "$ROOT_DIR/plugins/go-workflow/scripts/setup-loop.sh" "$FRESH_PLUGIN_ROOT/scripts/setup-loop.sh"
 cp "$RESUME_MESSAGES" "$FRESH_PLUGIN_ROOT/lib/ship/resume-messages.json"
 chmod +x "$FRESH_PLUGIN_ROOT/scripts/setup-loop.sh"
+FRESH_SHIP_TRANSCRIPT="$FRESH_SHIP_ROOT/transcript.jsonl"
+printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$FRESH_SHIP_TRANSCRIPT"
 
 set +e
 FRESH_START_OUTPUT=$(cd "$FRESH_SHIP_ROOT" && \
-  CLAUDE_PLUGIN_ROOT="$FRESH_PLUGIN_ROOT" CALLER_LOOP_STATE_FILE="" CALLER_WORKFLOW_STATE_PATH="" ARGUMENTS="" \
+  CLAUDE_PLUGIN_ROOT="$FRESH_PLUGIN_ROOT" CLAUDE_SESSION_ID="owner-session" CALLER_LOOP_STATE_FILE="" CALLER_WORKFLOW_STATE_PATH="" ARGUMENTS="" \
   bash -c '
     gh() { printf "%s\n" "example/project"; }
     source "$1"
@@ -642,10 +645,9 @@ if [ "$FRESH_START_STATUS" -ne 0 ] ||
   fail "fresh standalone ship must initialize its canonical schema-v2 owner state"
 fi
 
-FRESH_SHIP_TRANSCRIPT="$FRESH_SHIP_ROOT/transcript.jsonl"
-printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$FRESH_SHIP_TRANSCRIPT"
 FRESH_STOP_OUTPUT=$(cd "$FRESH_SHIP_ROOT" && \
-  jq -n --arg transcript "$FRESH_SHIP_TRANSCRIPT" '{transcript_path: $transcript}' | bash "$STOP_HOOK")
+  jq -n --arg transcript "$FRESH_SHIP_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | bash "$STOP_HOOK")
 printf '%s\n' '#!/bin/bash' 'exit 97' > "$FRESH_PLUGIN_ROOT/scripts/setup-loop.sh"
 chmod +x "$FRESH_PLUGIN_ROOT/scripts/setup-loop.sh"
 
@@ -691,12 +693,13 @@ LEGACY_SHIP_TRANSCRIPT="$LEGACY_SHIP_TMP/transcript.jsonl"
 jq -n \
   --arg original_repo_root "$LEGACY_SHIP_TMP" \
   --arg worktree_path "$LEGACY_SHIP_TMP" \
-  '{loop_name:"ship",iteration:4,max_iterations:50,completion_promise:"SHIPPED",phase:"ci-watch",original_prompt:"ship",session_id:"",awaiting_driver_input:false,driver_input_reason:"",phase_messages:{"ci-watch":"Resume exact-head CI."},original_repo_root:$original_repo_root,worktree_path:$worktree_path,repo_slug:"example/project",pass:2,pr_number:"302",head_sha:"legacy-head"}' \
+  '{loop_name:"ship",iteration:4,max_iterations:50,completion_promise:"SHIPPED",phase:"ci-watch",original_prompt:"ship",session_id:"owner-session",awaiting_driver_input:false,driver_input_reason:"",phase_messages:{"ci-watch":"Resume exact-head CI."},original_repo_root:$original_repo_root,worktree_path:$worktree_path,repo_slug:"example/project",pass:2,pr_number:"302",head_sha:"legacy-head"}' \
   > "$LEGACY_SHIP_STATE"
 printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","content":"Loop initialized: ship"}]}}' > "$LEGACY_SHIP_TRANSCRIPT"
 
 LEGACY_STOP_OUTPUT=$(cd "$LEGACY_SHIP_TMP" && \
-  jq -n --arg transcript "$LEGACY_SHIP_TRANSCRIPT" '{transcript_path: $transcript}' | bash "$STOP_HOOK")
+  jq -n --arg transcript "$LEGACY_SHIP_TRANSCRIPT" --arg session "owner-session" \
+    '{transcript_path: $transcript, session_id: $session}' | bash "$STOP_HOOK")
 
 if ! printf '%s\n' "$LEGACY_STOP_OUTPUT" | jq -e \
   '.decision == "block" and ((.reason // "") | length > 0)' >/dev/null 2>&1; then
@@ -765,7 +768,7 @@ for LEGACY_LINK_ATTEMPT in 1 2 3 4 5; do
   LEGACY_LINK_CANONICAL="$LEGACY_LINK_ROOT/.local/state/ship.loop.local.json"
   mkdir -p "$(dirname "$LEGACY_LINK_STATE")"
   jq -n \
-    '{loop_name:"ship",iteration:7,max_iterations:50,completion_promise:"SHIPPED",phase:"ci-watch",original_prompt:"ship",session_id:"",awaiting_driver_input:false,driver_input_reason:"",phase_messages:{"ci-watch":"Resume linked-worktree CI."},pass:3,pr_number:"302",head_sha:"linked-legacy-head"}' \
+    '{loop_name:"ship",iteration:7,max_iterations:50,completion_promise:"SHIPPED",phase:"ci-watch",original_prompt:"ship",session_id:"owner-session",awaiting_driver_input:false,driver_input_reason:"",phase_messages:{"ci-watch":"Resume linked-worktree CI."},pass:3,pr_number:"302",head_sha:"linked-legacy-head"}' \
     > "$LEGACY_LINK_STATE"
 
   set +e
