@@ -1273,6 +1273,21 @@ else
   echo "OK"
 fi
 
+echo -n "HOL scanner baseline remains strict and ASCII-safe... "
+HOL_SCANNER_WORKFLOW="$ROOT_DIR/.github/workflows/hol-plugin-scanner.yml"
+if ! file_contains 'min_score: 80' "$HOL_SCANNER_WORKFLOW"; then
+  echo "FAIL (minimum score threshold changed)"
+  ERRORS=$((ERRORS + 1))
+elif ! file_contains 'fail_on_severity: high' "$HOL_SCANNER_WORKFLOW"; then
+  echo "FAIL (high-severity finding gate changed)"
+  ERRORS=$((ERRORS + 1))
+elif LC_ALL=C rg -q '[^\x00-\x7F]' "$E2E_TEST_EXECUTION"; then
+  echo "FAIL (E2E guidance contains non-ASCII text that triggers scanner obfuscation detection)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Workflow re-entry rejects invalid persisted repository paths... "
 REENTRY_FAILURE=""
 assert_reentry_contract() {
