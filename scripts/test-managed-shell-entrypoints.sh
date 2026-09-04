@@ -50,10 +50,13 @@ if [ "$(grep -c '^#!/usr/bin/env bash$' "$ROOT_DIR/scripts/test-gopher-ai-review
 fi
 require_text '/bin/bash "$LAUNCHER"' "$ROOT_DIR/scripts/test-tmux-start.sh" \
   "tmux launcher test must use an explicit interpreter"
-if [ "$(grep -c '^#!/bin/bash$' "$ROOT_DIR/scripts/test-tmux-start.sh")" -ne 1 ]; then
-  printf 'FAIL: %s\n' "tmux fixture commands must use Bash ENOEXEC fallback in managed workers"
+if [ "$(grep -c '^#!/bin/bash$' "$ROOT_DIR/scripts/test-tmux-start.sh")" -ne 2 ]; then
+  printf 'FAIL: %s\n' "tmux worktree fixture must retain its executable shebang"
   ERRORS=$((ERRORS + 1))
 fi
+require_text '/bin/bash "$SCRIPT_DIR/worktree-create.sh"' \
+  "$ROOT_DIR/plugins/go-workflow/scripts/tmux-start.sh" \
+  "tmux launcher must route its worktree helper through /bin/bash"
 require_text '/bin/bash "$ROOT_DIR/scripts/test-go-web-templates.sh"' "$ROOT_DIR/scripts/test-commands.sh" \
   "nested Go web test must use an explicit interpreter"
 require_text '/bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh"' \

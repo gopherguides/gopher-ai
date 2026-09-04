@@ -43,6 +43,7 @@ create_fixture() {
   chmod +x "$LAUNCHER"
 
   cat > "$FIXTURE_DIR/worktree-create.sh" <<'EOF'
+#!/bin/bash
 set -euo pipefail
 
 METADATA_FILE=""
