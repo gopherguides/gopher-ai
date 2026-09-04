@@ -10,7 +10,7 @@ require_text() {
   local file="$2"
   local label="$3"
 
-  if ! rg -Fq -- "$text" "$file"; then
+  if ! grep -Fq -- "$text" "$file"; then
     printf 'FAIL: %s\n' "$label"
     ERRORS=$((ERRORS + 1))
   fi
@@ -21,7 +21,7 @@ reject_pattern() {
   local file="$2"
   local label="$3"
 
-  if rg -q -- "$pattern" "$file"; then
+  if grep -Eq -- "$pattern" "$file"; then
     printf 'FAIL: %s\n' "$label"
     ERRORS=$((ERRORS + 1))
   fi
@@ -38,19 +38,19 @@ require_text '/bin/bash "$PLANNER"' "$ROOT_DIR/scripts/test-review-plan.sh" \
   "review planner test must use an explicit interpreter"
 require_text '/bin/bash "$SELECTOR"' "$ROOT_DIR/scripts/test-ship-ollama-model.sh" \
   "Ollama selector test must use an explicit interpreter"
-if [ "$(rg -c '^#!/bin/bash$' "$ROOT_DIR/scripts/test-ship-ollama-model.sh")" -ne 1 ]; then
+if [ "$(grep -c '^#!/bin/bash$' "$ROOT_DIR/scripts/test-ship-ollama-model.sh")" -ne 1 ]; then
   printf 'FAIL: %s\n' "Ollama fixture commands must use Bash ENOEXEC fallback in managed workers"
   ERRORS=$((ERRORS + 1))
 fi
 require_text '/bin/bash "$REVIEW_SCRIPT"' "$ROOT_DIR/scripts/test-gopher-ai-review-action.sh" \
   "review action test must use an explicit interpreter"
-if [ "$(rg -c '^#!/usr/bin/env bash$' "$ROOT_DIR/scripts/test-gopher-ai-review-action.sh")" -ne 1 ]; then
+if [ "$(grep -c '^#!/usr/bin/env bash$' "$ROOT_DIR/scripts/test-gopher-ai-review-action.sh")" -ne 1 ]; then
   printf 'FAIL: %s\n' "review action fixture commands must use Bash ENOEXEC fallback in managed workers"
   ERRORS=$((ERRORS + 1))
 fi
 require_text '/bin/bash "$LAUNCHER"' "$ROOT_DIR/scripts/test-tmux-start.sh" \
   "tmux launcher test must use an explicit interpreter"
-if [ "$(rg -c '^#!/bin/bash$' "$ROOT_DIR/scripts/test-tmux-start.sh")" -ne 1 ]; then
+if [ "$(grep -c '^#!/bin/bash$' "$ROOT_DIR/scripts/test-tmux-start.sh")" -ne 1 ]; then
   printf 'FAIL: %s\n' "tmux fixture commands must use Bash ENOEXEC fallback in managed workers"
   ERRORS=$((ERRORS + 1))
 fi
@@ -107,7 +107,7 @@ reject_pattern 'env -u CLAUDE_SESSION_ID "\$ROOT_DIR/shared/scripts/setup-loop\.
   "loop setup tests must use an explicit interpreter"
 reject_pattern '#!/bin/sh' "$ROOT_DIR/scripts/test-hooks.sh" \
   "hook fixture commands must use Bash ENOEXEC fallback in managed workers"
-if [ "$(rg -c '^#!/bin/bash$' "$ROOT_DIR/scripts/test-hooks.sh")" -ne 1 ]; then
+if [ "$(grep -c '^#!/bin/bash$' "$ROOT_DIR/scripts/test-hooks.sh")" -ne 1 ]; then
   printf 'FAIL: %s\n' "hook fixture commands must not include executable shebangs"
   ERRORS=$((ERRORS + 1))
 fi
