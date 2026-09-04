@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after finalizing SKILL.md changes.
 #
-# Total entries: 337
+# Total entries: 338
 002bd0c3859a936f2bbfa90a8c967db4d141b99a741e4c23f0d5bec397a2d3fc complete-issue
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0232ae1141f76c0ba40045649179a566080de9fc717c6cb08c3961b827fe3e88 create-pr
@@ -123,6 +123,7 @@
 57f820ffa3b9b7dff9a78d79876427fb104a406c608ab5da0a0856a415203e90 tailwind-best-practices
 57fe1facec70eb702806f6854a53dc85e42599a427ffd4122d3777f8eca98ecb go-concurrency
 583a2c9b8298f3163694c5b0178890d1dc07383f42cb58d8b73c691b76346e99 create-pr
+592f42038ab0ccd9ce5b9fc6f9502b81ab8ae53288047d364fb9564121d7bc3b tailwind-best-practices
 5959fd519ee131ac34f9a56a7f0cf807fceaefe10b10ebb601752b6947a943ee review-deep
 5985d9ca68916f9972dcf3013375d6ae14e1520e99563d28dd295054518db989 create-worktree
 59ba79e01f609fa583aed8a339fca9b67e10b26f1bcb451d1ac6e9cec063a30d templui
