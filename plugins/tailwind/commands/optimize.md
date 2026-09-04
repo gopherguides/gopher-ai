@@ -1,7 +1,7 @@
 ---
 argument-hint: "[path] [--report|--fix|--verbose]"
 description: "Analyze and optimize Tailwind CSS output"
-allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(node:*)", "Bash(grep:*)", "Bash(ls:*)", "Bash(fd:*)", "Bash(wc:*)", "Bash(gzip:*)", "Bash(comm:*)", "Bash(sed:*)", "Bash(time:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(node:*)", "Bash(grep:*)", "Bash(ls:*)", "Bash(fd:*)", "Bash(wc:*)", "Bash(gzip:*)", "Bash(comm:*)", "Bash(sed:*)", "Bash(time:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 
 # Optimize Tailwind CSS

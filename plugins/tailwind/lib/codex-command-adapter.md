@@ -59,12 +59,12 @@ unless the user supplied an output path. Migration with `--check` is also
 read-only. When `--fix` is present, limit changes to the requested workflow,
 preserve unrelated work, and verify every modified output.
 
-## MCP Tools
+## Documentation Sources
 
-MCP tools are supplementary. Use a Tailwind MCP tool when it is available and
-materially improves installation guidance, utility conversion, or version
-accuracy. If it is unavailable, continue with repository evidence, the bundled
-Tailwind references, and official documentation rather than blocking the
+Use repository evidence and the bundled Tailwind references first. Consult the
+official documentation through the host assistant when current upstream
+behavior matters. If network access is unavailable, continue with the bundled
+references and state the verification limitation rather than blocking the
 workflow.
 
 ## Native Capabilities
