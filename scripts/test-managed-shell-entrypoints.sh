@@ -73,8 +73,8 @@ require_text 'Managed Darwin worker compiled Go tests' \
   "generated Go fixtures must recognize compile-only managed-worker validation"
 require_text '/bin/bash ../../../scripts/run-go-tests.sh ./...' "$ROOT_DIR/detent.yaml" \
   "Detent demo tests must use the managed-worker runner"
-require_text 'go build -o "$TMPDIR/gopher-ai-demo"' "$ROOT_DIR/detent.yaml" \
-  "Detent demo binaries must remain in the managed temporary directory"
+require_text 'go build -o "${TMPDIR:-/tmp}/gopher-ai-demo"' "$ROOT_DIR/detent.yaml" \
+  "Detent demo binaries must use the managed temporary directory with a portable fallback"
 reject_pattern '\$\("\$SCRIPT_DIR/cache-mutate\.sh"' \
   "$ROOT_DIR/plugins/gopher-guides/scripts/cache-api.sh" \
   "cache API must not directly execute its mutation helper"
