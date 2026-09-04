@@ -232,9 +232,9 @@ METADATA_FILE=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-tmux-start.XXXXXX")
 trap 'rm -f "$METADATA_FILE"' EXIT
 
 if [ "$COPY_ENV" = "true" ]; then
-  "$SCRIPT_DIR/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --copy-env --metadata-file "$METADATA_FILE"
+  /bin/bash "$SCRIPT_DIR/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --copy-env --metadata-file "$METADATA_FILE"
 else
-  "$SCRIPT_DIR/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --no-copy-env --metadata-file "$METADATA_FILE"
+  /bin/bash "$SCRIPT_DIR/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --no-copy-env --metadata-file "$METADATA_FILE"
 fi
 
 ITEM_TITLE=""

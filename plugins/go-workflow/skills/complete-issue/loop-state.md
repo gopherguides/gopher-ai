@@ -27,7 +27,7 @@ WORKFLOW_STATE_PATH='[]'
 if [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
   echo "Re-entry detected — skipping setup-loop."
 else
-  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "complete-issue-${ISSUE_NUM}" "COMPLETE" 100 "" \
+  /bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh" "complete-issue-${ISSUE_NUM}" "COMPLETE" 100 "" \
     '{"implementing":"Resume start-issue implementation from its component phase.","reviewing":"The prior in-session review is void; continue to E2E verification and shipping without restarting it.","verifying":"Resume E2E verification and shipping from the active component phase.","incomplete":"Report the persisted incomplete reason, emit the INCOMPLETE terminal marker, and stop without entering Phase 3."}' \
     "$STATE_FILE" '["COMPLETE","INCOMPLETE"]'
 fi

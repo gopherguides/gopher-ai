@@ -38,7 +38,7 @@ if [ ! -x "<PLUGIN_ROOT>/scripts/cleanup-loop.sh" ]; then
   echo "ERROR: Plugin cache stale. Refresh the go-workflow plugin and restart the active assistant."
   exit 1
 fi
-"<PLUGIN_ROOT>/scripts/cleanup-loop.sh" "$SKILL_ARGS"
+/bin/bash "<PLUGIN_ROOT>/scripts/cleanup-loop.sh" "$SKILL_ARGS"
 ```
 
 Report the helper output exactly. Do not claim a loop was removed when the

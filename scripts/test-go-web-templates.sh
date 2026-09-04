@@ -216,9 +216,13 @@ render_and_verify_fixture() {
     return
   fi
 
-  if ! output=$(cd "$fixture" && go test -v ./... 2>&1); then
+  if ! output=$(cd "$fixture" && /bin/bash "$ROOT_DIR/scripts/run-go-tests.sh" -v ./... 2>&1); then
     printf '%s\n' "$output"
     fail "$backend fixture tests failed"
+    return
+  fi
+
+  if [[ "$output" == *"Managed Darwin worker compiled Go tests"* ]]; then
     return
   fi
 

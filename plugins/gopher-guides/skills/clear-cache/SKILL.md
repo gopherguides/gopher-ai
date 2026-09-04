@@ -15,7 +15,7 @@ description: "Clears Gopher Guides API response cache data and reports each reso
 Run the packaged cache helper:
 
 ```bash
-"<PLUGIN_ROOT>/scripts/clear-cache.sh"
+/bin/bash "<PLUGIN_ROOT>/scripts/clear-cache.sh"
 ```
 
 Return the helper's resolved cache target output. It removes only the configured Gopher Guides cache file and, when no explicit override is configured, the current project's legacy Claude-era Gopher Guides cache file. It does not remove cache directories or unrelated files.

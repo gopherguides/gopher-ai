@@ -15,6 +15,7 @@ ERRORS=0
 
 echo "=== Command File Tests ==="
 
+/bin/bash "$ROOT_DIR/scripts/test-managed-shell-entrypoints.sh"
 bash "$ROOT_DIR/scripts/test-review-plan.sh"
 bash "$ROOT_DIR/scripts/test-codex-compatibility-lanes.sh"
 python3 "$ROOT_DIR/scripts/test-github-actions-runtimes.py"
@@ -1535,7 +1536,7 @@ else
   echo "OK"
 fi
 
-if ! "$ROOT_DIR/scripts/test-go-web-templates.sh"; then
+if ! /bin/bash "$ROOT_DIR/scripts/test-go-web-templates.sh"; then
   ERRORS=$((ERRORS + 1))
 fi
 

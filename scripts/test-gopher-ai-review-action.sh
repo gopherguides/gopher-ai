@@ -47,8 +47,6 @@ write_fake_curl() {
 
   mkdir -p "$bin_dir"
   cat > "$bin_dir/curl" <<'EOF'
-#!/usr/bin/env bash
-
 set -euo pipefail
 
 output_file=""
@@ -135,7 +133,7 @@ run_response_case() {
   GOPHER_AI_FOCUS="" \
   GOPHER_AI_DIFF_PATH="$case_root/workspace/pr.diff" \
   GOPHER_AI_RETRY_DELAY_SECONDS=0 \
-  "$REVIEW_SCRIPT" > "$case_root/log" 2>&1 || command_status=$?
+  /bin/bash "$REVIEW_SCRIPT" > "$case_root/log" 2>&1 || command_status=$?
 
   [ "$command_status" -eq "$want_status" ] || fail "$name exit status = $command_status, want $want_status"
   [ "$(cat "$case_root/count")" = "2" ] || fail "$name did not make exactly two bounded attempts"

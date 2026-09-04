@@ -72,7 +72,7 @@ Clear any leftover worktree state from a prior session so it cannot affect a
 fresh `$go-workflow:start-issue` invocation:
 
 ```bash
-"<PLUGIN_ROOT>/scripts/worktree-state.sh" clear 2>/dev/null || true
+/bin/bash "<PLUGIN_ROOT>/scripts/worktree-state.sh" clear 2>/dev/null || true
 ```
 
 ## Security Validation & Flag Parsing
@@ -203,7 +203,7 @@ elif [ ! -x "<PLUGIN_ROOT>/scripts/setup-loop.sh" ]; then
   echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."
   exit 1
 else
-  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "start-issue-$ISSUE_NUM" "COMPLETE" "" "" '{}' \
+  /bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh" "start-issue-$ISSUE_NUM" "COMPLETE" "" "" '{}' \
     "$STATE_FILE" '["COMPLETE","INCOMPLETE"]'
   initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
   set_loop_field "$STATE_FILE" "original_repo_root" "$ORIGINAL_REPO_ROOT" '[]'

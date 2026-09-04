@@ -286,7 +286,7 @@ the state file before resolving so every review pass uses the same model.
 OLLAMA_MODEL=${OLLAMA_MODEL:-$(get_loop_field "$STATE_FILE" "ollama_model" "$WORKFLOW_STATE_PATH")}
 if [ -z "$OLLAMA_MODEL" ]; then
   set +e
-  OLLAMA_MODEL=$(cd "$WORKTREE_PATH" && "<PLUGIN_ROOT>/scripts/select-ollama-model.sh" 2>"/tmp/ollama-select-stderr-$$")
+  OLLAMA_MODEL=$(cd "$WORKTREE_PATH" && /bin/bash "<PLUGIN_ROOT>/scripts/select-ollama-model.sh" 2>"/tmp/ollama-select-stderr-$$")
   OLLAMA_SELECT_EXIT_CODE=$?
   OLLAMA_SELECT_STDERR=$(cat "/tmp/ollama-select-stderr-$$" 2>/dev/null)
   rm -f "/tmp/ollama-select-stderr-$$"

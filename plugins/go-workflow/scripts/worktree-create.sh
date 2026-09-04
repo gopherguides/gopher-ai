@@ -319,7 +319,7 @@ run_create() {
   fi
 
   if [ "$register_state" = "true" ]; then
-    "$SCRIPT_DIR/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$MAIN_REPO_ROOT" "$ITEM_NUMBER"
+    /bin/bash "$SCRIPT_DIR/worktree-state.sh" save "$WORKTREE_ABS_PATH" "$MAIN_REPO_ROOT" "$ITEM_NUMBER"
   fi
 
   write_metadata "$metadata_file"

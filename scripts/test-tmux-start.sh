@@ -9,6 +9,7 @@ FIXTURE_DIR="$TEST_ROOT/plugin/scripts"
 FAKE_BIN="$TEST_ROOT/bin"
 LAUNCHER="$FIXTURE_DIR/tmux-start.sh"
 TMUX_LOG="$TEST_ROOT/tmux.log"
+STATE_HELPER_LOG="$TEST_ROOT/worktree-state.log"
 ERRORS=0
 
 trap 'rm -rf "$TEST_ROOT"' EXIT
@@ -46,6 +47,7 @@ create_fixture() {
 #!/bin/bash
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 METADATA_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -65,11 +67,20 @@ REPO_NAME	gopher-ai
 WORKTREE_ABS_PATH	/tmp/issue worktree
 BRANCH_NAME	issue-327-launch-originating-assistant
 METADATA
+
+/bin/bash "$SCRIPT_DIR/worktree-state.sh" save "/tmp/issue worktree" "/tmp/main repo" 327
 EOF
   chmod +x "$FIXTURE_DIR/worktree-create.sh"
 
-  cat > "$FAKE_BIN/gh" <<'EOF'
+  cat > "$FIXTURE_DIR/worktree-state.sh" <<'EOF'
 #!/bin/bash
+set -euo pipefail
+
+printf '%s\n' "$*" >> "$STATE_HELPER_LOG"
+EOF
+  chmod +x "$FIXTURE_DIR/worktree-state.sh"
+
+  cat > "$FAKE_BIN/gh" <<'EOF'
 set -euo pipefail
 
 if [ "${1:-} ${2:-}" = "auth status" ]; then
@@ -80,7 +91,6 @@ exit 1
 EOF
 
   cat > "$FAKE_BIN/git" <<'EOF'
-#!/bin/bash
 set -euo pipefail
 
 if [ "${1:-} ${2:-}" = "rev-parse --is-inside-work-tree" ]; then
@@ -92,17 +102,14 @@ exit 1
 EOF
 
   cat > "$FAKE_BIN/jq" <<'EOF'
-#!/bin/bash
 exit 0
 EOF
 
   cat > "$FAKE_BIN/sleep" <<'EOF'
-#!/bin/bash
 exit 0
 EOF
 
   cat > "$FAKE_BIN/tmux" <<'EOF'
-#!/bin/bash
 set -euo pipefail
 
 printf '%s' "${1:-}" >> "$TMUX_TEST_LOG"
@@ -129,12 +136,14 @@ run_launcher() {
   local ready_output="$1"
   shift
   : > "$TMUX_LOG"
+  : > "$STATE_HELPER_LOG"
   PATH="$FAKE_BIN:$PATH" \
     TMUX="test-session" \
     TMUX_TEST_LOG="$TMUX_LOG" \
     TMUX_READY_OUTPUT="$ready_output" \
+    STATE_HELPER_LOG="$STATE_HELPER_LOG" \
     TMPDIR="$TEST_ROOT/tmp" \
-    "$LAUNCHER" 327 --no-copy-env "$@"
+    /bin/bash "$LAUNCHER" 327 --no-copy-env "$@"
 }
 
 send_keys_log() {
@@ -155,6 +164,8 @@ assert_surface_flow() {
   fi
 
   assert_contains "$output" "appears ready." "$label readiness detection"
+  assert_equal "save /tmp/issue worktree /tmp/main repo 327" "$(cat "$STATE_HELPER_LOG")" \
+    "$label state helper invocation"
 
   local window_name="gopher-ai-issue-327-launch-originating-assistant"
   local launch_marker="GOPHER_AI_ASSISTANT_LAUNCHED_327"
