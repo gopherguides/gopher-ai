@@ -51,7 +51,7 @@ and stop before creating a worktree or tmux window.
 ## Clear Worktree State
 
 ```bash
-"<PLUGIN_ROOT>/scripts/worktree-state.sh" clear 2>/dev/null || true
+/bin/bash "<PLUGIN_ROOT>/scripts/worktree-state.sh" clear 2>/dev/null || true
 ```
 
 ## Issue Number
@@ -66,7 +66,7 @@ worktree:
 
 ```bash
 SOURCE_DIR="$(pwd)"
-"<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
+/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
 ```
 
 If the output starts with `ENV_FILES_FOUND=true`, follow the shared
@@ -87,13 +87,13 @@ SURFACE="<claude-or-codex>"
 If copying environment files was explicitly authorized:
 
 ```bash
-"<PLUGIN_ROOT>/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --copy-env
+/bin/bash "<PLUGIN_ROOT>/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --copy-env
 ```
 
 Otherwise:
 
 ```bash
-"<PLUGIN_ROOT>/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --no-copy-env
+/bin/bash "<PLUGIN_ROOT>/scripts/tmux-start.sh" "$SKILL_ARGS" --surface "$SURFACE" --no-copy-env
 ```
 
 The script validates prerequisites, creates or reuses the standard issue

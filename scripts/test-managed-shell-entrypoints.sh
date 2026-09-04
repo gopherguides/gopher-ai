@@ -60,6 +60,15 @@ require_text '/bin/bash "$SCRIPT_DIR/worktree-create.sh"' \
 require_text '/bin/bash "$SCRIPT_DIR/worktree-state.sh"' \
   "$ROOT_DIR/plugins/go-workflow/scripts/worktree-create.sh" \
   "worktree creator must route its state helper through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-state.sh" clear' \
+  "$ROOT_DIR/plugins/go-workflow/skills/tmux-start/SKILL.md" \
+  "tmux skill must route state cleanup through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files' \
+  "$ROOT_DIR/plugins/go-workflow/skills/tmux-start/SKILL.md" \
+  "tmux skill must route environment discovery through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/tmux-start.sh" "$SKILL_ARGS"' \
+  "$ROOT_DIR/plugins/go-workflow/skills/tmux-start/SKILL.md" \
+  "tmux skill must route launcher calls through /bin/bash"
 require_text '/bin/bash "$ROOT_DIR/scripts/test-go-web-templates.sh"' "$ROOT_DIR/scripts/test-commands.sh" \
   "nested Go web test must use an explicit interpreter"
 require_text '/bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh"' \

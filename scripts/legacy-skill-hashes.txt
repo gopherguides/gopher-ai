@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after finalizing SKILL.md changes.
 #
-# Total entries: 341
+# Total entries: 342
 002bd0c3859a936f2bbfa90a8c967db4d141b99a741e4c23f0d5bec397a2d3fc complete-issue
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0232ae1141f76c0ba40045649179a566080de9fc717c6cb08c3961b827fe3e88 create-pr
@@ -45,6 +45,7 @@
 1c5a48ccb91f9028351550cfcffb0e07672b32c48ec930547ea81367c4ca1bd8 address-review
 1fdcc7d3112a079590d0dee5de446685e6c6cd7e974a407c27573458cfc97f16 tmux-start
 205f8d6a3ab6b3a24f26ed8c368148b0fb77d387a93dcfbcf2abc792875f6950 commit
+206310d9ddd595ab81e4e92b4eca4c6b5fdd6d3f5a06bf5f6d6401ea6ee32338 tmux-start
 208028841d422b155595a8c7e8434475efced251f8a03980e8e79fdf49ecec30 start-issue
 21ebeffc01f5d4a2d735c38d981bd887e67ea51cd1c8d36f6eb09c3b983108b3 gemini-image
 220d37b75d77df6febe38b5e65ebfed087cc33c8677f5179327238a726230b05 templui
