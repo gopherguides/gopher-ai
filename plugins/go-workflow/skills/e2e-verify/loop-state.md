@@ -65,7 +65,7 @@ if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
 elif [ -f "$STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$STATE_FILE" 2>/dev/null)" ]; then
   echo "Re-entry detected — skipping setup-loop."
 else
-  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "e2e-verify-${PR_NUM}" "VERIFIED" 30 "" \
+  /bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh" "e2e-verify-${PR_NUM}" "VERIFIED" 30 "" \
     '{"rebasing":"Resume rebase onto base branch.","building":"Resume build verification.","addressing":"Resume address-review fixes from its component phase.","investigating":"Resume investigation.","e2e-testing":"Resume E2E tests. Restart dev server if needed.","posting":"Resume posting results to PR.","shipping":"Resume ship workflow from its component phase.","e2e-failed":"Report the persisted failure reason and stop."}' \
     "$STATE_FILE" '["VERIFIED","E2E_FAIL","INCOMPLETE"]'
 fi

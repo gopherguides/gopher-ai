@@ -10,7 +10,7 @@ if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
 elif [ -f "$LOOP_STATE_FILE" ] && [ -n "$(jq -r '.phase // empty' "$LOOP_STATE_FILE" 2>/dev/null)" ]; then
   echo "Re-entry detected — skipping setup-loop."
 else
-  "<PLUGIN_ROOT>/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE" "" "" '{}' \
+  /bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh" "address-review-${RESOLVED_PR:-auto}" "COMPLETE" "" "" '{}' \
     "$LOOP_STATE_FILE" '["COMPLETE","INCOMPLETE"]'
 fi
 initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"

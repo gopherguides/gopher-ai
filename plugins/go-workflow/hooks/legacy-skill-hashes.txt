@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after finalizing SKILL.md changes.
 #
-# Total entries: 343
+# Total entries: 344
 002bd0c3859a936f2bbfa90a8c967db4d141b99a741e4c23f0d5bec397a2d3fc complete-issue
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0232ae1141f76c0ba40045649179a566080de9fc717c6cb08c3961b827fe3e88 create-pr
@@ -313,6 +313,7 @@ e01feecf1e50dc969f6ebbe5d251044c84118fd4dcb786c371d97678e9fbda9e commit
 e02cf4373bf8371ed660ac6d9449ac6ffed1fd5111a2297d96faabad829bcbf4 start-issue
 e09cee46457e5a13eb058c1ff77d1b5f03f5a223a5490c6d088324e623a5d6b1 tailwind-best-practices
 e338c2bc546babcb73c9a8f9e1b15a1953a9203b7233cbfe089054472302f665 gopher-guides
+e505006bdfe7488f7ab5f271d37421c3689bb3f19da5e090889097ecb6fbed77 cancel-loop
 e7398cc9bf011c03689c56e89b5eba0c52f2d73bd2fcf4619180514f16e76874 complete-issue
 e9e3f59c460f8bff37ec6c7744012902611be5c9f5b63848bc929087cad9d5fe tmux-start
 ea13f5e2b23bfa7c50c757438e0b5805b034962de5815bcd22e4f8b0b6472e5f worktree

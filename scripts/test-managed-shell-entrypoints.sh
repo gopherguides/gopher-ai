@@ -38,6 +38,9 @@ require_text '/bin/bash "$PLANNER"' "$ROOT_DIR/scripts/test-review-plan.sh" \
   "review planner test must use an explicit interpreter"
 require_text '/bin/bash "$SELECTOR"' "$ROOT_DIR/scripts/test-ship-ollama-model.sh" \
   "Ollama selector test must use an explicit interpreter"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/select-ollama-model.sh"' \
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md" \
+  "ship workflow must route the Ollama selector through /bin/bash"
 if [ "$(grep -c '^#!/bin/bash$' "$ROOT_DIR/scripts/test-ship-ollama-model.sh")" -ne 1 ]; then
   printf 'FAIL: %s\n' "Ollama fixture commands must use Bash ENOEXEC fallback in managed workers"
   ERRORS=$((ERRORS + 1))
@@ -84,6 +87,27 @@ require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$ISSU
 require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --no-copy-env' \
   "$ROOT_DIR/plugins/go-workflow/lib/start-issue/worktree-create.md" \
   "start-issue workflow must route no-copy worktree creation through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files' \
+  "$ROOT_DIR/plugins/go-workflow/skills/worktree/create.md" \
+  "worktree skill must route environment discovery through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$NUMBER" --source-dir "$SOURCE_DIR" --copy-env' \
+  "$ROOT_DIR/plugins/go-workflow/skills/worktree/create.md" \
+  "worktree skill must route copy-env creation through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$NUMBER" --source-dir "$SOURCE_DIR" --no-copy-env' \
+  "$ROOT_DIR/plugins/go-workflow/skills/worktree/create.md" \
+  "worktree skill must route no-copy creation through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh" "address-review-' \
+  "$ROOT_DIR/plugins/go-workflow/skills/address-review/loop-management.md" \
+  "address-review must route loop setup through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh" "complete-issue-' \
+  "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/loop-state.md" \
+  "complete-issue must route loop setup through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh" "e2e-verify-' \
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/loop-state.md" \
+  "e2e-verify must route loop setup through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/cleanup-loop.sh" "$SKILL_ARGS"' \
+  "$ROOT_DIR/plugins/go-workflow/skills/cancel-loop/SKILL.md" \
+  "cancel-loop must route cleanup through /bin/bash"
 require_text '/bin/bash "$ROOT_DIR/scripts/test-go-web-templates.sh"' "$ROOT_DIR/scripts/test-commands.sh" \
   "nested Go web test must use an explicit interpreter"
 require_text '/bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh"' \
