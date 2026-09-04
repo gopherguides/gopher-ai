@@ -19,7 +19,6 @@
     "audit"
   ],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Tailwind CSS",
     "shortDescription": "Tailwind CSS v4 tools for initialization, auditing, migration, and optimization",

@@ -43,20 +43,6 @@ jobs:
       - name: Validate platform capability matrix
         run: python3 ./scripts/test-platform-capabilities.py
 
-      - name: Install pinned Tailwind MCP server
-        timeout-minutes: 3
-        env:
-          TAILWIND_MCP_INSTALL_ROOT: ${{ runner.temp }}/gopher-ai-tailwind-mcp-install
-          npm_config_cache: ${{ runner.temp }}/gopher-ai-tailwind-mcp-npm-cache
-        run: npm install --prefix "$TAILWIND_MCP_INSTALL_ROOT" --no-save --package-lock=false "tailwindcss-mcp-server@0.1.1"
-
-      - name: Probe declared Tailwind MCP tools
-        timeout-minutes: 2
-        env:
-          TAILWIND_MCP_INSTALL_ROOT: ${{ runner.temp }}/gopher-ai-tailwind-mcp-install
-          npm_config_cache: ${{ runner.temp }}/gopher-ai-tailwind-mcp-npm-cache
-        run: node ./scripts/test-tailwind-mcp-server.mjs
-
       - name: Probe all-plugin qualified Codex skill names
         run: python3 ./scripts/test-codex-skill-names.py
 

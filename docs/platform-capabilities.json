@@ -1395,45 +1395,6 @@
           "name": "tailwind:optimize"
         }
       }
-    },
-    {
-      "id": "tailwind.supplementary-mcp-tools",
-      "plugin": "tailwind",
-      "summary": "Look up Tailwind guidance and generate focused examples through MCP.",
-      "sources": [
-        {
-          "kind": "mcp_manifest",
-          "path": "plugins/tailwind/.mcp.json"
-        }
-      ],
-      "platforms": {
-        "claude_code": {
-          "disposition": "mcp_tool",
-          "names": [
-            "mcp__tailwindcss__search_tailwind_docs",
-            "mcp__tailwindcss__get_tailwind_utilities",
-            "mcp__tailwindcss__get_tailwind_colors",
-            "mcp__tailwindcss__get_tailwind_config_guide",
-            "mcp__tailwindcss__install_tailwind",
-            "mcp__tailwindcss__convert_css_to_tailwind",
-            "mcp__tailwindcss__generate_color_palette",
-            "mcp__tailwindcss__generate_component_template"
-          ]
-        },
-        "codex": {
-          "disposition": "mcp_tool",
-          "names": [
-            "mcp__tailwindcss__search_tailwind_docs",
-            "mcp__tailwindcss__get_tailwind_utilities",
-            "mcp__tailwindcss__get_tailwind_colors",
-            "mcp__tailwindcss__get_tailwind_config_guide",
-            "mcp__tailwindcss__install_tailwind",
-            "mcp__tailwindcss__convert_css_to_tailwind",
-            "mcp__tailwindcss__generate_color_palette",
-            "mcp__tailwindcss__generate_component_template"
-          ]
-        }
-      }
     }
   ]
 }

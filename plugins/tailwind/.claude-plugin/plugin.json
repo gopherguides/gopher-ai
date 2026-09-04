@@ -17,14 +17,5 @@
     "v4",
     "migration",
     "audit"
-  ],
-  "mcpServers": {
-    "tailwindcss": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "tailwindcss-mcp-server@0.1.1"
-      ]
-    }
-  }
+  ]
 }
