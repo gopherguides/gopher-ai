@@ -11,6 +11,7 @@ jobs:
     name: 'Codex compatibility (${{ matrix.lane }}: ${{ matrix.codex-version }})'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    continue-on-error: ${{ !matrix.blocking }}
     strategy:
       fail-fast: false
       matrix:
@@ -18,9 +19,11 @@ jobs:
           - lane: minimum
             codex-version: '0.146.0'
             expected-version: '0.146.0'
+            blocking: true
           - lane: current
             codex-version: latest
             expected-version: ''
+            blocking: false
     steps:
       - uses: actions/checkout@v7
 

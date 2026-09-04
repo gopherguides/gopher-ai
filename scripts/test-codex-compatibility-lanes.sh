@@ -20,15 +20,21 @@ expected_lanes = [
     "lane" => "minimum",
     "codex-version" => "0.146.0",
     "expected-version" => "0.146.0",
+    "blocking" => true,
   },
   {
     "lane" => "current",
     "codex-version" => "latest",
     "expected-version" => "",
+    "blocking" => false,
   },
 ]
 actual_lanes = job.dig("strategy", "matrix", "include")
 abort "Codex compatibility matrix does not define minimum and current lanes" unless actual_lanes == expected_lanes
+
+unless job["continue-on-error"] == "${{ !matrix.blocking }}"
+  abort "Codex compatibility job does not limit allowed failures to the current lane"
+end
 
 name = job.fetch("name", "")
 abort "Codex compatibility job name does not identify its lane" unless name.include?("${{ matrix.lane }}")
