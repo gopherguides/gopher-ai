@@ -15,7 +15,7 @@ fail() {
   exit 1
 }
 
-if rg -n -i 'mcp' "$PLUGIN_DIR"; then
+if rg --hidden -n -i 'mcp' "$PLUGIN_DIR"; then
   fail "Tailwind plugin still references removed MCP tooling"
 fi
 
@@ -49,6 +49,8 @@ matches() {
 
   awk -v pattern="$pattern" '$0 ~ pattern { found = 1; exit } END { exit found ? 0 : 1 }'
 }
+
+assert_not_matches "$ROOT_DIR/README.md" 'Tailwind MCP server'
 
 for skill_name in "${WORKFLOW_SKILLS[@]}"; do
   skill_file="$PLUGIN_DIR/skills/$skill_name/SKILL.md"

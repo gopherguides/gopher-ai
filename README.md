@@ -433,7 +433,6 @@ Works with Claude Code, Codex, Cursor, and any LLM-powered coding assistant.
 **Optional:**
 - `ollama` for local model support (`brew install ollama`)
 - `jq` for JSON manipulation (`brew install jq`)
-- Node.js 20.18.1+ for the Tailwind MCP server's current dependency graph
 
 ## Configuration
 
