@@ -119,6 +119,10 @@ assert_contains "$review_capacity" "higher-capacity backend" "review planning ca
 assert_contains "$review_capacity" "explicitly selected backend" "review planning can override explicit backend intent"
 assert_contains "$review_capacity" "baseline coverage cannot be narrowed" "review planning can waive coverage"
 
+review_runtime=$(file_text "$REVIEW_PLAN")
+assert_contains "$review_runtime" "REVIEW_PLAN=\$(/bin/bash \"<PLUGIN_ROOT>/scripts/review-plan.sh\"" "review planner does not use /bin/bash at runtime"
+assert_not_contains "$review_runtime" "REVIEW_PLAN=\$(\"<PLUGIN_ROOT>/scripts/review-plan.sh\"" "review planner still executes directly at runtime"
+
 dirty_ship=$(section_text "$SHIP" "## 3. Detect Context" "## 4. Prerequisite Check")
 assert_contains "$dirty_ship" "unambiguously in scope" "dirty ship cannot identify owned changes"
 assert_contains "$dirty_ship" "Preserve unrelated changes" "dirty ship can capture unrelated changes"
