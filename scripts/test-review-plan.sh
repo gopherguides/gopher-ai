@@ -24,7 +24,7 @@ new_repo() {
 run_plan() {
   local repo="$1"
   shift
-  (cd "$repo" && "$PLANNER" --base HEAD^ "$@")
+  (cd "$repo" && /bin/bash "$PLANNER" --base HEAD^ "$@")
 }
 
 echo "=== Adaptive Review Planner Tests ==="
