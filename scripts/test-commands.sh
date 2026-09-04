@@ -216,7 +216,7 @@ codex_connector_approved() {
     | select(.body | test("Didn[\u0027’]t find any major issues"))
   ] | sort_by(.created_at) | last.body // ""' <<< "$issue_comments")
   summary_commit=$(sed -n 's/.*`\([0-9a-fA-F]\{7,40\}\)`.*/\1/p' <<< "$summary_body" | head -1)
-  reviewed_commit=$(sed -n 's/.*Reviewed commit:[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$clean_result_body" | head -1)
+  reviewed_commit=$(sed -n 's/.*Reviewed commit:\*\{0,2\}[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$clean_result_body" | head -1)
   reaction_approved=$(jq -r 'any(.[]; .content == "+1" and .user.login == "chatgpt-codex-connector[bot]")' <<< "$reactions")
   clean_result_approved=false
   if grep -Eq "Didn['’]t find any major issues" <<< "$clean_result_body"; then
@@ -233,18 +233,24 @@ echo -n "Codex connector approval requires a clean current-head result... "
 CODEX_TEST_HEAD="0123456789abcdef0123456789abcdef01234567"
 CODEX_SUMMARY=$'<!-- codex-pull-request-review-summary -->\n| Code Review | Complete | `0123456` |'
 CODEX_CLEAN_RESULT=$'Codex Review: Didn\'t find any major issues.\nReviewed commit: `0123456`'
-CODEX_WRONG_HEAD_RESULT=$'Codex Review: Didn’t find any major issues.\nReviewed commit: `abcdef0`'
+CODEX_BOLD_CLEAN_RESULT=$'Codex Review: Didn\'t find any major issues.\n**Reviewed commit:** `0123456`'
+CODEX_WRONG_HEAD_RESULT=$'Codex Review: Didn’t find any major issues.\n**Reviewed commit:** `abcdef0`'
+CODEX_MISSING_COMMIT_RESULT=$'Codex Review: Didn’t find any major issues.'
 CODEX_NON_CLEAN_RESULT=$'Codex Review: Did find any major issues.\nReviewed commit: `0123456`'
 CODEX_COMBINED_SUMMARY=$'<!-- codex-pull-request-review-summary -->\nDidn’t find any major issues\nReviewed commit: `0123456`'
 CODEX_CLEAN_COMMENTS=$(jq -nc --arg body "$CODEX_CLEAN_RESULT" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
+CODEX_BOLD_CLEAN_COMMENTS=$(jq -nc --arg body "$CODEX_BOLD_CLEAN_RESULT" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
 CODEX_WRONG_HEAD_COMMENTS=$(jq -nc --arg body "$CODEX_WRONG_HEAD_RESULT" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
+CODEX_MISSING_COMMIT_COMMENTS=$(jq -nc --arg body "$CODEX_MISSING_COMMIT_RESULT" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
 CODEX_NON_CLEAN_COMMENTS=$(jq -nc --arg body "$CODEX_NON_CLEAN_RESULT" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
 CODEX_COMBINED_SUMMARY_COMMENTS=$(jq -nc --arg body "$CODEX_COMBINED_SUMMARY" '[{user:{login:"chatgpt-codex-connector[bot]"},body:$body,created_at:"2026-09-01T00:00:01Z"}]')
 CODEX_NO_COMMENTS='[]'
 CODEX_NO_REACTIONS='[]'
 CODEX_PLUS_ONE='[{"content":"+1","user":{"login":"chatgpt-codex-connector[bot]"}}]'
 if ! codex_connector_approved "$CODEX_SUMMARY" "$CODEX_CLEAN_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
+   ! codex_connector_approved "$CODEX_SUMMARY" "$CODEX_BOLD_CLEAN_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
    codex_connector_approved "$CODEX_SUMMARY" "$CODEX_WRONG_HEAD_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
+   codex_connector_approved "$CODEX_SUMMARY" "$CODEX_MISSING_COMMIT_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
    codex_connector_approved "$CODEX_SUMMARY" "$CODEX_NON_CLEAN_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 0 ||
    codex_connector_approved "$CODEX_SUMMARY" "$CODEX_CLEAN_COMMENTS" "$CODEX_NO_REACTIONS" "$CODEX_TEST_HEAD" 1 ||
    ! codex_connector_approved "$CODEX_SUMMARY" "$CODEX_NO_COMMENTS" "$CODEX_PLUS_ONE" "$CODEX_TEST_HEAD" 0 ||
