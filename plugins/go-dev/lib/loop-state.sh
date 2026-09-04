@@ -33,14 +33,26 @@ loop_state_directory() {
   printf '%s/.local/state\n' "$(resolve_loop_owner_root)"
 }
 
+# The debug log is off unless GO_WORKFLOW_DEBUG=1, and it does not live inside
+# the user's repository. Loop *state* belongs to the worktree; a debug log does
+# not. Writing one unconditionally leaves an untracked file — and creates its
+# directory — in whatever project the session happens to be in, and an untracked
+# file in someone's checkout is not free: plenty of tooling treats a dirty
+# working tree as a signal and refuses to act on it, so a log nobody asked for
+# can quietly stop a sync, a release script or a CI gate.
+#
+# Set LOOP_DEBUG_LOG to choose the path.
 loop_log() {
+  [ "${GO_WORKFLOW_DEBUG:-0}" = "1" ] || return 0
   local msg="$1"
-  local state_dir
+  local log
+  local dir
   local ts
-  state_dir=$(loop_state_directory)
+  log="${LOOP_DEBUG_LOG:-${TMPDIR:-/tmp}/go-workflow-loop-debug.log}"
+  dir=$(dirname "$log")
+  [ -d "$dir" ] || mkdir -p "$dir" 2>/dev/null || return 0
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  mkdir -p "$state_dir"
-  printf '[%s] %s\n' "$ts" "$msg" >> "$state_dir/loop-debug.log"
+  printf '[%s] %s\n' "$ts" "$msg" >> "$log"
 }
 
 owner_workflow_for_loop() {
