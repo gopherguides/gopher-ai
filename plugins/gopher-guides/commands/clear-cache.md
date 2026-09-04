@@ -9,7 +9,7 @@ Remove cached API responses to force fresh data on next query.
 
 ## Execute
 
-!`"${CLAUDE_PLUGIN_ROOT}/scripts/clear-cache.sh"`
+!`/bin/bash "${CLAUDE_PLUGIN_ROOT}/scripts/clear-cache.sh"`
 
 ## Result
 

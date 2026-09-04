@@ -179,7 +179,6 @@ mkdir -p "$FAKE_BIN"
 for provider in gemini ollama; do
   provider_path="$FAKE_BIN/$provider"
   {
-    printf '%s\n' '#!/bin/sh'
     printf '%s\n' "printf 'provider=%s\\n' '$provider' >> \"\$LLM_TOOLS_ROUTE_LOG\""
     printf '%s\n' "for arg in \"\$@\"; do printf 'arg=%s\\n' \"\$arg\" >> \"\$LLM_TOOLS_ROUTE_LOG\"; done"
   } > "$provider_path"

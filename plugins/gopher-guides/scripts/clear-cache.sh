@@ -10,8 +10,8 @@ LEGACY_CACHE_FILE="$PWD/.claude/gopher-guides-cache.json"
 clear_cache_file() {
   local cache_file="${1:?Cache file is required}"
   mkdir -p "$(dirname "$cache_file")"
-  "$SCRIPT_DIR/cache-lock.sh" "${cache_file}.lock" \
-    "$SCRIPT_DIR/cache-mutate.sh" clear "$cache_file"
+  /bin/bash "$SCRIPT_DIR/cache-lock.sh" "${cache_file}.lock" \
+    /bin/bash "$SCRIPT_DIR/cache-mutate.sh" clear "$cache_file"
 }
 
 clear_cache_file "$CACHE_FILE"

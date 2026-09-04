@@ -23,7 +23,6 @@ run_fixture() {
 
   mkdir -p "$TEST_ROOT/bin"
   cat > "$TEST_ROOT/bin/ollama" <<EOF
-#!/bin/bash
 if [ "\$1" = "ps" ]; then
   exit $ps_exit
 fi
@@ -35,7 +34,7 @@ exit 99
 EOF
   chmod +x "$TEST_ROOT/bin/ollama"
 
-  PATH="$TEST_ROOT/bin:$PATH" "$SELECTOR" >"$output_file" 2>"$error_file"
+  PATH="$TEST_ROOT/bin:$PATH" /bin/bash "$SELECTOR" >"$output_file" 2>"$error_file"
 }
 
 echo "=== Ship Ollama Model Tests ==="

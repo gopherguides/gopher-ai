@@ -42,11 +42,11 @@ run_runtime_location_tests() {
   state_file="$state_common/gopher-ai/worktree-state.json"
   (
     cd "$state_main"
-    HOME="$state_primary_home" "$worktree_state" save "$state_linked" "$state_main" 324 >/dev/null
+    HOME="$state_primary_home" /bin/bash "$worktree_state" save "$state_linked" "$state_main" 324 >/dev/null
   )
   saved_state=$(
     cd "$state_linked"
-    HOME="$state_linked_home" "$worktree_state" get
+    HOME="$state_linked_home" /bin/bash "$worktree_state" get
   )
   hook_output=$(
     cd "$state_linked"
@@ -58,7 +58,7 @@ run_runtime_location_tests() {
   printf '%s\n' '{"keep":true}' > "$(dirname "$state_file")/unrelated.json"
   (
     cd "$state_linked"
-    HOME="$state_linked_home" "$worktree_state" clear >/dev/null
+    HOME="$state_linked_home" /bin/bash "$worktree_state" clear >/dev/null
   )
   if jq -e --arg linked "$state_linked" --arg main "$state_main" \
        '.worktree_path == $linked and .original_path == $main and .issue == "324"' \
@@ -86,11 +86,11 @@ run_runtime_location_tests() {
   printf '%s\n' '{"keep":true}' > "$legacy_home/.claude/unrelated.json"
   legacy_output=$(
     cd "$legacy_repo"
-    HOME="$legacy_home" "$worktree_state" get
+    HOME="$legacy_home" /bin/bash "$worktree_state" get
   )
   (
     cd "$legacy_repo"
-    HOME="$legacy_home" "$worktree_state" clear >/dev/null
+    HOME="$legacy_home" /bin/bash "$worktree_state" clear >/dev/null
   )
   if jq -e '.issue == "7"' <<< "$legacy_output" >/dev/null 2>&1 &&
      [ ! -e "$legacy_state" ] &&
@@ -183,10 +183,9 @@ run_runtime_location_tests() {
     "$(dirname "$cache_corrupt")" "$(dirname "$cache_compatibility_legacy")" \
     "$(dirname "$cache_lock_smoke")" "$(dirname "$cache_clear_race")"
 
-  printf '%s\n' '#!/bin/sh' 'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' > "$cache_bin/curl"
+  printf '%s\n' 'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' > "$cache_bin/curl"
   chmod +x "$cache_bin/curl"
   printf '%s\n' \
-    '#!/bin/sh' \
     'if [ "$1" = -p ] && [ "$3" = -o ] && [ "$4" = lstart= ]; then' \
     '  printf '\''%s\n'\'' "$2" > "$CACHE_TEST_IDENTITY_MARKER"' \
     '  printf '\''fixture-identity-%s\n'\'' "$2"' \
@@ -196,21 +195,18 @@ run_runtime_location_tests() {
     > "$cache_identity_bin/ps"
   chmod +x "$cache_identity_bin/ps"
   printf '%s\n' \
-    '#!/bin/sh' \
     ': > "$CACHE_TEST_BARRIER/$$"' \
     'while [ "$(ls -1 "$CACHE_TEST_BARRIER" | wc -l | tr -d '\'' '\'')" -lt "$CACHE_TEST_WRITERS" ]; do sleep 0.01; done' \
     'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' \
     > "$cache_parallel_bin/curl"
   chmod +x "$cache_parallel_bin/curl"
   printf '%s\n' \
-    '#!/bin/sh' \
     ': > "$CACHE_TEST_READY"' \
     'while [ ! -e "$CACHE_TEST_RELEASE" ]; do sleep 0.01; done' \
     'printf '\''%s\n'\'' '\''{"result":"ok"}'\''' \
     > "$cache_clear_race_bin/curl"
   chmod +x "$cache_clear_race_bin/curl"
   printf '%s\n' \
-    '#!/bin/sh' \
     'if [ "$#" -eq 1 ] && [ "$1" = "$CACHE_TEST_LOCK_DIRECTORY" ] && [ ! -e "$CACHE_TEST_STOLEN" ]; then' \
     '  "$CACHE_TEST_REAL_MKDIR" "$1" || exit $?' \
     '  "$CACHE_TEST_REAL_RMDIR" "$1" || exit $?' \
@@ -221,14 +217,14 @@ run_runtime_location_tests() {
     > "$cache_lock_publish_bin/mkdir"
   chmod +x "$cache_lock_publish_bin/mkdir"
 
-  "$cache_lock" "$cache_lock_smoke" sh -c 'exit 0'
-  if cache_lock_smoke_output=$("$cache_lock" "$cache_lock_smoke" sh -c 'printf native-lock') &&
+  /bin/bash "$cache_lock" "$cache_lock_smoke" sh -c 'exit 0'
+  if cache_lock_smoke_output=$(/bin/bash "$cache_lock" "$cache_lock_smoke" sh -c 'printf native-lock') &&
      [ "$cache_lock_smoke_output" = native-lock ]; then
     cache_lock_smoke_valid=true
   fi
   printf '%s\n' '{"old":true}' > "$cache_lock_portable_cache"
   if cache_lock_portable_output=$(GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
-       "$cache_lock" "$cache_lock_smoke" "$cache_mutate" clear "$cache_lock_portable_cache") &&
+       /bin/bash "$cache_lock" "$cache_lock_smoke" /bin/bash "$cache_mutate" clear "$cache_lock_portable_cache") &&
      [ -z "$cache_lock_portable_output" ] &&
      [ ! -e "$cache_lock_portable_cache" ] &&
      [ ! -d "${cache_lock_smoke}.directory" ]; then
@@ -241,7 +237,7 @@ run_runtime_location_tests() {
        CACHE_TEST_REAL_MKDIR="$(command -v mkdir)" \
        CACHE_TEST_REAL_RMDIR="$(command -v rmdir)" \
        GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
-       "$cache_lock" "$cache_lock_smoke" "$cache_mutate" clear "$cache_lock_portable_cache") &&
+       /bin/bash "$cache_lock" "$cache_lock_smoke" /bin/bash "$cache_mutate" clear "$cache_lock_portable_cache") &&
      [ -z "$cache_lock_publish_output" ] &&
      [ -e "$cache_lock_publish_marker" ] &&
      [ ! -e "$cache_lock_portable_cache" ] &&
@@ -252,7 +248,7 @@ run_runtime_location_tests() {
   printf '%s\n' stale > "${cache_lock_smoke}.directory/owner.99999999.1"
   printf '%s\n' '{"old":true}' > "$cache_lock_portable_cache"
   if cache_lock_portable_orphan_output=$(GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
-       "$cache_lock" "$cache_lock_smoke" "$cache_mutate" clear "$cache_lock_portable_cache") &&
+       /bin/bash "$cache_lock" "$cache_lock_smoke" /bin/bash "$cache_mutate" clear "$cache_lock_portable_cache") &&
      [ -z "$cache_lock_portable_orphan_output" ] &&
      [ ! -e "$cache_lock_portable_cache" ] &&
      [ ! -d "${cache_lock_smoke}.directory" ]; then
@@ -264,7 +260,7 @@ run_runtime_location_tests() {
   if cache_lock_portable_reused_output=$(PATH="$cache_identity_bin:$PATH" \
        CACHE_TEST_IDENTITY_MARKER="$cache_identity_marker" \
        GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
-       "$cache_lock" "$cache_lock_smoke" "$cache_mutate" clear "$cache_lock_portable_cache") &&
+       /bin/bash "$cache_lock" "$cache_lock_smoke" /bin/bash "$cache_mutate" clear "$cache_lock_portable_cache") &&
      [ -z "$cache_lock_portable_reused_output" ] &&
      [ "$(cat "$cache_identity_marker")" = "$$" ] &&
      [ ! -e "$cache_lock_portable_cache" ] &&
@@ -274,12 +270,12 @@ run_runtime_location_tests() {
 
   if GOPHER_GUIDES_API_KEY=test \
        GOPHER_GUIDES_CACHE_FILE="$cache_missing_args_dir/cache.json" \
-       HOME="$cache_home" "$cache_api" >/dev/null 2>&1; then
+       HOME="$cache_home" /bin/bash "$cache_api" >/dev/null 2>&1; then
     false
   fi
   if GOPHER_GUIDES_API_KEY='' \
        GOPHER_GUIDES_CACHE_FILE="$cache_missing_key_dir/cache.json" \
-       HOME="$cache_home" "$cache_api" practices '{}' >/dev/null 2>&1; then
+       HOME="$cache_home" /bin/bash "$cache_api" practices '{}' >/dev/null 2>&1; then
     false
   fi
 
@@ -287,11 +283,11 @@ run_runtime_location_tests() {
     cd "$cache_fixture/work"
     PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
       XDG_CACHE_HOME="$cache_xdg" HOME="$cache_home" \
-      "$cache_api" practices '{}' >/dev/null
+      /bin/bash "$cache_api" practices '{}' >/dev/null
     PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
       GOPHER_GUIDES_CACHE_FILE="$cache_override" \
       XDG_CACHE_HOME="$cache_fixture/unused-xdg" HOME="$cache_home" \
-      "$cache_api" examples '{}' >/dev/null
+      /bin/bash "$cache_api" examples '{}' >/dev/null
   )
   if jq -e 'length == 1 and to_entries[0].value.endpoint == "practices"' \
        "$cache_default_file" >/dev/null 2>&1; then
@@ -307,14 +303,14 @@ run_runtime_location_tests() {
     cd "$cache_compatibility_work"
     PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
       XDG_CACHE_HOME="$cache_compatibility_xdg" HOME="$cache_home" \
-      "$cache_api" audit '{}'
+      /bin/bash "$cache_api" audit '{}'
   )
   cache_compatibility_legacy_output=$(
     cd "$cache_compatibility_work"
     PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
       GOPHER_GUIDES_CACHE_FILE="$cache_compatibility_legacy" \
       XDG_CACHE_HOME="$cache_compatibility_xdg" HOME="$cache_home" \
-      "$cache_api" review '{}'
+      /bin/bash "$cache_api" review '{}'
   )
   if [ "$cache_compatibility_default_output" = '{"result":"ok"}' ] &&
      [ "$cache_compatibility_legacy_output" = '{"result":"ok"}' ] &&
@@ -328,7 +324,7 @@ run_runtime_location_tests() {
   printf '{"truncated":' > "$cache_corrupt"
   if cache_corrupt_output=$(PATH="$cache_bin:$PATH" GOPHER_GUIDES_API_KEY=test \
        GOPHER_GUIDES_CACHE_FILE="$cache_corrupt" HOME="$cache_home" \
-       "$cache_api" audit '{}') &&
+       /bin/bash "$cache_api" audit '{}') &&
      [ "$cache_corrupt_output" = '{"result":"ok"}' ] &&
      jq -e 'length == 1 and to_entries[0].value.endpoint == "audit"' \
        "$cache_corrupt" >/dev/null 2>&1; then
@@ -343,7 +339,7 @@ run_runtime_location_tests() {
       GOPHER_GUIDES_CACHE_FILE="$cache_parallel" \
       CACHE_TEST_BARRIER="$cache_parallel_barrier" \
       CACHE_TEST_WRITERS=8 \
-      "$cache_api" "parallel-$writer" '{}' >/dev/null &
+      /bin/bash "$cache_api" "parallel-$writer" '{}' >/dev/null &
     writer_pid=$!
     cache_parallel_pids="$cache_parallel_pids $writer_pid"
   done
@@ -363,7 +359,7 @@ run_runtime_location_tests() {
     GOPHER_GUIDES_CACHE_FILE="$cache_clear_race" \
     CACHE_TEST_READY="$cache_clear_race_ready" \
     CACHE_TEST_RELEASE="$cache_clear_race_release" \
-    "$cache_api" review '{}' > "$cache_clear_writer_output" &
+    /bin/bash "$cache_api" review '{}' > "$cache_clear_writer_output" &
   cache_clear_writer_pid=$!
   clear_attempt=0
   while [ ! -e "$cache_clear_race_ready" ] && [ "$clear_attempt" -lt 200 ]; do
@@ -376,7 +372,7 @@ run_runtime_location_tests() {
   GOPHER_GUIDES_CACHE_FILE="$cache_clear_race" \
     GOPHER_GUIDES_CACHE_LOCK_FORCE_PORTABLE=true \
     XDG_CACHE_HOME="$cache_fixture/unused-xdg" HOME="$cache_home" \
-    "$clear_cache_script" > "$cache_clear_output_file" &
+    /bin/bash "$clear_cache_script" > "$cache_clear_output_file" &
   cache_clear_pid=$!
   clear_attempt=0
   while [ "$(cat "${cache_clear_race}.epoch" 2>/dev/null || true)" != 1 ] &&
@@ -422,7 +418,7 @@ run_runtime_location_tests() {
     cd "$cache_fixture/work"
     GOPHER_GUIDES_CACHE_FILE="$cache_override" \
       XDG_CACHE_HOME="$cache_fixture/unused-xdg" HOME="$cache_home" \
-      "$clear_cache_script"
+      /bin/bash "$clear_cache_script"
   )
 
   if [ ! -e "$cache_missing_args_dir" ] &&
@@ -571,7 +567,7 @@ printf '%s\n' '{"session_id":"session-claude","tool_name":"Bash","tool_response"
 printf '%s\n' '{"tool_name":"Bash"}' > "$POST_TOOL_USE_ROOT/missing-output.json"
 printf '%s\n' '{not-json' > "$POST_TOOL_USE_ROOT/malformed.json"
 mkdir -p "$POST_TOOL_USE_ROOT/bin" "$POST_TOOL_USE_ROOT/claude-retry"
-printf '%s\n' '#!/bin/bash' "printf \"called\\n\" > \"\${POST_TOOL_USE_SLEEP_MARKER:?}\"" \
+printf '%s\n' "printf \"called\\n\" > \"\${POST_TOOL_USE_SLEEP_MARKER:?}\"" \
   > "$POST_TOOL_USE_ROOT/bin/sleep"
 chmod +x "$POST_TOOL_USE_ROOT/bin/sleep"
 
@@ -793,7 +789,7 @@ if (
   cd "$STOP_HOOK_ROOT"
   source "$ROOT_DIR/plugins/go-workflow/lib/loop-state.sh"
   pause_loop_for_driver "$STOP_HOOK_STATE" "dirty-tree-decision"
-  "$ROOT_DIR/plugins/go-workflow/scripts/setup-loop.sh" \
+  /bin/bash "$ROOT_DIR/plugins/go-workflow/scripts/setup-loop.sh" \
     "ship" "SHIPPED" 50 "" '{}' >/dev/null
   PAUSED_OUTPUT=$(jq -n --arg transcript "$STOP_HOOK_TRANSCRIPT" --arg session "owner-session" '{transcript_path: $transcript, session_id: $session}' | bash "$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh")
   [ -z "$PAUSED_OUTPUT" ]
@@ -1007,7 +1003,7 @@ ACTIVE_STOP_BEFORE=$(cksum "$ACTIVE_STOP_STATE")
 ACTIVE_STOP_OUTPUT=$(
   cd "$ACTIVE_STOP_ROOT"
   jq -n --arg transcript "$ACTIVE_STOP_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session, stop_hook_active: true}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session, stop_hook_active: true}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$ACTIVE_STOP_OUTPUT" ] &&
    [ "$ACTIVE_STOP_BEFORE" = "$(cksum "$ACTIVE_STOP_STATE")" ]; then
@@ -1027,7 +1023,7 @@ printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"
 FOREIGN_LEGACY_OUTPUT=$(
   cd "$FOREIGN_LEGACY_ROOT"
   jq -n --arg transcript "$FOREIGN_LEGACY_TRANSCRIPT" --arg session "foreign-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$FOREIGN_LEGACY_OUTPUT" ] && [ ! -e "$FOREIGN_LEGACY_STATE" ]; then
   echo "OK"
@@ -1047,7 +1043,7 @@ FOREIGN_SESSION_BEFORE=$(cksum "$FOREIGN_SESSION_STATE")
 FOREIGN_SESSION_OUTPUT=$(
   cd "$FOREIGN_SESSION_ROOT"
   jq -n --arg transcript "$FOREIGN_SESSION_TRANSCRIPT" --arg session "foreign-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$FOREIGN_SESSION_OUTPUT" ] &&
    [ -e "$FOREIGN_SESSION_STATE" ] &&
@@ -1069,7 +1065,7 @@ FOREIGN_OWNERLESS_BEFORE=$(cksum "$FOREIGN_OWNERLESS_STATE")
 FOREIGN_OWNERLESS_OUTPUT=$(
   cd "$FOREIGN_OWNERLESS_ROOT"
   jq -n --arg transcript "$FOREIGN_OWNERLESS_TRANSCRIPT" --arg session "foreign-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$FOREIGN_OWNERLESS_OUTPUT" ] &&
    [ -e "$FOREIGN_OWNERLESS_STATE" ] &&
@@ -1088,7 +1084,7 @@ mkdir -p "$(dirname "$OWNER_CLAIM_STATE")"
 printf '%s\n' '{"role":"assistant","message":{"content":[]}}' > "$OWNER_CLAIM_TRANSCRIPT"
 OWNER_CLAIM_SETUP_OUTPUT=$(
   cd "$OWNER_CLAIM_ROOT"
-  env -u CLAUDE_SESSION_ID "$ROOT_DIR/shared/scripts/setup-loop.sh" \
+  env -u CLAUDE_SESSION_ID /bin/bash "$ROOT_DIR/shared/scripts/setup-loop.sh" \
     "ship" "SHIPPED" 50 "ci-watch" '{}'
 )
 OWNER_CLAIM_INSTANCE=$(jq -r '.loop_instance_id // empty' "$OWNER_CLAIM_STATE")
@@ -1099,7 +1095,7 @@ OWNER_CLAIM_BEFORE=$(cksum "$OWNER_CLAIM_STATE")
 OWNER_CLAIM_OUTPUT=$(
   cd "$OWNER_CLAIM_ROOT"
   jq -n --arg transcript "$OWNER_CLAIM_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -n "$OWNER_CLAIM_INSTANCE" ] &&
    printf '%s\n' "$OWNER_CLAIM_SETUP_OUTPUT" | grep -Fq "Loop initialized: ship [$OWNER_CLAIM_INSTANCE]" &&
@@ -1128,7 +1124,7 @@ HISTORICAL_BEFORE=$(cksum "$HISTORICAL_STATE")
 HISTORICAL_OUTPUT=$(
   cd "$HISTORICAL_ROOT"
   jq -n --arg transcript "$HISTORICAL_TRANSCRIPT" --arg session "foreign-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$HISTORICAL_OUTPUT" ] &&
    [ -e "$HISTORICAL_STATE" ] &&
@@ -1156,7 +1152,7 @@ LEGACY_BACKFILL_BEFORE=$(cksum "$LEGACY_BACKFILL_STATE")
 set +e
 LEGACY_BACKFILL_SETUP_OUTPUT=$(
   cd "$LEGACY_BACKFILL_ROOT"
-  env -u CLAUDE_SESSION_ID "$ROOT_DIR/shared/scripts/setup-loop.sh" \
+  env -u CLAUDE_SESSION_ID /bin/bash "$ROOT_DIR/shared/scripts/setup-loop.sh" \
     "ship" "SHIPPED" 50 "ci-watch" '{}' "$LEGACY_BACKFILL_STATE" '["SHIPPED","INCOMPLETE"]' 2>&1
 )
 LEGACY_BACKFILL_STATUS=$?
@@ -1167,7 +1163,7 @@ jq -n --arg content "$LEGACY_BACKFILL_SETUP_OUTPUT" \
 LEGACY_BACKFILL_STOP_OUTPUT=$(
   cd "$LEGACY_BACKFILL_ROOT"
   jq -n --arg transcript "$LEGACY_BACKFILL_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ "$LEGACY_BACKFILL_STATUS" -ne 0 ] &&
    printf '%s\n' "$LEGACY_BACKFILL_SETUP_OUTPUT" | grep -Fq "cannot safely re-enter legacy ownerless loop 'ship'" &&
@@ -1190,7 +1186,7 @@ UNCLAIMED_BEFORE=$(cksum "$UNCLAIMED_STATE")
 UNCLAIMED_OUTPUT=$(
   cd "$UNCLAIMED_ROOT"
   jq -n --arg transcript "$UNCLAIMED_TRANSCRIPT" --arg session "foreign-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$UNCLAIMED_OUTPUT" ] &&
    [ "$UNCLAIMED_BEFORE" = "$(cksum "$UNCLAIMED_STATE")" ]; then
@@ -1210,7 +1206,7 @@ printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"
 STALE_SESSION_OUTPUT=$(
   cd "$STALE_SESSION_ROOT"
   jq -n --arg transcript "$STALE_SESSION_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$STALE_SESSION_OUTPUT" ] && [ ! -e "$STALE_SESSION_STATE" ]; then
   echo "OK"
@@ -1226,7 +1222,7 @@ mkdir -p "$SETUP_TRANSCRIPT_ROOT/.claude"
 printf '%s\n' '{"role":"assistant","message":{"content":[]}}' > "$SETUP_TRANSCRIPT_ROOT/.claude/foreign-session.jsonl"
 (
   cd "$SETUP_TRANSCRIPT_ROOT"
-  env -u CLAUDE_SESSION_ID "$ROOT_DIR/shared/scripts/setup-loop.sh" \
+  env -u CLAUDE_SESSION_ID /bin/bash "$ROOT_DIR/shared/scripts/setup-loop.sh" \
     "start-issue-309" "COMPLETE" 50 "implementing" '{}' >/dev/null
 )
 if jq -e '.session_id == ""' "$SETUP_TRANSCRIPT_STATE" >/dev/null 2>&1; then
@@ -1250,7 +1246,7 @@ CONCURRENT_FOREIGN_BEFORE=$(cksum "$CONCURRENT_FOREIGN_STATE")
 CONCURRENT_OUTPUT=$(
   cd "$CONCURRENT_ROOT"
   jq -n --arg transcript "$CONCURRENT_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$CONCURRENT_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
    jq -e '.iteration == 2 and .session_id == "owner-session"' "$CONCURRENT_OWNER_STATE" >/dev/null 2>&1 &&
@@ -1277,7 +1273,7 @@ printf '%s\n' \
 DUPLICATE_OUTPUT=$(
   cd "$DUPLICATE_ROOT"
   jq -n --arg transcript "$DUPLICATE_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$DUPLICATE_OUTPUT" | jq -e '
     .decision == "block" and
@@ -1306,7 +1302,7 @@ printf '%s\n' \
 PROMISE_BLOCK=$(
   cd "$PROMISE_ROOT"
   jq -n --arg transcript "$PROMISE_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 PROMISE_BLOCK_OK=false
 if printf '%s\n' "$PROMISE_BLOCK" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
@@ -1321,7 +1317,7 @@ fi
 PROMISE_COMPLETE=$(
   cd "$PROMISE_ROOT"
   jq -n --arg transcript "$PROMISE_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ "$PROMISE_BLOCK_OK" = true ] && [ -z "$PROMISE_COMPLETE" ] && [ ! -e "$PROMISE_STATE" ]; then
   echo "OK"
@@ -1341,7 +1337,7 @@ INVALID_BEFORE=$(cksum "$INVALID_STATE")
 INVALID_OUTPUT=$(
   cd "$INVALID_ROOT"
   jq -n --arg transcript "$INVALID_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$INVALID_OUTPUT" | jq -e '
     .decision == "block" and
@@ -1365,7 +1361,7 @@ printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","conte
 LEGACY_SHIP_OUTPUT=$(
   cd "$LEGACY_SHIP_ROOT"
   jq -n --arg transcript "$LEGACY_SHIP_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 LEGACY_REENTRY=$(
   cd "$LEGACY_SHIP_ROOT"
@@ -1397,7 +1393,7 @@ printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","conte
 STALE_WORKTREE_OUTPUT=$(
   cd "$STALE_WORKTREE_ROOT"
   jq -n --arg transcript "$STALE_WORKTREE_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$STALE_WORKTREE_OUTPUT" ] && [ ! -e "$STALE_WORKTREE_STATE" ]; then
   echo "OK"
@@ -1420,7 +1416,7 @@ printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"
 FOREIGN_STALE_WORKTREE_OUTPUT=$(
   cd "$FOREIGN_STALE_WORKTREE_ROOT"
   jq -n --arg transcript "$FOREIGN_STALE_WORKTREE_TRANSCRIPT" --arg session "foreign-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$FOREIGN_STALE_WORKTREE_OUTPUT" ] && [ ! -e "$FOREIGN_STALE_WORKTREE_STATE" ]; then
   echo "OK"
@@ -1452,7 +1448,7 @@ WORKTREE_STATE_BEFORE=$(cksum "$WORKTREE_MAIN/.local/state/start-issue-42.loop.l
 WORKTREE_OUTPUT=$(
   cd "$WORKTREE_LINKED"
   jq -n --arg transcript "$WORKTREE_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$WORKTREE_OUTPUT" ] &&
    [ -e "$WORKTREE_MAIN/.local/state/start-issue-42.loop.local.json" ] &&
@@ -1478,7 +1474,7 @@ printf '%s\n' \
 WORKTREE_OUTPUT=$(
   cd "$WORKTREE_MAIN"
   jq -n --arg transcript "$WORKTREE_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$WORKTREE_OUTPUT" ] &&
    [ ! -e "$WORKTREE_MAIN/.local/state/start-issue-43.loop.local.json" ]; then
@@ -1502,7 +1498,7 @@ for NO_TARGET_PHASE in reviewing pushing; do
   NO_TARGET_OUTPUT=$(
     cd "$WORKTREE_MAIN"
     jq -n --arg transcript "$NO_TARGET_TRANSCRIPT" --arg session "owner-session" \
-      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+      '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
   )
   if [ -n "$NO_TARGET_OUTPUT" ] || [ -e "$NO_TARGET_STATE" ]; then
     NO_TARGET_FAILURES=$((NO_TARGET_FAILURES + 1))
@@ -1524,7 +1520,7 @@ FOREIGN_NO_TARGET_BEFORE=$(cksum "$NO_TARGET_STATE")
 FOREIGN_NO_TARGET_OUTPUT=$(
   cd "$WORKTREE_MAIN"
   jq -n --arg transcript "$NO_TARGET_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ -z "$FOREIGN_NO_TARGET_OUTPUT" ] &&
    [ -e "$NO_TARGET_STATE" ] &&
@@ -1546,7 +1542,7 @@ for CLEAN_WAIT_PHASE in ci-watch bot-watching merging; do
   CLEAN_WAIT_OUTPUT=$(
     cd "$WORKTREE_MAIN"
     jq -n --arg transcript "$NO_TARGET_TRANSCRIPT" --arg session "owner-session" \
-      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+      '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
   )
   if ! printf '%s\n' "$CLEAN_WAIT_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 ||
      [ ! -e "$NO_TARGET_STATE" ]; then
@@ -1578,7 +1574,7 @@ printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","conte
 STAGED_TARGET_OUTPUT=$(
   cd "$STAGED_TARGET_ROOT"
   jq -n --arg transcript "$STAGED_TARGET_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$STAGED_TARGET_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
    [ -e "$STAGED_TARGET_STATE" ]; then
@@ -1611,7 +1607,7 @@ printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","conte
 UNPUSHED_OUTPUT=$(
   cd "$UNPUSHED_WORKTREE"
   jq -n --arg transcript "$UNPUSHED_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$UNPUSHED_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
    [ -e "$UNPUSHED_STATE" ]; then
@@ -1646,7 +1642,7 @@ printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","conte
 NONSTANDARD_OUTPUT=$(
   cd "$NONSTANDARD_WORKTREE"
   jq -n --arg transcript "$NONSTANDARD_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$NONSTANDARD_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
    [ -e "$NONSTANDARD_STATE" ]; then
@@ -1670,7 +1666,7 @@ printf '%s\n' '{"role":"user","message":{"content":[{"type":"tool_result","conte
 NONDEFAULT_TARGET_OUTPUT=$(
   cd "$WORKTREE_LINKED"
   jq -n --arg transcript "$RETRY_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$NONDEFAULT_TARGET_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
    [ -e "$RETRY_STATE" ]; then
@@ -1691,14 +1687,14 @@ for _ in 1 2; do
   (
     cd "$WORKTREE_LINKED"
     jq -n --arg transcript "$RETRY_TRANSCRIPT" --arg session "owner-session" \
-      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+      '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
   ) >/dev/null
 done
 printf '%s\n' 'second revision' > "$WORKTREE_LINKED/progress.txt"
 PROGRESS_OUTPUT=$(
   cd "$WORKTREE_LINKED"
   jq -n --arg transcript "$RETRY_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$PROGRESS_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
    jq -e '.unchanged_block_count == 1' "$RETRY_STATE" >/dev/null 2>&1; then
@@ -1723,21 +1719,21 @@ for _ in 1 2; do
   (
     cd "$NONREPOSITORY_ROOT"
     jq -n --arg transcript "$NONREPOSITORY_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
   ) >/dev/null
 done
 printf '%s\n' 'unrelated revision' > "$NONREPOSITORY_ROOT/unrelated.txt"
 (
   cd "$NONREPOSITORY_ROOT"
   jq -n --arg transcript "$NONREPOSITORY_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 ) >/dev/null
 NONREPOSITORY_SCOPED_COUNT=$(jq -r '.unchanged_block_count' "$NONREPOSITORY_STATE")
 printf '%s\n' 'second revision' > "$NONREPOSITORY_ROOT/example-project/main.go"
 NONREPOSITORY_OUTPUT=$(
   cd "$NONREPOSITORY_ROOT"
   jq -n --arg transcript "$NONREPOSITORY_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if [ "$NONREPOSITORY_SCOPED_COUNT" -eq 3 ] &&
    printf '%s\n' "$NONREPOSITORY_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
@@ -1767,7 +1763,7 @@ for _ in 1 2; do
   (
     cd "$SELF_STATE_ROOT"
     jq -n --arg transcript "$SELF_STATE_TRANSCRIPT" --arg session "owner-session" \
-      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+      '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
   ) >/dev/null
 done
 if jq -e '.unchanged_block_count == 2' "$SELF_STATE_FILE" >/dev/null 2>&1; then
@@ -1784,7 +1780,7 @@ mv "$SELF_STATE_TMP" "$SELF_STATE_FILE"
 SELF_STATE_PHASE_OUTPUT=$(
   cd "$SELF_STATE_ROOT"
   jq -n --arg transcript "$SELF_STATE_TRANSCRIPT" --arg session "owner-session" \
-    '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+    '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
 )
 if printf '%s\n' "$SELF_STATE_PHASE_OUTPUT" | jq -e '.decision == "block"' >/dev/null 2>&1 &&
    jq -e '.unchanged_block_count == 1' "$SELF_STATE_FILE" >/dev/null 2>&1; then
@@ -1807,7 +1803,7 @@ for RETRY_ATTEMPT in 1 2 3 4; do
   RETRY_OUTPUT=$(
     cd "$WORKTREE_LINKED"
     jq -n --arg transcript "$RETRY_TRANSCRIPT" --arg session "owner-session" \
-      '{transcript_path: $transcript, session_id: $session}' | "$CORE_STOP_HOOK"
+      '{transcript_path: $transcript, session_id: $session}' | /bin/bash "$CORE_STOP_HOOK"
   )
   case "$RETRY_ATTEMPT" in
     1) RETRY_FIRST="$RETRY_OUTPUT" ;;

@@ -368,7 +368,12 @@ def main():
             )
 
         install = subprocess.run(
-            [str(ROOT_DIR / "scripts/install-codex.sh"), "--repo", str(target_repo)],
+            [
+                "/bin/bash",
+                str(ROOT_DIR / "scripts/install-codex.sh"),
+                "--repo",
+                str(target_repo),
+            ],
             cwd=ROOT_DIR,
             env=env,
             check=True,
@@ -401,7 +406,12 @@ def main():
             encoding="utf-8",
         )
         unsafe_install = subprocess.run(
-            [str(ROOT_DIR / "scripts/install-codex.sh"), "--repo", str(unsafe_repo)],
+            [
+                "/bin/bash",
+                str(ROOT_DIR / "scripts/install-codex.sh"),
+                "--repo",
+                str(unsafe_repo),
+            ],
             cwd=ROOT_DIR,
             env=env,
             check=True,

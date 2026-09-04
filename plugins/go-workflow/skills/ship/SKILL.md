@@ -195,7 +195,7 @@ else
       echo "ERROR: Plugin cache stale. Run /gopher-ai-refresh (or refresh-plugins.sh) and restart Claude Code."
       exit 1
     fi
-    "<PLUGIN_ROOT>/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" \
+    /bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh" "ship" "SHIPPED" 50 "" \
       "$(jq -c . "<PLUGIN_ROOT>/lib/ship/resume-messages.json")" \
       "$STATE_FILE" "[\"SHIPPED\",\"INCOMPLETE\"]"
   fi

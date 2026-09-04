@@ -328,8 +328,8 @@ EOF
 cp "$VALID_FILE" "$FIXTURE_ROOT/plugins/example/commands/valid.md"
 cp "$VALID_FILE" "$FIXTURE_ROOT/plugins/example/skills/example/SKILL.md"
 
-FILE_JSON_AFTER=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" valid.md --json)
-FILE_JSON_BEFORE=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json valid.md)
+FILE_JSON_AFTER=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" valid.md --json)
+FILE_JSON_BEFORE=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json valid.md)
 [ "$FILE_JSON_AFTER" = "$FILE_JSON_BEFORE" ] || fail "--json flag order changes validator output"
 
 python3 - "$FILE_JSON_AFTER" <<'PY'
@@ -344,8 +344,8 @@ assert isinstance(report["findings"], list)
 assert set(report["summary"]) == {"errors", "warnings", "info"}
 PY
 
-DIRECTORY_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json plugins/example)
-DEFAULT_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json)
+DIRECTORY_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json plugins/example)
+DEFAULT_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json)
 python3 - "$DIRECTORY_JSON" "$DEFAULT_JSON" <<'PY'
 import json
 import sys
@@ -358,11 +358,11 @@ assert default["files_scanned"] == 2
 assert default["blocks_found"] == 2
 PY
 
-DEFAULT_OUTPUT=$(cd "$FIXTURE_ROOT" && "$VALIDATOR")
+DEFAULT_OUTPUT=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR")
 printf '%s\n' "$DEFAULT_OUTPUT" | matches '^## Validation Report$' || fail "no-argument validation did not render a report"
 
 set +e
-INVALID_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json invalid.md)
+INVALID_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json invalid.md)
 INVALID_STATUS=$?
 set -e
 [ "$INVALID_STATUS" -ne 0 ] || fail "syntax errors do not produce a nonzero exit"
@@ -379,7 +379,7 @@ assert errors[0]["end_line"] == 3
 assert "Markdown line 3" in errors[0]["finding"]
 PY
 
-RED_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json red.md)
+RED_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json red.md)
 [ ! -e "$RED_MARKER" ] || fail "RED-tier block was executed"
 python3 - "$RED_JSON" <<'PY'
 import json
@@ -394,7 +394,7 @@ assert any(
 )
 PY
 
-UNKNOWN_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json unknown.md)
+UNKNOWN_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json unknown.md)
 [ ! -e "$UNKNOWN_MARKER" ] || fail "unknown command was executed"
 python3 - "$UNKNOWN_JSON" <<'PY'
 import json
@@ -409,7 +409,7 @@ assert any(
 )
 PY
 
-COMMAND_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json command.md)
+COMMAND_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json command.md)
 [ ! -e "$COMMAND_MARKER" ] || fail "command builtin bypass was executed"
 python3 - "$COMMAND_JSON" <<'PY'
 import json
@@ -424,7 +424,7 @@ assert any(
 )
 PY
 
-QUOTED_OPERATOR_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json quoted-operator.md)
+QUOTED_OPERATOR_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json quoted-operator.md)
 python3 - "$QUOTED_OPERATOR_JSON" <<'PY'
 import json
 import sys
@@ -436,7 +436,7 @@ assert not any(
 )
 PY
 
-CASE_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json case.md)
+CASE_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json case.md)
 [ -e "$CASE_MARKER" ] || fail "case-arm command bypass removed its marker"
 python3 - "$CASE_JSON" <<'PY'
 import json
@@ -450,7 +450,7 @@ assert any(
 )
 PY
 
-MUTATING_OPTION_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json mutating-option.md)
+MUTATING_OPTION_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json mutating-option.md)
 [ ! -e "$MUTATING_DIR/sort-output" ] || fail "sort -o was executed"
 [ ! -e "$MUTATING_DIR/diff-output" ] || fail "diff --output was executed"
 [ ! -e "$MUTATING_DIR/rg-output" ] || fail "rg --pre was executed"
@@ -470,7 +470,7 @@ assert not any(
 )
 PY
 
-OUTPUT_LIMIT_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json output-limit.md)
+OUTPUT_LIMIT_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json output-limit.md)
 python3 - "$OUTPUT_LIMIT_JSON" <<'PY'
 import json
 import sys
@@ -484,8 +484,8 @@ assert any(
 )
 PY
 
-CONTROL_FLOW_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json control-flow.md)
-FAILED_EXECUTION_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json failed-execution.md)
+CONTROL_FLOW_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json control-flow.md)
+FAILED_EXECUTION_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json failed-execution.md)
 python3 - "$CONTROL_FLOW_JSON" "$FAILED_EXECUTION_JSON" <<'PY'
 import json
 import sys
@@ -504,11 +504,11 @@ assert any(
 assert "codex-validator-sensitive-output" not in sys.argv[2]
 PY
 
-HEREDOC_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json heredoc.md)
-UNQUOTED_HEREDOC_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json unquoted-heredoc.md)
-READ_WRITE_REDIRECTION_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json read-write-redirection.md)
-SEMANTIC_REVIEW_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json semantic-review.md)
-ZSH_EXECUTION_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json zsh-execution.md)
+HEREDOC_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json heredoc.md)
+UNQUOTED_HEREDOC_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json unquoted-heredoc.md)
+READ_WRITE_REDIRECTION_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json read-write-redirection.md)
+SEMANTIC_REVIEW_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json semantic-review.md)
+ZSH_EXECUTION_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json zsh-execution.md)
 [ ! -e "$HEREDOC_MARKER" ] || fail "unquoted heredoc command substitution was executed"
 [ ! -e "$READ_WRITE_MARKER" ] || fail "read-write redirection was executed"
 [ ! -e "$ZSH_MARKER" ] || fail "zsh expansion was executed"
@@ -548,11 +548,11 @@ assert any(
 )
 PY
 
-EXECUTABLE_PATH_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json executable-path.md)
-PATH_ASSIGNMENT_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json path-assignment.md)
-PATH_INLINE_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json path-inline.md)
-PATH_EXPORT_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json path-export.md)
-PRINTF_PATH_JSON=$(cd "$FIXTURE_ROOT" && "$VALIDATOR" --json printf-path.md)
+EXECUTABLE_PATH_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json executable-path.md)
+PATH_ASSIGNMENT_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json path-assignment.md)
+PATH_INLINE_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json path-inline.md)
+PATH_EXPORT_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json path-export.md)
+PRINTF_PATH_JSON=$(cd "$FIXTURE_ROOT" && python3 "$VALIDATOR" --json printf-path.md)
 [ ! -e "$PATH_MARKER" ] || fail "untrusted executable path or PATH mutation was executed"
 python3 - "$EXECUTABLE_PATH_JSON" "$PATH_ASSIGNMENT_JSON" "$PATH_INLINE_JSON" "$PATH_EXPORT_JSON" "$PRINTF_PATH_JSON" <<'PY'
 import json

@@ -48,25 +48,25 @@ The cache wrapper is at `<PLUGIN_ROOT>/scripts/cache-api.sh`.
 ### For "what's the best way to..." questions
 
 ```bash
-"<PLUGIN_ROOT>/scripts/cache-api.sh" practices '{"topic": "error handling"}'
+/bin/bash "<PLUGIN_ROOT>/scripts/cache-api.sh" practices '{"topic": "error handling"}'
 ```
 
 ### For code review/audit
 
 ```bash
-"<PLUGIN_ROOT>/scripts/cache-api.sh" audit '{"code": "<user code here>", "focus": "error-handling"}'
+/bin/bash "<PLUGIN_ROOT>/scripts/cache-api.sh" audit '{"code": "<user code here>", "focus": "error-handling"}'
 ```
 
 ### For "show me an example of..."
 
 ```bash
-"<PLUGIN_ROOT>/scripts/cache-api.sh" examples '{"topic": "table driven tests"}'
+/bin/bash "<PLUGIN_ROOT>/scripts/cache-api.sh" examples '{"topic": "table driven tests"}'
 ```
 
 ### For PR/diff review
 
 ```bash
-"<PLUGIN_ROOT>/scripts/cache-api.sh" review '{"diff": "<diff output>"}'
+/bin/bash "<PLUGIN_ROOT>/scripts/cache-api.sh" review '{"diff": "<diff output>"}'
 ```
 
 ### Direct API calls (bypassing cache)

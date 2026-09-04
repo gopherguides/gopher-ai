@@ -42,7 +42,7 @@ esac
 
 # Create cache dir
 mkdir -p "$(dirname "$CACHE_FILE")"
-CACHE_EPOCH=$("$SCRIPT_DIR/cache-mutate.sh" epoch "$CACHE_FILE")
+CACHE_EPOCH=$(/bin/bash "$SCRIPT_DIR/cache-mutate.sh" epoch "$CACHE_FILE")
 
 # Generate cache key from endpoint + data
 hash_input() {
@@ -95,7 +95,7 @@ CACHE_ENTRY=$(jq -n --arg resp "$RESPONSE" --argjson ts "$NOW" --arg ep "$ENDPOI
   '{response: $resp, cached_at: $ts, endpoint: $ep}')
 
 printf '%s\n' "$CACHE_ENTRY" |
-  "$SCRIPT_DIR/cache-lock.sh" "${CACHE_FILE}.lock" \
-    "$SCRIPT_DIR/cache-mutate.sh" update "$CACHE_FILE" "$CACHE_KEY" "$CACHE_EPOCH"
+  /bin/bash "$SCRIPT_DIR/cache-lock.sh" "${CACHE_FILE}.lock" \
+    /bin/bash "$SCRIPT_DIR/cache-mutate.sh" update "$CACHE_FILE" "$CACHE_KEY" "$CACHE_EPOCH"
 
 echo "$RESPONSE"

@@ -43,7 +43,6 @@ create_fixture() {
   chmod +x "$LAUNCHER"
 
   cat > "$FIXTURE_DIR/worktree-create.sh" <<'EOF'
-#!/bin/bash
 set -euo pipefail
 
 METADATA_FILE=""
@@ -69,7 +68,6 @@ EOF
   chmod +x "$FIXTURE_DIR/worktree-create.sh"
 
   cat > "$FAKE_BIN/gh" <<'EOF'
-#!/bin/bash
 set -euo pipefail
 
 if [ "${1:-} ${2:-}" = "auth status" ]; then
@@ -80,7 +78,6 @@ exit 1
 EOF
 
   cat > "$FAKE_BIN/git" <<'EOF'
-#!/bin/bash
 set -euo pipefail
 
 if [ "${1:-} ${2:-}" = "rev-parse --is-inside-work-tree" ]; then
@@ -92,17 +89,14 @@ exit 1
 EOF
 
   cat > "$FAKE_BIN/jq" <<'EOF'
-#!/bin/bash
 exit 0
 EOF
 
   cat > "$FAKE_BIN/sleep" <<'EOF'
-#!/bin/bash
 exit 0
 EOF
 
   cat > "$FAKE_BIN/tmux" <<'EOF'
-#!/bin/bash
 set -euo pipefail
 
 printf '%s' "${1:-}" >> "$TMUX_TEST_LOG"
@@ -134,7 +128,7 @@ run_launcher() {
     TMUX_TEST_LOG="$TMUX_LOG" \
     TMUX_READY_OUTPUT="$ready_output" \
     TMPDIR="$TEST_ROOT/tmp" \
-    "$LAUNCHER" 327 --no-copy-env "$@"
+    /bin/bash "$LAUNCHER" 327 --no-copy-env "$@"
 }
 
 send_keys_log() {
