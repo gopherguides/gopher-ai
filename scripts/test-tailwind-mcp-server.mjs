@@ -11,6 +11,7 @@ const claudeManifestPath = resolve(root, "plugins/tailwind/.claude-plugin/plugin
 const mcpManifestPath = resolve(root, "plugins/tailwind/.mcp.json");
 const protocolVersion = "2026-07-28";
 const legacyProtocolVersion = "2024-11-05";
+const responseTimeoutMs = 30000;
 
 function assert(condition, message) {
   if (!condition) {
@@ -20,6 +21,40 @@ function assert(condition, message) {
 
 async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
+}
+
+async function resolveServerLaunch(packageSpec) {
+  const installRoot = process.env.TAILWIND_MCP_INSTALL_ROOT;
+  if (!installRoot) {
+    return {
+      command: serverConfig.command,
+      args: serverConfig.args,
+      cwd: root,
+    };
+  }
+
+  const versionSeparator = packageSpec.lastIndexOf("@");
+  const packageName = packageSpec.slice(0, versionSeparator);
+  const expectedVersion = packageSpec.slice(versionSeparator + 1);
+  const packageRoot = resolve(installRoot, "node_modules", packageName);
+  const installedPackage = await readJson(resolve(packageRoot, "package.json"));
+
+  assert(
+    installedPackage.version === expectedVersion,
+    `preinstalled ${packageName} version ${installedPackage.version} does not match ${expectedVersion}`,
+  );
+
+  const binaryPath =
+    typeof installedPackage.bin === "string"
+      ? installedPackage.bin
+      : installedPackage.bin?.["tailwindcss-server"];
+  assert(binaryPath, `preinstalled ${packageName} does not declare tailwindcss-server`);
+
+  return {
+    command: process.execPath,
+    args: [resolve(packageRoot, binaryPath)],
+    cwd: root,
+  };
 }
 
 const [capabilityMatrix, claudeManifest, mcpManifest] = await Promise.all([
@@ -64,13 +99,18 @@ assert(
   "tailwindcss-mcp-server must use an explicit semantic version",
 );
 
+const serverLaunch = await resolveServerLaunch(packageSpec).catch((error) => {
+  process.stderr.write(`FAIL: Tailwind MCP installation is not ready: ${error.message}\n`);
+  process.exit(1);
+});
+
 const tempRoot =
   process.env.TMPDIR ?? process.env.TMP ?? process.env.TEMP ?? "/tmp";
 const npmCache =
   process.env.npm_config_cache ??
   resolve(tempRoot, "gopher-ai-tailwind-mcp-npm-cache");
-const child = spawn(serverConfig.command, serverConfig.args, {
-  cwd: root,
+const child = spawn(serverLaunch.command, serverLaunch.args, {
+  cwd: serverLaunch.cwd,
   env: {
     ...process.env,
     npm_config_cache: npmCache,
@@ -148,7 +188,7 @@ function request(id, method, params) {
     const timer = setTimeout(() => {
       pending.delete(String(id));
       rejectRequest(new Error(`timed out waiting for ${method}`));
-    }, 30000);
+    }, responseTimeoutMs);
 
     pending.set(String(id), {
       resolve: resolveRequest,
