@@ -10,6 +10,8 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 assert_contains() { case "$1" in *"$2"*) ;; *) fail "$3 (missing: $2)" ;; esac; }
 assert_not_contains() { case "$1" in *"$2"*) fail "$3 (unexpected: $2)" ;; *) ;; esac; }
 
+test -x "$PLANNER" || fail "review planner is missing or not executable"
+
 new_repo() {
   local repo="$1"
   mkdir -p "$repo"
@@ -24,7 +26,7 @@ new_repo() {
 run_plan() {
   local repo="$1"
   shift
-  (cd "$repo" && "$PLANNER" --base HEAD^ "$@")
+  (cd "$repo" && /bin/bash "$PLANNER" --base HEAD^ "$@")
 }
 
 echo "=== Adaptive Review Planner Tests ==="
