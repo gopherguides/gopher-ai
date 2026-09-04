@@ -24,7 +24,8 @@ Reference table of known review bots. Used ONLY for matching against bots actual
   `Didn't find any major issues` independently from the persistent summary,
   allowing either a straight or curly apostrophe.
   That clean-result comment is a second approval signal only when it contains
-  `Reviewed commit:` followed by a commit prefix matching `PR_HEAD_SHA`.
+  `Reviewed commit:` or `**Reviewed commit:**` followed by a commit prefix
+  matching `PR_HEAD_SHA`.
   Either signal counts as current-head approval only when the connector has no
   unresolved inline comments. Unresolved connector inline comments are
   actionable findings. A running summary, a clean-result comment without
@@ -49,7 +50,7 @@ CODEX_CLEAN_RESULT_COMMENT=$(jq -c '[
   | select(.body | test("Didn[\u0027’]t find any major issues"))
 ] | sort_by(.created_at) | last // empty' <<< "$ISSUE_COMMENTS")
 CODEX_CLEAN_RESULT_BODY=$(jq -r '.body // empty' <<< "$CODEX_CLEAN_RESULT_COMMENT")
-CODEX_REVIEWED_COMMIT=$(sed -n 's/.*Reviewed commit:[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$CODEX_CLEAN_RESULT_BODY" | head -1)
+CODEX_REVIEWED_COMMIT=$(sed -n 's/.*Reviewed commit:\*\{0,2\}[[:space:]]*`\{0,1\}\([0-9a-fA-F]\{7,40\}\).*/\1/p' <<< "$CODEX_CLEAN_RESULT_BODY" | head -1)
 CODEX_CLEAN_RESULT_APPROVED=false
 if [ -n "$CODEX_REVIEWED_COMMIT" ] && [[ "$PR_HEAD_SHA" == "$CODEX_REVIEWED_COMMIT"* ]]; then
   CODEX_CLEAN_RESULT_APPROVED=true
