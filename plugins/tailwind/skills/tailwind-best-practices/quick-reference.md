@@ -3,7 +3,7 @@
 When helping with Tailwind CSS:
 
 1. **Always use v4 syntax** - No tailwind.config.js, use @theme in CSS
-2. **Use MCP tools first** - Get current documentation before answering
+2. **Verify current behavior** - Consult the official documentation links when needed
 3. **Prefer theme variables** - `bg-primary` not `bg-blue-500`
 4. **Include accessibility** - Add focus-visible, sr-only where appropriate
 5. **Show complete examples** - Include all necessary classes
@@ -14,7 +14,7 @@ When helping with Tailwind CSS:
 **User:** "How do I create a button with hover effect?"
 
 **Response:**
-1. Use `mcp__tailwindcss__get_tailwind_utilities` for button-related utilities
+1. Consult the bundled references and official documentation for button-related utilities
 2. Provide example with proper class ordering:
 
 ```html

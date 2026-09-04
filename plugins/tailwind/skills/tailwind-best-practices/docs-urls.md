@@ -1,6 +1,6 @@
 ## Official Documentation URLs
 
-When MCP tools are unavailable, use WebFetch with these URLs to get current documentation:
+Use WebFetch with these URLs when current upstream documentation is needed:
 
 ### Getting Started
 | Topic | URL |

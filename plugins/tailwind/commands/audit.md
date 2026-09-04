@@ -1,7 +1,7 @@
 ---
 argument-hint: "[path] [--fix]"
 description: "Audit Tailwind CSS usage for best practices and consistency"
-allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(fd:*)", "Bash(grep:*)", "Bash(ls:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion", "mcp__tailwindcss__search_tailwind_docs", "mcp__tailwindcss__get_tailwind_utilities", "mcp__tailwindcss__convert_css_to_tailwind"]
+allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(fd:*)", "Bash(grep:*)", "Bash(ls:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
 ---
 
 # Audit Tailwind CSS Usage
@@ -128,7 +128,7 @@ Inline styles that should be utilities:
 | `style="font-weight: bold"` | `font-bold` |
 | `style="text-align: center"` | `text-center` |
 
-Use `mcp__tailwindcss__convert_css_to_tailwind` for complex conversions.
+Use bundled Tailwind references and official documentation for complex conversions.
 
 **Large arbitrary values:** more than ~10 `[...]` arbitrary values per file suggests missing theme configuration. Repeated arbitrary values should be added to `@theme`.
 
@@ -265,8 +265,7 @@ Remaining issues: X (require manual review)
 
 ## Notes
 
-- Use `mcp__tailwindcss__search_tailwind_docs` to verify utility suggestions
-- Use `mcp__tailwindcss__get_tailwind_utilities` to find equivalent utilities
+- Use bundled Tailwind references and official documentation to verify utility suggestions and equivalents
 - Always review auto-fixes before committing
 - Run audit after major changes to catch regressions
 

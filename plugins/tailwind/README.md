@@ -39,34 +39,13 @@ Automatically applies Tailwind v4 patterns when:
 - Configuring theme customization
 
 The skill provides:
-- **MCP-powered documentation** - Live access to current Tailwind docs
+- **Documentation references** - Bundled links to current Tailwind docs
 - **v4 syntax guidance** - @theme, @source, @variant directives
 - **Best practices** - Class ordering, component extraction, accessibility
 - **Anti-patterns** - Warns against outdated v3 patterns
 
-## MCP Server Integration
-
-This plugin includes the `tailwindcss-mcp-server` which provides:
-
-| Tool | Purpose |
-|------|---------|
-| `search_tailwind_docs` | Search documentation for any topic |
-| `get_tailwind_utilities` | Get utilities by category |
-| `get_tailwind_colors` | Access color palette |
-| `get_tailwind_config_guide` | Get framework-specific configuration guidance |
-| `install_tailwind` | Generate framework installation instructions |
-| `convert_css_to_tailwind` | Convert CSS to utilities |
-| `generate_component_template` | Generate component templates |
-| `generate_color_palette` | Generate a custom color palette |
-
-The plugin pins `tailwindcss-mcp-server@0.1.1`. This release implements legacy
-MCP `2024-11-05`; current Claude Code and Codex clients connect through the
-standard STDIO fallback because it does not implement MCP `2026-07-28`
-`server/discover`. Run `node scripts/test-tailwind-mcp-server.mjs` from the
-repository root to verify the protocol path and advertised tools.
-
-When the server is unavailable, use the official documentation links in
-`skills/tailwind-best-practices/docs-urls.md`.
+The skill uses the official documentation links in
+`skills/tailwind-best-practices/docs-urls.md` for current version guidance.
 
 ## Tailwind v4 Quick Reference
 

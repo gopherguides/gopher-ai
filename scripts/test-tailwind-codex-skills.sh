@@ -15,6 +15,10 @@ fail() {
   exit 1
 }
 
+if rg --hidden -n -i 'mcp' "$PLUGIN_DIR"; then
+  fail "Tailwind plugin still references removed MCP tooling"
+fi
+
 frontmatter() {
   awk '
     NR == 1 && $0 != "---" { exit 1 }
@@ -45,6 +49,8 @@ matches() {
 
   awk -v pattern="$pattern" '$0 ~ pattern { found = 1; exit } END { exit found ? 0 : 1 }'
 }
+
+assert_not_matches "$ROOT_DIR/README.md" 'Tailwind MCP server'
 
 for skill_name in "${WORKFLOW_SKILLS[@]}"; do
   skill_file="$PLUGIN_DIR/skills/$skill_name/SKILL.md"
@@ -90,7 +96,7 @@ for contract in \
   '`<done>...</done>`' \
   'audit and optimize are read-only unless `--fix` is present' \
   'Do not modify project files, install dependencies, or overwrite generated CSS' \
-  'MCP tools are supplementary'; do
+  'bundled Tailwind references first'; do
   assert_contains "$ADAPTER" "$contract"
 done
 assert_contains "$ADAPTER" 'optimize binds it to `<OPTIMIZE_TARGET>`'

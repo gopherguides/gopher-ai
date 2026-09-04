@@ -5,7 +5,7 @@ The canonical machine-readable inventory is
 capability is unavailable on that platform today, not that an installed plugin
 provides an equivalent workflow by another name.
 
-Shipped surface: 36 Claude Code commands across 7 plugins; 37 Codex skills across 6 plugins; 8 optional Codex MCP tools.
+Shipped surface: 36 Claude Code commands across 7 plugins; 37 Codex skills across 6 plugins; 0 optional Codex MCP tools.
 
 ## Current matrix
 
@@ -18,10 +18,3 @@ Shipped surface: 36 Claude Code commands across 7 plugins; 37 Codex skills acros
 | `llm-tools` | Commands: `cancel-loop`, `codex`, `convert`, `gemini`, `gemini-image`, `llm-compare`, `ollama`, `review-loop`. Skills: `gemini`, `gemini-image`, `ollama`, `second-opinion`. | Skills: `$llm-tools:gemini`, `$llm-tools:gemini-image`, `$llm-tools:ollama`, `$llm-tools:second-opinion`. `cancel-loop`, Claude-to-Codex delegation, conversion, multi-provider comparison, and the persistent review loop remain intentionally unsupported on Codex ([#335](https://github.com/gopherguides/gopher-ai/issues/335)). |
 | `go-web` | Commands: `cancel-loop`, `convert-to-go-project`, `create-go-project`. Skills: `convert-to-go-project`, `create-go-project`, `htmx`, `templui`. | Skills: `$go-web:convert-to-go-project`, `$go-web:create-go-project`, `$go-web:htmx`, `$go-web:templui`. Project conversion resolved [#323](https://github.com/gopherguides/gopher-ai/issues/323), and project creation resolved [#334](https://github.com/gopherguides/gopher-ai/issues/334); `cancel-loop` remains unsupported. |
 | `tailwind` | Commands: `audit`, `cancel-loop`, `init`, `migrate`, `optimize`. Skills: `audit`, `init`, `migrate`, `optimize`, `tailwind-best-practices`. | Skills: `$tailwind:audit`, `$tailwind:init`, `$tailwind:migrate`, `$tailwind:optimize`, `$tailwind:tailwind-best-practices`. `cancel-loop` is intentionally Claude-only and unsupported on Codex because it controls Claude persistent-loop hooks ([#336](https://github.com/gopherguides/gopher-ai/issues/336)). |
-
-The optional Tailwind MCP server exposes `search_tailwind_docs`,
-`get_tailwind_utilities`, `get_tailwind_colors`, `get_tailwind_config_guide`,
-`install_tailwind`, `convert_css_to_tailwind`, `generate_color_palette`, and
-`generate_component_template`. These supplementary tools improve focused
-lookups inside the end-to-end `audit`, `init`, `migrate`, and `optimize` skills
-but are not required for those workflows.
