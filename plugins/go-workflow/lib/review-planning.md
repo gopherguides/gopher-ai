@@ -13,7 +13,7 @@ REVIEW_PLAN_ARGS=(
 if [ -n "${SCOPE_HINT:-}" ]; then
   REVIEW_PLAN_ARGS+=(--scope "$SCOPE_HINT")
 fi
-REVIEW_PLAN=$("<PLUGIN_ROOT>/scripts/review-plan.sh" "${REVIEW_PLAN_ARGS[@]}")
+REVIEW_PLAN=$(/bin/bash "<PLUGIN_ROOT>/scripts/review-plan.sh" "${REVIEW_PLAN_ARGS[@]}")
 printf '%s\n' "$REVIEW_PLAN"
 REVIEW_PLAN_MODE=$(printf '%s\n' "$REVIEW_PLAN" | sed -n 's/^REVIEW_PLAN_MODE=//p')
 REVIEW_PLAN_REQUIRES_INPUT=$(printf '%s\n' "$REVIEW_PLAN" | sed -n 's/^REVIEW_PLAN_REQUIRES_INPUT=//p')
