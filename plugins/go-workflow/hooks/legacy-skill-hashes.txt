@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after finalizing SKILL.md changes.
 #
-# Total entries: 342
+# Total entries: 343
 002bd0c3859a936f2bbfa90a8c967db4d141b99a741e4c23f0d5bec397a2d3fc complete-issue
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0232ae1141f76c0ba40045649179a566080de9fc717c6cb08c3961b827fe3e88 create-pr
@@ -98,6 +98,7 @@
 45d5278ebbc4ec5d72f28fb4d584a3f45421c8058d58df3dfc9a051a820fc884 explain
 46a5279b06ac7b37f997d24f4f130b8ccf04653bc0cebfe8018345c999f9a703 e2e-verify
 470716040f20bbddcddfda975337a50cb4b4463da7790f8111dadb43c8f1a83b e2e-verify
+475a2c916b2fa543e90e4f73d7d39ef62eb1930d047641fa3395933b18efe066 start-issue
 4791d6a150034d80b701533fe4599d93bbc58c7f53aa050c1ce8477e9587032a gemini-image
 47ceab0bb285e46bfa612a5e4f58f1130002862d567146334b4cdd46119346ec ship
 4850ce9ff0f66740d96223a348f4fb88b22e4a78b87b48e09be373f3faaa604e e2e-verify

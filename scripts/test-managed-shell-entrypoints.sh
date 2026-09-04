@@ -69,6 +69,21 @@ require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files' \
 require_text '/bin/bash "<PLUGIN_ROOT>/scripts/tmux-start.sh" "$SKILL_ARGS"' \
   "$ROOT_DIR/plugins/go-workflow/skills/tmux-start/SKILL.md" \
   "tmux skill must route launcher calls through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-state.sh" clear' \
+  "$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md" \
+  "start-issue skill must route state cleanup through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh"' \
+  "$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md" \
+  "start-issue skill must route loop setup through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files' \
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/worktree-create.md" \
+  "start-issue workflow must route environment discovery through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --copy-env' \
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/worktree-create.md" \
+  "start-issue workflow must route copy-env worktree creation through /bin/bash"
+require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --no-copy-env' \
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/worktree-create.md" \
+  "start-issue workflow must route no-copy worktree creation through /bin/bash"
 require_text '/bin/bash "$ROOT_DIR/scripts/test-go-web-templates.sh"' "$ROOT_DIR/scripts/test-commands.sh" \
   "nested Go web test must use an explicit interpreter"
 require_text '/bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh"' \

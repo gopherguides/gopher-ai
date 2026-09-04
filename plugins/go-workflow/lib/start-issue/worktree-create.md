@@ -16,7 +16,7 @@ SOURCE_DIR="$ORIGINAL_REPO_ROOT"
 ## 2. Check for environment files
 
 ```bash
-"<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
+/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files --source-dir "$SOURCE_DIR"
 ```
 
 If the output starts with `ENV_FILES_FOUND=true`, this is a
@@ -30,13 +30,13 @@ creating the worktree. Do not infer consent.
 If copying environment files was explicitly authorized:
 
 ```bash
-"<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --copy-env
+/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --copy-env
 ```
 
 Otherwise:
 
 ```bash
-"<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --no-copy-env
+/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" create "$ISSUE_NUM" --source-dir "$SOURCE_DIR" --no-copy-env
 ```
 
 The script prints the absolute worktree path and branch name, and registers the
