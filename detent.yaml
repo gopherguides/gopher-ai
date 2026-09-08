@@ -261,3 +261,16 @@ schedule_ownership:
     enabled: true
     key: gopher-ai
     repository: gopherguides/gopher-ai
+
+agents:
+    model_selection:
+        preset: sol_first
+        normal_model: gpt-6-astra
+        complex_model: gpt-6-astra
+        levels:
+            normal:
+                effort: low
+            complex:
+                effort: medium
+            very_complex:
+                effort: high
