@@ -48,11 +48,15 @@ loop_log() {
   local log
   local dir
   local ts
-  log="${LOOP_DEBUG_LOG:-${TMPDIR:-/tmp}/go-workflow-loop-debug.log}"
+  if [ -z "${LOOP_DEBUG_LOG:-}" ]; then
+    LOOP_DEBUG_LOG=$(mktemp "${TMPDIR:-/tmp}/go-workflow-loop-debug.XXXXXXXXXX") || return 0
+    export LOOP_DEBUG_LOG
+  fi
+  log="$LOOP_DEBUG_LOG"
   dir=$(dirname "$log")
   [ -d "$dir" ] || mkdir -p "$dir" 2>/dev/null || return 0
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  printf '[%s] %s\n' "$ts" "$msg" >> "$log"
+  { printf '[%s] %s\n' "$ts" "$msg" >> "$log"; } 2>/dev/null || return 0
 }
 
 owner_workflow_for_loop() {
