@@ -14,6 +14,57 @@ esac
 
 ERRORS=0
 
+run_commit_worktree_tests() (
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+  local fixture primary linked mode before plugin output
+  fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-commit-worktree.XXXXXX")
+  primary="$fixture/primary checkout"
+  linked="$fixture/linked checkout"
+  mkdir -p "$primary"
+  git -C "$ROOT_DIR" archive HEAD shared plugins scripts githooks | tar -x -C "$primary"
+  cp "$ROOT_DIR/githooks/pre-commit" "$primary/githooks/pre-commit"
+  git -C "$primary" init -qb main
+  git -C "$primary" config user.name "Hook Tests"
+  git -C "$primary" config user.email hooks@example.com
+  git -C "$primary" -c core.hooksPath=/dev/null add .
+  git -C "$primary" -c core.hooksPath=/dev/null commit -qm initial
+  git -C "$primary" worktree add -qb linked "$linked"
+  printf '%s\n' primary-staged > "$primary/sentinel"
+  git -C "$primary" add sentinel
+  printf '%s\n' primary-unstaged >> "$primary/sentinel"
+  before=$(git -C "$primary" diff HEAD --binary)
+  for mode in absolute symlink; do
+    echo "  Installed $mode hook commits only the active worktree..."
+    if [ "$mode" = absolute ]; then
+      git -C "$primary" config core.hooksPath "$primary/githooks"
+    else
+      git -C "$primary" config --unset core.hooksPath
+      /bin/bash "$primary/scripts/install-hooks.sh" >/dev/null
+    fi
+    printf '\n%s\n' "$mode" >> "$linked/shared/commands/cancel-loop.md"
+    git -C "$linked" add shared/commands/cancel-loop.md
+    output=$(git -C "$linked" commit -qm "$mode sync" 2>&1) || {
+      printf '%s\n' "$output"
+      return 1
+    }
+    [ "$before" = "$(git -C "$primary" diff HEAD --binary)" ] || return 1
+    [ "sentinel" = "$(git -C "$primary" diff --cached --name-only)" ] || return 1
+    [ -z "$(git -C "$linked" status --porcelain)" ] || return 1
+    for plugin in go-workflow go-web go-dev tailwind llm-tools; do
+      git -C "$linked" show "HEAD:plugins/$plugin/commands/cancel-loop.md" > "$fixture/committed"
+      cmp "$linked/shared/commands/cancel-loop.md" "$fixture/committed" || return 1
+    done
+    /bin/bash "$linked/scripts/check-shared-sync.sh" >/dev/null || return 1
+  done
+)
+
+if [ "${1:-}" = "--commit-worktree-only" ]; then
+  run_commit_worktree_tests
+  exit $?
+fi
+
+run_commit_worktree_tests || ERRORS=$((ERRORS + 1))
+
 run_runtime_location_tests() {
   local worktree_state="$ROOT_DIR/plugins/go-workflow/scripts/worktree-state.sh"
   local pre_tool_hook="$ROOT_DIR/plugins/go-workflow/hooks/pre-tool-use.sh"

@@ -6,23 +6,15 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-# Handle both symlink (from .git/hooks) and direct execution
-if [ -L "$0" ]; then
-  # Running as symlink from .git/hooks
-  ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
-else
-  # Running directly from githooks/
-  ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-fi
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+cd "$ROOT_DIR"
 
 # Check if any shared files were modified
 SHARED_CHANGED=$(git diff --cached --name-only | grep -E "^shared/" || true)
 
 if [ -n "$SHARED_CHANGED" ]; then
   echo "Shared files changed, running sync..."
-  "$ROOT_DIR/scripts/sync-shared.sh"
+  /bin/bash "$ROOT_DIR/scripts/sync-shared.sh"
 
   # Stage the synced files
   # Note: Only go-workflow has hooks/ — other plugins only get scripts/, lib/, and commands/
@@ -40,10 +32,13 @@ if [ -n "$SHARED_CHANGED" ]; then
     plugins/tailwind/scripts \
     plugins/tailwind/lib \
     plugins/tailwind/commands/cancel-loop.md \
+    plugins/llm-tools/scripts \
+    plugins/llm-tools/lib \
+    plugins/llm-tools/commands/cancel-loop.md \
     2>/dev/null || true
 
   echo "Synced files staged for commit."
 fi
 
 # Verify sync is correct
-"$ROOT_DIR/scripts/check-shared-sync.sh"
+/bin/bash "$ROOT_DIR/scripts/check-shared-sync.sh"
