@@ -157,12 +157,17 @@ gate:
     kind: command
     run: >-
         bash -lc 'python3 -m pip install --disable-pip-version-check --requirement requirements-test.txt && /bin/bash ./scripts/test-commands.sh && /bin/bash ./scripts/test-hooks.sh && /bin/bash ./scripts/test-ship-e2e-gate.sh && /bin/bash ./scripts/check-shared-sync.sh && shellcheck agent-skills/scripts/*.sh && for skill_dir in agent-skills/skills/*/; do skill_name=$(basename "$skill_dir"); skill_file="$skill_dir/SKILL.md"; test -f "$skill_file"; lines=$(wc -l < "$skill_file"); test "$lines" -lt 500; name=$(sed -n "/^---$/,/^---$/p" "$skill_file" | awk "/^name:/ {print \$2; exit}"); test "$name" = "$skill_name"; rg -q "^description:" "$skill_file"; done && ruby -ryaml -e "YAML.load_file(ARGV[0])" agent-skills/config/severity.yaml && (cd agent-skills/examples/demo-repo && go build -o "${TMPDIR:-/tmp}/gopher-ai-demo" . && /bin/bash ../../../scripts/run-go-tests.sh ./...)'
-    # Flipped 2026-08-15 (operator, with corp): the gate waits for the
-    # automated review (chatgpt-codex-connector) instead of promoting past it;
-    # actionable review feedback routes to Rework via auto_promote instead of
-    # landing on a human. If no review arrives, the bounded gate wait expires
-    # and the issue falls through per gate_wait semantics -- no infinite wait.
-    require_automated_review: true
+    # Flipped back to false 2026-09-04 (operator): the 2026-08-15 setting assumed
+    # the bounded gate wait was harmless when no review arrived. It is not -- the
+    # fall-through lands the card in Human Review, which is exactly what this
+    # project is configured to avoid (auto_promote gate_wait_state: source).
+    # chatgpt-codex-connector posts on some PRs and not others (present on #407
+    # and #397, absent on #400 and #405), so the wait expires routinely:
+    # auto_promote_gate_wait_timeout x4 plus automated_review_missing x1 are the
+    # causal reasons behind this project's Human Review entries.
+    # This project auto-merges on green CI. Do not re-enable without also fixing
+    # the connector's delivery reliability.
+    require_automated_review: false
     required_status_checks: []
     ci_failure_action: rework
     transient_ci_retry_limit: 2
