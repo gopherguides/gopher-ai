@@ -492,7 +492,8 @@ assert_session() {
     fi
     [[ -f "$PLUGIN_DATA_ROOT/.gopher-ai-cleanup-v3-$version" ]] \
         || fail "$label SessionStart hook did not create its version marker"
-    rg -q 'stop-hook: entered' "$LOG_DIR/$label.loop-debug.log" \
+    [[ -f "$LOG_DIR/$label.loop-debug.log" && \
+       "$(< "$LOG_DIR/$label.loop-debug.log")" == *'stop-hook: entered'* ]] \
         || fail "$label Stop hook did not record entry"
 }
 
