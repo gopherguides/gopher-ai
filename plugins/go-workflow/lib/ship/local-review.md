@@ -648,6 +648,13 @@ same E2E result because its page selection and browser state are not proven.
 
 ### Execute smoke tests
 
+Read `<PLUGIN_ROOT>/lib/screenshot-evidence.md` before capturing. Initialize
+`EVIDENCE_RUN` for the current commit, generate an absolute path for each route
+and capture label, and supply it as DevTools `filePath` with PNG format. Open
+each saved image and record its visual verdict in the shared manifest, including
+failures and retests. A missing disk export affects attachment delivery only.
+
+
 For each changed handler/route/template, identify the URL path and:
 
 - `mcp__chrome-devtools-mcp__navigate_page` — load URL
@@ -663,6 +670,9 @@ If any page has an unexpected 4xx/5xx status, console JavaScript errors, failed
 persist `e2e_result="blocked"` with an explanatory `e2e_skip_reason`. Browser
 tooling errors use the recording block above. Display the failed route(s) and
 stop the workflow. No merge.
+
+Before stopping on a failed smoke test with an existing PR, post the captured
+evidence using the shared poster below, preserving the blocked verification.
 
 ### Cleanup and report
 
@@ -694,6 +704,20 @@ Display:
 
 Pages tested: N | Passed: N | Errors: N
 ```
+
+Save the smoke report, visual findings, exact tested commit, and unchanged
+verification outcome to `COMMENT_BODY_FILE`, placing `{{SCREENSHOTS}}` where
+the evidence table belongs. Post on the existing PR:
+
+```bash
+python3 "<PLUGIN_ROOT>/scripts/screenshot-evidence.py" post \
+  --run "$EVIDENCE_RUN" --body-file "$COMMENT_BODY_FILE" \
+  --repo "$REPO_SLUG" --number "$PR_NUM"
+```
+
+If no PR exists yet, retain `EVIDENCE_RUN` and `COMMENT_BODY_FILE` until Step 9
+creates it, then post. Attachment failures degrade to text and never change
+verification state or block shipping. Report a failed text-only post honestly.
 
 For UI-visible diffs, only `e2e_result="passed"` allows `$go-workflow:ship` to continue.
 `e2e_result="blocked"` is a hard stop and must not be summarized as

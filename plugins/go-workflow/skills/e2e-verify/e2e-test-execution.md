@@ -7,6 +7,15 @@ project has no web UI or the diff contains no UI-visible files.
 
 **CRITICAL PRINCIPLE: Screenshots must be READ, not just captured.** A screenshot you don't look at is worthless. After every `take_screenshot`, you MUST read the image with your vision capabilities, describe what you see, and compare it against the spec/issue requirements. DOM-only checks (console errors, network requests) supplement visual verification; they do NOT substitute for it.
 
+Before any screenshot, read `<PLUGIN_ROOT>/lib/screenshot-evidence.md` and
+initialize `EVIDENCE_RUN`. Use its generated absolute `SCREENSHOT_PATH` as
+DevTools `filePath` and record every capture in the manifest after inspection,
+including login, viewport, edge-case, failure, and retest captures. Use distinct
+capture labels to preserve earlier images. Missing disk exports affect only
+attachment delivery; they do not replace the visual inspection requirement.
+Before stopping on a verification failure, post captured evidence through
+Step 6 when a PR exists, preserving the failing `E2E_RESULT` and label gate.
+
 ## 5a. Skip vs. Fail Decision
 
 Skipping is allowed only when there is genuinely nothing to verify. If there
@@ -327,7 +336,8 @@ Visual Stabilization Protocol (section 5g) before each new screenshot.
 
 ### 4. Screenshot
 `mcp__chrome-devtools-mcp__take_screenshot` to capture the rendered page (per
-viewport, if step 3 added more than one).
+viewport, if step 3 added more than one), with `filePath: SCREENSHOT_PATH`
+and `format: "png"`. Open that file for the inspection below.
 
 ### 5. READ THE SCREENSHOT (MANDATORY)
 

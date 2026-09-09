@@ -227,6 +227,11 @@ fi
 
 Static-analysis failures are informational — they feed into the review, not block it.
 
+When review includes browser screenshots, read
+`<PLUGIN_ROOT>/lib/screenshot-evidence.md` before capturing. Initialize the
+manifest and record every inspected route/capture, including failures, for the
+Step 7 report. This does not add browser testing to reviews without visual work.
+
 ## Step 5: Perform Review
 
 Read `review-criteria.md` for the full criteria, the Quality Score Rubric, the confidence-scoring guide, and the breaking-change detection block. Apply all criteria to the diff with the gathered context.
@@ -283,7 +288,7 @@ fixes reached the remote.
 
 ### Post to PR
 
-If `AUTO_POST` is `true` and a PR was detected, post immediately with `gh pr comment "$PR_NUM" --body ...` using the formatting from `output-format.md`.
+If `AUTO_POST` is `true` and a PR was detected, post immediately using the shared screenshot-evidence poster and formatting from `output-format.md`.
 
 If `AUTO_POST` is `false` and a PR was detected, resolve a
 **driver-resolvable gate**. Post only when the original request explicitly asks

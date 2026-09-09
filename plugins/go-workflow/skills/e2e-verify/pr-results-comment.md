@@ -52,14 +52,7 @@ DOM-only check. The Observed field must describe what the screenshot actually
 shows. A screenshot of a QR code covering text means Verdict=FAIL — set
 `E2E_RESULT='fail'` and stop.*
 
-### Screenshots
-
-| Page | Screenshot |
-|------|-----------|
-| / | ![homepage](screenshot-homepage.png) |
-| /dashboard | ![dashboard](screenshot-dashboard.png) |
-
-*Screenshots saved locally. See Visual Verification Findings above for what was observed in each screenshot.*
+{{SCREENSHOTS}}
 
 ### Edge Cases Tested
 
@@ -108,12 +101,21 @@ of mode. It makes the gate visible to humans reading the PR.
 
 ## 6b. Post Comment
 
+Read `<PLUGIN_ROOT>/lib/screenshot-evidence.md`. Initialize an empty evidence
+run if Step 5 skipped before capture setup. Write the complete body above and
+the appropriate Step 6c footer to `COMMENT_BODY_FILE`. Leave the literal
+`{{SCREENSHOTS}}` marker in place; the shared poster builds every table row and
+matching `--attach` argument from the capture manifest, including failures.
+
 ```bash
-gh pr comment "$PR_NUM" --repo "$REPO_SLUG" --body "$(cat <<'EOF'
-<constructed comment body>
-EOF
-)"
+python3 "<PLUGIN_ROOT>/scripts/screenshot-evidence.py" post \
+  --run "$EVIDENCE_RUN" --body-file "$COMMENT_BODY_FILE" \
+  --repo "$REPO_SLUG" --number "$PR_NUM"
 ```
+
+The poster falls back to text when attachments are unavailable or fail. Report
+any remaining comment-delivery failure without changing `E2E_RESULT`. Never
+hand-write local image links or treat attachment availability as a ship gate.
 
 ## 6c. Mode-Specific Footer
 

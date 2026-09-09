@@ -96,3 +96,18 @@ set_loop_field "$STATE_FILE" "bot_review_baseline" "$BOT_REVIEW_BASELINE" "$WORK
 
 The baseline is captured here before bots can post so Step 11's bot-watch
 window starts at the right moment.
+
+## Step 9d — Post pending screenshot evidence
+
+If Step 7.6 retained an `EVIDENCE_RUN` and `COMMENT_BODY_FILE` because there
+was no PR yet, post them now using `<PLUGIN_ROOT>/lib/screenshot-evidence.md`:
+
+```bash
+python3 "<PLUGIN_ROOT>/scripts/screenshot-evidence.py" post \
+  --run "$EVIDENCE_RUN" --body-file "$COMMENT_BODY_FILE" \
+  --repo "$REPO_SLUG" --number "$PR_NUM"
+```
+
+Post only an unposted report from this run; do not reuse expired temporary
+paths or imply its tested commit changed after capture. Attachment failure
+falls back to text and never changes the stored verification verdict.
