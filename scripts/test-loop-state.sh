@@ -459,6 +459,62 @@ assert_eq "generic field helper cannot mutate terminal allowlist" "true" \
   "$([ "$ALLOWLIST_STATUS" -ne 0 ] && printf '%s\n' "$ALLOWLIST_ERROR" | grep -Fq 'dedicated helper' && echo true || echo false)"
 assert_eq "terminal allowlist remains immutable" "$PROMISE_BEFORE" "$(jq -cS . "$PATH_STATE")"
 
+# --- Debug log: off by default, never inside the user's repository ---
+DEBUG_PROBE_DIR=$(mktemp -d "$LOOP_TMP_BASE/gopher-ai-loop-debug.XXXXXX")
+(
+  cd "$DEBUG_PROBE_DIR"
+  # shellcheck source=/dev/null
+  . "$LOOP_LIB"
+  unset GO_WORKFLOW_DEBUG
+  loop_log "quiet by default"
+)
+assert_eq "no debug log without GO_WORKFLOW_DEBUG" "0" \
+  "$(find "$DEBUG_PROBE_DIR" -name 'loop-debug.log' 2>/dev/null | wc -l | tr -d ' ')"
+
+DEBUG_PROBE_LOG="$DEBUG_PROBE_DIR/explicit/loop-debug.log"
+(
+  cd "$DEBUG_PROBE_DIR"
+  # shellcheck source=/dev/null
+  . "$LOOP_LIB"
+  GO_WORKFLOW_DEBUG=1 LOOP_DEBUG_LOG="$DEBUG_PROBE_LOG" loop_log "noisy on request"
+)
+assert_eq "GO_WORKFLOW_DEBUG=1 logs to LOOP_DEBUG_LOG" "true" \
+  "$([ -s "$DEBUG_PROBE_LOG" ] && echo true || echo false)"
+assert_eq "logging on request still writes nothing else into the cwd" "1" \
+  "$(find "$DEBUG_PROBE_DIR" -name 'loop-debug.log' 2>/dev/null | wc -l | tr -d ' ')"
+DEBUG_DEFAULT_DIR=$(mktemp -d "$DEBUG_PROBE_DIR/default.XXXXXX")
+DEBUG_VICTIM="$DEBUG_DEFAULT_DIR/victim"
+printf '%s\n' preserved > "$DEBUG_VICTIM"
+ln -s "$DEBUG_VICTIM" "$DEBUG_DEFAULT_DIR/go-workflow-loop-debug.log"
+DEBUG_DEFAULT_LOG=$(
+  . "$LOOP_LIB"
+  unset LOOP_DEBUG_LOG
+  export GO_WORKFLOW_DEBUG=1 TMPDIR="$DEBUG_DEFAULT_DIR"
+  loop_log "first entry"
+  loop_log "second entry"
+  printf '%s\n' "$LOOP_DEBUG_LOG"
+)
+assert_eq "predictable symlink target remains unchanged" "preserved" "$(cat "$DEBUG_VICTIM")"
+assert_eq "default log retains entries in one private file" "2" "$(wc -l < "$DEBUG_DEFAULT_LOG" | tr -d ' ')"
+assert_eq "default log permissions are private" "600" "$(python3 -c 'import os, stat, sys; print(oct(stat.S_IMODE(os.stat(sys.argv[1]).st_mode))[2:])' "$DEBUG_DEFAULT_LOG")"
+DEBUG_SECOND_LOG=$(
+  . "$LOOP_LIB"
+  unset LOOP_DEBUG_LOG
+  export GO_WORKFLOW_DEBUG=1 TMPDIR="$DEBUG_DEFAULT_DIR"
+  loop_log "independent session"
+  printf '%s\n' "$LOOP_DEBUG_LOG"
+)
+assert_eq "independent sessions receive separate default logs" "true" \
+  "$([ "$DEBUG_DEFAULT_LOG" != "$DEBUG_SECOND_LOG" ] && echo true || echo false)"
+(
+  set -e
+  . "$LOOP_LIB"
+  GO_WORKFLOW_DEBUG=1 LOOP_DEBUG_LOG="$DEBUG_DEFAULT_DIR" loop_log "unwritable destination"
+)
+assert_eq "logging failure does not fail the caller" "0" "$?"
+rm -rf "$DEBUG_PROBE_DIR"
+echo ""
+
 echo "==========================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ "$FAIL" -gt 0 ]; then
