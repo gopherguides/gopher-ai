@@ -1,6 +1,7 @@
 name: Gopher AI Code Review
 
 on:
+  merge_group:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -15,6 +16,7 @@ concurrency:
 
 jobs:
   review:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: AI Code Review
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -23,6 +25,7 @@ jobs:
 
       - name: Run Gopher AI review
         id: review
+        if: github.event_name == 'pull_request'
         uses: ./.github/actions/gopher-ai-review
         with:
           api-key: ${{ secrets.GOPHER_AI_API_KEY }}
@@ -34,8 +37,8 @@ jobs:
           FILE_COUNT: ${{ steps.review.outputs.file-count || '0' }}
           HAS_ISSUES: ${{ steps.review.outputs.has-issues || 'false' }}
           REVIEWED_HEAD: ${{ steps.review.outputs.reviewed-head || github.event.pull_request.head.sha }}
-          SKIP_REASON: ${{ steps.review.outputs.skip-reason || 'none' }}
-          SUMMARY: ${{ steps.review.outputs.summary || 'review did not complete' }}
+          SKIP_REASON: ${{ steps.review.outputs.skip-reason || (github.event_name == 'merge_group' && 'reviewed-on-pull-request') || 'none' }}
+          SUMMARY: ${{ steps.review.outputs.summary || (github.event_name == 'merge_group' && 'PR review already runs before queue admission') || 'review did not complete' }}
         run: |
           {
             echo '## Gopher AI Code Review'
