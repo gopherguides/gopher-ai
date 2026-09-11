@@ -270,12 +270,12 @@ schedule_ownership:
 agents:
     model_selection:
         preset: sol_first
-        normal_model: gpt-6-astra
-        complex_model: gpt-6-astra
+        normal_model: gpt-5.6-sol
+        complex_model: gpt-5.6-sol
         levels:
             normal:
-                effort: low
+                effort: high
             complex:
-                effort: low
+                effort: high
             very_complex:
-                effort: low
+                effort: high
