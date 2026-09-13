@@ -2,6 +2,7 @@
 argument-hint: "[path] [--check]"
 description: "Auto-fix Go linting issues with golangci-lint"
 allowed-tools: ["Bash(*setup-loop.sh*)", "Bash(golangci-lint:*)", "Bash(gofmt:*)", "Bash(goimports:*)", "Bash(gofumpt:*)", "Bash(go:*)", "Bash(git:*)", "Bash(ls:*)", "Bash(echo:*)", "Read", "Write", "Edit", "Glob", "Grep", "AskUserQuestion"]
+effort: low
 ---
 
 **If `$ARGUMENTS` is empty or not provided:**

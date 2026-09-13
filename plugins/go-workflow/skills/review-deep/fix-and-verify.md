@@ -29,7 +29,7 @@ Evaluate the finding:
 Auto-skip (record skip reason) when:
 - **Priority 3 AND confidence < 0.5**: Nit-level noise, not worth fixing
 - **Finding is invalid**: The code is correct as written; the review was wrong
-- **Finding is pre-existing**: Not introduced by this diff (should have been caught in review, but double-check)
+- **Finding is pre-existing**: Not introduced by this diff (should have been caught in review)
 - **Finding is intentional**: Documented exception or justified trade-off
 
 For skipped findings, record: finding number, title, skip reason.

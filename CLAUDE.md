@@ -148,3 +148,19 @@ Skill and command bodies enter the context window when invoked and stay there fo
 - Supporting files (references, templates, examples) cost zero tokens until Claude reads them — prefer them over inline content for anything static, mutually exclusive, or rarely needed
 - Prefer executable scripts over inline code blocks: script contents never enter context, only their output
 - Frontmatter `description` should state what the skill does plus WHEN/WHEN NOT to use it, in third person; put the key use case first (the skill listing truncates long descriptions)
+
+**Model and effort tiering:**
+
+Every command and skill inherits the session model and effort unless its frontmatter says otherwise, so an Opus session runs `/cancel-loop` at Opus rates. Set `model:` and `effort:` to push work down to the cheapest tier that still does the job. Use rolling aliases (`haiku`, `sonnet`, `fable`, `inherit`) — never a dated model ID, which goes stale on every model release. When a command and a same-named skill both exist, the skill wins the collision and supplies the invocation metadata, so set the keys on both or the override silently does nothing.
+
+- **Deterministic script-driven work** (`cancel-loop`, `clear-cache`, `create-worktree`, `gopher-ai-refresh`): `model: haiku` + `effort: low`. These run fixed scripts and branch on exit codes.
+- **Bounded summarization and autofix reporting** (`standup`, `changelog`, `weekly-summary`, `validate-skills`, `lint-fix`, `commit`): `effort: low` only. Keep the session model — a stronger model at low effort usually beats a weaker model at high effort.
+- **Everything else** — diagnosis (`build-fix`), code design (`test-gen`, `bench`), anything that reasons about user intent (`tailwind audit`/`init`), destructive operations (`remove-worktree`, `prune-worktree`), and multi-step workflows (`ship`, `start-issue`, `review-deep`, `e2e-verify`, `migrate`): leave both unset and inherit the session.
+
+Never pin `model:` on a surface that deletes or force-writes. The savings on a rarely-run command are trivial; a wrong delete is not recoverable.
+
+Overrides are not free. Switching models mid-session forfeits the prompt cache built for the previous model, so a small command pinned to `haiku` inside a long warm conversation can cost more than it saves. Pin models sparingly, and prefer `effort:` alone where the work is bounded.
+
+Before adding an override, compare inherited settings against the proposed configuration on representative held-out tasks — dirty or unmerged worktrees, failed GitHub lookups, generated-code build failures — and record task success, incorrect mutations, tool calls, and token counts. Script-level checks (`scripts/test-commands.sh`) establish packaging validity, not model quality.
+
+Do not add verification rituals ("double-check your work") or thoroughness boosters ("be maximally thorough") to prompts. Current models do this natively; the instructions just buy duplicate tool calls.

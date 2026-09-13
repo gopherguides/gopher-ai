@@ -1,6 +1,8 @@
 ---
 description: "Clear the Gopher Guides API response cache"
 allowed-tools: ["Bash"]
+model: haiku
+effort: low
 ---
 
 # Clear Gopher Guides Cache

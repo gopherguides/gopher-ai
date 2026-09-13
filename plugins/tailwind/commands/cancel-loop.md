@@ -2,6 +2,8 @@
 argument-hint: "[loop-name]"
 description: "Cancel any active persistent loop"
 allowed-tools: ["Bash"]
+model: haiku
+effort: low
 ---
 
 # Cancel Loop

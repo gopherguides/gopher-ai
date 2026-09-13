@@ -2,6 +2,7 @@
 argument-hint: "[weeks-back]"
 description: "Generate weekly work summary from git activity"
 allowed-tools: ["Bash(git:*)", "Bash(date:*)", "Bash(find:*)", "Read", "Glob", "Grep"]
+effort: low
 ---
 
 ## Context

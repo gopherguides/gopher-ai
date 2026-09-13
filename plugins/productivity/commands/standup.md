@@ -2,6 +2,7 @@
 argument-hint: "[hours|days]"
 description: "Generate standup notes from recent git activity"
 allowed-tools: ["Bash(git:*)", "Bash(date:*)", "Read", "Glob", "Grep"]
+effort: low
 ---
 
 ## Context
