@@ -49,7 +49,7 @@ run_with_deadline() {
   local pid
   local status=0
   local finished=false
-  local attempts="${RUN_DEADLINE_ATTEMPTS:-40}"
+  local attempts="${RUN_DEADLINE_ATTEMPTS:-400}"
 
   "$@" >"$log_file" 2>&1 &
   pid=$!

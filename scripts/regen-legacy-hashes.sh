@@ -106,6 +106,7 @@ CANDIDATE=""
 STAGED_MANIFEST=""
 STAGED_HOOK_MANIFEST=""
 STAGED_TRANSACTION=""
+STAGED_RECOVERY=""
 TRANSACTION_IDENTITY=""
 LOCK_GUARD_PID=""
 LOCK_STATE_DIR=""
@@ -145,6 +146,7 @@ cleanup() {
     [[ -z "$STAGED_MANIFEST" ]] || rm -f "$STAGED_MANIFEST"
     [[ -z "$STAGED_HOOK_MANIFEST" ]] || rm -f "$STAGED_HOOK_MANIFEST"
     [[ -z "$STAGED_TRANSACTION" ]] || rm -f "$STAGED_TRANSACTION"
+    [[ -z "$STAGED_RECOVERY" ]] || rm -f "$STAGED_RECOVERY"
     [[ -z "$TRANSACTION_IDENTITY" ]] || rm -f "$TRANSACTION_IDENTITY"
     if [[ -n "$LOCK_GUARD_PID" ]]; then
         kill "$LOCK_GUARD_PID" 2>/dev/null || true
@@ -217,11 +219,30 @@ acquire_lock() {
                         close($command) or die "close transaction cleanup request: $!";
                         chomp(@command);
                         my $operation = shift(@command) // "";
-                        if ($operation eq "remove" && @command == 1) {
-                            my ($identity) = @command;
+                        if ($operation eq "recover" && @command == 3) {
+                            my ($identity, $staged_recovery, $destination) = @command;
                             my @marker_stat = stat($transaction);
                             my @identity_stat = stat($identity);
                             @marker_stat && @identity_stat &&
+                                $marker_stat[0] == $identity_stat[0] &&
+                                $marker_stat[1] == $identity_stat[1]
+                                or die "transaction marker identity changed\n";
+                            if (my $hold = $ENV{GOPHER_AI_REGEN_TEST_HOLD_AFTER_RECOVERY}) {
+                                open(my $hold_ready, ">", "$hold.ready") or die "write recovery hold ready: $!";
+                                close($hold_ready) or die "close recovery hold ready: $!";
+                                until (-e $hold) {
+                                    exit 2 if getppid() != $parent;
+                                    select(undef, undef, undef, 0.05);
+                                }
+                            }
+                            if ($staged_recovery ne "" || $destination ne "") {
+                                $staged_recovery ne "" && $destination ne ""
+                                    or die "incomplete recovery install request\n";
+                                rename($staged_recovery, $destination)
+                                    or die "install recovered manifest: $!";
+                            }
+                            @marker_stat = stat($transaction);
+                            @marker_stat &&
                                 $marker_stat[0] == $identity_stat[0] &&
                                 $marker_stat[1] == $identity_stat[1]
                                 or die "transaction marker identity changed\n";
@@ -298,10 +319,24 @@ with open(path, "a") as lock:
             with open(request) as command:
                 command = [line.rstrip("\n") for line in command]
             operation, *args = command
-            if operation == "remove" and len(args) == 1:
-                identity = args[0]
+            if operation == "recover" and len(args) == 3:
+                identity, staged_recovery, destination = args
                 marker_stat = os.stat(transaction)
                 identity_stat = os.stat(identity)
+                if (marker_stat.st_dev, marker_stat.st_ino) != (identity_stat.st_dev, identity_stat.st_ino):
+                    raise SystemExit("transaction marker identity changed")
+                hold = os.environ.get("GOPHER_AI_REGEN_TEST_HOLD_AFTER_RECOVERY")
+                if hold:
+                    open(hold + ".ready", "w").close()
+                    while not os.path.exists(hold):
+                        if os.getppid() != parent:
+                            raise SystemExit(2)
+                        time.sleep(0.05)
+                if staged_recovery or destination:
+                    if not staged_recovery or not destination:
+                        raise SystemExit("incomplete recovery install request")
+                    os.replace(staged_recovery, destination)
+                marker_stat = os.stat(transaction)
                 if (marker_stat.st_dev, marker_stat.st_ino) != (identity_stat.st_dev, identity_stat.st_ino):
                     raise SystemExit("transaction marker identity changed")
                 os.unlink(transaction)
@@ -384,8 +419,8 @@ run_guardian_command() {
     rm -f "$LOCK_TRANSACTION_REQUEST" "$LOCK_TRANSACTION_DONE"
 }
 
-remove_transaction_marker() {
-    run_guardian_command remove "$1"
+install_recovery() {
+    run_guardian_command recover "$1" "$2" "$3"
 }
 
 publish_manifests() {
@@ -414,17 +449,16 @@ stage_recovery_copy() {
     local source="$1"
     local destination="$2"
     local expected_hash="$3"
-    local staged
 
-    staged=$(/usr/bin/mktemp "$(dirname "$destination")/.legacy-skill-hashes.recovery.XXXXXX")
-    cp "$source" "$staged"
-    chmod 0644 "$staged"
-    if [[ "$(hash_file "$staged")" != "$expected_hash" ]]; then
-        rm -f "$staged"
+    STAGED_RECOVERY=$(/usr/bin/mktemp "$(dirname "$destination")/.legacy-skill-hashes.recovery.XXXXXX")
+    cp "$source" "$STAGED_RECOVERY"
+    chmod 0644 "$STAGED_RECOVERY"
+    if [[ "$(hash_file "$STAGED_RECOVERY")" != "$expected_hash" ]]; then
+        rm -f "$STAGED_RECOVERY"
+        STAGED_RECOVERY=""
         echo "error: recovered manifest failed transaction hash validation" >&2
         return 1
     fi
-    mv "$staged" "$destination"
 }
 
 recover_interrupted_publication() {
@@ -432,6 +466,7 @@ recover_interrupted_publication() {
     local extra=""
     local manifest_hash=""
     local hook_hash=""
+    local recovery_destination=""
 
     [[ -f "$TRANSACTION_FILE" ]] || return 0
     if ! read -r expected_hash extra < "$TRANSACTION_FILE" ||
@@ -452,8 +487,10 @@ recover_interrupted_publication() {
         : # Both renames landed; only marker cleanup was interrupted.
     elif [[ "$manifest_hash" == "$expected_hash" ]]; then
         stage_recovery_copy "$MANIFEST" "$HOOK_MANIFEST" "$expected_hash"
+        recovery_destination="$HOOK_MANIFEST"
     elif [[ "$hook_hash" == "$expected_hash" ]]; then
         stage_recovery_copy "$HOOK_MANIFEST" "$MANIFEST" "$expected_hash"
+        recovery_destination="$MANIFEST"
     elif [[ -f "$MANIFEST" && -f "$HOOK_MANIFEST" ]] && cmp -s "$MANIFEST" "$HOOK_MANIFEST"; then
         : # The marker landed but publication had not started.
     else
@@ -462,16 +499,8 @@ recover_interrupted_publication() {
         return 1
     fi
 
-    # Deterministic synchronization point used only to exercise lock loss
-    # after recovery but before the resolved transaction marker is removed.
-    if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_RECOVERY:-}" ]]; then
-        touch "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_RECOVERY}.ready"
-        while [[ ! -e "$GOPHER_AI_REGEN_TEST_HOLD_AFTER_RECOVERY" ]]; do
-            sleep 0.05
-        done
-    fi
-
-    remove_transaction_marker "$TRANSACTION_IDENTITY"
+    install_recovery "$TRANSACTION_IDENTITY" "$STAGED_RECOVERY" "$recovery_destination"
+    STAGED_RECOVERY=""
     rm -f "$TRANSACTION_IDENTITY"
     TRANSACTION_IDENTITY=""
     echo "recovered interrupted legacy hash manifest publication" >&2
