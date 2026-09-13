@@ -68,18 +68,26 @@ copy_env_files() {
   local source_dir="$1"
   local worktree_path="$2"
   local copied=0
+  local skipped=0
+  local dir destination
   while IFS= read -r file; do
     [ -n "$file" ] || continue
-    local dir
+    destination="$worktree_path/$file"
+    if [ -e "$destination" ] || [ -L "$destination" ]; then
+      echo "Skipped existing env file: $file"
+      skipped=$((skipped + 1))
+      continue
+    fi
     dir=$(dirname "$file")
     if [ "$dir" != "." ]; then
       mkdir -p "$worktree_path/$dir"
     fi
-    cp -P "$source_dir/$file" "$worktree_path/$file"
+    cp -Pn "$source_dir/$file" "$destination"
     echo "Copied $file"
     copied=$((copied + 1))
   done
   echo "Copied env files: $copied"
+  echo "Skipped existing env files: $skipped"
 }
 
 existing_worktree_path() {
