@@ -2,6 +2,7 @@
 argument-hint: "[file|directory] [--json]"
 description: "Validate fenced shell blocks in plugin command and skill Markdown"
 allowed-tools: ["Bash(*validate-skills.py*)", "Read"]
+effort: low
 ---
 
 # Validate Skills

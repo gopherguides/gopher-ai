@@ -2,6 +2,8 @@
 argument-hint: ""
 description: "Refresh all gopher-ai plugins (clear cache + reinstall)"
 allowed-tools: ["Bash(bash:*)"]
+model: haiku
+effort: low
 ---
 
 # Refresh Gopher-AI Plugins

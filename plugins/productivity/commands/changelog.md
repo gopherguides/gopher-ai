@@ -2,6 +2,7 @@
 argument-hint: "[tag|version]"
 description: "Generate changelog from commits since last release"
 allowed-tools: ["Bash(git:*)", "Read", "Glob", "Grep"]
+effort: low
 ---
 
 ## Context

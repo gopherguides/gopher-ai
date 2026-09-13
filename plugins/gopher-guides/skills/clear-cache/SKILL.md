@@ -1,6 +1,8 @@
 ---
 name: clear-cache
 description: "Clears Gopher Guides API response cache data and reports each resolved target. Use when cached training guidance must be refreshed; do not use to clear Codex, Claude, or unrelated application caches."
+model: haiku
+effort: low
 ---
 
 # Clear Gopher Guides Cache

@@ -1,6 +1,7 @@
 ---
 name: commit
 description: "Create a git commit with an auto-generated conventional message from staged changes. Use for 'commit', 'save my work', or 'make a commit'. Does not push or open PRs; use `create-pr` for PR-only flow and `ship` for verify+push+merge."
+effort: low
 ---
 
 # Commit
