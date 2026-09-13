@@ -426,7 +426,7 @@ from THIS session — actual command output, not narrative:
 - **"Tests pass"** → `go -C "$WORKTREE_PATH" test ./...` output with "ok" lines, zero failures
 - **"Build succeeds"** → `go -C "$WORKTREE_PATH" build ./...` exit 0
 - **"Lint clean"** → `(cd "$WORKTREE_PATH" && golangci-lint run)` output (skip if not installed)
-- **"CI passes"** → `gh pr checks "$PR_NUM" --repo "$REPO_SLUG"` with all checks green
+- **"CI passes"** → successful REST monitoring for the published head using `<PLUGIN_ROOT>/lib/start-issue/ci-monitoring.md`
 
 **Red-flag language check** — if you are about to write "should work" / "should
 be fine" / "probably" / "likely" / "I believe this fixes…" / "I think this
@@ -467,7 +467,7 @@ does not emit a terminal marker.
 5. Changes committed with a proper commit message
 6. Changes pushed to the remote branch
 7. PR created and the PR URL displayed
-8. CI checks pass (`gh pr checks "$PR_NUM" --repo "$REPO_SLUG"` shows all green) — with output shown above
+8. CI checks pass (REST monitoring confirms all checks green for the published head) — with output shown above
 
 When all criteria are met, persist the successful structured result. Embedded
 start-issue then returns control to its caller; standalone start-issue emits its

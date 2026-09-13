@@ -594,7 +594,7 @@ else
       ;;
     ci-watch)
       REASON="Resume: watch CI status and fix failures."
-      SYSTEM_MSG="$SYSTEM_MSG Resume CI monitoring. Run gh pr checks and fix any failures."
+      SYSTEM_MSG="$SYSTEM_MSG Resume CI monitoring using the workflow REST helper pinned to the published head, with a 60-second polling interval. Fix failures; API errors, missing checks, and head changes are not success."
       ;;
     merging)
       REASON="Resume: merge the PR."
