@@ -2,7 +2,6 @@
 name: validate-skills
 description: "Validates fenced bash, sh, shell, and zsh blocks in plugin Markdown with syntax checks, conservative command classification, guarded execution, and portability review. Use after editing command or skill Markdown or when its shell validation fails."
 argument-hint: "[file|directory] [--json]"
-effort: low
 ---
 
 # Validate Skills

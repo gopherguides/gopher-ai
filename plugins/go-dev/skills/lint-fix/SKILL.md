@@ -3,7 +3,6 @@ name: lint-fix
 description: "Finds and fixes Go lint findings while preserving behavior and verifying the result. Use for golangci-lint or formatting failures; do not use for compiler-only failures."
 argument-hint: "[path] [--check]"
 disable-model-invocation: true
-effort: low
 ---
 
 # Lint Fix
