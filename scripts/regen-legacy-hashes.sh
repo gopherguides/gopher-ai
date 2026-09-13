@@ -24,6 +24,7 @@ MANIFEST="$ROOT_DIR/scripts/legacy-skill-hashes.txt"
 HOOK_MANIFEST="$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt"
 LOCK_DIR="$ROOT_DIR/scripts/.regen-legacy-hashes.lock"
 TRANSACTION_FILE="$ROOT_DIR/scripts/.legacy-skill-hashes.transaction"
+LOCK_FILE=""
 
 CHECK_ONLY=false
 BASE_REF=""
@@ -54,6 +55,9 @@ if ! git rev-parse --git-dir >/dev/null 2>&1; then
     echo "error: scripts/regen-legacy-hashes.sh must be run from a git clone" >&2
     exit 1
 fi
+
+GIT_DIR="$(git rev-parse --absolute-git-dir)"
+LOCK_FILE="$GIT_DIR/gopher-ai-regen-legacy-hashes.lock"
 
 # Refuse to run on a shallow clone — it would silently produce a manifest
 # missing historical SKILL.md hashes that are precisely what the migration
@@ -103,7 +107,6 @@ STAGED_MANIFEST=""
 STAGED_HOOK_MANIFEST=""
 STAGED_TRANSACTION=""
 LOCK_HELD=false
-LOCK_TOKEN=""
 
 cleanup() {
     status=$?
@@ -114,14 +117,6 @@ cleanup() {
     [[ -z "$STAGED_HOOK_MANIFEST" ]] || rm -f "$STAGED_HOOK_MANIFEST"
     [[ -z "$STAGED_TRANSACTION" ]] || rm -f "$STAGED_TRANSACTION"
     if [[ "$LOCK_HELD" == "true" ]]; then
-        current_lock_pid=""
-        current_lock_token=""
-        if [[ -r "$LOCK_DIR/owner-token" ]]; then
-            read -r current_lock_pid current_lock_token < "$LOCK_DIR/owner-token" || current_lock_token=""
-        fi
-        if [[ "$current_lock_pid" == "$$" && -n "$LOCK_TOKEN" && "$current_lock_token" == "$LOCK_TOKEN" ]]; then
-            rm -rf "$LOCK_DIR"
-        fi
         exec 9>&-
     fi
     exit "$status"
@@ -131,163 +126,22 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 trap 'exit 129' HUP
 
-lock_owner_holds_token() {
-    local owner_pid="$1"
-    local token_file="$2"
-    local fd=""
-    local lsof_bin=""
-
-    if [[ -d "/proc/$owner_pid/fd" && -r "/proc/$owner_pid/fd" && -x "/proc/$owner_pid/fd" ]]; then
-        for fd in "/proc/$owner_pid/fd"/*; do
-            [[ -e "$fd" ]] || continue
-            if [[ "$fd" -ef "$token_file" ]]; then
-                return 0
-            fi
-        done
-        return 1
-    fi
-
-    if [[ -x /usr/sbin/lsof ]]; then
-        lsof_bin=/usr/sbin/lsof
-    elif command -v lsof >/dev/null 2>&1; then
-        lsof_bin="$(command -v lsof)"
-    else
-        return 2
-    fi
-
-    "$lsof_bin" -a -p "$owner_pid" -- "$token_file" >/dev/null 2>&1
-}
-
-reclaim_stale_lock() {
-    local expected_pid="$1"
-    local expected_token="$2"
-    local claim_file="$LOCK_DIR.owner-token-claim.$$.$RANDOM"
-    local claimed_pid=""
-    local claimed_token=""
-    local extra=""
-
-    if ! mv "$LOCK_DIR/owner-token" "$claim_file" 2>/dev/null; then
-        return 1
-    fi
-    read -r claimed_pid claimed_token extra < "$claim_file" || true
-    if [[ "$claimed_pid" != "$expected_pid" || "$claimed_token" != "$expected_token" || -n "$extra" ]]; then
-        if [[ -d "$LOCK_DIR" && ! -e "$LOCK_DIR/owner-token" ]] &&
-           mv "$claim_file" "$LOCK_DIR/owner-token" 2>/dev/null; then
-            if [[ -n "${GOPHER_AI_REGEN_TEST_STALE_CLAIM_RESTORED_FILE:-}" ]]; then
-                touch "$GOPHER_AI_REGEN_TEST_STALE_CLAIM_RESTORED_FILE"
-            fi
-            return 1
-        fi
-        echo "error: publication lock ownership changed during stale recovery" >&2
-        return 2
-    fi
-
-    rm -f "$LOCK_DIR/pid"
-    if rmdir "$LOCK_DIR" 2>/dev/null; then
-        rm -f "$claim_file"
-        return 0
-    fi
-
-    if [[ -d "$LOCK_DIR" && ! -e "$LOCK_DIR/owner-token" ]]; then
-        mv "$claim_file" "$LOCK_DIR/owner-token" 2>/dev/null || true
-    fi
-    echo "error: could not reclaim stale legacy hash publication lock" >&2
-    return 2
-}
-
-reclaim_incomplete_lock() {
-    local claim_file="$LOCK_DIR.pid-claim.$$.$RANDOM"
-    local claimed_pid=false
-
-    [[ ! -e "$LOCK_DIR/owner-token" ]] || return 1
-    if [[ -e "$LOCK_DIR/pid" ]]; then
-        mv "$LOCK_DIR/pid" "$claim_file" 2>/dev/null || return 1
-        claimed_pid=true
-    fi
-    if rmdir "$LOCK_DIR" 2>/dev/null; then
-        [[ "$claimed_pid" == false ]] || rm -f "$claim_file"
-        return 0
-    fi
-    if [[ "$claimed_pid" == true && -d "$LOCK_DIR" && ! -e "$LOCK_DIR/pid" ]]; then
-        mv "$claim_file" "$LOCK_DIR/pid" 2>/dev/null || true
-    fi
-    return 1
-}
-
 acquire_lock() {
-    local owner_pid=""
-    local owner_token=""
-    local owner_extra=""
-    local owner_status=0
-    local reclaim_status=0
-    local missing_owner_attempts=0
+    if [[ -n "${GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE:-}" ]]; then
+        touch "$GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE"
+    fi
 
-    while ! mkdir "$LOCK_DIR" 2>/dev/null; do
-        if [[ ! -d "$LOCK_DIR" ]]; then
-            echo "error: could not create legacy hash publication lock: $LOCK_DIR" >&2
-            return 1
-        fi
-
-        if [[ -n "${GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE:-}" ]]; then
-            touch "$GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE"
-        fi
-
-        owner_pid=""
-        owner_token=""
-        owner_extra=""
-        if [[ -r "$LOCK_DIR/owner-token" ]]; then
-            read -r owner_pid owner_token owner_extra < "$LOCK_DIR/owner-token" || owner_token=""
-        elif [[ -r "$LOCK_DIR/pid" ]]; then
-            # Compatibility with a hard-kill lock from the PID-only format.
-            read -r owner_pid < "$LOCK_DIR/pid" || owner_pid=""
-        fi
-
-        if [[ "$owner_pid" =~ ^[0-9]+$ && -n "$owner_token" && -z "$owner_extra" ]]; then
-            missing_owner_attempts=0
-            owner_status=0
-            if kill -0 "$owner_pid" 2>/dev/null; then
-                lock_owner_holds_token "$owner_pid" "$LOCK_DIR/owner-token" || owner_status=$?
-                if [[ "$owner_status" -eq 2 ]]; then
-                    echo "error: cannot validate legacy hash publication lock ownership" >&2
-                    return 1
-                fi
-            else
-                owner_status=1
-            fi
-            if [[ "$owner_status" -eq 1 ]]; then
-                if [[ -n "${GOPHER_AI_REGEN_TEST_BEFORE_STALE_CLAIM:-}" ]]; then
-                    touch "${GOPHER_AI_REGEN_TEST_BEFORE_STALE_CLAIM}.ready"
-                    while [[ ! -e "$GOPHER_AI_REGEN_TEST_BEFORE_STALE_CLAIM" ]]; do
-                        sleep 0.05
-                    done
-                fi
-                reclaim_status=0
-                reclaim_stale_lock "$owner_pid" "$owner_token" || reclaim_status=$?
-                if [[ "$reclaim_status" -eq 0 ]]; then
-                    continue
-                elif [[ "$reclaim_status" -eq 2 ]]; then
-                    return 1
-                fi
-            fi
-        else
-            missing_owner_attempts=$((missing_owner_attempts + 1))
-            # A killed writer can leave the directory before opening its owner
-            # token. Allow a live creator five seconds to finish that tiny
-            # window, but never trust PID-only ownership indefinitely.
-            if { [[ "$owner_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$owner_pid" 2>/dev/null; } ||
-               [[ "$missing_owner_attempts" -ge 50 ]]; then
-                if reclaim_incomplete_lock; then
-                    continue
-                fi
-            fi
-        fi
-        sleep 0.1
-    done
-
-    LOCK_TOKEN="$$.$(date +%s).$RANDOM.$RANDOM"
-    : > "$LOCK_DIR/owner-token"
-    exec 9<> "$LOCK_DIR/owner-token"
-    printf '%s %s\n' "$$" "$LOCK_TOKEN" >&9
+    exec 9>> "$LOCK_FILE"
+    if command -v flock >/dev/null 2>&1; then
+        flock 9
+    elif command -v perl >/dev/null 2>&1; then
+        perl -MFcntl=:flock -e 'flock(STDOUT, LOCK_EX) or die "flock: $!"' >&9
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'
+    else
+        echo "error: publication locking requires flock, perl, or python3" >&2
+        return 1
+    fi
     LOCK_HELD=true
 
     # Deterministic synchronization point used only by the concurrency test.
@@ -297,6 +151,20 @@ acquire_lock() {
             sleep 0.05
         done
     fi
+}
+
+remove_legacy_lock_dir() {
+    local owner_pid=""
+
+    [[ -d "$LOCK_DIR" ]] || return 0
+    if [[ -r "$LOCK_DIR/pid" ]]; then
+        read -r owner_pid < "$LOCK_DIR/pid" || owner_pid=""
+    fi
+    if [[ "$owner_pid" =~ ^[0-9]+$ ]] && kill -0 "$owner_pid" 2>/dev/null; then
+        echo "error: legacy publication lock may still be owned by PID $owner_pid" >&2
+        return 1
+    fi
+    rm -rf "$LOCK_DIR"
 }
 
 hash_file() {
@@ -383,6 +251,7 @@ if [[ "$CHECK_ONLY" == "true" ]]; then
     fi
 else
     acquire_lock
+    remove_legacy_lock_dir
     recover_interrupted_publication
     remove_abandoned_staging_files
 fi

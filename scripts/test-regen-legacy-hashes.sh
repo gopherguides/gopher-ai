@@ -156,156 +156,49 @@ else
   echo "OK"
 fi
 
-echo -n "A reused lock-owner PID is recognized as stale... "
-REUSED_PID_REPO=$(new_fixture reused-pid)
-REUSED_PID_LOG="$TEST_ROOT/reused-pid.log"
-mkdir "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock"
-printf '%s %s\n' "$$" 'owner-token-not-held-by-this-pid' > "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
-RUN_DEADLINE_ATTEMPTS=400 run_with_deadline "$REUSED_PID_LOG" \
-  env GOPHER_AI_REGEN_FAILPOINT=collection \
-  /bin/bash "$REUSED_PID_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
-if [ "$RUN_STATUS" -eq 124 ]; then
-  echo "FAIL (the unrelated live PID was treated as the lock owner)"
-  sed -n '1,20p' "$REUSED_PID_LOG"
-  rm -rf "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock"
-  ERRORS=$((ERRORS + 1))
-elif ! grep -q 'injected legacy hash regeneration failure at collection' "$REUSED_PID_LOG"; then
-  echo "FAIL (stale-lock recovery did not reach collection)"
-  sed -n '1,20p' "$REUSED_PID_LOG"
-  ERRORS=$((ERRORS + 1))
-elif [ -e "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock" ]; then
-  echo "FAIL (stale-lock recovery left the replacement lock behind)"
-  ERRORS=$((ERRORS + 1))
-else
-  echo "OK"
-fi
+echo -n "A hard-killed writer releases the publication lock... "
+HARD_KILL_REPO=$(new_fixture hard-kill)
+HARD_KILL_RELEASE="$TEST_ROOT/hard-kill-release"
+HARD_KILL_READY="$HARD_KILL_RELEASE.ready"
+HARD_KILL_LOG="$TEST_ROOT/hard-kill.log"
+HARD_KILL_RECOVERY_LOG="$TEST_ROOT/hard-kill-recovery.log"
+GOPHER_AI_REGEN_TEST_HOLD_LOCK="$HARD_KILL_RELEASE" \
+  /bin/bash "$HARD_KILL_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$HARD_KILL_LOG" 2>&1 &
+HARD_KILL_PID=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $HARD_KILL_PID"
 
-echo -n "A former writer cannot remove a successor's lock... "
-REPLACED_LOCK_REPO=$(new_fixture replaced-lock)
-REPLACED_LOCK_RELEASE="$TEST_ROOT/replaced-lock-release"
-REPLACED_LOCK_READY="$REPLACED_LOCK_RELEASE.ready"
-REPLACED_LOCK_LOG="$TEST_ROOT/replaced-lock.log"
-GOPHER_AI_REGEN_TEST_HOLD_LOCK="$REPLACED_LOCK_RELEASE" \
-  /bin/bash "$REPLACED_LOCK_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$REPLACED_LOCK_LOG" 2>&1 &
-REPLACED_LOCK_PID=$!
-BACKGROUND_PIDS="$BACKGROUND_PIDS $REPLACED_LOCK_PID"
-
-REPLACED_LOCK_HELD=false
+HARD_KILL_HELD=false
 for _ in $(seq 1 100); do
-  if [ -e "$REPLACED_LOCK_READY" ]; then
-    REPLACED_LOCK_HELD=true
+  if [ -e "$HARD_KILL_READY" ]; then
+    HARD_KILL_HELD=true
     break
   fi
-  if ! kill -0 "$REPLACED_LOCK_PID" 2>/dev/null; then
+  if ! kill -0 "$HARD_KILL_PID" 2>/dev/null; then
     break
   fi
   sleep 0.05
 done
 
-if [ "$REPLACED_LOCK_HELD" != true ]; then
+if [ "$HARD_KILL_HELD" != true ]; then
   echo "FAIL (writer never exposed the held-lock test point)"
   ERRORS=$((ERRORS + 1))
 else
-  mv "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock" \
-     "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock.former"
-  mkdir "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock"
-  printf '%s %s\n' '99999999' 'successor-token' > "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
-  touch "$REPLACED_LOCK_RELEASE"
-  REPLACED_LOCK_STATUS=0
-  wait "$REPLACED_LOCK_PID" || REPLACED_LOCK_STATUS=$?
-  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $REPLACED_LOCK_PID/}"
-
-  if [ "$REPLACED_LOCK_STATUS" -ne 0 ]; then
-    echo "FAIL (former writer exited $REPLACED_LOCK_STATUS)"
-    sed -n '1,20p' "$REPLACED_LOCK_LOG"
+  kill -9 "$HARD_KILL_PID" 2>/dev/null || true
+  wait "$HARD_KILL_PID" 2>/dev/null || true
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $HARD_KILL_PID/}"
+  run_with_deadline "$HARD_KILL_RECOVERY_LOG" \
+    env GOPHER_AI_REGEN_FAILPOINT=collection \
+    /bin/bash "$HARD_KILL_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+  if [ "$RUN_STATUS" -eq 124 ]; then
+    echo "FAIL (successor waited on a lock whose owner was hard-killed)"
     ERRORS=$((ERRORS + 1))
-  elif [ ! -e "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock/owner-token" ]; then
-    echo "FAIL (former writer removed the successor's lock)"
+  elif ! grep -q 'injected legacy hash regeneration failure at collection' "$HARD_KILL_RECOVERY_LOG"; then
+    echo "FAIL (successor did not acquire the released kernel lock)"
+    sed -n '1,20p' "$HARD_KILL_RECOVERY_LOG"
     ERRORS=$((ERRORS + 1))
   else
     echo "OK"
   fi
-  rm -rf \
-    "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock" \
-    "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock.former"
-fi
-
-echo -n "Stale recovery revalidates a lock changed before its claim... "
-CLAIM_RACE_REPO=$(new_fixture claim-race)
-CLAIM_RELEASE="$TEST_ROOT/claim-race-release"
-CLAIM_READY="$CLAIM_RELEASE.ready"
-CLAIM_RESTORED="$TEST_ROOT/claim-race-restored"
-CLAIM_LOG="$TEST_ROOT/claim-race.log"
-SUCCESSOR_RELEASE="$TEST_ROOT/claim-race-successor-release"
-SUCCESSOR_READY="$SUCCESSOR_RELEASE.ready"
-SUCCESSOR_LOG="$TEST_ROOT/claim-race-successor.log"
-mkdir "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock"
-printf '%s %s\n' '99999999' 'stale-token' > "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
-GOPHER_AI_REGEN_TEST_BEFORE_STALE_CLAIM="$CLAIM_RELEASE" \
-GOPHER_AI_REGEN_TEST_STALE_CLAIM_RESTORED_FILE="$CLAIM_RESTORED" \
-GOPHER_AI_REGEN_FAILPOINT=collection \
-  /bin/bash "$CLAIM_RACE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$CLAIM_LOG" 2>&1 &
-CLAIM_PID=$!
-BACKGROUND_PIDS="$BACKGROUND_PIDS $CLAIM_PID"
-
-CLAIM_PAUSED=false
-for _ in $(seq 1 100); do
-  if [ -e "$CLAIM_READY" ]; then
-    CLAIM_PAUSED=true
-    break
-  fi
-  if ! kill -0 "$CLAIM_PID" 2>/dev/null; then
-    break
-  fi
-  sleep 0.05
-done
-
-if [ "$CLAIM_PAUSED" = true ]; then
-  rm -rf "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock"
-  GOPHER_AI_REGEN_TEST_HOLD_LOCK="$SUCCESSOR_RELEASE" \
-    /bin/bash "$CLAIM_RACE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$SUCCESSOR_LOG" 2>&1 &
-  SUCCESSOR_PID=$!
-  BACKGROUND_PIDS="$BACKGROUND_PIDS $SUCCESSOR_PID"
-  for _ in $(seq 1 100); do
-    [ ! -e "$SUCCESSOR_READY" ] || break
-    sleep 0.05
-  done
-  SUCCESSOR_TOKEN=$(awk '{print $2}' "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock/owner-token" 2>/dev/null || true)
-  touch "$CLAIM_RELEASE"
-  for _ in $(seq 1 100); do
-    [ ! -e "$CLAIM_RESTORED" ] || break
-    sleep 0.05
-  done
-  CURRENT_TOKEN=$(awk '{print $2}' "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock/owner-token" 2>/dev/null || true)
-  touch "$SUCCESSOR_RELEASE"
-  SUCCESSOR_STATUS=0
-  CLAIM_STATUS=0
-  wait "$SUCCESSOR_PID" || SUCCESSOR_STATUS=$?
-  wait "$CLAIM_PID" || CLAIM_STATUS=$?
-  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $SUCCESSOR_PID/}"
-  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $CLAIM_PID/}"
-
-  if [ ! -e "$CLAIM_RESTORED" ]; then
-    echo "FAIL (recoverer did not detect that lock ownership changed)"
-    ERRORS=$((ERRORS + 1))
-  elif [ -z "$SUCCESSOR_TOKEN" ] || [ "$CURRENT_TOKEN" != "$SUCCESSOR_TOKEN" ]; then
-    echo "FAIL (recoverer did not restore the successor's owner token)"
-    ERRORS=$((ERRORS + 1))
-  elif [ "$SUCCESSOR_STATUS" -ne 0 ]; then
-    echo "FAIL (successor writer exited $SUCCESSOR_STATUS)"
-    sed -n '1,20p' "$SUCCESSOR_LOG"
-    ERRORS=$((ERRORS + 1))
-  elif [ "$CLAIM_STATUS" -eq 0 ] ||
-       ! grep -q 'injected legacy hash regeneration failure at collection' "$CLAIM_LOG"; then
-    echo "FAIL (recoverer did not safely retry after ownership changed)"
-    sed -n '1,20p' "$CLAIM_LOG"
-    ERRORS=$((ERRORS + 1))
-  else
-    echo "OK"
-  fi
-else
-  echo "FAIL (recoverer never exposed the pre-claim test point)"
-  ERRORS=$((ERRORS + 1))
 fi
 
 echo -n "Concurrent regenerations serialize on one publication lock... "
