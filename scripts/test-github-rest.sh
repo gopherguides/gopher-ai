@@ -401,6 +401,62 @@ if ! tr '\n' ' ' < "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-b
   fail "e2e-verify rebase pushes do not preserve and verify the original PR head lease"
 fi
 
+python3 - "$ROOT_DIR" <<'PYTEST'
+import os
+import pathlib
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1])
+text = (root / "plugins/go-workflow/skills/review-deep/SKILL.md").read_text()
+start = text.index("**Strategy 2")
+block = text[start:].split("```bash\n", 1)[1].split("```", 1)[0]
+prefix = """
+PR_JSON=''
+git() { if [ "$1" = rev-parse ]; then echo head; else echo feature; fi; }
+gh() {
+  if [ "$1" = api ]; then
+    [ "$*" = 'api --paginate --slurp repos/{owner}/{repo}/commits/head/pulls?per_page=100' ] || exit 90
+    printf '%s' "$FIXTURE"
+  else
+    printf '%s' "$3"
+  fi
+}
+"""
+cases = [
+    ('[[{"number":1,"state":"closed"}],[{"number":2,"state":"open","head":{"ref":"other"}},{"number":3,"state":"open","head":{"ref":"feature"}}]]', "3"),
+    ('[[{"number":1,"state":"closed"},{"number":2,"state":"open","head":{"ref":"other"}}]]', "2"),
+    ('[[{"number":1,"state":"closed"}]]', "1"),
+    ('[[]]', ""),
+]
+for fixture, expected in cases:
+    result = subprocess.run(["/bin/bash", "-c", prefix + block + '\nprintf "%s" "$PR_JSON"'], env={**os.environ, "FIXTURE": fixture}, text=True, capture_output=True, check=True, timeout=10)
+    assert result.stdout == expected, (expected, result.stdout, result.stderr)
+failed = subprocess.run(["/bin/bash", "-c", prefix + '\ngh() { return 1; }\n' + block], text=True, capture_output=True, timeout=10)
+assert failed.returncode != 0, "API failure must stop discovery"
+assert "PR discovery failed" in failed.stderr
+failed_metadata = subprocess.run(["/bin/bash", "-c", prefix + "\ngh() { if [ \"$1\" = api ]; then printf '%s' \"$FIXTURE\"; else return 1; fi; }\n" + block], env={**os.environ, "FIXTURE": '[[{"number":1,"state":"closed"}]]'}, text=True, capture_output=True, timeout=10)
+assert failed_metadata.returncode != 0, "PR metadata failure must stop discovery"
+assert "PR metadata lookup failed" in failed_metadata.stderr
+print("Review discovery selection and pagination tests passed.")
+PYTEST
+
+for workflow_file in \
+  "$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md" \
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/manual-workflow.md" \
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/orchestrated-workflow.md" \
+  "$ROOT_DIR/shared/hooks/stop-hook.sh"; do
+  if rg -q 'gh pr checks' "$workflow_file"; then
+    fail "${workflow_file#"$ROOT_DIR"/} still instructs GraphQL CI polling"
+  fi
+done
+if rg -q 'gh pr list --search' "$ROOT_DIR/plugins/go-workflow/skills/review-deep/SKILL.md"; then
+  fail "review-deep still searches for commit PRs"
+fi
+if rg -q 'gh repo view --json' "$ROOT_DIR/plugins/go-workflow/skills/review-deep/context-gathering.md"; then
+  fail "review-deep still fetches local repository identity through GraphQL"
+fi
+
 if [ "$ERRORS" -gt 0 ]; then
   printf 'FAILED: %s GitHub REST helper issue(s)\n' "$ERRORS"
   exit 1

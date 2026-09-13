@@ -129,7 +129,7 @@ and remote head SHAs; a push failure is an incomplete review, never success.
 
 ## Step 1: Detect Scope & Base Branch
 
-If `PR_ARG` is set, use it directly. Otherwise, auto-detect from the current branch using three strategies in order — fall through when each returns empty.
+If `PR_ARG` is set, use it directly. Otherwise, auto-detect from the current branch using two strategies in order — fall through when each returns empty.
 
 **Strategy 1 — current branch:**
 
@@ -137,29 +137,34 @@ If `PR_ARG` is set, use it directly. Otherwise, auto-detect from the current bra
 PR_JSON=$(gh pr view --json number,title,body,state,baseRefName,headRefName,closingIssuesReferences --jq '.' 2>/dev/null)
 ```
 
-**Strategy 2 — match HEAD commit against open PRs:**
+**Strategy 2 — associated HEAD PRs, preferring the open current branch:**
 
 ```bash
 if [ -z "$PR_JSON" ]; then
   HEAD_SHA=$(git rev-parse HEAD 2>/dev/null)
-  PR_NUM=$(gh pr list --search "$HEAD_SHA" --state open --json number --jq '.[0].number' 2>/dev/null)
-  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,headRefName,closingIssuesReferences 2>/dev/null)
+  if ! PR_NUM=$(set -o pipefail; gh api --paginate --slurp "repos/{owner}/{repo}/commits/$HEAD_SHA/pulls?per_page=100" \
+    | jq -r --arg branch "$(git branch --show-current)" '
+        [.[][]] as $all
+        | ([$all[] | select(.state == "open" and .head.ref == $branch)]
+          + [$all[] | select(.state == "open")]
+          + $all)
+        | map(.number) | first // empty'); then
+    printf '%s\n' 'PR discovery failed; retry with backoff before continuing.' >&2
+    exit 1
+  fi
+  if [ -n "$PR_NUM" ]; then
+    if ! PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,headRefName,closingIssuesReferences); then
+      printf '%s\n' 'PR metadata lookup failed; retry with backoff before continuing.' >&2
+      exit 1
+    fi
   fi
 fi
 ```
 
-**Strategy 3 — match HEAD against any (open/closed/merged) PRs:**
-
-```bash
-if [ -z "$PR_JSON" ]; then
-  HEAD_SHA=$(git rev-parse HEAD 2>/dev/null)
-  PR_NUM=$(gh pr list --search "$HEAD_SHA" --state all --limit 5 --json number --jq '.[0].number' 2>/dev/null)
-  if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-    PR_JSON=$(gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,headRefName,closingIssuesReferences 2>/dev/null)
-  fi
-fi
-```
+An API failure is incomplete discovery: report it and retry with backoff; do
+not interpret it as evidence that no PR exists. An empty successful response
+allows branch-only review. Closed and merged associations remain eligible when
+no open PR is associated with HEAD.
 
 **Extract PR number and base branch:**
 

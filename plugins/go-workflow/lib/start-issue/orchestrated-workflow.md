@@ -298,17 +298,6 @@ or the first lexical template when all candidates are equally general. State
 
 ## Step 12: Watch CI
 
-After creating the PR, watch CI and fix any failures:
-
-1. `gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --watch`
-2. **If "no checks reported"**: wait 10 seconds and retry, up to 3 times:
-   ```bash
-   for i in 1 2 3; do sleep 10 && gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --watch && break; done
-   ```
-   If still no checks after retries, verify CI workflow files exist.
-3. If checks fail:
-   - Get failure details: `gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --json name,state,description`
-   - Analyze and fix the failing check
-   - Commit and push the fix
-   - Return to step 1
-4. Continue only when all checks pass.
+After creating the PR, follow `<PLUGIN_ROOT>/lib/start-issue/ci-monitoring.md`.
+Fix failing checks, verify, commit, and push fixes, then repeat monitoring for
+the newly published head. Continue only when all checks pass.

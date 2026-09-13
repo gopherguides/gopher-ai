@@ -15,7 +15,7 @@ flow for simple issues where subagent overhead is not justified.
 7. **Coverage**: Read `<PLUGIN_ROOT>/lib/coverage/coverage-verification.md`, follow Steps A-F
 8. **Security review**: `(cd "$WORKTREE_PATH" && govulncheck ./...)`, scan for secrets/injection/traversal
 9. **Submit**: commit with `git -C "$WORKTREE_PATH"`, push that explicit head, and create the PR with `gh pr create --repo "$REPO_SLUG" --head "$(git -C "$WORKTREE_PATH" branch --show-current)"` using the template from orchestrated Step 11
-10. **Watch CI**: `gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --watch`, fix failures
+10. **Watch CI**: follow `<PLUGIN_ROOT>/lib/start-issue/ci-monitoring.md`, fix failures
 
 ## Feature (Manual)
 
@@ -29,4 +29,4 @@ flow for simple issues where subagent overhead is not justified.
 8. **Coverage**: Read `<PLUGIN_ROOT>/lib/coverage/coverage-verification.md`, follow Steps A-F
 9. **Security review**: `(cd "$WORKTREE_PATH" && govulncheck ./...)`, scan for secrets/injection/traversal
 10. **Submit**: commit with `git -C "$WORKTREE_PATH"`, push that explicit head, and create the PR with `gh pr create --repo "$REPO_SLUG" --head "$(git -C "$WORKTREE_PATH" branch --show-current)"` using the template from orchestrated Step 11
-11. **Watch CI**: `gh pr checks "$PR_NUM" --repo "$REPO_SLUG" --watch`, fix failures
+11. **Watch CI**: follow `<PLUGIN_ROOT>/lib/start-issue/ci-monitoring.md`, fix failures
