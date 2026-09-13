@@ -8,15 +8,22 @@ for router_name in ship start-issue address-review complete-issue review-deep; d
   router_file="$ROOT_DIR/plugins/go-workflow/skills/$router_name/SKILL.md"
   router_bytes=$(wc -c < "$router_file")
   injected_prefix=$(head -c 8000 "$router_file")
+  required_indicators=("")
 
   case "$router_name" in
     ship)
       required_routes='lib/ship/bootstrap.md lib/ship/reentry.md lib/ship/context.md lib/ship/local-review.md lib/ship/push-and-pr.md lib/ship/ci-watch.md lib/ship/bot-watch.md lib/ship/address-bots.md lib/ship/merge.md'
-      required_contracts='Bind the invocation arguments as `SKILL_ARGS` for|one canonical state file|exact-head CI|UI-visible changes require passing E2E|Never use admin override|Standalone success|Embedded success'
+      required_contracts="Bind the invocation arguments as \`SKILL_ARGS\` for|one canonical state file|exact-head CI|UI-visible changes require passing E2E|Never use admin override|Standalone success|Embedded success"
       ;;
     start-issue)
       required_routes='lib/start-issue/setup.md lib/start-issue/loop-state.md lib/start-issue/workspace.md lib/start-issue/manual-workflow.md lib/start-issue/orchestrated-workflow.md lib/start-issue/ci-monitoring.md'
       required_contracts='missing issue number|Workspace Before Planning|manual-workflow.md|orchestrated-workflow.md|exact pushed head|Embedded success'
+      required_indicators=(
+        bug fix defect error regression crash
+        enhancement feature feat new improvement request
+        broken fail "doesn't work" "issue with" problem incorrect
+        add implement create support enable allow introduce enhance
+      )
       ;;
     address-review)
       required_routes='skills/address-review/entry.md skills/address-review/loop-management.md skills/address-review/setup-and-discovery.md skills/address-review/checkout-rebase.md skills/address-review/fetch-feedback.md skills/address-review/fix-cycle.md skills/address-review/completion-check.md skills/address-review/watch-loop.md'
@@ -57,6 +64,14 @@ for router_name in ship start-issue address-review complete-issue review-deep; d
     fi
   done
   IFS=$old_ifs
+
+  for required_indicator in "${required_indicators[@]}"; do
+    [ -n "$required_indicator" ] || continue
+    if [[ "$injected_prefix" != *"\`$required_indicator\`"* ]]; then
+      echo "FAIL: $router_name Codex injection omits issue indicator $required_indicator"
+      exit 1
+    fi
+  done
 
   echo "OK: $router_name router is ${router_bytes} bytes with mandatory routes in the injected prefix"
 done

@@ -58,12 +58,19 @@ Every repository command and file operation must explicitly target the resolved
 
 ## Issue Classification
 
-Classify from labels, title, body, comments, and acceptance criteria, checking
-labels first.
-Bug indicators include `bug|fix|defect|error|regression|crash`; feature
-indicators include `enhancement|feature|add|support|enable`. If semantics remain
-ambiguous after all evidence, use the missing-intent gate and stop before branch
-creation or implementation.
+Classify from labels, title, body, comments, and acceptance criteria. Check
+labels first:
+
+- Bug labels: `bug`, `fix`, `defect`, `error`, `regression`, `crash`.
+- Feature labels: `enhancement`, `feature`, `feat`, `new`, `improvement`, `request`.
+
+Only without clear labels, analyze title and body:
+
+- Bug patterns: `fix`, `broken`, `error`, `fail`, `crash`, `doesn't work`, `issue with`, `problem`, `bug`, `regression`, `incorrect`.
+- Feature patterns: `add`, `implement`, `create`, `new`, `support`, `enable`, `allow`, `introduce`, `enhance`.
+
+If semantics remain ambiguous after all evidence, use the missing-intent gate
+and stop before branch creation or implementation.
 
 ## Implementation Selection
 
