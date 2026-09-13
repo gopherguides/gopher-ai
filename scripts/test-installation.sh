@@ -54,6 +54,55 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
+CODEX_SKILL_SIZE_TEST_ROOT=$(mktemp -d "${TMPDIR:-${TMP:-${TEMP:-/tmp}}}/gopher-ai-codex-skill-size.XXXXXX")
+mkdir -p \
+  "$CODEX_SKILL_SIZE_TEST_ROOT/.claude-plugin" \
+  "$CODEX_SKILL_SIZE_TEST_ROOT/plugins/example/.codex-plugin" \
+  "$CODEX_SKILL_SIZE_TEST_ROOT/plugins/example/skills/example" \
+  "$CODEX_SKILL_SIZE_TEST_ROOT/scripts"
+cp "$ROOT_DIR/scripts/build-universal.sh" "$CODEX_SKILL_SIZE_TEST_ROOT/scripts/"
+printf '%s\n' '{"metadata":{"version":"0.0.0"},"plugins":[{"name":"example","source":"plugins/example","version":"0.0.0","description":"Example"}]}' \
+  > "$CODEX_SKILL_SIZE_TEST_ROOT/.claude-plugin/marketplace.json"
+printf '%s\n' '{}' \
+  > "$CODEX_SKILL_SIZE_TEST_ROOT/plugins/example/.codex-plugin/plugin.json"
+printf '%s\n' '#!/bin/bash' 'exit 0' \
+  > "$CODEX_SKILL_SIZE_TEST_ROOT/scripts/validate-gemini-extensions.sh"
+chmod +x \
+  "$CODEX_SKILL_SIZE_TEST_ROOT/scripts/build-universal.sh" \
+  "$CODEX_SKILL_SIZE_TEST_ROOT/scripts/validate-gemini-extensions.sh"
+
+echo -n "Universal build warns when a packaged Codex skill reaches 6000 bytes... "
+awk 'BEGIN { for (i = 0; i < 6000; i++) printf "x" }' \
+  > "$CODEX_SKILL_SIZE_TEST_ROOT/plugins/example/skills/example/SKILL.md"
+if "$CODEX_SKILL_SIZE_TEST_ROOT/scripts/build-universal.sh" \
+     > "$CODEX_SKILL_SIZE_TEST_ROOT/warning.log" 2>&1 &&
+   grep -Fq 'WARNING: Codex skill plugins/example/skills/example/SKILL.md is 6000 bytes' \
+     "$CODEX_SKILL_SIZE_TEST_ROOT/warning.log" &&
+   [ "$(wc -c < "$CODEX_SKILL_SIZE_TEST_ROOT/dist/codex/plugins/example/skills/example/SKILL.md" | tr -d ' ')" = 6000 ]; then
+  echo "OK"
+else
+  echo "FAIL"
+  sed -n '1,120p' "$CODEX_SKILL_SIZE_TEST_ROOT/warning.log"
+  ERRORS=$((ERRORS + 1))
+fi
+
+echo -n "Universal build rejects a packaged Codex skill at 8000 bytes... "
+awk 'BEGIN { for (i = 0; i < 8000; i++) printf "x" }' \
+  > "$CODEX_SKILL_SIZE_TEST_ROOT/plugins/example/skills/example/SKILL.md"
+if "$CODEX_SKILL_SIZE_TEST_ROOT/scripts/build-universal.sh" \
+     > "$CODEX_SKILL_SIZE_TEST_ROOT/failure.log" 2>&1; then
+  echo "FAIL (build succeeded)"
+  ERRORS=$((ERRORS + 1))
+elif grep -Fq 'ERROR: Codex skill plugins/example/skills/example/SKILL.md is 8000 bytes; must be under 8000 bytes' \
+  "$CODEX_SKILL_SIZE_TEST_ROOT/failure.log"; then
+  echo "OK"
+else
+  echo "FAIL (missing size error)"
+  sed -n '1,120p' "$CODEX_SKILL_SIZE_TEST_ROOT/failure.log"
+  ERRORS=$((ERRORS + 1))
+fi
+rm -rf "$CODEX_SKILL_SIZE_TEST_ROOT"
+
 if [ -x /opt/homebrew/bin/bash ] &&
    /opt/homebrew/bin/bash --version | sed -n '1p' | rg -q 'version 5\.3\.' &&
    command -v gtimeout >/dev/null 2>&1; then

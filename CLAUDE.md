@@ -144,7 +144,7 @@ This script works around known Claude Code cache invalidation bugs ([#14061](htt
 Skill and command bodies enter the context window when invoked and stay there for the session, so every line is a recurring token cost. Prompt caching happens automatically at the API level; there is no in-file marker syntax that affects it.
 
 **Guidelines:**
-- Keep SKILL.md under 500 lines. Structure large skills as a thin router: overview + workflow in SKILL.md, detail in supporting files referenced one level deep (see `go`, `htmx`, `templui`, and the go-workflow skills for the pattern)
+- Keep SKILL.md under 500 lines and 8,000 bytes. Codex hard-truncates a plugin skill body at 8,000 bytes without a continuation pointer, so the universal build warns at 6,000 bytes and rejects files at the hard limit. Structure large skills as a thin router: overview + workflow in SKILL.md, detail in supporting files referenced one level deep (see `go`, `htmx`, `templui`, and the go-workflow skills for the pattern)
 - Supporting files (references, templates, examples) cost zero tokens until Claude reads them — prefer them over inline content for anything static, mutually exclusive, or rarely needed
 - Prefer executable scripts over inline code blocks: script contents never enter context, only their output
 - Frontmatter `description` should state what the skill does plus WHEN/WHEN NOT to use it, in third person; put the key use case first (the skill listing truncates long descriptions)
