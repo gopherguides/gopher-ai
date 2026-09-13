@@ -106,6 +106,7 @@ CANDIDATE=""
 STAGED_MANIFEST=""
 STAGED_HOOK_MANIFEST=""
 STAGED_TRANSACTION=""
+TRANSACTION_IDENTITY=""
 LOCK_GUARD_PID=""
 LOCK_STATE_DIR=""
 COLLECTION_PID=""
@@ -142,6 +143,7 @@ cleanup() {
     [[ -z "$STAGED_MANIFEST" ]] || rm -f "$STAGED_MANIFEST"
     [[ -z "$STAGED_HOOK_MANIFEST" ]] || rm -f "$STAGED_HOOK_MANIFEST"
     [[ -z "$STAGED_TRANSACTION" ]] || rm -f "$STAGED_TRANSACTION"
+    [[ -z "$TRANSACTION_IDENTITY" ]] || rm -f "$TRANSACTION_IDENTITY"
     if [[ -n "$LOCK_GUARD_PID" ]]; then
         kill "$LOCK_GUARD_PID" 2>/dev/null || true
         wait "$LOCK_GUARD_PID" 2>/dev/null || true
@@ -464,6 +466,8 @@ fi
 candidate_hash="$(hash_file "$CANDIDATE")"
 STAGED_TRANSACTION=$(/usr/bin/mktemp "$ROOT_DIR/scripts/.legacy-skill-hashes.transaction.XXXXXX")
 printf '%s\n' "$candidate_hash" > "$STAGED_TRANSACTION"
+TRANSACTION_IDENTITY="${STAGED_TRANSACTION}.identity"
+ln "$STAGED_TRANSACTION" "$TRANSACTION_IDENTITY"
 ensure_lock_held
 mv "$STAGED_TRANSACTION" "$TRANSACTION_FILE"
 STAGED_TRANSACTION=""
@@ -482,7 +486,25 @@ if [[ "$(hash_file "$MANIFEST")" != "$candidate_hash" ]] ||
     echo "error: legacy hash manifest publication did not produce identical mirrors" >&2
     exit 1
 fi
+
+# Deterministic synchronization point used only to exercise lock loss after
+# both manifest renames but before transaction cleanup.
+if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH:-}" ]]; then
+    touch "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH}.ready"
+    while [[ ! -e "$GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH" ]]; do
+        sleep 0.05
+    done
+fi
+
+ensure_lock_held
+if [[ ! "$TRANSACTION_FILE" -ef "$TRANSACTION_IDENTITY" ]]; then
+    echo "error: legacy hash publication transaction marker changed" >&2
+    exit 1
+fi
+ensure_lock_held
 rm -f "$TRANSACTION_FILE"
+rm -f "$TRANSACTION_IDENTITY"
+TRANSACTION_IDENTITY=""
 
 echo "regenerated: $MANIFEST ($count unique <hash skill_name> pairs from $BASE_REF plus current skills)"
 echo "mirrored to: $HOOK_MANIFEST"

@@ -73,6 +73,15 @@ run_with_deadline() {
   RUN_STATUS=$status
 }
 
+process_is_executing() {
+  local pid="$1"
+  local state
+
+  kill -0 "$pid" 2>/dev/null || return 1
+  state=$(ps -o stat= -p "$pid" 2>/dev/null | awk 'NR == 1 { print $1 }')
+  [ -n "$state" ] && [ "${state#Z}" = "$state" ]
+}
+
 echo "=== Legacy Hash Atomic Publication Tests ==="
 
 echo -n "Collection interruption preserves both published manifests... "
@@ -347,6 +356,98 @@ else
   fi
 fi
 
+echo -n "A lock-losing writer preserves its successor's transaction marker... "
+MARKER_REPO=$(new_fixture marker-successor)
+MARKER_RELEASE="$TEST_ROOT/marker-successor-release"
+MARKER_READY="$MARKER_RELEASE.ready"
+MARKER_GUARD_PID_FILE="$TEST_ROOT/marker-successor-guardian.pid"
+MARKER_FIRST_LOG="$TEST_ROOT/marker-successor-first.log"
+MARKER_SECOND_LOG="$TEST_ROOT/marker-successor-second.log"
+MARKER_RECOVERY_LOG="$TEST_ROOT/marker-successor-recovery.log"
+printf '%s\n' 'first publication' > "$MARKER_REPO/plugins/example/skills/example/SKILL.md"
+GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH="$MARKER_RELEASE" \
+GOPHER_AI_REGEN_TEST_LOCK_GUARD_PID_FILE="$MARKER_GUARD_PID_FILE" \
+  /bin/bash "$MARKER_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$MARKER_FIRST_LOG" 2>&1 &
+MARKER_FIRST_PID=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $MARKER_FIRST_PID"
+
+MARKER_FIRST_READY=false
+for _ in $(seq 1 100); do
+  if [ -e "$MARKER_READY" ] && [ -s "$MARKER_GUARD_PID_FILE" ]; then
+    MARKER_FIRST_READY=true
+    break
+  fi
+  if ! kill -0 "$MARKER_FIRST_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.05
+done
+
+if [ "$MARKER_FIRST_READY" != true ]; then
+  echo "FAIL (first writer never reached post-publication hold)"
+  ERRORS=$((ERRORS + 1))
+else
+  read -r MARKER_GUARD_PID < "$MARKER_GUARD_PID_FILE"
+  kill -9 "$MARKER_GUARD_PID" 2>/dev/null || true
+  printf '%s\n' 'successor publication' > "$MARKER_REPO/plugins/example/skills/example/SKILL.md"
+  run_with_deadline "$MARKER_SECOND_LOG" \
+    env GOPHER_AI_REGEN_FAILPOINT=after-primary-publish \
+    /bin/bash "$MARKER_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+
+  MARKER_SECOND_STATUS=$RUN_STATUS
+  MARKER_GAP_READY=false
+  if [ "$MARKER_SECOND_STATUS" -eq 97 ] &&
+     [ -f "$MARKER_REPO/scripts/.legacy-skill-hashes.transaction" ] &&
+     ! cmp -s "$MARKER_REPO/scripts/legacy-skill-hashes.txt" \
+              "$MARKER_REPO/plugins/go-workflow/hooks/legacy-skill-hashes.txt"; then
+    MARKER_GAP_READY=true
+  fi
+
+  touch "$MARKER_RELEASE"
+  MARKER_FIRST_STATUS=0
+  wait "$MARKER_FIRST_PID" || MARKER_FIRST_STATUS=$?
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $MARKER_FIRST_PID/}"
+
+  if [ "$MARKER_GAP_READY" = true ] &&
+     [ -f "$MARKER_REPO/scripts/.legacy-skill-hashes.transaction" ]; then
+    run_with_deadline "$MARKER_RECOVERY_LOG" \
+      env GOPHER_AI_REGEN_FAILPOINT=collection \
+      /bin/bash "$MARKER_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+    MARKER_RECOVERY_STATUS=$RUN_STATUS
+  else
+    MARKER_RECOVERY_STATUS=125
+  fi
+
+  if [ "$MARKER_SECOND_STATUS" -ne 97 ]; then
+    echo "FAIL (successor did not stop after publishing its primary manifest)"
+    sed -n '1,20p' "$MARKER_SECOND_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$MARKER_GAP_READY" != true ]; then
+    echo "FAIL (successor did not leave a recoverable publication gap)"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$MARKER_FIRST_STATUS" -eq 0 ] ||
+       ! grep -q 'lost legacy hash publication lock' "$MARKER_FIRST_LOG"; then
+    echo "FAIL (first writer did not abort after losing its guardian)"
+    sed -n '1,20p' "$MARKER_FIRST_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$MARKER_RECOVERY_STATUS" -eq 125 ]; then
+    echo "FAIL (first writer removed the successor's transaction marker)"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$MARKER_RECOVERY_STATUS" -eq 124 ]; then
+    echo "FAIL (recovery waited on a released publication lock)"
+    ERRORS=$((ERRORS + 1))
+  elif ! grep -q 'recovered interrupted legacy hash manifest publication' "$MARKER_RECOVERY_LOG" ||
+       ! cmp -s "$MARKER_REPO/scripts/legacy-skill-hashes.txt" \
+                "$MARKER_REPO/plugins/go-workflow/hooks/legacy-skill-hashes.txt" ||
+       [ -e "$MARKER_REPO/scripts/.legacy-skill-hashes.transaction" ]; then
+    echo "FAIL (successor publication was not recovered from its preserved marker)"
+    sed -n '1,20p' "$MARKER_RECOVERY_LOG"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+
 echo -n "An active collection responds promptly to TERM... "
 ACTIVE_REPO=$(new_fixture cancel-collection)
 ACTIVE_CHILD="$TEST_ROOT/cancel-collection-child"
@@ -394,7 +495,7 @@ else
 
   ACTIVE_CHILD_STOPPED=false
   for _ in $(seq 1 40); do
-    if ! kill -0 "$ACTIVE_CHILD_PID" 2>/dev/null; then
+    if ! process_is_executing "$ACTIVE_CHILD_PID"; then
       ACTIVE_CHILD_STOPPED=true
       break
     fi
