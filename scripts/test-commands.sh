@@ -162,7 +162,9 @@ COMPLETE_ISSUE_LOOP="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/loop-st
 START_ISSUE_SKILL="$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md"
 E2E_FINISH="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/mode-finish.md"
 E2E_SKILL_CONTRACT="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
+E2E_SETUP_CONTRACT="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/setup.md"
 E2E_LOOP_CONTRACT="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/loop-state.md"
+E2E_REVIEW_CONTRACT="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/review-and-generated-output.md"
 ADDRESS_REVIEW_SKILL="$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md"
 ADDRESS_REVIEW_LOOP="$ROOT_DIR/plugins/go-workflow/skills/address-review/loop-management.md"
 BLOCKED_COMPOSITION=$(awk '/Invoke `[$](start-issue|e2e-verify|ship)([ `])/' "$COMPLETE_ISSUE_SKILL" "$E2E_FINISH")
@@ -172,6 +174,52 @@ file_contains() {
   local file="$2"
   awk -v needle="$needle" 'index($0, needle) { found = 1 } END { exit found ? 0 : 1 }' "$file"
 }
+
+echo -n "Codex receives the complete e2e-verify router within its plugin-skill injection limit... "
+E2E_ROUTER_BYTES=$(wc -c < "$E2E_SKILL_CONTRACT")
+E2E_CODEX_INJECTED_PREFIX=$(head -c 8000 "$E2E_SKILL_CONTRACT")
+E2E_ROUTER_FAILURE=""
+
+if [ "$E2E_ROUTER_BYTES" -ge 6000 ]; then
+  E2E_ROUTER_FAILURE="router is ${E2E_ROUTER_BYTES} bytes; expected less than 6000"
+else
+  for required_route in \
+    'setup.md' \
+    'loop-state.md' \
+    'rebase-and-build.md' \
+    'review-and-generated-output.md' \
+    'e2e-test-execution.md' \
+    'pr-results-comment.md' \
+    'mode-finish.md'; do
+    if [[ "$E2E_CODEX_INJECTED_PREFIX" != *"$required_route"* ]]; then
+      E2E_ROUTER_FAILURE="Codex injection cannot reach $required_route"
+      break
+    fi
+  done
+fi
+
+if [ -z "$E2E_ROUTER_FAILURE" ]; then
+  for required_contract in \
+    'verify|fix-and-verify|investigate|ship-prep|ship|fix-and-ship' \
+    'Phase → step routing:' \
+    'Every screenshot' \
+    'blocks labels and shipping' \
+    '`e2e-failed`' \
+    'standalone' \
+    'embedded'; do
+    if [[ "$E2E_CODEX_INJECTED_PREFIX" != *"$required_contract"* ]]; then
+      E2E_ROUTER_FAILURE="Codex injection omits $required_contract"
+      break
+    fi
+  done
+fi
+
+if [ -n "$E2E_ROUTER_FAILURE" ]; then
+  echo "FAIL ($E2E_ROUTER_FAILURE)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK (${E2E_ROUTER_BYTES} bytes)"
+fi
 
 ADDRESS_REVIEW_BOT_REGISTRY="$ROOT_DIR/plugins/go-workflow/skills/address-review/bot-registry.md"
 ADDRESS_REVIEW_DISCOVERY="$ROOT_DIR/plugins/go-workflow/skills/address-review/setup-and-discovery.md"
@@ -358,6 +406,7 @@ validate_composition_contract() {
   local start_skill="$fixture_root/plugins/go-workflow/skills/start-issue/SKILL.md"
   local e2e_skill="$fixture_root/plugins/go-workflow/skills/e2e-verify/SKILL.md"
   local e2e_loop="$fixture_root/plugins/go-workflow/skills/e2e-verify/loop-state.md"
+  local e2e_review="$fixture_root/plugins/go-workflow/skills/e2e-verify/review-and-generated-output.md"
   local e2e_finish="$fixture_root/plugins/go-workflow/skills/e2e-verify/mode-finish.md"
   local address_skill="$fixture_root/plugins/go-workflow/skills/address-review/SKILL.md"
   local address_loop="$fixture_root/plugins/go-workflow/skills/address-review/loop-management.md"
@@ -372,10 +421,10 @@ validate_composition_contract() {
   [ "$(grep -Fc 'CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"' "$complete_skill")" -ge 2 ] || return 1
   [ "$(grep -Fc 'WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"' "$complete_skill")" -ge 2 ] || return 1
   grep -Fq 'set_loop_terminal_result "$STATE_FILE" "incomplete"' "$complete_skill" || return 1
-  grep -Fq 'ADDRESS_REVIEW_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "address_review")' "$e2e_skill" || return 1
+  grep -Fq 'ADDRESS_REVIEW_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "address_review")' "$e2e_review" || return 1
   grep -Fq 'SHIP_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "ship")' "$e2e_finish" || return 1
 
-  for embedded_file in "$start_skill" "$e2e_skill" "$address_skill"; do
+  for embedded_file in "$start_skill" "$e2e_loop" "$address_skill"; do
     embedded_section=$(composition_contract_section "$embedded_file")
     [ -n "$embedded_section" ] || return 1
     grep -Fq 'CALLER_LOOP_STATE_FILE' <<< "$embedded_section" || return 1
@@ -387,11 +436,11 @@ validate_composition_contract() {
   done
 
   grep -Fq 'WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "start_issue")' "$start_skill" || return 1
-  grep -Fq 'WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "e2e_verify")' "$e2e_skill" || return 1
+  grep -Fq 'WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "e2e_verify")' "$e2e_loop" || return 1
   grep -Fq 'WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "address_review")' "$address_skill" || return 1
-  grep -Fq 'CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"' "$e2e_skill" || return 1
+  grep -Fq 'CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"' "$e2e_review" || return 1
   grep -Fq 'CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"' "$e2e_finish" || return 1
-  grep -Fq 'WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"' "$e2e_skill" || return 1
+  grep -Fq 'WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"' "$e2e_review" || return 1
   grep -Fq 'WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"' "$e2e_finish" || return 1
 
   grep -Fq '"$STATE_FILE" '\''["COMPLETE","INCOMPLETE"]'\''' "$start_skill" || return 1
@@ -463,6 +512,7 @@ else
   cp "$START_ISSUE_SKILL" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/start-issue/SKILL.md"
   cp "$E2E_SKILL_CONTRACT" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/SKILL.md"
   cp "$E2E_LOOP_CONTRACT" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/loop-state.md"
+  cp "$E2E_REVIEW_CONTRACT" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/review-and-generated-output.md"
   cp "$E2E_FINISH" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/mode-finish.md"
   cp "$ADDRESS_REVIEW_SKILL" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/address-review/SKILL.md"
   cp "$ADDRESS_REVIEW_LOOP" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/address-review/loop-management.md"
@@ -472,11 +522,11 @@ else
     COMPOSITION_FAILURE="validator accepted an embedded setup-loop mutation"
   fi
   cp "$START_ISSUE_SKILL" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/start-issue/SKILL.md"
-  seed_composition_mutation "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/SKILL.md" '<done>VERIFIED</done>'
+  seed_composition_mutation "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/loop-state.md" '<done>VERIFIED</done>'
   if validate_composition_contract "$COMPOSITION_MUTATION_ROOT"; then
     COMPOSITION_FAILURE="validator accepted an embedded terminal marker mutation"
   fi
-  cp "$E2E_SKILL_CONTRACT" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/SKILL.md"
+  cp "$E2E_LOOP_CONTRACT" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/loop-state.md"
   sed '/START_ISSUE_STATE_PATH=$(child_workflow_path/d' "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/SKILL.md" > "$COMPOSITION_MUTATION_ROOT/complete-without-start"
   mv "$COMPOSITION_MUTATION_ROOT/complete-without-start" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/SKILL.md"
   if validate_composition_contract "$COMPOSITION_MUTATION_ROOT"; then
@@ -706,21 +756,16 @@ fi
 
 echo -n "E2E preserves generated-path ownership across address-review... "
 E2E_REBASE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-build.md"
-E2E_SKILL="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
+E2E_REVIEW="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/review-and-generated-output.md"
 E2E_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/loop-state.md"
-E2E_ADDRESSING=$(awk '
-  /^## Step 3:/ { active = 1 }
-  /^## Step 4:/ { exit }
-  active { print }
-' "$E2E_SKILL")
-E2E_ADDRESS_REVIEW_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /follow [*][*]Steps 2-11 only[*][*]/ { print NR; found = 1 }')
-E2E_EMPTY_INDEX_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /if ! git -C "[$]WORKTREE_PATH" diff --cached --quiet; then/ { print NR; found = 1 }')
-E2E_GENERATOR_RERUN_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /make "[$]GEN_TARGET"/ { print NR; found = 1 }')
-E2E_GENERATED_STAGE_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && index($0, "git -C \"$WORKTREE_PATH\" add -- \"${GEN_NEW_FILES[@]}\"") { print NR; found = 1 }')
-E2E_GENERATED_COMMIT_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /git -C "[$]WORKTREE_PATH" commit -m "chore: refresh generated output"/ { print NR; found = 1 }')
-E2E_GENERATED_PUSH_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '/git -C "[$]WORKTREE_PATH" commit -m "chore: refresh generated output"/ { commit_seen = 1 } commit_seen && !found && /git -C "[$]WORKTREE_PATH" push "[$]PR_HEAD_PUSH_TARGET"/ { print NR; found = 1 }')
-E2E_POST_FIX_VERIFY_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /BUILD_RESULT=pass/ { print NR; found = 1 }')
-E2E_FINAL_HEAD_LINE=$(printf '%s\n' "$E2E_ADDRESSING" | awk '!found && /FINAL_REVIEW_HEAD=[$][(]git -C "[$]WORKTREE_PATH" rev-parse HEAD[)]/ { print NR; found = 1 }')
+E2E_ADDRESS_REVIEW_LINE=$(awk '!found && /follow [*][*]Steps 2-11 only[*][*]/ { print NR; found = 1 }' "$E2E_REVIEW")
+E2E_EMPTY_INDEX_LINE=$(awk '!found && /if ! git -C "[$]WORKTREE_PATH" diff --cached --quiet; then/ { print NR; found = 1 }' "$E2E_REVIEW")
+E2E_GENERATOR_RERUN_LINE=$(awk '!found && /make "[$]GEN_TARGET"/ { print NR; found = 1 }' "$E2E_REVIEW")
+E2E_GENERATED_STAGE_LINE=$(awk '!found && index($0, "git -C \"$WORKTREE_PATH\" add -- \"${GEN_NEW_FILES[@]}\"") { print NR; found = 1 }' "$E2E_REVIEW")
+E2E_GENERATED_COMMIT_LINE=$(awk '!found && /git -C "[$]WORKTREE_PATH" commit -m "chore: refresh generated output"/ { print NR; found = 1 }' "$E2E_REVIEW")
+E2E_GENERATED_PUSH_LINE=$(awk '/git -C "[$]WORKTREE_PATH" commit -m "chore: refresh generated output"/ { commit_seen = 1 } commit_seen && !found && /git -C "[$]WORKTREE_PATH" push "[$]PR_HEAD_PUSH_TARGET"/ { print NR; found = 1 }' "$E2E_REVIEW")
+E2E_POST_FIX_VERIFY_LINE=$(awk '!found && /BUILD_RESULT=pass/ { print NR; found = 1 }' "$E2E_REVIEW")
+E2E_FINAL_HEAD_LINE=$(awk '!found && /FINAL_REVIEW_HEAD=[$][(]git -C "[$]WORKTREE_PATH" rev-parse HEAD[)]/ { print NR; found = 1 }' "$E2E_REVIEW")
 E2E_BASELINE_PERSIST_LINE=$(awk '!found && index($0, "set_loop_field \"$STATE_FILE\" \"generation_target\"") { print NR; found = 1 }' "$E2E_REBASE")
 E2E_INITIAL_GENERATOR_LINE=$(awk '!found && /make "[$]GEN_TARGET"/ { print NR; found = 1 }' "$E2E_REBASE")
 E2E_OWNED_APPEND_LINE=$(awk '!found && index($0, "GEN_NEW_FILES+=(\"$GENERATED_FILE\")") { print NR; found = 1 }' "$E2E_REBASE")
@@ -742,10 +787,10 @@ E2E_INIT_CODE=$(markdown_bash_after "$E2E_REBASE" "### 2a. Code Generation")
 E2E_DRIFT_CODE=$(markdown_bash_after "$E2E_REBASE" "Check for generated file drift:")
 E2E_PERSIST_CODE=$(markdown_bash_after "$E2E_LOOP_STATE" "## Persist Build Result" | awk '/^TMP=/{exit} {print}')
 E2E_RECOVER_CODE=$(markdown_bash_after "$E2E_LOOP_STATE" "## Re-entry Check" | awk '/^  E2E_STATE_JSON=/{active=1} active {print} /^  done </ {exit}')
-E2E_TRANSACTION_RECOVERY_CODE=$(markdown_bash_after "$E2E_SKILL" "### Recover an Interrupted Generated-Output Transaction")
-E2E_INDEX_CODE=$(markdown_bash_after "$E2E_SKILL" "### Require Empty Index After Review")
-E2E_REFRESH_CODE=$(markdown_bash_after "$E2E_SKILL" "### Refresh Generated Output After Review")
-E2E_STAGE_CODE=$(markdown_bash_after "$E2E_SKILL" "### Commit E2E-Owned Generated Output")
+E2E_TRANSACTION_RECOVERY_CODE=$(markdown_bash_after "$E2E_REVIEW" "### Recover an Interrupted Generated-Output Transaction")
+E2E_INDEX_CODE=$(markdown_bash_after "$E2E_REVIEW" "### Require Empty Index After Review")
+E2E_REFRESH_CODE=$(markdown_bash_after "$E2E_REVIEW" "### Refresh Generated Output After Review")
+E2E_STAGE_CODE=$(markdown_bash_after "$E2E_REVIEW" "### Commit E2E-Owned Generated Output")
 E2E_RUNTIME_FAILURE=""
 if E2E_RUNTIME_OUTPUT=$(
   E2E_INIT_CODE="$E2E_INIT_CODE" \
@@ -1008,7 +1053,7 @@ elif file_contains 'GEN_NEW_FILES=("${GEN_NEW_FILES[@]}")' "$E2E_REBASE" ||
      ! file_contains 'GEN_NEW_FILES=()' "$E2E_REBASE" ||
      ! file_contains '${GEN_NEW_FILES[0]+set}' "$E2E_REBASE" ||
      ! file_contains '${GEN_NEW_FILES[0]+set}' "$E2E_LOOP_STATE" ||
-     ! file_contains '${GEN_NEW_FILES[0]+set}' "$E2E_SKILL"; then
+     ! file_contains '${GEN_NEW_FILES[0]+set}' "$E2E_REVIEW"; then
   echo "FAIL (fresh E2E runs do not initialize generated paths safely under nounset)"
   ERRORS=$((ERRORS + 1))
 elif ! file_contains 'set_loop_json_field "$STATE_FILE" "generated_files" "$GENERATED_FILES_JSON" "$WORKFLOW_STATE_PATH"' "$E2E_LOOP_STATE" ||
@@ -1047,18 +1092,18 @@ elif [ -z "$E2E_ADDRESS_REVIEW_LINE" ] || [ -z "$E2E_EMPTY_INDEX_LINE" ] ||
      [ "$E2E_GENERATED_COMMIT_LINE" -ge "$E2E_GENERATED_PUSH_LINE" ] ||
      [ "$E2E_GENERATED_PUSH_LINE" -ge "$E2E_POST_FIX_VERIFY_LINE" ] ||
      [ "$E2E_POST_FIX_VERIFY_LINE" -ge "$E2E_FINAL_HEAD_LINE" ] ||
-     ! file_contains 'WORKFLOW_REASON=generated-commit-failed' "$E2E_SKILL" ||
-     ! file_contains 'WORKFLOW_REASON=generated-push-failed' "$E2E_SKILL" ||
-     ! file_contains 'WORKFLOW_REASON=generator-staged-changes' "$E2E_SKILL" ||
-     ! file_contains 'WORKFLOW_REASON=generated-index-mismatch' "$E2E_SKILL" ||
-     ! file_contains 'GENERATED_COMMIT_STATUS=push-pending' "$E2E_SKILL" ||
-     ! file_contains 'GENERATED_PUSH_RECOVERED=true' "$E2E_SKILL" ||
-     ! file_contains 'PUBLISHED_FINAL_REVIEW_HEAD' "$E2E_SKILL" ||
-     ! file_contains '[ "$PUBLISHED_FINAL_REVIEW_HEAD" != "$FINAL_REVIEW_HEAD" ]' "$E2E_SKILL" ||
-     ! file_contains 'EXPECTED_REVIEW_HEAD="$FINAL_REVIEW_HEAD"' "$E2E_SKILL" ||
+     ! file_contains 'WORKFLOW_REASON=generated-commit-failed' "$E2E_REVIEW" ||
+     ! file_contains 'WORKFLOW_REASON=generated-push-failed' "$E2E_REVIEW" ||
+     ! file_contains 'WORKFLOW_REASON=generator-staged-changes' "$E2E_REVIEW" ||
+     ! file_contains 'WORKFLOW_REASON=generated-index-mismatch' "$E2E_REVIEW" ||
+     ! file_contains 'GENERATED_COMMIT_STATUS=push-pending' "$E2E_REVIEW" ||
+     ! file_contains 'GENERATED_PUSH_RECOVERED=true' "$E2E_REVIEW" ||
+     ! file_contains 'PUBLISHED_FINAL_REVIEW_HEAD' "$E2E_REVIEW" ||
+     ! file_contains '[ "$PUBLISHED_FINAL_REVIEW_HEAD" != "$FINAL_REVIEW_HEAD" ]' "$E2E_REVIEW" ||
+     ! file_contains 'EXPECTED_REVIEW_HEAD="$FINAL_REVIEW_HEAD"' "$E2E_REVIEW" ||
      ! file_contains 'REVIEW_HEAD_EXPECTATION="${EXPECTED_REVIEW_HEAD:-$(git -C "$WORKTREE_PATH" rev-parse HEAD)}"' "$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md" ||
      ! file_contains '[ "$PR_HEAD_SHA" != "$REVIEW_HEAD_EXPECTATION" ]' "$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md" ||
-     ! file_contains 'repeat **Step 11' "$E2E_SKILL"; then
+     ! file_contains 'repeat **Step 11' "$E2E_REVIEW"; then
   echo "FAIL (fix modes do not refresh, commit, and verify the final generated-output head in order)"
   ERRORS=$((ERRORS + 1))
 elif [ -n "$E2E_RUNTIME_FAILURE" ]; then
@@ -1158,7 +1203,7 @@ elif ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/complete-issu
      ! file_contains 'WORKFLOW_REASON=start-issue-worktree-path-invalid' "$COMPLETE_ISSUE_LOOP_STATE" ||
      ! file_contains 'REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain' "$COMPLETE_ISSUE_LOOP_STATE"; then
   PATH_CONTRACT_FAILURE="complete-issue loop bootstrap is not absolutely anchored"
-elif ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/e2e-verify-${PR_NUM}.loop.local.json"' "$E2E_SKILL_CONTRACT" ||
+elif ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/e2e-verify-${PR_NUM}.loop.local.json"' "$E2E_LOOP_CONTRACT" ||
      ! file_contains '"$STATE_FILE"' "$E2E_LOOP_STATE"; then
   PATH_CONTRACT_FAILURE="e2e-verify loop bootstrap is not absolutely anchored"
 elif ! file_contains 'CANONICAL_STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/ship.loop.local.json"' "$SHIP_SKILL" ||
@@ -1190,6 +1235,9 @@ POST_WORKTREE_FILES=(
   "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"
   "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/phases.md"
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/setup.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/investigate.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/review-and-generated-output.md"
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-build.md"
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/e2e-test-execution.md"
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/pr-results-comment.md"
@@ -1392,7 +1440,7 @@ COMMIT_SKILL="$ROOT_DIR/plugins/go-workflow/skills/commit/SKILL.md"
 CREATE_PR_SKILL="$ROOT_DIR/plugins/go-workflow/skills/create-pr/SKILL.md"
 WORKTREE_REMOVE="$ROOT_DIR/plugins/go-workflow/skills/worktree/remove.md"
 E2E_REBASE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/rebase-and-build.md"
-E2E_SKILL="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
+E2E_REVIEW="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/review-and-generated-output.md"
 E2E_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/loop-state.md"
 ADDRESS_REBASE="$ROOT_DIR/plugins/go-workflow/skills/address-review/checkout-rebase.md"
 ADDRESS_SKILL="$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md"
@@ -1424,7 +1472,7 @@ assert_invariant_section "E2E generation failure" "$E2E_REBASE" \
   "### 2a." "### 2b." "generation-failed"
 assert_invariant_section "E2E verification failure" "$E2E_REBASE" \
   "### 2b." "### 2c." "verification-failed"
-assert_invariant_section "E2E post-fix verification failure" "$E2E_SKILL" \
+assert_invariant_section "E2E post-fix verification failure" "$E2E_REVIEW" \
   "### Re-verify after fixes" "## Step 4:" "verification-failed"
 assert_invariant_section "review-deep verification failure" "$REVIEW_DEEP_FIX" \
   "## Verification" "## Commit" "verification-failed"
@@ -1527,7 +1575,7 @@ elif [ "$E2E_PERSIST_LINE" -ge "$E2E_MARKER_LINE" ] ||
      [ "$E2E_PROMISE_LINE" -ge "$E2E_MARKER_LINE" ]; then
   echo "FAIL (E2E terminal marker precedes durable state persistence)"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains '`e2e-failed`' "$E2E_SKILL" ||
+elif ! file_contains '`e2e-failed`' "$E2E_SKILL_CONTRACT" ||
      [[ "$E2E_TERMINAL_REENTRY" != *'get_loop_field "$STATE_FILE" "reason" "$WORKFLOW_STATE_PATH"'* ]] ||
      [[ "$E2E_TERMINAL_REENTRY" != *'echo "E2E verification failed: $WORKFLOW_REASON"'* ]] ||
      [[ "$E2E_TERMINAL_REENTRY" != *'echo "<done>E2E_FAIL</done>"'* ]] ||

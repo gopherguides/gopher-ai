@@ -5,10 +5,71 @@ when the agent needs to bootstrap the loop, persist field updates, or
 re-enter mid-flow.
 
 Standalone E2E uses the normalized absolute
-`.local/state/e2e-verify-${PR_NUM}.loop.local.json` path resolved by SKILL.md.
+`.local/state/e2e-verify-${PR_NUM}.loop.local.json` path resolved by `setup.md`.
 Embedded E2E uses its caller's physical state file and component path. Field
 names listed here are part of the contract with `pr-results-comment.md` and
 `mode-finish.md` — do not rename them.
+
+## Embedded Workflow Contract
+
+E2E verify is embedded only when both caller variables are explicitly set.
+Never infer composition from a generic inherited `STATE_FILE`:
+
+```bash
+EMBEDDED_WORKFLOW=false
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
+RESOLVED_ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')
+if [ -z "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ "${RESOLVED_ORIGINAL_REPO_ROOT#/}" = "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ ! -d "$RESOLVED_ORIGINAL_REPO_ROOT" ]; then
+  echo "Error: Could not resolve the absolute primary worktree root."
+  exit 1
+fi
+CURRENT_REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
+if [ -n "${CALLER_LOOP_STATE_FILE:-}" ] && [ -n "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
+  EMBEDDED_WORKFLOW=true
+  STATE_FILE="$CALLER_LOOP_STATE_FILE"
+  WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "e2e_verify")
+  initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+  ORIGINAL_REPO_ROOT=$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')
+  WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
+  REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
+elif [ -n "${CALLER_LOOP_STATE_FILE:-}" ] || [ -n "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
+  echo "Error: Embedded e2e-verify requires both caller state variables."
+  exit 1
+else
+  ORIGINAL_REPO_ROOT="$RESOLVED_ORIGINAL_REPO_ROOT"
+  WORKTREE_PATH="$CURRENT_CHECKOUT_ROOT"
+  REPO_SLUG="$CURRENT_REPO_SLUG"
+  STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/e2e-verify-${PR_NUM}.loop.local.json"
+  mkdir -p "$(dirname "$STATE_FILE")"
+  STATE_FILE=$(cd "$(dirname "$STATE_FILE")" && pwd)/$(basename "$STATE_FILE")
+  WORKFLOW_STATE_PATH='[]'
+fi
+```
+
+When embedded, every phase and field operation uses `STATE_FILE` plus
+`WORKFLOW_STATE_PATH`. E2E verify never changes the root completion promise or
+terminal allowlist, never initializes another loop, and returns only through
+`set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" RESULT REASON PHASE`.
+
+## Hard Invariant Failure
+
+When this skill or a supporting file reports
+`WORKFLOW_RESULT=INCOMPLETE`, persist the supplied reason:
+
+```bash
+if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+  set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$WORKFLOW_REASON" "incomplete"
+  echo "E2E_VERIFY_RESULT=incomplete"
+  echo "E2E_VERIFY_REASON=$WORKFLOW_REASON"
+else
+  set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"
+  echo "<done>INCOMPLETE</done>"
+fi
+```
+
+Stop after this block. Never continue to E2E, add labels, invoke ship, or claim
+verification from an invariant-failure path. The embedded branch returns
+control without emitting a terminal marker.
 
 An unversioned E2E state in `ship`/`fix-and-ship` mode or the `shipping` phase
 cannot identify its former separate ship loop. Re-entry fails closed without
