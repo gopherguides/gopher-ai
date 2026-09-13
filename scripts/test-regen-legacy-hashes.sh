@@ -165,6 +165,92 @@ else
   echo "OK"
 fi
 
+echo -n "The Python lock guardian publishes a complete transaction... "
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "SKIP (python3 unavailable)"
+else
+  PYTHON_REPO=$(new_fixture python-guardian)
+  PYTHON_LOG="$TEST_ROOT/python-guardian.log"
+  printf '%s\n' 'python guardian publication' > \
+    "$PYTHON_REPO/plugins/example/skills/example/SKILL.md"
+  run_with_deadline "$PYTHON_LOG" \
+    env GOPHER_AI_REGEN_TEST_LOCK_BACKEND=python3 \
+    /bin/bash "$PYTHON_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+  if [ "$RUN_STATUS" -ne 0 ]; then
+    echo "FAIL (Python guardian exited $RUN_STATUS)"
+    sed -n '1,20p' "$PYTHON_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif ! cmp -s "$PYTHON_REPO/scripts/legacy-skill-hashes.txt" \
+               "$PYTHON_REPO/plugins/go-workflow/hooks/legacy-skill-hashes.txt" ||
+       [ -e "$PYTHON_REPO/scripts/.legacy-skill-hashes.transaction" ]; then
+    echo "FAIL (Python guardian left an incomplete publication)"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+
+echo -n "A guardian abandoned before startup does not retain the lock... "
+STARTUP_REPO=$(new_fixture guardian-startup)
+STARTUP_GUARD_PID_FILE="$TEST_ROOT/guardian-startup.pid"
+STARTUP_LOG="$TEST_ROOT/guardian-startup.log"
+STARTUP_SUCCESSOR_LOG="$TEST_ROOT/guardian-startup-successor.log"
+GOPHER_AI_REGEN_TEST_GUARDIAN_START_DELAY=2 \
+GOPHER_AI_REGEN_TEST_LOCK_GUARD_PID_FILE="$STARTUP_GUARD_PID_FILE" \
+  /bin/bash "$STARTUP_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$STARTUP_LOG" 2>&1 &
+STARTUP_WRITER_PID=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $STARTUP_WRITER_PID"
+
+STARTUP_SPAWNED=false
+for _ in $(seq 1 100); do
+  if [ -s "$STARTUP_GUARD_PID_FILE" ]; then
+    STARTUP_SPAWNED=true
+    break
+  fi
+  if ! kill -0 "$STARTUP_WRITER_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.05
+done
+
+if [ "$STARTUP_SPAWNED" != true ]; then
+  echo "FAIL (writer never exposed its delayed guardian)"
+  ERRORS=$((ERRORS + 1))
+else
+  read -r STARTUP_GUARD_PID < "$STARTUP_GUARD_PID_FILE"
+  kill -9 "$STARTUP_WRITER_PID" 2>/dev/null || true
+  wait "$STARTUP_WRITER_PID" 2>/dev/null || true
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $STARTUP_WRITER_PID/}"
+
+  run_with_deadline "$STARTUP_SUCCESSOR_LOG" \
+    env GOPHER_AI_REGEN_FAILPOINT=collection \
+    /bin/bash "$STARTUP_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+
+  STARTUP_GUARD_STOPPED=false
+  for _ in $(seq 1 80); do
+    if ! process_is_executing "$STARTUP_GUARD_PID"; then
+      STARTUP_GUARD_STOPPED=true
+      break
+    fi
+    sleep 0.05
+  done
+
+  if [ "$RUN_STATUS" -eq 124 ]; then
+    echo "FAIL (successor waited on the abandoned startup guardian)"
+    ERRORS=$((ERRORS + 1))
+  elif ! grep -q 'injected legacy hash regeneration failure at collection' \
+           "$STARTUP_SUCCESSOR_LOG"; then
+    echo "FAIL (successor did not acquire the publication lock)"
+    sed -n '1,20p' "$STARTUP_SUCCESSOR_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$STARTUP_GUARD_STOPPED" != true ]; then
+    echo "FAIL (abandoned guardian trusted its reparented process)"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+
 echo -n "A hard-killed writer releases the publication lock... "
 HARD_KILL_REPO=$(new_fixture hard-kill)
 HARD_KILL_CHILD="$TEST_ROOT/hard-kill-collection-child"

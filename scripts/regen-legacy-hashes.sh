@@ -162,6 +162,7 @@ acquire_lock() {
     local backend=""
     local lock_ready=""
     local lock_error=""
+    local writer_pid="$$"
 
     LOCK_STATE_DIR=$(/usr/bin/mktemp -d "$TEMP_BASE/gopher-ai-legacy-lock.XXXXXX")
     lock_ready="$LOCK_STATE_DIR/ready"
@@ -169,25 +170,44 @@ acquire_lock() {
     LOCK_TRANSACTION_REQUEST="$LOCK_STATE_DIR/remove-transaction"
     LOCK_TRANSACTION_DONE="$LOCK_STATE_DIR/transaction-removed"
 
-    if command -v perl >/dev/null 2>&1; then
-        backend=perl
-    elif command -v python3 >/dev/null 2>&1; then
-        backend=python3
-    else
-        echo "error: publication locking requires perl or python3" >&2
-        return 1
-    fi
+    case "${GOPHER_AI_REGEN_TEST_LOCK_BACKEND:-}" in
+        perl|python3)
+            backend="$GOPHER_AI_REGEN_TEST_LOCK_BACKEND"
+            if ! command -v "$backend" >/dev/null 2>&1; then
+                echo "error: requested test lock backend '$backend' is unavailable" >&2
+                return 1
+            fi
+            ;;
+        "")
+            if command -v perl >/dev/null 2>&1; then
+                backend=perl
+            elif command -v python3 >/dev/null 2>&1; then
+                backend=python3
+            else
+                echo "error: publication locking requires perl or python3" >&2
+                return 1
+            fi
+            ;;
+        *)
+            echo "error: unknown test lock backend: $GOPHER_AI_REGEN_TEST_LOCK_BACKEND" >&2
+            return 1
+            ;;
+    esac
 
     case "$backend" in
         perl)
             perl -MFcntl=:flock -e '
-                my ($path, $ready, $request, $done, $transaction) = @ARGV;
+                my ($path, $ready, $request, $done, $transaction, $hook_manifest, $parent) = @ARGV;
+                if (my $delay = $ENV{GOPHER_AI_REGEN_TEST_GUARDIAN_START_DELAY}) {
+                    select(undef, undef, undef, $delay);
+                }
+                exit 2 if getppid() != $parent;
                 open(my $lock, ">>", $path) or die "open lock: $!";
-                my $parent = getppid();
                 until (flock($lock, LOCK_EX | LOCK_NB)) {
                     exit 2 if getppid() != $parent;
                     select(undef, undef, undef, 0.1);
                 }
+                exit 2 if getppid() != $parent;
                 open(my $signal, ">", $ready) or die "write ready: $!";
                 close($signal) or die "close ready: $!";
                 while (getppid() == $parent) {
@@ -223,7 +243,7 @@ acquire_lock() {
                                 print STDERR "error: injected legacy hash regeneration failure at after-primary-publish\n";
                                 exit 97;
                             }
-                            rename($staged_hook_manifest, $ARGV[5])
+                            rename($staged_hook_manifest, $hook_manifest)
                                 or die "publish hook manifest: $!";
                             if (my $hold = $ENV{GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH}) {
                                 open(my $hold_ready, ">", "$hold.ready") or die "write mirror hold ready: $!";
@@ -248,13 +268,19 @@ acquire_lock() {
                     select(undef, undef, undef, 0.1);
                 }
             ' "$LOCK_FILE" "$lock_ready" "$LOCK_TRANSACTION_REQUEST" \
-                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" "$HOOK_MANIFEST" 2> "$lock_error" &
+                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" "$HOOK_MANIFEST" \
+                "$writer_pid" 2> "$lock_error" &
             ;;
         python3)
             python3 -c '
 import fcntl, os, sys, time
-path, ready, request, done, transaction = sys.argv[1:]
-parent = os.getppid()
+path, ready, request, done, transaction, hook_manifest, parent_arg = sys.argv[1:]
+parent = int(parent_arg)
+delay = os.environ.get("GOPHER_AI_REGEN_TEST_GUARDIAN_START_DELAY")
+if delay:
+    time.sleep(float(delay))
+if os.getppid() != parent:
+    raise SystemExit(2)
 with open(path, "a") as lock:
     while True:
         try:
@@ -264,6 +290,8 @@ with open(path, "a") as lock:
             if os.getppid() != parent:
                 raise SystemExit(2)
             time.sleep(0.1)
+    if os.getppid() != parent:
+        raise SystemExit(2)
     open(ready, "w").close()
     while os.getppid() == parent:
         if os.path.exists(request) and not os.path.exists(done):
@@ -288,7 +316,7 @@ with open(path, "a") as lock:
                 if os.environ.get("GOPHER_AI_REGEN_FAILPOINT") == "after-primary-publish":
                     sys.stderr.write("error: injected legacy hash regeneration failure at after-primary-publish\n")
                     raise SystemExit(97)
-                os.replace(staged_hook_manifest, sys.argv[6])
+                os.replace(staged_hook_manifest, hook_manifest)
                 hold = os.environ.get("GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH")
                 if hold:
                     open(hold + ".ready", "w").close()
@@ -305,7 +333,8 @@ with open(path, "a") as lock:
             open(done, "w").close()
         time.sleep(0.1)
             ' "$LOCK_FILE" "$lock_ready" "$LOCK_TRANSACTION_REQUEST" \
-                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" "$HOOK_MANIFEST" 2> "$lock_error" &
+                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" "$HOOK_MANIFEST" \
+                "$writer_pid" 2> "$lock_error" &
             ;;
     esac
     LOCK_GUARD_PID=$!
