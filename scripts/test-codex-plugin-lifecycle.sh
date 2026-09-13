@@ -173,13 +173,6 @@ dump_diagnostics() {
             printf '%s\n' "$plugin_root" >&2
         done
     fi
-    local workspace
-    for workspace in "$FIRST_WORKSPACE" "$SECOND_WORKSPACE" "$THIRD_WORKSPACE"; do
-        if [[ -f "$workspace/.local/state/loop-debug.log" ]]; then
-            printf '\n--- %s stop-hook log ---\n' "$(basename "$workspace")" >&2
-            sed -n '1,120p' "$workspace/.local/state/loop-debug.log" >&2
-        fi
-    done
 }
 
 cleanup() {
@@ -437,6 +430,8 @@ start_session() {
         HOME="$TEST_HOME" \
         CODEX_HOME="$CODEX_HOME" \
         OPENAI_API_KEY=dummy \
+        GO_WORKFLOW_DEBUG=1 \
+        LOOP_DEBUG_LOG="$LOG_DIR/$label.loop-debug.log" \
         CODEX_LIFECYCLE_HOOK_INPUT="$hook_input" \
         CODEX_LIFECYCLE_HOOK_OUTPUT="$hook_output" \
         codex exec \
@@ -497,7 +492,8 @@ assert_session() {
     fi
     [[ -f "$PLUGIN_DATA_ROOT/.gopher-ai-cleanup-v3-$version" ]] \
         || fail "$label SessionStart hook did not create its version marker"
-    grep -q 'stop-hook: entered' "$workspace/.local/state/loop-debug.log" \
+    [[ -f "$LOG_DIR/$label.loop-debug.log" && \
+       "$(< "$LOG_DIR/$label.loop-debug.log")" == *'stop-hook: entered'* ]] \
         || fail "$label Stop hook did not record entry"
 }
 

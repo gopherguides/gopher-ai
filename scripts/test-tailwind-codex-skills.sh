@@ -15,7 +15,7 @@ fail() {
   exit 1
 }
 
-if rg --hidden -n -i 'mcp' "$PLUGIN_DIR"; then
+if rg --hidden -n -i --glob '!**/lib/screenshot-evidence.md' 'mcp' "$PLUGIN_DIR"; then
   fail "Tailwind plugin still references removed MCP tooling"
 fi
 

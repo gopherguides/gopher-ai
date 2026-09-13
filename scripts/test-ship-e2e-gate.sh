@@ -62,6 +62,44 @@ reject_text() {
   fi
 }
 
+validate_ship_output() {
+  local status="$1" output="$2" expected failed=0
+  shift 2
+  if [ "$status" -ne 0 ]; then
+    printf '  predicate bootstrap_status failed: expected 0, got %s\n' "$status"
+    failed=1
+  fi
+  for expected in "$@"; do
+    if ! grep -qFx -- "$expected" <<< "$output"; then
+      printf '  predicate output_field failed: expected %s\n' "$expected"
+      failed=1
+    fi
+  done
+  if [ "$failed" -ne 0 ]; then
+    printf '  captured bootstrap output:\n%s\n' "$output"
+  fi
+  return "$failed"
+}
+
+SHIP_NOISY_OUTPUT=$(printf 'STATE=%s/ship.loop.local.json\nPATH=[]\nEMBEDDED=false\nPHASE=ci-watch\nPASS=2\nPR=302\nHEAD=legacy-head\n' "$FIXTURE_TMP_BASE"; printf '%0200000d\n' 0)
+for ship_fixture in fresh legacy; do
+  if ! validate_ship_output 0 "$SHIP_NOISY_OUTPUT" "STATE=$FIXTURE_TMP_BASE/ship.loop.local.json" 'PATH=[]' 'EMBEDDED=false' 'PHASE=ci-watch' 'PASS=2'; then
+    fail "$ship_fixture noisy re-entry must accept valid fields"
+  fi
+  for invalid_field in 'STATE=wrong' 'PATH=[wrong]' 'EMBEDDED=true' 'PHASE=wrong' 'PASS=20' 'PR=wrong' 'HEAD=wrong'; do
+    if diagnostic=$(validate_ship_output 0 "$SHIP_NOISY_OUTPUT" "$invalid_field"); then
+      fail "$ship_fixture noisy re-entry must reject $invalid_field"
+    elif [[ "$diagnostic" != *"predicate output_field failed: expected $invalid_field"* || "$diagnostic" != *"captured bootstrap output:"* ]]; then
+      fail "$ship_fixture invalid field must report its predicate and output"
+    fi
+  done
+  if diagnostic=$(validate_ship_output 97 "$SHIP_NOISY_OUTPUT" 'PASS=2'); then
+    fail "$ship_fixture noisy re-entry must reject bootstrap failure"
+  elif [[ "$diagnostic" != *'predicate bootstrap_status failed: expected 0, got 97'* ]]; then
+    fail "$ship_fixture bootstrap failure must report its predicate"
+  fi
+done
+
 ambiguous_output_names_files() {
   local output="$1"
   local owner_file="$2"
@@ -631,17 +669,16 @@ FRESH_START_STATUS=$?
 set -e
 FRESH_SHIP_STATE="$FRESH_SHIP_ROOT/.local/state/ship.loop.local.json"
 
-if [ "$FRESH_START_STATUS" -ne 0 ] ||
-   ! printf '%s\n' "$FRESH_START_OUTPUT" | grep -qF "STATE=$FRESH_SHIP_STATE" ||
-   ! jq -e '
-     .schema_version == 2 and
-     .owner_workflow == "ship" and
-     .phase == "ci-watch" and
-     .pass == 2 and
-     .original_repo_root == $root and
-     .worktree_path == $root and
-     .repo_slug == "example/project"
-   ' --arg root "$FRESH_SHIP_ROOT" "$FRESH_SHIP_STATE" >/dev/null 2>&1; then
+if ! validate_ship_output "$FRESH_START_STATUS" "$FRESH_START_OUTPUT" "STATE=$FRESH_SHIP_STATE"; then
+  fail "fresh standalone ship must report its canonical owner state"
+fi
+if ! jq -e '
+  .schema_version == 2 and .owner_workflow == "ship" and
+  .phase == "ci-watch" and .pass == 2 and
+  .original_repo_root == $root and .worktree_path == $root and
+  .repo_slug == "example/project"
+' --arg root "$FRESH_SHIP_ROOT" "$FRESH_SHIP_STATE" >/dev/null 2>&1; then
+  printf '  predicate fresh_state_shape failed: %s\n  captured bootstrap output:\n%s\n' "$FRESH_SHIP_STATE" "$FRESH_START_OUTPUT"
   fail "fresh standalone ship must initialize its canonical schema-v2 owner state"
 fi
 
@@ -664,14 +701,12 @@ FRESH_REENTRY_OUTPUT=$(cd "$FRESH_SHIP_ROOT" && \
 FRESH_REENTRY_STATUS=$?
 set -e
 
-if ! printf '%s\n' "$FRESH_STOP_OUTPUT" | jq -e \
-     '.decision == "block" and ((.reason // "") | length > 0)' >/dev/null 2>&1 ||
-   [ "$FRESH_REENTRY_STATUS" -ne 0 ] ||
-   ! printf '%s\n' "$FRESH_REENTRY_OUTPUT" | grep -qF "STATE=$FRESH_SHIP_STATE" ||
-   ! printf '%s\n' "$FRESH_REENTRY_OUTPUT" | grep -qF 'PATH=[]' ||
-   ! printf '%s\n' "$FRESH_REENTRY_OUTPUT" | grep -qF 'EMBEDDED=false' ||
-   ! printf '%s\n' "$FRESH_REENTRY_OUTPUT" | grep -qF 'PHASE=ci-watch' ||
-   ! printf '%s\n' "$FRESH_REENTRY_OUTPUT" | grep -qF 'PASS=2'; then
+if ! jq -e '.decision == "block" and ((.reason // "") | length > 0)' <<< "$FRESH_STOP_OUTPUT" >/dev/null 2>&1; then
+  printf '  predicate stop_boundary failed: %s\n' "$FRESH_STOP_OUTPUT"
+  fail "fresh standalone ship must block with a non-empty re-entry reason"
+fi
+if ! validate_ship_output "$FRESH_REENTRY_STATUS" "$FRESH_REENTRY_OUTPUT" \
+  "STATE=$FRESH_SHIP_STATE" 'PATH=[]' 'EMBEDDED=false' 'PHASE=ci-watch' 'PASS=2'; then
   fail "fresh standalone ship must re-enter its exact canonical state across a Stop boundary without a caller or setup"
 fi
 
@@ -734,16 +769,11 @@ LEGACY_REENTRY_OUTPUT=$(cd "$LEGACY_SHIP_TMP" && \
 LEGACY_REENTRY_STATUS=$?
 set -e
 
-if [ "$LEGACY_REENTRY_STATUS" -ne 0 ] ||
-   ! printf '%s\n' "$LEGACY_REENTRY_OUTPUT" | grep -qF "STATE=$LEGACY_SHIP_STATE" ||
-   ! printf '%s\n' "$LEGACY_REENTRY_OUTPUT" | grep -qF 'PATH=[]' ||
-   ! printf '%s\n' "$LEGACY_REENTRY_OUTPUT" | grep -qF 'EMBEDDED=false' ||
-   ! printf '%s\n' "$LEGACY_REENTRY_OUTPUT" | grep -qF 'PHASE=ci-watch' ||
-   ! printf '%s\n' "$LEGACY_REENTRY_OUTPUT" | grep -qF 'PASS=2' ||
-   ! printf '%s\n' "$LEGACY_REENTRY_OUTPUT" | grep -qF 'PR=302' ||
-   ! printf '%s\n' "$LEGACY_REENTRY_OUTPUT" | grep -qF 'HEAD=legacy-head'; then
+if ! validate_ship_output "$LEGACY_REENTRY_STATUS" "$LEGACY_REENTRY_OUTPUT" \
+  "STATE=$LEGACY_SHIP_STATE" 'PATH=[]' 'EMBEDDED=false' 'PHASE=ci-watch' 'PASS=2' 'PR=302' 'HEAD=legacy-head'; then
   fail "standalone ship re-entry must resolve the canonical migrated file without setup"
 fi
+
 LEGACY_LOOP_COUNT=0
 for legacy_loop_file in "$LEGACY_SHIP_TMP/.local/state"/*.loop.local.json; do
   [ -f "$legacy_loop_file" ] || continue

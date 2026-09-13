@@ -35,7 +35,7 @@ frontmatter() {
 matches() {
   local pattern="$1"
 
-  awk -v pattern="$pattern" '$0 ~ pattern { found = 1; exit } END { exit found ? 0 : 1 }'
+  awk -v pattern="$pattern" '$0 ~ pattern { found = 1 } END { exit found ? 0 : 1 }'
 }
 
 section_text() {

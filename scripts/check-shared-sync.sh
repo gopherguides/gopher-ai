@@ -21,6 +21,8 @@ HOOK_PLUGIN="go-workflow"
 
 # Files synced to all plugins
 COMMON_FILES=(
+  "scripts/screenshot-evidence.py"
+  "lib/screenshot-evidence.md"
   "scripts/setup-loop.sh"
   "scripts/cleanup-loop.sh"
   "lib/loop-state.sh"
