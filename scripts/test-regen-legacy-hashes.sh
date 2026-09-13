@@ -201,6 +201,75 @@ else
   fi
 fi
 
+echo -n "A waiting writer responds promptly to TERM... "
+CANCEL_REPO=$(new_fixture cancel-waiter)
+CANCEL_RELEASE="$TEST_ROOT/cancel-waiter-release"
+CANCEL_READY="$CANCEL_RELEASE.ready"
+CANCEL_WAITING="$TEST_ROOT/cancel-waiter-waiting"
+CANCEL_HOLDER_LOG="$TEST_ROOT/cancel-holder.log"
+CANCEL_WAITER_LOG="$TEST_ROOT/cancel-waiter.log"
+GOPHER_AI_REGEN_TEST_HOLD_LOCK="$CANCEL_RELEASE" \
+  /bin/bash "$CANCEL_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$CANCEL_HOLDER_LOG" 2>&1 &
+CANCEL_HOLDER_PID=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $CANCEL_HOLDER_PID"
+
+CANCEL_HOLDER_READY=false
+for _ in $(seq 1 100); do
+  if [ -e "$CANCEL_READY" ]; then
+    CANCEL_HOLDER_READY=true
+    break
+  fi
+  sleep 0.05
+done
+
+if [ "$CANCEL_HOLDER_READY" = true ]; then
+  GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE="$CANCEL_WAITING" \
+    /bin/bash "$CANCEL_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$CANCEL_WAITER_LOG" 2>&1 &
+  CANCEL_WAITER_PID=$!
+  BACKGROUND_PIDS="$BACKGROUND_PIDS $CANCEL_WAITER_PID"
+  for _ in $(seq 1 100); do
+    [ ! -e "$CANCEL_WAITING" ] || break
+    sleep 0.05
+  done
+  kill -TERM "$CANCEL_WAITER_PID" 2>/dev/null || true
+  CANCELLED=false
+  for _ in $(seq 1 40); do
+    if ! kill -0 "$CANCEL_WAITER_PID" 2>/dev/null; then
+      CANCELLED=true
+      break
+    fi
+    sleep 0.05
+  done
+  CANCEL_WAITER_STATUS=0
+  if [ "$CANCELLED" = true ]; then
+    wait "$CANCEL_WAITER_PID" || CANCEL_WAITER_STATUS=$?
+    BACKGROUND_PIDS="${BACKGROUND_PIDS/ $CANCEL_WAITER_PID/}"
+  fi
+  touch "$CANCEL_RELEASE"
+  CANCEL_HOLDER_STATUS=0
+  wait "$CANCEL_HOLDER_PID" || CANCEL_HOLDER_STATUS=$?
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $CANCEL_HOLDER_PID/}"
+  if [ "$CANCELLED" != true ]; then
+    wait "$CANCEL_WAITER_PID" 2>/dev/null || true
+    BACKGROUND_PIDS="${BACKGROUND_PIDS/ $CANCEL_WAITER_PID/}"
+    echo "FAIL (waiter ignored TERM until the holder released the lock)"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$CANCEL_WAITER_STATUS" -ne 143 ]; then
+    echo "FAIL (waiter exited $CANCEL_WAITER_STATUS instead of 143)"
+    sed -n '1,20p' "$CANCEL_WAITER_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$CANCEL_HOLDER_STATUS" -ne 0 ]; then
+    echo "FAIL (lock holder exited $CANCEL_HOLDER_STATUS)"
+    sed -n '1,20p' "$CANCEL_HOLDER_LOG"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+else
+  echo "FAIL (lock holder never exposed the wait point)"
+  ERRORS=$((ERRORS + 1))
+fi
+
 echo -n "Concurrent regenerations serialize on one publication lock... "
 CONCURRENT_REPO=$(new_fixture concurrent)
 CONCURRENT_LINK="$TEST_ROOT/concurrent-link"

@@ -127,21 +127,49 @@ trap 'exit 143' TERM
 trap 'exit 129' HUP
 
 acquire_lock() {
-    if [[ -n "${GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE:-}" ]]; then
-        touch "$GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE"
-    fi
+    local backend=""
+    local lock_status=0
 
     exec 9>> "$LOCK_FILE"
     if command -v flock >/dev/null 2>&1; then
-        flock 9
+        backend=flock
     elif command -v perl >/dev/null 2>&1; then
-        perl -MFcntl=:flock -e 'flock(STDOUT, LOCK_EX) or die "flock: $!"' >&9
+        backend=perl
     elif command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX)'
+        backend=python3
     else
         echo "error: publication locking requires flock, perl, or python3" >&2
         return 1
     fi
+
+    while true; do
+        lock_status=0
+        case "$backend" in
+            flock)
+                flock -n 9 || lock_status=$?
+                ;;
+            perl)
+                perl -MFcntl=:flock -e 'exit(flock(STDOUT, LOCK_EX | LOCK_NB) ? 0 : 1)' >&9 || lock_status=$?
+                ;;
+            python3)
+                python3 -c 'import fcntl, sys
+try:
+    fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    sys.exit(1)' || lock_status=$?
+                ;;
+        esac
+        if [[ "$lock_status" -eq 0 ]]; then
+            break
+        elif [[ "$lock_status" -ne 1 ]]; then
+            echo "error: failed to acquire legacy hash publication lock" >&2
+            return 1
+        fi
+        if [[ -n "${GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE:-}" ]]; then
+            touch "$GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE"
+        fi
+        sleep 0.1
+    done
     LOCK_HELD=true
 
     # Deterministic synchronization point used only by the concurrency test.
