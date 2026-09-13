@@ -60,6 +60,18 @@ sha256_index_file() {
   fi
 }
 
+index_file_exists() {
+  git -C "$ROOT_DIR" cat-file -e ":$1" 2>/dev/null
+}
+
+index_file_is_symlink() {
+  [ "$(git -C "$ROOT_DIR" ls-files -s -- "$1" | awk '{print $1}')" = "120000" ]
+}
+
+index_files_equal() {
+  [ "$(git -C "$ROOT_DIR" rev-parse ":$1")" = "$(git -C "$ROOT_DIR" rev-parse ":$2")" ]
+}
+
 echo "Checking shared file sync..."
 
 for plugin in "${LOOP_PLUGINS[@]}"; do
@@ -74,6 +86,22 @@ for plugin in "${LOOP_PLUGINS[@]}"; do
   for file in "${COMMON_FILES[@]}"; do
     SHARED_FILE="$SHARED_DIR/$file"
     PLUGIN_FILE="$PLUGIN_DIR/$file"
+
+    if [ "$USE_INDEX" = true ]; then
+      SHARED_INDEX_FILE="shared/$file"
+      PLUGIN_INDEX_FILE="plugins/$plugin/$file"
+      if ! index_file_exists "$PLUGIN_INDEX_FILE"; then
+        echo "ERROR: $plugin/$file is missing from the index"
+        OUT_OF_SYNC=1
+      elif index_file_is_symlink "$PLUGIN_INDEX_FILE"; then
+        echo "ERROR: $plugin/$file is a symlink in the index, should be a copy"
+        OUT_OF_SYNC=1
+      elif ! index_file_exists "$SHARED_INDEX_FILE" || ! index_files_equal "$SHARED_INDEX_FILE" "$PLUGIN_INDEX_FILE"; then
+        echo "ERROR: $plugin/$file differs from shared/$file in the index"
+        OUT_OF_SYNC=1
+      fi
+      continue
+    fi
 
     # Check if plugin file exists
     if [ ! -f "$PLUGIN_FILE" ]; then
@@ -106,6 +134,22 @@ for plugin in "${LOOP_PLUGINS[@]}"; do
     for file in "${HOOK_FILES[@]}"; do
       SHARED_FILE="$SHARED_DIR/$file"
       PLUGIN_FILE="$PLUGIN_DIR/$file"
+
+      if [ "$USE_INDEX" = true ]; then
+        SHARED_INDEX_FILE="shared/$file"
+        PLUGIN_INDEX_FILE="plugins/$plugin/$file"
+        if ! index_file_exists "$PLUGIN_INDEX_FILE"; then
+          echo "ERROR: $plugin/$file is missing from the index"
+          OUT_OF_SYNC=1
+        elif index_file_is_symlink "$PLUGIN_INDEX_FILE"; then
+          echo "ERROR: $plugin/$file is a symlink in the index, should be a copy"
+          OUT_OF_SYNC=1
+        elif ! index_file_exists "$SHARED_INDEX_FILE" || ! index_files_equal "$SHARED_INDEX_FILE" "$PLUGIN_INDEX_FILE"; then
+          echo "ERROR: $plugin/$file differs from shared/$file in the index"
+          OUT_OF_SYNC=1
+        fi
+        continue
+      fi
 
       if [ ! -f "$PLUGIN_FILE" ]; then
         echo "ERROR: $plugin/$file is missing"

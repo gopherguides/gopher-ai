@@ -24,7 +24,7 @@ sha256_file() {
 
 run_commit_worktree_tests() (
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
-  local fixture primary linked mode before plugin output current_hash pair manifest compat_bin cmd skill_path staged_copy
+  local fixture primary linked mode before plugin output current_hash pair manifest compat_bin cmd skill_path staged_copy shared_path
   fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-commit-worktree.XXXXXX")
   primary="$fixture/primary checkout"
   linked="$fixture/linked checkout"
@@ -86,6 +86,27 @@ run_commit_worktree_tests() (
     return 1
   }
   git -C "$linked" restore --staged --worktree "$skill_path"
+
+  echo "  Installed hook validates partially staged shared contents..."
+  shared_path="shared/commands/cancel-loop.md"
+  printf '\npartially staged shared content\n' >> "$linked/$shared_path"
+  git -C "$linked" add "$shared_path"
+  git -C "$linked" show "HEAD:$shared_path" > "$linked/$shared_path"
+  if output=$(git -C "$linked" commit -qm "partially staged shared file" 2>&1); then
+    echo "FAIL (hook accepted indexed shared/plugin content that differs)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "differs from shared/commands/cancel-loop.md in the index" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree \
+    "$shared_path" \
+    plugins/go-workflow/commands/cancel-loop.md \
+    plugins/go-web/commands/cancel-loop.md \
+    plugins/go-dev/commands/cancel-loop.md \
+    plugins/tailwind/commands/cancel-loop.md \
+    plugins/llm-tools/commands/cancel-loop.md
 
   echo "  Shared-sync gate supports stock macOS shasum..."
   compat_bin="$fixture/shasum-only-bin"
