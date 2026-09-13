@@ -67,19 +67,32 @@ find_env_files() {
 copy_env_files() {
   local source_dir="$1"
   local worktree_path="$2"
+  local worktree_created="$3"
   local copied=0
+  local skipped=0
+  local dir destination
   while IFS= read -r file; do
     [ -n "$file" ] || continue
-    local dir
+    destination="$worktree_path/$file"
+    if [ "$worktree_created" = "false" ] && { [ -e "$destination" ] || [ -L "$destination" ]; }; then
+      echo "Skipped existing env file: $file"
+      skipped=$((skipped + 1))
+      continue
+    fi
     dir=$(dirname "$file")
     if [ "$dir" != "." ]; then
       mkdir -p "$worktree_path/$dir"
     fi
-    cp -P "$source_dir/$file" "$worktree_path/$file"
+    if [ "$worktree_created" = "true" ]; then
+      cp -P "$source_dir/$file" "$destination"
+    else
+      cp -Pn "$source_dir/$file" "$destination"
+    fi
     echo "Copied $file"
     copied=$((copied + 1))
   done
   echo "Copied env files: $copied"
+  echo "Skipped existing env files: $skipped"
 }
 
 existing_worktree_path() {
@@ -309,7 +322,7 @@ run_create() {
     echo "ENV_FILES_FOUND: $ENV_FILES_COUNT"
     echo "$env_files"
     if [ "$copy_env" = "true" ]; then
-      printf '%s\n' "$env_files" | copy_env_files "$SOURCE_DIR" "$WORKTREE_ABS_PATH"
+      printf '%s\n' "$env_files" | copy_env_files "$SOURCE_DIR" "$WORKTREE_ABS_PATH" "$WORKTREE_CREATED"
     else
       echo "ENV_FILES_SKIPPED"
     fi

@@ -90,10 +90,11 @@ target_path() {
 
 run_create() {
   local repo="$1"
+  local copy_env_flag="${2:---no-copy-env}"
   PATH="$FAKE_BIN:$PATH" GH_TEST_TITLE="$ISSUE_TITLE" \
     "$WORKTREE_CREATE" create "$ISSUE_NUMBER" \
       --source-dir "$repo" \
-      --no-copy-env \
+      "$copy_env_flag" \
       --no-register-state
 }
 
@@ -135,22 +136,58 @@ test_fresh_branch_uses_remote_main() {
   assert_equal "$BRANCH_NAME" "$(git -C "$worktree" branch --show-current)" "fresh worktree is attached to the issue branch"
 }
 
+test_fresh_worktree_copies_tracked_env_files() {
+  local repo
+  repo=$(create_repo fresh-env-copy)
+  printf 'committed value\n' > "$repo/.envrc"
+  git -C "$repo" add -f .envrc
+  git -C "$repo" commit -qm "add tracked env file"
+  git -C "$repo" push -qu origin main
+  printf 'source value\n' > "$repo/.envrc"
+
+  local output worktree
+  output=$(run_create "$repo" --copy-env)
+  worktree=$(target_path "$repo")
+
+  assert_contains "$output" "Copied .envrc" "fresh worktree reports copied tracked env file"
+  assert_contains "$output" "Copied env files: 1" "fresh worktree reports copied env count"
+  assert_contains "$output" "Skipped existing env files: 0" "fresh worktree reports no skipped env files"
+  assert_equal "source value" "$(tr -d '\n' < "$worktree/.envrc")" "fresh worktree copies source value over tracked env file"
+}
+
 test_matching_worktree_is_reused() {
   local repo
   repo=$(create_repo reuse)
+  printf 'source value\n' > "$repo/.env"
+  mkdir -p "$repo/config" "$repo/fresh"
+  printf 'source nested value\n' > "$repo/config/.env.local"
+  printf 'new value\n' > "$repo/fresh/.envrc"
   run_create "$repo" >/dev/null
   local worktree before_count before_ref output
   worktree=$(target_path "$repo")
   printf 'keep me\n' > "$worktree/sentinel.txt"
+  printf 'local value\n' > "$worktree/.env"
+  mkdir -p "$worktree/config"
+  printf 'symlink target value\n' > "$worktree/symlink-target.env"
+  ln -s ../symlink-target.env "$worktree/config/.env.local"
   before_count=$(git -C "$repo" worktree list --porcelain | awk '/^worktree / { count++ } END { print count + 0 }')
   before_ref=$(git -C "$repo" rev-parse "$BRANCH_NAME")
 
-  output=$(run_create "$repo")
+  output=$(run_create "$repo" --copy-env)
 
   assert_contains "$output" "WORKTREE_EXISTS: $worktree" "matching worktree reports reuse"
+  assert_contains "$output" "Skipped existing env file: .env" "reuse reports regular env collision"
+  assert_contains "$output" "Skipped existing env file: config/.env.local" "reuse reports symlink env collision"
+  assert_contains "$output" "Copied fresh/.envrc" "reuse reports newly copied env file"
+  assert_contains "$output" "Copied env files: 1" "reuse reports copied env count"
+  assert_contains "$output" "Skipped existing env files: 2" "reuse reports skipped env count"
   assert_equal "$before_count" "$(git -C "$repo" worktree list --porcelain | awk '/^worktree / { count++ } END { print count + 0 }')" "reuse does not add a worktree"
   assert_equal "$before_ref" "$(git -C "$repo" rev-parse "$BRANCH_NAME")" "reuse does not move the branch"
   assert_equal "keep me" "$(tr -d '\n' < "$worktree/sentinel.txt")" "reuse preserves user files"
+  assert_equal "local value" "$(tr -d '\n' < "$worktree/.env")" "reuse preserves existing env file"
+  assert_equal "../symlink-target.env" "$(readlink "$worktree/config/.env.local")" "reuse preserves destination env symlink"
+  assert_equal "symlink target value" "$(tr -d '\n' < "$worktree/symlink-target.env")" "reuse does not write through destination env symlink"
+  assert_equal "new value" "$(tr -d '\n' < "$worktree/fresh/.envrc")" "reuse copies missing env file"
 }
 
 test_checked_out_branch_conflict_is_non_mutating() {
@@ -202,6 +239,7 @@ create_fake_gh
 echo "=== Worktree Create Tests ==="
 test_existing_branch_is_preserved
 test_fresh_branch_uses_remote_main
+test_fresh_worktree_copies_tracked_env_files
 test_matching_worktree_is_reused
 test_checked_out_branch_conflict_is_non_mutating
 test_target_path_conflict_is_non_mutating
