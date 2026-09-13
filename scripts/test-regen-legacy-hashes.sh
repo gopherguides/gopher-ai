@@ -442,6 +442,104 @@ else
   fi
 fi
 
+echo -n "A lock-losing cleanup cannot delete successor staging... "
+CLEANUP_RACE_REPO=$(new_fixture cleanup-successor)
+CLEANUP_RACE_FIRST_RELEASE="$TEST_ROOT/cleanup-successor-first-release"
+CLEANUP_RACE_FIRST_READY="$CLEANUP_RACE_FIRST_RELEASE.ready"
+CLEANUP_RACE_FIRST_GUARD_PID_FILE="$TEST_ROOT/cleanup-successor-first-guardian.pid"
+CLEANUP_RACE_SECOND_RELEASE="$TEST_ROOT/cleanup-successor-second-release"
+CLEANUP_RACE_SECOND_READY="$CLEANUP_RACE_SECOND_RELEASE.ready"
+CLEANUP_RACE_FIRST_LOG="$TEST_ROOT/cleanup-successor-first.log"
+CLEANUP_RACE_SECOND_LOG="$TEST_ROOT/cleanup-successor-second.log"
+GOPHER_AI_REGEN_TEST_HOLD_BEFORE_ABANDONED_CLEANUP="$CLEANUP_RACE_FIRST_RELEASE" \
+GOPHER_AI_REGEN_TEST_LOCK_GUARD_PID_FILE="$CLEANUP_RACE_FIRST_GUARD_PID_FILE" \
+  /bin/bash "$CLEANUP_RACE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main \
+    >"$CLEANUP_RACE_FIRST_LOG" 2>&1 &
+CLEANUP_RACE_FIRST_PID=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $CLEANUP_RACE_FIRST_PID"
+
+CLEANUP_RACE_FIRST_HELD=false
+for _ in $(seq 1 100); do
+  if [ -e "$CLEANUP_RACE_FIRST_READY" ] &&
+     [ -s "$CLEANUP_RACE_FIRST_GUARD_PID_FILE" ]; then
+    CLEANUP_RACE_FIRST_HELD=true
+    break
+  fi
+  if ! kill -0 "$CLEANUP_RACE_FIRST_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.05
+done
+
+if [ "$CLEANUP_RACE_FIRST_HELD" != true ]; then
+  echo "FAIL (first writer never reached abandoned-file cleanup)"
+  ERRORS=$((ERRORS + 1))
+else
+  read -r CLEANUP_RACE_FIRST_GUARD_PID < "$CLEANUP_RACE_FIRST_GUARD_PID_FILE"
+  kill -9 "$CLEANUP_RACE_FIRST_GUARD_PID" 2>/dev/null || true
+  printf '%s\n' 'successor staging' > \
+    "$CLEANUP_RACE_REPO/plugins/example/skills/example/SKILL.md"
+  GOPHER_AI_REGEN_TEST_HOLD_AFTER_STAGING="$CLEANUP_RACE_SECOND_RELEASE" \
+    /bin/bash "$CLEANUP_RACE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main \
+      >"$CLEANUP_RACE_SECOND_LOG" 2>&1 &
+  CLEANUP_RACE_SECOND_PID=$!
+  BACKGROUND_PIDS="$BACKGROUND_PIDS $CLEANUP_RACE_SECOND_PID"
+
+  CLEANUP_RACE_SECOND_HELD=false
+  for _ in $(seq 1 200); do
+    if [ -e "$CLEANUP_RACE_SECOND_READY" ]; then
+      CLEANUP_RACE_SECOND_HELD=true
+      break
+    fi
+    if ! kill -0 "$CLEANUP_RACE_SECOND_PID" 2>/dev/null; then
+      break
+    fi
+    sleep 0.05
+  done
+
+  touch "$CLEANUP_RACE_FIRST_RELEASE"
+  CLEANUP_RACE_FIRST_STATUS=0
+  wait "$CLEANUP_RACE_FIRST_PID" || CLEANUP_RACE_FIRST_STATUS=$?
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $CLEANUP_RACE_FIRST_PID/}"
+
+  CLEANUP_RACE_STAGING_PRESENT=false
+  if compgen -G "$CLEANUP_RACE_REPO/scripts/.legacy-skill-hashes.primary.*" >/dev/null &&
+     compgen -G "$CLEANUP_RACE_REPO/scripts/.legacy-skill-hashes.transaction.*" >/dev/null &&
+     compgen -G "$CLEANUP_RACE_REPO/plugins/go-workflow/hooks/.legacy-skill-hashes.mirror.*" >/dev/null; then
+    CLEANUP_RACE_STAGING_PRESENT=true
+  fi
+
+  touch "$CLEANUP_RACE_SECOND_RELEASE"
+  CLEANUP_RACE_SECOND_STATUS=0
+  wait "$CLEANUP_RACE_SECOND_PID" || CLEANUP_RACE_SECOND_STATUS=$?
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $CLEANUP_RACE_SECOND_PID/}"
+
+  if [ "$CLEANUP_RACE_SECOND_HELD" != true ]; then
+    echo "FAIL (successor never reached its staged publication hold)"
+    sed -n '1,20p' "$CLEANUP_RACE_SECOND_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$CLEANUP_RACE_FIRST_STATUS" -eq 0 ] ||
+       ! grep -q 'lock guardian failed during legacy hash publication' \
+           "$CLEANUP_RACE_FIRST_LOG"; then
+    echo "FAIL (first writer did not abort after losing cleanup ownership)"
+    sed -n '1,20p' "$CLEANUP_RACE_FIRST_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$CLEANUP_RACE_STAGING_PRESENT" != true ]; then
+    echo "FAIL (lock-losing writer removed its successor's staging files)"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$CLEANUP_RACE_SECOND_STATUS" -ne 0 ]; then
+    echo "FAIL (successor could not publish its preserved staging files)"
+    sed -n '1,20p' "$CLEANUP_RACE_SECOND_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif ! cmp -s "$CLEANUP_RACE_REPO/scripts/legacy-skill-hashes.txt" \
+               "$CLEANUP_RACE_REPO/plugins/go-workflow/hooks/legacy-skill-hashes.txt"; then
+    echo "FAIL (successor left divergent manifests after cleanup race)"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+
 echo -n "A lock-losing writer preserves its successor's transaction marker... "
 MARKER_REPO=$(new_fixture marker-successor)
 MARKER_RELEASE="$TEST_ROOT/marker-successor-release"

@@ -198,7 +198,7 @@ acquire_lock() {
 
     case "$backend" in
         perl)
-            perl -MFcntl=:flock -e '
+            perl -MFcntl=:flock -MFile::Glob=:bsd_glob -e '
                 my ($path, $ready, $request, $done, $transaction, $hook_manifest, $parent) = @ARGV;
                 if (my $delay = $ENV{GOPHER_AI_REGEN_TEST_GUARDIAN_START_DELAY}) {
                     select(undef, undef, undef, $delay);
@@ -219,7 +219,23 @@ acquire_lock() {
                         close($command) or die "close transaction cleanup request: $!";
                         chomp(@command);
                         my $operation = shift(@command) // "";
-                        if ($operation eq "recover" && @command == 3) {
+                        if ($operation eq "cleanup" && @command == 0) {
+                            (my $scripts_dir = $transaction) =~ s{/[^/]+$}{};
+                            (my $hooks_dir = $hook_manifest) =~ s{/[^/]+$}{};
+                            for my $pattern (
+                                "$scripts_dir/.regen-legacy-hashes.lock.owner-token-claim.*",
+                                "$scripts_dir/.regen-legacy-hashes.lock.pid-claim.*",
+                                "$scripts_dir/.legacy-skill-hashes.primary.*",
+                                "$scripts_dir/.legacy-skill-hashes.recovery.*",
+                                "$scripts_dir/.legacy-skill-hashes.transaction.*",
+                                "$hooks_dir/.legacy-skill-hashes.mirror.*",
+                                "$hooks_dir/.legacy-skill-hashes.recovery.*"
+                            ) {
+                                for my $staged (bsd_glob($pattern)) {
+                                    unlink($staged) or die "remove abandoned staging file: $!";
+                                }
+                            }
+                        } elsif ($operation eq "recover" && @command == 3) {
                             my ($identity, $staged_recovery, $destination) = @command;
                             my @marker_stat = stat($transaction);
                             my @identity_stat = stat($identity);
@@ -294,7 +310,7 @@ acquire_lock() {
             ;;
         python3)
             python3 -c '
-import fcntl, os, sys, time
+import fcntl, glob, os, sys, time
 path, ready, request, done, transaction, hook_manifest, parent_arg = sys.argv[1:]
 parent = int(parent_arg)
 delay = os.environ.get("GOPHER_AI_REGEN_TEST_GUARDIAN_START_DELAY")
@@ -319,7 +335,22 @@ with open(path, "a") as lock:
             with open(request) as command:
                 command = [line.rstrip("\n") for line in command]
             operation, *args = command
-            if operation == "recover" and len(args) == 3:
+            if operation == "cleanup" and len(args) == 0:
+                scripts_dir = os.path.dirname(transaction)
+                hooks_dir = os.path.dirname(hook_manifest)
+                patterns = (
+                    os.path.join(scripts_dir, ".regen-legacy-hashes.lock.owner-token-claim.*"),
+                    os.path.join(scripts_dir, ".regen-legacy-hashes.lock.pid-claim.*"),
+                    os.path.join(scripts_dir, ".legacy-skill-hashes.primary.*"),
+                    os.path.join(scripts_dir, ".legacy-skill-hashes.recovery.*"),
+                    os.path.join(scripts_dir, ".legacy-skill-hashes.transaction.*"),
+                    os.path.join(hooks_dir, ".legacy-skill-hashes.mirror.*"),
+                    os.path.join(hooks_dir, ".legacy-skill-hashes.recovery.*"),
+                )
+                for pattern in patterns:
+                    for staged in glob.glob(pattern):
+                        os.unlink(staged)
+            elif operation == "recover" and len(args) == 3:
                 identity, staged_recovery, destination = args
                 marker_stat = os.stat(transaction)
                 identity_stat = os.stat(identity)
@@ -507,17 +538,10 @@ recover_interrupted_publication() {
 }
 
 remove_abandoned_staging_files() {
-    # The lock proves no live writer owns these same-checkout staging paths.
-    # A SIGKILL can bypass EXIT cleanup, so remove its non-authoritative files
-    # after transaction recovery has preserved the published candidate.
-    rm -f \
-        "$ROOT_DIR/scripts"/.regen-legacy-hashes.lock.owner-token-claim.* \
-        "$ROOT_DIR/scripts"/.regen-legacy-hashes.lock.pid-claim.* \
-        "$ROOT_DIR/scripts"/.legacy-skill-hashes.primary.* \
-        "$ROOT_DIR/scripts"/.legacy-skill-hashes.recovery.* \
-        "$ROOT_DIR/scripts"/.legacy-skill-hashes.transaction.* \
-        "$(dirname "$HOOK_MANIFEST")"/.legacy-skill-hashes.mirror.* \
-        "$(dirname "$HOOK_MANIFEST")"/.legacy-skill-hashes.recovery.*
+    # A SIGKILL can bypass EXIT cleanup. Have the guardian enumerate and
+    # remove the abandoned non-authoritative files while it still owns the
+    # kernel lock, so a dying guardian cannot race a successor's staging.
+    run_guardian_command cleanup
 }
 
 inject_failure() {
@@ -537,6 +561,12 @@ else
     acquire_lock
     remove_legacy_lock_dir
     recover_interrupted_publication
+    if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_BEFORE_ABANDONED_CLEANUP:-}" ]]; then
+        touch "${GOPHER_AI_REGEN_TEST_HOLD_BEFORE_ABANDONED_CLEANUP}.ready"
+        while [[ ! -e "$GOPHER_AI_REGEN_TEST_HOLD_BEFORE_ABANDONED_CLEANUP" ]]; do
+            sleep 0.05
+        done
+    fi
     remove_abandoned_staging_files
 fi
 
@@ -666,6 +696,13 @@ STAGED_TRANSACTION=$(/usr/bin/mktemp "$ROOT_DIR/scripts/.legacy-skill-hashes.tra
 printf '%s\n' "$candidate_hash" > "$STAGED_TRANSACTION"
 TRANSACTION_IDENTITY="${STAGED_TRANSACTION}.identity"
 ln "$STAGED_TRANSACTION" "$TRANSACTION_IDENTITY"
+if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_STAGING:-}" ]]; then
+    touch "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_STAGING}.ready"
+    while [[ ! -e "$GOPHER_AI_REGEN_TEST_HOLD_AFTER_STAGING" ]]; do
+        ensure_lock_held
+        sleep 0.05
+    done
+fi
 publish_manifests \
     "$STAGED_TRANSACTION" \
     "$TRANSACTION_IDENTITY" \
