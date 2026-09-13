@@ -43,6 +43,35 @@ new_fixture() {
   printf '%s\n' "$repo"
 }
 
+run_with_deadline() {
+  local log_file="$1"
+  shift
+  local pid
+  local status=0
+  local finished=false
+
+  "$@" >"$log_file" 2>&1 &
+  pid=$!
+  BACKGROUND_PIDS="$BACKGROUND_PIDS $pid"
+  for _ in $(seq 1 40); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      finished=true
+      break
+    fi
+    sleep 0.05
+  done
+
+  if [ "$finished" = true ]; then
+    wait "$pid" || status=$?
+  else
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    status=124
+  fi
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $pid/}"
+  RUN_STATUS=$status
+}
+
 echo "=== Legacy Hash Atomic Publication Tests ==="
 
 echo -n "Collection interruption preserves both published manifests... "
@@ -103,6 +132,51 @@ else
   else
     echo "OK"
   fi
+fi
+
+echo -n "Check mode works from a read-only checkout... "
+READ_ONLY_REPO=$(new_fixture read-only-check)
+READ_ONLY_LOG="$TEST_ROOT/read-only-check.log"
+chmod a-w "$READ_ONLY_REPO/scripts" "$READ_ONLY_REPO/plugins/go-workflow/hooks"
+run_with_deadline "$READ_ONLY_LOG" \
+  /bin/bash "$READ_ONLY_REPO/scripts/regen-legacy-hashes.sh" --check --base-ref main
+chmod u+w "$READ_ONLY_REPO/scripts" "$READ_ONLY_REPO/plugins/go-workflow/hooks"
+if [ "$RUN_STATUS" -eq 124 ]; then
+  echo "FAIL (check mode waited indefinitely for an unwritable publication lock)"
+  ERRORS=$((ERRORS + 1))
+elif [ "$RUN_STATUS" -ne 0 ]; then
+  echo "FAIL (check mode exited $RUN_STATUS)"
+  sed -n '1,20p' "$READ_ONLY_LOG"
+  ERRORS=$((ERRORS + 1))
+elif [ -e "$READ_ONLY_REPO/scripts/.regen-legacy-hashes.lock" ]; then
+  echo "FAIL (check mode created a repository-local publication lock)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "A reused lock-owner PID is recognized as stale... "
+REUSED_PID_REPO=$(new_fixture reused-pid)
+REUSED_PID_LOG="$TEST_ROOT/reused-pid.log"
+mkdir "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock"
+printf '%s\n' "$$" > "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock/pid"
+printf '%s\n' '1' > "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock/created-at"
+run_with_deadline "$REUSED_PID_LOG" \
+  env GOPHER_AI_REGEN_FAILPOINT=collection \
+  /bin/bash "$REUSED_PID_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+if [ "$RUN_STATUS" -eq 124 ]; then
+  echo "FAIL (the unrelated live PID was treated as the lock owner)"
+  rm -rf "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -q 'injected legacy hash regeneration failure at collection' "$REUSED_PID_LOG"; then
+  echo "FAIL (stale-lock recovery did not reach collection)"
+  sed -n '1,20p' "$REUSED_PID_LOG"
+  ERRORS=$((ERRORS + 1))
+elif [ -e "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock" ]; then
+  echo "FAIL (stale-lock recovery left the replacement lock behind)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
 fi
 
 echo -n "Concurrent regenerations serialize on one publication lock... "

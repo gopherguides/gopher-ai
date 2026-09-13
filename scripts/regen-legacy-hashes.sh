@@ -124,21 +124,40 @@ trap 'exit 129' HUP
 
 acquire_lock() {
     local owner_pid=""
+    local lock_created_at=""
+    local lock_age=0
+    local now=0
     local missing_owner_attempts=0
     local stale_lock=""
+    local max_lock_age_seconds=1800
 
     while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+        if [[ ! -d "$LOCK_DIR" ]]; then
+            echo "error: could not create legacy hash publication lock: $LOCK_DIR" >&2
+            return 1
+        fi
+
         if [[ -n "${GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE:-}" ]]; then
             touch "$GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE"
         fi
 
         owner_pid=""
+        lock_created_at=""
         if [[ -r "$LOCK_DIR/pid" ]]; then
             read -r owner_pid < "$LOCK_DIR/pid" || owner_pid=""
         fi
-        if [[ "$owner_pid" =~ ^[0-9]+$ ]]; then
+        if [[ -r "$LOCK_DIR/created-at" ]]; then
+            read -r lock_created_at < "$LOCK_DIR/created-at" || lock_created_at=""
+        fi
+
+        if [[ "$owner_pid" =~ ^[0-9]+$ && "$lock_created_at" =~ ^[0-9]+$ ]]; then
             missing_owner_attempts=0
-            if ! kill -0 "$owner_pid" 2>/dev/null; then
+            now="$(date +%s)"
+            lock_age=$((now - lock_created_at))
+            # PID reuse cannot make a hard-kill lock permanent. A live PID is
+            # trusted only for a bounded window long enough for a full regen.
+            if ! kill -0 "$owner_pid" 2>/dev/null ||
+               [[ "$lock_age" -lt 0 || "$lock_age" -ge "$max_lock_age_seconds" ]]; then
                 stale_lock="$LOCK_DIR.stale.$$"
                 if mv "$LOCK_DIR" "$stale_lock" 2>/dev/null; then
                     rm -rf "$stale_lock"
@@ -147,9 +166,11 @@ acquire_lock() {
             fi
         else
             missing_owner_attempts=$((missing_owner_attempts + 1))
-            # A killed writer can leave the directory before recording its PID.
-            # Allow a live creator five seconds to finish that tiny window.
-            if [[ "$missing_owner_attempts" -ge 50 ]]; then
+            # A killed writer can leave the directory before recording its
+            # creation time. Allow a live creator five seconds to finish that
+            # tiny window, but never trust PID-only ownership indefinitely.
+            if { [[ "$owner_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$owner_pid" 2>/dev/null; } ||
+               [[ "$missing_owner_attempts" -ge 50 ]]; then
                 stale_lock="$LOCK_DIR.stale.$$"
                 if mv "$LOCK_DIR" "$stale_lock" 2>/dev/null; then
                     rm -rf "$stale_lock"
@@ -162,6 +183,7 @@ acquire_lock() {
 
     LOCK_HELD=true
     printf '%s\n' "$$" > "$LOCK_DIR/pid"
+    date +%s > "$LOCK_DIR/created-at"
 
     # Deterministic synchronization point used only by the concurrency test.
     if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_LOCK:-}" ]]; then
@@ -247,14 +269,16 @@ inject_failure() {
     fi
 }
 
-acquire_lock
-
-if [[ "$CHECK_ONLY" == "true" && -f "$TRANSACTION_FILE" ]]; then
-    echo "error: interrupted legacy hash publication requires a normal regeneration run" >&2
-    exit 1
+if [[ "$CHECK_ONLY" == "true" ]]; then
+    if [[ -f "$TRANSACTION_FILE" ]]; then
+        echo "error: interrupted legacy hash publication requires a normal regeneration run" >&2
+        exit 1
+    fi
+else
+    acquire_lock
+    recover_interrupted_publication
+    remove_abandoned_staging_files
 fi
-recover_interrupted_publication
-remove_abandoned_staging_files
 
 # Collect every blob OID that has ever existed in this branch history at a path
 # matching plugins/<plugin>/skills/<skill>/SKILL.md, then emit
