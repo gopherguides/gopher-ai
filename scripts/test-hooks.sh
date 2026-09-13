@@ -24,7 +24,7 @@ sha256_file() {
 
 run_commit_worktree_tests() (
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
-  local fixture primary linked mode before plugin output current_hash pair manifest compat_bin cmd skill_path staged_copy shared_path
+  local fixture primary linked mode before plugin output current_hash pair manifest compat_bin cmd skill_path staged_copy shared_path hidden_plugin
   fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-commit-worktree.XXXXXX")
   primary="$fixture/primary checkout"
   linked="$fixture/linked checkout"
@@ -120,6 +120,39 @@ run_commit_worktree_tests() (
     return 1
   }
   git -C "$linked" restore --staged --worktree "$shared_path"
+
+  echo "  Installed hook validates indexed plugins absent from the worktree..."
+  shared_path="plugins/go-web/commands/cancel-loop.md"
+  printf '\nindexed plugin content\n' >> "$linked/$shared_path"
+  git -C "$linked" add "$shared_path"
+  hidden_plugin="$fixture/hidden-go-web"
+  mv "$linked/plugins/go-web" "$hidden_plugin"
+  if output=$(git -C "$linked" commit -qm "hidden plugin directory" 2>&1); then
+    echo "FAIL (hook skipped an indexed plugin absent from the worktree)"
+    mv "$hidden_plugin" "$linked/plugins/go-web"
+    return 1
+  fi
+  mv "$hidden_plugin" "$linked/plugins/go-web"
+  printf '%s\n' "$output" | grep -F "differs from shared/commands/cancel-loop.md in the index" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree "$shared_path"
+
+  echo "  Installed hook compares indexed manifest bytes exactly..."
+  manifest="plugins/go-workflow/hooks/legacy-skill-hashes.txt"
+  printf '\n' >> "$linked/$manifest"
+  git -C "$linked" add "$manifest"
+  git -C "$linked" show "HEAD:$manifest" > "$linked/$manifest"
+  if output=$(git -C "$linked" commit -qm "manifest trailing newline" 2>&1); then
+    echo "FAIL (hook accepted indexed manifests with different trailing newlines)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "legacy skill hash manifests differ" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree "$manifest"
 
   echo "  Shared-sync gate supports stock macOS shasum..."
   compat_bin="$fixture/shasum-only-bin"

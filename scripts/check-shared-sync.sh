@@ -78,7 +78,7 @@ echo "Checking shared file sync..."
 for plugin in "${LOOP_PLUGINS[@]}"; do
   PLUGIN_DIR="$PLUGINS_DIR/$plugin"
 
-  if [ ! -d "$PLUGIN_DIR" ]; then
+  if [ "$USE_INDEX" = false ] && [ ! -d "$PLUGIN_DIR" ]; then
     echo "Warning: Plugin directory not found: $PLUGIN_DIR"
     continue
   fi
@@ -176,6 +176,8 @@ LEGACY_MANIFEST="$ROOT_DIR/scripts/legacy-skill-hashes.txt"
 LEGACY_HOOK_MANIFEST="$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt"
 
 if [ "$USE_INDEX" = true ]; then
+  LEGACY_MANIFEST_INDEX_FILE="scripts/legacy-skill-hashes.txt"
+  LEGACY_HOOK_MANIFEST_INDEX_FILE="plugins/go-workflow/hooks/legacy-skill-hashes.txt"
   LEGACY_MANIFEST_CONTENT=$(git -C "$ROOT_DIR" show ':scripts/legacy-skill-hashes.txt') || {
     echo "ERROR: legacy skill hash manifest is missing from the index"
     exit 1
@@ -189,7 +191,7 @@ fi
 if [ "$USE_INDEX" = false ] && { [ ! -f "$LEGACY_MANIFEST" ] || [ ! -f "$LEGACY_HOOK_MANIFEST" ]; }; then
   echo "ERROR: legacy skill hash manifest is missing"
   OUT_OF_SYNC=1
-elif [ "$USE_INDEX" = true ] && [ "$LEGACY_MANIFEST_CONTENT" != "$LEGACY_HOOK_MANIFEST_CONTENT" ]; then
+elif [ "$USE_INDEX" = true ] && ! index_files_equal "$LEGACY_MANIFEST_INDEX_FILE" "$LEGACY_HOOK_MANIFEST_INDEX_FILE"; then
   echo "ERROR: legacy skill hash manifests differ"
   OUT_OF_SYNC=1
 elif [ "$USE_INDEX" = false ] && ! cmp -s "$LEGACY_MANIFEST" "$LEGACY_HOOK_MANIFEST"; then
