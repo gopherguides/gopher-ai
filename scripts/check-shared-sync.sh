@@ -69,7 +69,8 @@ index_file_is_symlink() {
 }
 
 index_files_equal() {
-  [ "$(git -C "$ROOT_DIR" rev-parse ":$1")" = "$(git -C "$ROOT_DIR" rev-parse ":$2")" ]
+  [ "$(git -C "$ROOT_DIR" ls-files -s -- "$1" | awk '{print $1 " " $2}')" = \
+    "$(git -C "$ROOT_DIR" ls-files -s -- "$2" | awk '{print $1 " " $2}')" ]
 }
 
 echo "Checking shared file sync..."

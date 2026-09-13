@@ -108,6 +108,19 @@ run_commit_worktree_tests() (
     plugins/tailwind/commands/cancel-loop.md \
     plugins/llm-tools/commands/cancel-loop.md
 
+  echo "  Installed hook validates staged shared file modes..."
+  shared_path="plugins/go-web/scripts/setup-loop.sh"
+  git -C "$linked" update-index --chmod=-x "$shared_path"
+  if output=$(git -C "$linked" commit -qm "non-executable shared mirror" 2>&1); then
+    echo "FAIL (hook accepted a staged shared mirror with a different file mode)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "differs from shared/scripts/setup-loop.sh in the index" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree "$shared_path"
+
   echo "  Shared-sync gate supports stock macOS shasum..."
   compat_bin="$fixture/shasum-only-bin"
   mkdir -p "$compat_bin"
