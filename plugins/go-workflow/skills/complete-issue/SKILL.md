@@ -14,319 +14,106 @@ disable-model-invocation: true
 - **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
 - **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
 
-Autonomous end-to-end pipeline: **issue number in → merged PR out.**
+Autonomous pipeline: issue number -> implementation PR -> self-review ->
+E2E fix-and-ship -> merged PR.
 
-Before requesting decisions, entering a planning workflow, or delegating work,
-read `<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
-cross-platform capability-binding rules.
+Before decisions, planning, or delegation, read
+`<PLUGIN_ROOT>/lib/driver-interaction.md`. Read
+`<PLUGIN_ROOT>/lib/decision-gates.md` before resolving workflow choices.
+Bind `SKILL_ARGS` for `$go-workflow:complete-issue` by reading
+`<PLUGIN_ROOT>/lib/skill-arguments.md` with this compatibility payload:
 
-Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving any workflow
-choice.
-
-Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:complete-issue` by
-reading `<PLUGIN_ROOT>/lib/skill-arguments.md` with this Claude Code compatibility payload:
 <claude-skill-arguments>
 $ARGUMENTS
 </claude-skill-arguments>
 
-```bash
-source "<PLUGIN_ROOT>/lib/github-rest.sh"
-```
+Run `source "<PLUGIN_ROOT>/lib/github-rest.sh"`. Component workflows are user-only:
+read their `SKILL.md` files and execute them directly with the specified child
+arguments; never invoke them through another Skill tool.
 
-Chains the `start-issue` workflow, Codex review, and the `e2e-verify`
-`fix-and-ship` workflow.
+## Arguments and Owner State
 
-The component workflow skills are user-only. Do not call them with the Skill
-tool. Load their `SKILL.md` files with Read and execute their instructions
-directly with the arguments specified below.
+Read `<PLUGIN_ROOT>/skills/complete-issue/arguments.md` completely and execute
+its parsing and missing-target gate. Preserve `ISSUE_NUM` and pass-through
+coverage/agent flags. A missing issue number is a missing-intent gate: request
+it and stop before loop initialization or any completion claim.
 
-The `$go-workflow:start-issue` phase owns its surface-aware dispatch decision.
-Claude Code orchestration uses the custom agent definitions and their model
-frontmatter; `CLAUDE_CODE_SUBAGENT_MODEL=<model>` overrides those models for a
-Claude Code run. Codex orchestration maps the reusable prompt bodies to its
-built-in delegation profiles and inherits the active Codex model, reasoning
-effort, and configuration. When those native profiles are unavailable, Codex
-uses the single-session start workflow. Pass `--no-agents` through to select
-that workflow explicitly on either surface.
+Read `<PLUGIN_ROOT>/skills/complete-issue/loop-state.md` completely and execute
+its bootstrap, argument persistence, and re-entry checks. Complete-issue owns the
+physical state file and terminal promise. Each component uses a child path in
+that same file and returns structured state without a terminal marker.
 
-## Parse Arguments
+Owner phase routing:
 
-```bash
-ISSUE_NUM=""
-FLAGS=""
-SKIP_NEXT=false
-for arg in $SKILL_ARGS; do
-  if [ "$SKIP_NEXT" = "true" ]; then
-    FLAGS="$FLAGS $arg"
-    SKIP_NEXT=false
-  elif [ "$arg" = "--coverage-threshold" ]; then
-    FLAGS="$FLAGS $arg"
-    SKIP_NEXT=true
-  elif echo "$arg" | grep -qE '^--'; then
-    FLAGS="$FLAGS $arg"
-  elif [ -z "$ISSUE_NUM" ] && echo "$arg" | grep -qE '^[0-9]+$'; then
-    ISSUE_NUM="$arg"
-  else
-    FLAGS="$FLAGS $arg"
-  fi
-done
-
-if [ -z "$ISSUE_NUM" ]; then
-  echo "Claude Code: /go-workflow:complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
-  echo "Codex: \$go-workflow:complete-issue <issue-number> [--skip-coverage] [--coverage-threshold <n>] [--no-agents]"
-fi
-
-echo "Issue: $ISSUE_NUM | Flags: $FLAGS"
-```
-
-If `ISSUE_NUM` is empty, this is a **missing-intent gate**. Request the issue
-number through native structured input when available; otherwise ask in the
-final response and stop before loop initialization or a completion claim.
-
-## Loop Initialization & Re-entry
-
-Read `loop-state.md` and run the **bootstrap block**, **persist arguments
-block**, and **re-entry check**. If `PHASE` is set, recover the owner phase and
-the corresponding component phase before routing below; otherwise continue to
-Phase 1.
-
-Phase → step routing:
-
-- `implementing` → Phase 1, using `.components.start_issue.phase`
-- `reviewing` → Phase 3; the earlier in-session review is void and must not be restarted
-- `verifying` → Phase 3, using `.components.e2e_verify.phase` and its nested
+- `implementing` -> Phase 1 using `.components.start_issue.phase`
+- `reviewing` -> Phase 2 on a fresh run; on successor re-entry the expired
+  session-local review is void and routing continues to Phase 3
+- `verifying` -> Phase 3 using `.components.e2e_verify.phase` and its nested
   active component
-- `incomplete` → display the persisted component-aware `reason`, output
+- `incomplete` -> report the persisted component-aware reason, emit only
   `<done>INCOMPLETE</done>`, and stop without entering Phase 3
 
-Resolve child phases without replacing the owner phase used by this routing
-table:
+Keep the owner `PHASE` distinct from child phases when routing. Never let a
+child initialize another loop or overwrite the owner phase/result.
 
-```bash
-OWNER_PHASE="$PHASE"
-START_ISSUE_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "start_issue")
-E2E_VERIFY_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "e2e_verify")
-START_ISSUE_PHASE=$(get_loop_field "$STATE_FILE" "phase" "$START_ISSUE_STATE_PATH")
-E2E_VERIFY_PHASE=$(get_loop_field "$STATE_FILE" "phase" "$E2E_VERIFY_STATE_PATH")
-PHASE="$OWNER_PHASE"
-```
+## Phase 1: Implementation
 
----
+Set owner phase `implementing`. Read
+`<PLUGIN_ROOT>/skills/complete-issue/implementation-handoff.md` completely and
+execute it. It initializes the start-issue child, reads
+`<PLUGIN_ROOT>/skills/start-issue/SKILL.md`, passes `$ISSUE_NUM $FLAGS`, and
+propagates child failure atomically.
 
-## Phase 1: Implement (`$go-workflow:start-issue`)
+Read `<PLUGIN_ROOT>/skills/complete-issue/phases.md` for the full start-issue
+sub-step list and implementation review command details.
 
-```bash
-set_loop_phase "$STATE_FILE" "implementing" "$WORKFLOW_STATE_PATH"
-START_ISSUE_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "start_issue")
-initialize_workflow_state "$STATE_FILE" "$START_ISSUE_STATE_PATH"
-```
+> **Worktree invariant (decision-time, must stay in trunk):** after start-issue,
+> every subsequent file operation and git, build, test, lint, review, and GitHub
+> command targets the persisted absolute `WORKTREE_PATH`. `STATE_FILE` remains
+> the normalized caller-owned path. Never rediscover either from ambient CWD.
 
-Read `<PLUGIN_ROOT>/skills/start-issue/SKILL.md` and execute its workflow
-directly, treating `$ISSUE_NUM $FLAGS` as its `SKILL_ARGS`. Do not call the
-Skill tool. Read `phases.md` for the full sub-step list (fetch issue, create
-worktree, detect type, explore, design, TDD, verify, coverage, security review,
-commit/push/PR, watch CI).
+The handoff must validate that the worktree exists, is registered under the
+same original root, matches the persisted repository, and has an exact-head PR.
+A mismatch is `start-issue-worktree-path-invalid` and stops incomplete.
 
-Before executing the loaded workflow, set its explicit caller contract:
+## Phase 2: Session-Local Self-Review
 
-```bash
-CALLER_LOOP_STATE_FILE="$STATE_FILE"
-CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"
-```
+Set owner phase `reviewing`. Read
+`<PLUGIN_ROOT>/skills/complete-issue/self-review.md` completely and execute it.
+The review must complete synchronously. Never silently skip it or leave staged
+or unpushed review-owned changes at a session boundary.
 
-After it returns, clear both caller variables and route its structured result:
-
-```bash
-WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"
-unset CALLER_LOOP_STATE_FILE CALLER_WORKFLOW_STATE_PATH
-START_ISSUE_RESULT=$(get_loop_field "$STATE_FILE" "result" "$START_ISSUE_STATE_PATH")
-START_ISSUE_REASON=$(get_loop_field "$STATE_FILE" "reason" "$START_ISSUE_STATE_PATH")
-if [ "$START_ISSUE_RESULT" != "complete" ]; then
-  START_ISSUE_REASON="${START_ISSUE_REASON:-start-issue-incomplete}"
-  set_loop_terminal_result "$STATE_FILE" "incomplete" "$START_ISSUE_REASON" "incomplete" "INCOMPLETE"
-  echo "Complete-issue stopped during implementation: $START_ISSUE_REASON"
-  echo "<done>INCOMPLETE</done>"
-  exit 0
-fi
-```
-
-After `$go-workflow:start-issue` completes, detect the PR number and worktree
-context while retaining the already-normalized caller state path, then persist:
-
-```bash
-WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
-REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
-START_ORIGINAL_REPO_ROOT=$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')
-REGISTERED_WORKTREES=$(git -C "$ORIGINAL_REPO_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print }')
-if [ "$START_ORIGINAL_REPO_ROOT" != "$ORIGINAL_REPO_ROOT" ] ||
-   [ -z "$WORKTREE_PATH" ] ||
-   [ "${WORKTREE_PATH#/}" = "$WORKTREE_PATH" ] ||
-   [ ! -d "$WORKTREE_PATH" ] ||
-   ! printf '%s\n' "$REGISTERED_WORKTREES" | awk -v expected="$WORKTREE_PATH" '$0 == expected { found = 1 } END { exit found ? 0 : 1 }' ||
-   [ -z "$REPO_SLUG" ]; then
-  WORKFLOW_REASON=start-issue-worktree-path-invalid
-  set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"
-  echo "WORKFLOW_RESULT=INCOMPLETE"
-  echo "WORKFLOW_REASON=$WORKFLOW_REASON"
-  echo "<done>INCOMPLETE</done>"
-  exit 1
-fi
-
-PR_HEAD_BRANCH=$(git -C "$WORKTREE_PATH" branch --show-current)
-HEAD_SHA=$(git -C "$WORKTREE_PATH" rev-parse HEAD)
-PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr "$PR_HEAD_BRANCH" "$HEAD_SHA") || {
-  echo "Error: No open PR matches the persisted worktree branch and HEAD after start-issue"
-  exit 1
-}
-PR_NUM=$(jq -er '.number' <<< "$PR_JSON")
-
-GIT_DIR_ABS=$(cd "$WORKTREE_PATH" && cd "$(git rev-parse --git-dir 2>/dev/null)" && pwd)
-GIT_COMMON_ABS=$(cd "$WORKTREE_PATH" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" && pwd)
-if [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
-  echo "Running in worktree: $WORKTREE_PATH"
-fi
-
-set_loop_field "$STATE_FILE" "pr_number" "$PR_NUM" "$WORKFLOW_STATE_PATH"
-set_loop_field "$STATE_FILE" "worktree_path" "${WORKTREE_PATH:-}" '[]'
-echo "PR #$PR_NUM created"
-```
-
-> **Worktree invariant (decision-time, must stay in trunk):** All subsequent
-> phases MUST operate on `$WORKTREE_PATH`. Prefer `git -C "$WORKTREE_PATH"`,
-> `go -C "$WORKTREE_PATH"`, and `gh ... --repo "$REPO_SLUG"`; use an explicit
-> worktree-scoped group only when no per-command option exists. Use
-> `$WORKTREE_PATH` as the base for all file tools. `STATE_FILE` remains the one
-> normalized caller-owned path established before Phase 1. Do not assume a
-> pre-tool-use hook will correct or reject an ambient-directory command.
-
----
-
-## Phase 2: Self-Review (Codex)
-
-```bash
-set_loop_phase "$STATE_FILE" "reviewing" "$WORKFLOW_STATE_PATH"
-```
-
-Run an LLM review to catch issues before E2E verification. Never silently skip
-review. Resolve unpinned backend recovery from diagnostics; replacing a backend
-the user explicitly required is a missing-intent gate.
-
-Delegated fallback reviews are session-local and must complete
-synchronously. Never dispatch them in the background or persist them for a
-successor session. If a successor re-enters with `phase="reviewing"`, skip the
-expired review and continue to Phase 3; the PR already created in Phase 1 and
-its CI are the durable gate.
-
-Detect codex availability:
-
-```bash
-CODEX_AVAILABLE=false
-if command -v codex &>/dev/null; then
-  CODEX_CMD="codex"
-  CODEX_AVAILABLE=true
-fi
-```
-
-- **If codex is NOT available** OR **if codex exec fails at runtime** → Read
-  `codex-fallback.md` and follow its evidence-based recovery order.
-- **If codex IS available** → run codex review on the PR diff with an adaptive timeout, address findings, and commit fixes. See `phases.md` for the full bash (diff sizing, timeout calculation, large-diff warning).
-
-Address findings: for each valid finding, make the fix. Skip false positives or
-cosmetic-only items. Maintain `REVIEW_FILES` as the exact list of files modified
-in this review phase, including generated or updated tests. Before modifying an
-existing path, confirm
-`git -C "$WORKTREE_PATH" status --porcelain -- "$TARGET_FILE"` is empty so
-pre-existing changes cannot enter the review-fix commit. Every GitHub and Git
-operation in this phase runs against the persisted `WORKTREE_PATH` and
-`REPO_SLUG`. Commit fixes if any changes were made:
-
-```bash
-if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
-  echo "Error: Pre-existing staged changes must be committed or unstaged before complete-issue can commit review fixes."
-  exit 1
-fi
-
-REVIEW_FILES=(
-  "path/to/reviewed-file.go"
-  "path/to/reviewed-file_test.go"
-)
-if [ "${#REVIEW_FILES[@]}" -gt 0 ]; then
-  git -C "$WORKTREE_PATH" add -- "${REVIEW_FILES[@]}"
-  if ! git -C "$WORKTREE_PATH" diff --cached --quiet; then
-    git -C "$WORKTREE_PATH" commit -m "fix: address codex review findings"
-    git -C "$WORKTREE_PATH" push
-  fi
-fi
-```
-
----
+When Codex is unavailable or fails, read
+`<PLUGIN_ROOT>/skills/complete-issue/codex-fallback.md` completely and follow
+its evidence-based recovery. Replacing an explicitly required backend is a
+missing-intent gate. An ordinary timeout or failed fallback propagates
+incomplete; only successor-session expired-review recovery may record void and
+continue to downstream exact-head gates.
 
 ## Phase 3: E2E Verify and Ship
 
-```bash
-set_loop_phase "$STATE_FILE" "verifying" "$WORKFLOW_STATE_PATH"
-E2E_VERIFY_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "e2e_verify")
-initialize_workflow_state "$STATE_FILE" "$E2E_VERIFY_STATE_PATH"
-```
+Set owner phase `verifying`. Read
+`<PLUGIN_ROOT>/skills/complete-issue/verification-handoff.md` completely and
+execute it. It initializes the E2E child, reads
+`<PLUGIN_ROOT>/skills/e2e-verify/SKILL.md`, passes
+`$PR_NUM fix-and-ship`, and translates structured failure into the owner
+terminal result.
 
-Read `<PLUGIN_ROOT>/skills/e2e-verify/SKILL.md` and execute its workflow
-directly, treating `$PR_NUM fix-and-ship` as its `SKILL_ARGS`. Do not call the
-Skill tool. This runs the full workflow in `fix-and-ship` mode (rebase, build,
-address review, E2E browser tests, post results, add the `run-full-ci` label,
-watch CI, and execute the ship workflow).
-
-Before executing the loaded workflow, set its explicit caller contract:
-
-```bash
-CALLER_LOOP_STATE_FILE="$STATE_FILE"
-CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"
-```
-
-After it returns, clear both caller variables and translate its structured
-result into complete-issue's own terminal contract:
-
-```bash
-WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"
-unset CALLER_LOOP_STATE_FILE CALLER_WORKFLOW_STATE_PATH
-E2E_VERIFY_RESULT=$(get_loop_field "$STATE_FILE" "result" "$E2E_VERIFY_STATE_PATH")
-E2E_VERIFY_REASON=$(get_loop_field "$STATE_FILE" "reason" "$E2E_VERIFY_STATE_PATH")
-if [ "$E2E_VERIFY_RESULT" != "verified" ]; then
-  E2E_VERIFY_REASON="${E2E_VERIFY_REASON:-e2e-verify-incomplete}"
-  set_loop_terminal_result "$STATE_FILE" "incomplete" "$E2E_VERIFY_REASON" "incomplete" "INCOMPLETE"
-  echo "Complete-issue stopped during verification: $E2E_VERIFY_REASON"
-  echo "<done>INCOMPLETE</done>"
-  exit 0
-fi
-```
-
----
+The E2E child owns rebase/build, embedded address-review, generated-output
+recovery, browser verification, result posting, exact-head CI, and embedded ship.
+It may not emit a child marker or weaken the top-level completion gate.
 
 ## Completion Criteria
 
-Output `<done>COMPLETE</done>` when ALL of these are true:
+Complete only when the issue is implemented with tests; a non-draft PR is
+created and pushed; self-review completed with findings addressed or a
+successor-session expired review is durably recorded as void and the exact
+current head passes downstream CI; E2E verification and posting succeeded; and
+ship merged the PR. An ordinary timeout or fallback failure does not count as
+a completed review.
 
-1. Issue implemented with tests
-2. PR created and pushed
-3. Codex review completed and findings addressed, or an expired session-local
-   review is durably recorded as void and the exact current head passes the
-   downstream CI gates. An ordinary timeout or fallback failure does not count.
-4. E2E verification completed
-5. Results posted to PR
-6. CI passes
-7. PR merged (via the ship workflow)
-
-When all criteria are met:
-
-```bash
-set_loop_terminal_result "$STATE_FILE" "complete" "" "completed" "COMPLETE"
-echo "<done>COMPLETE</done>"
-```
-
-**Safety:** If 15+ iterations complete without success, document the blocking
-evidence and stop incomplete. Do not bypass a completion criterion.
-
-## Further Reading
-
-- `phases.md` — full sub-step lists for Phase 1 (`$go-workflow:start-issue`) and the codex run for Phase 2
-- `loop-state.md` — bootstrap, re-entry, and persist blocks
-- `codex-fallback.md` — evidence-based recovery for codex unavailable / runtime failure / timeout
+Only then execute **Owner Completion Result** from `verification-handoff.md`
+to persist the owner complete result and emit
+`<done>COMPLETE</done>`. Component failure must be propagated with its reason,
+persist owner incomplete, and emit only `<done>INCOMPLETE</done>`. After 15
+unsuccessful iterations, record evidence and stop incomplete.

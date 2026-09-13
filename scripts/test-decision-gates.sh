@@ -5,16 +5,20 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "$0")/.." && pwd)
 DECISIONS="$ROOT_DIR/plugins/go-workflow/lib/decision-gates.md"
 START="$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md"
+START_WORKSPACE="$ROOT_DIR/plugins/go-workflow/lib/start-issue/workspace.md"
 START_FLOW="$ROOT_DIR/plugins/go-workflow/lib/start-issue/orchestrated-workflow.md"
 START_MANUAL="$ROOT_DIR/plugins/go-workflow/lib/start-issue/manual-workflow.md"
 START_WORKTREE="$ROOT_DIR/plugins/go-workflow/lib/start-issue/worktree-create.md"
 CREATE_PR="$ROOT_DIR/plugins/go-workflow/skills/create-pr/SKILL.md"
 REVIEW_PLAN="$ROOT_DIR/plugins/go-workflow/lib/review-planning.md"
 SHIP="$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
+SHIP_CONTEXT="$ROOT_DIR/plugins/go-workflow/lib/ship/context.md"
 SHIP_PREREQUISITES="$ROOT_DIR/plugins/go-workflow/lib/ship/prerequisites.md"
 SHIP_REVIEW="$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
 SHIP_BOTS="$ROOT_DIR/plugins/go-workflow/lib/ship/bot-watch.md"
 ADDRESS="$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md"
+ADDRESS_LOOP="$ROOT_DIR/plugins/go-workflow/skills/address-review/loop-management.md"
+ADDRESS_COMPLETION="$ROOT_DIR/plugins/go-workflow/skills/address-review/completion-check.md"
 ADDRESS_FIX="$ROOT_DIR/plugins/go-workflow/skills/address-review/fix-cycle.md"
 ADDRESS_WATCH="$ROOT_DIR/plugins/go-workflow/skills/address-review/watch-loop.md"
 COMPLETE="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"
@@ -26,6 +30,7 @@ WORKTREE_CREATE="$ROOT_DIR/plugins/go-workflow/skills/worktree/create.md"
 WORKTREE_REMOVE="$ROOT_DIR/plugins/go-workflow/skills/worktree/remove.md"
 WORKTREE_PRUNE="$ROOT_DIR/plugins/go-workflow/skills/worktree/prune.md"
 REVIEW_DEEP="$ROOT_DIR/plugins/go-workflow/skills/review-deep/SKILL.md"
+REVIEW_DEEP_OUTPUT="$ROOT_DIR/plugins/go-workflow/skills/review-deep/output-format.md"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -86,7 +91,7 @@ assert_contains "$intent_contract" "ask one concise question in the final" "miss
 assert_contains "$intent_contract" "Do not perform the dependent action" "missing intent can continue"
 assert_contains "$intent_contract" "completion marker" "missing intent can claim completion"
 
-start_worktree=$(section_text "$START" "## Worktree Detection & Decision" "## If the driver selected")
+start_worktree=$(section_text "$START_WORKSPACE" "## Worktree Detection & Decision" "## If the driver selected")
 assert_contains "$start_worktree" "provides isolation" "worktree placement ignores isolation evidence"
 assert_contains "$start_worktree" "clean non-default" "worktree placement ignores branch evidence"
 assert_contains "$start_worktree" "Do not request input" "worktree placement still defers a technical choice"
@@ -123,7 +128,7 @@ review_runtime=$(file_text "$REVIEW_PLAN")
 assert_contains "$review_runtime" "REVIEW_PLAN=\$(/bin/bash \"<PLUGIN_ROOT>/scripts/review-plan.sh\"" "review planner does not use /bin/bash at runtime"
 assert_not_contains "$review_runtime" "REVIEW_PLAN=\$(\"<PLUGIN_ROOT>/scripts/review-plan.sh\"" "review planner still executes directly at runtime"
 
-dirty_ship=$(section_text "$SHIP" "## 3. Detect Context" "## 4. Prerequisite Check")
+dirty_ship=$(section_text "$SHIP_CONTEXT" "## 3. Detect Context" "__END__")
 assert_contains "$dirty_ship" "unambiguously in scope" "dirty ship cannot identify owned changes"
 assert_contains "$dirty_ship" "Preserve unrelated changes" "dirty ship can capture unrelated changes"
 assert_contains "$dirty_ship" "WORKFLOW_REASON=unowned-worktree-changes" "ambiguous ship ownership has no incomplete outcome"
@@ -184,7 +189,7 @@ assert_contains "$clean_review_ci" 'CI_PR_JSON=$(cd "$WORKTREE_PATH" && github_p
 assert_contains "$clean_review_ci" 'PR_HEAD_SHA=$(jq -er '\''.head.sha'\'' <<< "$CI_PR_JSON")' "clean review CI can consume an undefined PR head"
 assert_contains "$clean_review_ci" 'github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA"' "clean review CI is not pinned to the refreshed PR head"
 
-embedded_review=$(section_text "$ADDRESS" "## Embedded Consumer Contract" "## Completion Criteria")
+embedded_review=$(section_text "$ADDRESS_COMPLETION" "## Embedded Consumer Contract" "## Completion Criteria")
 assert_contains "$embedded_review" "Steps 2-11" "embedded address-review contract lacks its execution boundary"
 assert_contains "$embedded_review" "REVIEW_CLEAN" "embedded address-review contract lacks structured runtime state"
 assert_contains "$embedded_review" "review_clean" "embedded address-review contract lacks durable state"
@@ -192,20 +197,20 @@ assert_contains "$embedded_review" "return control to the caller" "embedded addr
 assert_contains "$embedded_review" "no terminal marker" "embedded address-review can terminate its caller"
 assert_not_contains "$embedded_review" "<done>COMPLETE</done>" "embedded address-review owns a foreign completion marker"
 
-embedded_invariant=$(section_text "$ADDRESS" "## Hard Invariant Failure" "## Context & Bot Discovery")
+embedded_invariant=$(section_text "$ADDRESS_LOOP" "## Hard Invariant Failure" "__END__")
 assert_contains "$embedded_invariant" 'INVARIANT_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-}}"' "embedded invariant cannot use caller-owned state"
 assert_contains "$embedded_invariant" "returns the structured incomplete state" "embedded invariant lacks a structured return"
 assert_contains "$embedded_invariant" "emits no terminal marker" "embedded invariant owns its caller's terminal marker"
 
-address_completion=$(section_text "$ADDRESS" "## Completion Criteria" "## Supporting Files")
+address_completion=$(section_text "$ADDRESS_COMPLETION" "## Completion Criteria" "## Supporting Files")
 assert_contains "$address_completion" "standalone address-review owns" "standalone address-review does not own its final marker"
 assert_contains "$address_completion" "after Step 11" "standalone address-review can terminate before completion verification"
 
-address_step_11=$(section_text "$ADDRESS" "## Step 11: Verify Completion" "## Step 12: Watch")
+address_step_11=$(section_text "$ADDRESS_COMPLETION" "## Step 11: Verify Completion" "## Embedded Consumer Contract")
 assert_contains "$address_step_11" 'REVIEW_HEAD_EXPECTATION="${EXPECTED_REVIEW_HEAD:-$(git -C "$WORKTREE_PATH" rev-parse HEAD)}"' "embedded completion cannot bind Step 11 to the caller head"
 assert_contains "$address_step_11" '[ "$PR_HEAD_SHA" != "$REVIEW_HEAD_EXPECTATION" ]' "embedded completion accepts a concurrent PR head shift"
 
-post_review=$(section_text "$REVIEW_DEEP" "### Post to PR" "## Further Reading")
+post_review=$(section_text "$REVIEW_DEEP_OUTPUT" "### Post to PR" "__END__")
 assert_contains "$post_review" "original request explicitly asks" "review posting ignores request evidence"
 assert_contains "$post_review" "otherwise keep the report" "review posting lacks deterministic default"
 assert_contains "$post_review" "Do not request input" "review posting still presents an option menu"
@@ -233,7 +238,7 @@ for secret_file in "$START_WORKTREE" "$WORKTREE_CREATE" "$TMUX"; do
   assert_contains "$secret_text" "stop before" "secret copy can continue in ${secret_file#"$ROOT_DIR"/}"
 done
 
-issue_type=$(section_text "$START" "## Step 1: Detect Issue Type" "## Implementation Workflow")
+issue_type=$(section_text "$START" "## Issue Classification" "## Implementation Selection")
 assert_contains "$issue_type" "labels, title, body, comments" "issue classification does not exhaust evidence"
 assert_contains "$issue_type" "stop before" "ambiguous issue classification can continue"
 
@@ -253,16 +258,16 @@ assert_contains "$terminal_review" 'set_loop_terminal_result' "complete-issue fa
 assert_contains "$terminal_review" '"incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"' "complete-issue fallback lacks the complete terminal state transition"
 assert_contains "$terminal_review" "<done>INCOMPLETE</done>" "complete-issue fallback lacks a terminal marker"
 
-complete_routing=$(section_text "$COMPLETE" "Phase → step routing:" "---")
+complete_routing=$(section_text "$COMPLETE" "Owner phase routing:" "## Phase 1")
 assert_contains "$complete_routing" '`incomplete`' "complete-issue lacks terminal re-entry routing"
 assert_contains "$complete_routing" "stop without entering Phase 3" "complete-issue terminal re-entry can advance"
 
-ship_completion=$(section_text "$SHIP" "## Completion Criteria" "## Cancel")
+ship_completion=$(section_text "$SHIP" "## Completion Contract" "__END__")
 assert_contains "$ship_completion" 'durably recorded as `void`/`skipped`' "ship top-level criteria ignore durable review recovery"
 assert_contains "$ship_completion" "exact current head passes CI" "ship durable recovery is not anchored to current-head CI"
 assert_contains "$ship_completion" "unrecorded timeout" "ship local exits can bypass top-level criteria"
 
-complete_completion=$(section_text "$COMPLETE" "## Completion Criteria" "## Further Reading")
+complete_completion=$(section_text "$COMPLETE" "## Completion Criteria" "__END__")
 assert_contains "$complete_completion" "durably recorded as void" "complete-issue top-level criteria ignore durable review recovery"
 assert_contains "$complete_completion" "ordinary timeout or fallback failure does not count" "complete-issue local exits can bypass top-level criteria"
 

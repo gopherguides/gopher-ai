@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ACTIONS_SCRIPT="$ROOT_DIR/plugins/go-workflow/scripts/review-deep-post-fix.sh"
-SKILL_FILE="$ROOT_DIR/plugins/go-workflow/skills/review-deep/SKILL.md"
+SKILL_FILE="$ROOT_DIR/plugins/go-workflow/skills/review-deep/arguments.md"
 FIXTURE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/review-deep-actions-XXXXXX")"
 REMOTE_REPO="$FIXTURE_ROOT/remote.git"
 WORK_REPO="$FIXTURE_ROOT/work"
