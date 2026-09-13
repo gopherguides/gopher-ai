@@ -7,11 +7,16 @@ This document details the full context gathering procedure for deep review.
 ### Fetch PR Metadata
 
 ```bash
-REPO_FULL=$(git remote get-url origin | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##')
+if ! PR_FULL=$(gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,closingIssuesReferences,comments,reviews,url --jq '.'); then
+  printf '%s\n' 'PR context lookup failed; retry with backoff before continuing.' >&2
+  exit 1
+fi
+if ! REPO_FULL=$(printf '%s\n' "$PR_FULL" | jq -er '.url | capture("^https://[^/]+/(?<repo>[^/]+/[^/]+)/pull/[0-9]+$").repo'); then
+  printf '%s\n' 'PR context has no valid canonical repository URL.' >&2
+  exit 1
+fi
 OWNER=${REPO_FULL%%/*}
 REPO=${REPO_FULL##*/}
-
-PR_FULL=$(gh pr view "$PR_NUM" --json number,title,body,state,baseRefName,closingIssuesReferences,comments,reviews --jq '.' 2>/dev/null)
 ```
 
 Display a brief summary:
@@ -33,7 +38,7 @@ ISSUE_NUMS=$(echo "$PR_FULL" | jq -r '.closingIssuesReferences[].number' 2>/dev/
 
 for NUM in $ISSUE_NUMS; do
   echo "--- Issue #$NUM ---"
-  gh issue view "$NUM" --json number,title,body,labels,comments --jq '.' 2>/dev/null
+  gh issue view "$NUM" --repo "$REPO_FULL" --json number,title,body,labels,comments --jq '.' 2>/dev/null
 done
 ```
 
@@ -89,7 +94,7 @@ gh api "repos/$REPO_FULL/pulls/$PR_NUM/comments" --jq '.[] | {path, line, body, 
 ### Fetch Pending Reviews
 
 ```bash
-gh pr view "$PR_NUM" --json reviews --jq '.reviews[] | select(.state == "CHANGES_REQUESTED")' 2>/dev/null
+gh pr view "$PR_NUM" --repo "$REPO_FULL" --json reviews --jq '.reviews[] | select(.state == "CHANGES_REQUESTED")' 2>/dev/null
 ```
 
 ---

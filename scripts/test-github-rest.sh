@@ -438,6 +438,22 @@ assert "PR discovery failed" in failed.stderr
 failed_metadata = subprocess.run(["/bin/bash", "-c", prefix + "\ngh() { if [ \"$1\" = api ]; then printf '%s' \"$FIXTURE\"; else return 1; fi; }\n" + block], env={**os.environ, "FIXTURE": '[[{"number":1,"state":"closed"}]]'}, text=True, capture_output=True, timeout=10)
 assert failed_metadata.returncode != 0, "PR metadata failure must stop discovery"
 assert "PR metadata lookup failed" in failed_metadata.stderr
+context = (root / "plugins/go-workflow/skills/review-deep/context-gathering.md").read_text()
+context_block = context.split("```bash\n", 1)[1].split("```", 1)[0]
+context_prefix = """
+PR_NUM=42
+git() { printf '%s' 'git@github.com:contributor/fork.git'; }
+gh() { printf '%s' "$PR_FIXTURE"; }
+"""
+for url in ("https://github.com/upstream/project/pull/42", "https://github.example.com/upstream/project/pull/42"):
+    result = subprocess.run(["/bin/bash", "-c", context_prefix + context_block + '\nprintf "%s|%s|%s" "$REPO_FULL" "$OWNER" "$REPO"'], env={**os.environ, "PR_FIXTURE": '{"url":"' + url + '"}'}, text=True, capture_output=True, check=True, timeout=10)
+    assert result.stdout == "upstream/project|upstream|project", result.stdout
+for fixture in ('{}', '{"url":"https://github.com/contributor/fork"}'):
+    result = subprocess.run(["/bin/bash", "-c", context_prefix + context_block], env={**os.environ, "PR_FIXTURE": fixture}, text=True, capture_output=True, timeout=10)
+    assert result.returncode != 0, "Missing PR coordinates must stop context gathering"
+result = subprocess.run(["/bin/bash", "-c", context_prefix + '\ngh() { return 1; }\n' + context_block], text=True, capture_output=True, timeout=10)
+assert result.returncode != 0, "PR context API failure must stop context gathering"
+print("Fork PR context uses the canonical base repository.")
 print("Review discovery selection and pagination tests passed.")
 PYTEST
 
