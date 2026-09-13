@@ -12,6 +12,19 @@ literal path.
 surface. Preserve it literally, trim only surrounding whitespace, and never evaluate it as
 shell code or read it from an environment variable.
 
+## UI Generation Selection
+
+Before introducing UI components or changing existing UI code, read
+`<PLUGIN_ROOT>/skills/templui/SKILL.md` and follow its generation check. Whenever legacy
+usage is encountered, ask whether to upgrade or keep v1 for this task and wait before
+dependent edits, unless the user already answered for this task.
+
+For shadcn-templ v2, follow `<PLUGIN_ROOT>/skills/templui/shadcn-templ.md` within the chosen
+application stack. Skip the bundled v1 CSS/head examples and legacy CLI steps below;
+initialize v2 with the actual CSS path and verify the generated assets and component APIs.
+For an approved v1 choice, use the v1 instructions below. A UI choice does not authorize
+switching the app to the separate goilerplate v3 generator.
+
 ## Cross-Platform Interaction
 
 When the workflow needs a user choice, use the active surface's native structured-input
@@ -390,7 +403,7 @@ exist, such as `.gitignore` and `package.json`.
 | templ/meta.templ | templates/layouts/meta.templ | |
 | templ/base.templ | templates/layouts/base.templ | Recreate the original site's header/footer/layout structure here |
 | templ/home.templ | templates/pages/home.templ | Replace the placeholder content with the converted home page |
-| css/input.css OR css/input-templui.css | static/css/input.css | Use the templUI variant only if templUI components will be used |
+| css/input.css OR css/input-templui.css | static/css/input.css | Use the templUI variant only for approved v1 components; initialize v2 CSS through its CLI |
 
 **Database-specific `go.mod` additions:**
 
@@ -408,8 +421,9 @@ mkdir -p data
 touch data/.gitkeep
 ```
 
-**If using templUI components:** install the CLI
-(`go install github.com/templui/templui@latest && templui add sidebar button card icon`),
+**If the user chose legacy templUI v1 components:** install the CLI with
+`go install github.com/templui/templui/cmd/templui@v1`, initialize `.templui.json` if absent
+with `templui init@v1`, then run `templui add@v1 sidebar button card icon`. Next,
 uncomment `e.Static("/assets", "assets")` in `internal/handler/handler.go`, and apply the
 `<head>` changes from `<PLUGIN_ROOT>/templates/templ/base-templui-head.templ` to
 `templates/layouts/base.templ` (component Script() templates are required — see the

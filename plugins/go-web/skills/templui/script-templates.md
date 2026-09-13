@@ -1,5 +1,8 @@
 # Script() Templates - REQUIRED for Interactive Components
 
+Legacy v1 only: complete the generation check and upgrade question in `SKILL.md` first.
+For shadcn-templ v2, use `shadcn-templ.md` and the installed component source instead.
+
 Components with JavaScript include a `Script()` template function. **You MUST add these to your base layout's `<head>`:**
 
 ```templ
@@ -29,5 +32,5 @@ Components with JavaScript include a `Script()` template function. **You MUST ad
 
 **If a component doesn't work (no click events, no positioning), check that:**
 1. The Script() template is called in the layout
-2. The component was installed via CLI (not manually copied)
+2. The component and its dependencies match the project’s v1 module or local-copy workflow
 3. All dependency scripts are included
