@@ -108,10 +108,14 @@ STAGED_HOOK_MANIFEST=""
 STAGED_TRANSACTION=""
 LOCK_GUARD_PID=""
 LOCK_STATE_DIR=""
+COLLECTION_PID=""
 
 cleanup() {
     status=$?
     trap - EXIT INT TERM HUP
+    if [[ -n "$COLLECTION_PID" ]]; then
+        kill "$COLLECTION_PID" 2>/dev/null || true
+    fi
     [[ -z "$TMP" ]] || rm -f "$TMP"
     [[ -z "$CANDIDATE" ]] || rm -f "$CANDIDATE"
     [[ -z "$STAGED_MANIFEST" ]] || rm -f "$STAGED_MANIFEST"
@@ -318,7 +322,8 @@ fi
 # directory B.
 TMP=$(/usr/bin/mktemp "$TEMP_BASE/gopher-ai-legacy-hashes.body.XXXXXX")
 
-{
+collect_hashes() {
+    {
     if [[ -n "${GOPHER_AI_REGEN_TEST_COLLECTION_CHILD:-}" ]]; then
         touch "${GOPHER_AI_REGEN_TEST_COLLECTION_CHILD}.ready"
         sleep 3
@@ -339,7 +344,16 @@ TMP=$(/usr/bin/mktemp "$TEMP_BASE/gopher-ai-legacy-hashes.body.XXXXXX")
         hash="$(sha256sum "$skill_file" | awk '{print $1}')"
         [[ -n "$hash" ]] && echo "$hash $skill_name"
     done
-} | sort -u >"$TMP"
+    } | sort -u >"$TMP"
+}
+
+# Waiting explicitly for a background worker lets Bash run the signal traps
+# immediately instead of deferring them behind a foreground collection
+# pipeline. Cleanup terminates the worker and releases the guardian-held lock.
+collect_hashes &
+COLLECTION_PID=$!
+wait "$COLLECTION_PID"
+COLLECTION_PID=""
 
 count="$(wc -l < "$TMP" | tr -d ' ')"
 

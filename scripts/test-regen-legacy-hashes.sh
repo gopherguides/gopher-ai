@@ -270,6 +270,73 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
+echo -n "An active collection responds promptly to TERM... "
+ACTIVE_REPO=$(new_fixture cancel-collection)
+ACTIVE_CHILD="$TEST_ROOT/cancel-collection-child"
+ACTIVE_READY="$ACTIVE_CHILD.ready"
+ACTIVE_LOG="$TEST_ROOT/cancel-collection.log"
+ACTIVE_SUCCESSOR_LOG="$TEST_ROOT/cancel-collection-successor.log"
+GOPHER_AI_REGEN_TEST_COLLECTION_CHILD="$ACTIVE_CHILD" \
+  /bin/bash "$ACTIVE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$ACTIVE_LOG" 2>&1 &
+ACTIVE_PID=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $ACTIVE_PID"
+
+ACTIVE_COLLECTION_READY=false
+for _ in $(seq 1 100); do
+  if [ -e "$ACTIVE_READY" ]; then
+    ACTIVE_COLLECTION_READY=true
+    break
+  fi
+  if ! kill -0 "$ACTIVE_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.05
+done
+
+if [ "$ACTIVE_COLLECTION_READY" != true ]; then
+  echo "FAIL (writer never entered the active collection test point)"
+  ERRORS=$((ERRORS + 1))
+else
+  kill -TERM "$ACTIVE_PID" 2>/dev/null || true
+  ACTIVE_CANCELLED=false
+  for _ in $(seq 1 40); do
+    if ! kill -0 "$ACTIVE_PID" 2>/dev/null; then
+      ACTIVE_CANCELLED=true
+      break
+    fi
+    sleep 0.05
+  done
+  ACTIVE_STATUS=0
+  if [ "$ACTIVE_CANCELLED" = true ]; then
+    wait "$ACTIVE_PID" || ACTIVE_STATUS=$?
+    BACKGROUND_PIDS="${BACKGROUND_PIDS/ $ACTIVE_PID/}"
+  fi
+
+  run_with_deadline "$ACTIVE_SUCCESSOR_LOG" \
+    env GOPHER_AI_REGEN_FAILPOINT=collection \
+    /bin/bash "$ACTIVE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+  if [ "$ACTIVE_CANCELLED" != true ]; then
+    kill "$ACTIVE_PID" 2>/dev/null || true
+    wait "$ACTIVE_PID" 2>/dev/null || true
+    BACKGROUND_PIDS="${BACKGROUND_PIDS/ $ACTIVE_PID/}"
+    echo "FAIL (writer ignored TERM until collection completed)"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$ACTIVE_STATUS" -ne 143 ]; then
+    echo "FAIL (writer exited $ACTIVE_STATUS instead of 143)"
+    sed -n '1,20p' "$ACTIVE_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$RUN_STATUS" -eq 124 ]; then
+    echo "FAIL (successor waited on the canceled collection's lock)"
+    ERRORS=$((ERRORS + 1))
+  elif ! grep -q 'injected legacy hash regeneration failure at collection' "$ACTIVE_SUCCESSOR_LOG"; then
+    echo "FAIL (successor did not acquire the released publication lock)"
+    sed -n '1,20p' "$ACTIVE_SUCCESSOR_LOG"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+
 echo -n "Concurrent regenerations serialize on one publication lock... "
 CONCURRENT_REPO=$(new_fixture concurrent)
 CONCURRENT_LINK="$TEST_ROOT/concurrent-link"
