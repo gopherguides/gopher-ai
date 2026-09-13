@@ -109,6 +109,8 @@ STAGED_TRANSACTION=""
 TRANSACTION_IDENTITY=""
 LOCK_GUARD_PID=""
 LOCK_STATE_DIR=""
+LOCK_TRANSACTION_REQUEST=""
+LOCK_TRANSACTION_DONE=""
 COLLECTION_PID=""
 
 lock_guard_is_running() {
@@ -164,6 +166,8 @@ acquire_lock() {
     LOCK_STATE_DIR=$(/usr/bin/mktemp -d "$TEMP_BASE/gopher-ai-legacy-lock.XXXXXX")
     lock_ready="$LOCK_STATE_DIR/ready"
     lock_error="$LOCK_STATE_DIR/error"
+    LOCK_TRANSACTION_REQUEST="$LOCK_STATE_DIR/remove-transaction"
+    LOCK_TRANSACTION_DONE="$LOCK_STATE_DIR/transaction-removed"
 
     if command -v perl >/dev/null 2>&1; then
         backend=perl
@@ -177,7 +181,7 @@ acquire_lock() {
     case "$backend" in
         perl)
             perl -MFcntl=:flock -e '
-                my ($path, $ready) = @ARGV;
+                my ($path, $ready, $request, $done, $transaction) = @ARGV;
                 open(my $lock, ">>", $path) or die "open lock: $!";
                 my $parent = getppid();
                 until (flock($lock, LOCK_EX | LOCK_NB)) {
@@ -187,14 +191,31 @@ acquire_lock() {
                 open(my $signal, ">", $ready) or die "write ready: $!";
                 close($signal) or die "close ready: $!";
                 while (getppid() == $parent) {
+                    if (-e $request && !-e $done) {
+                        open(my $command, "<", $request) or die "read transaction cleanup request: $!";
+                        my $identity = <$command>;
+                        close($command) or die "close transaction cleanup request: $!";
+                        defined($identity) or die "empty transaction cleanup request\n";
+                        chomp($identity);
+                        my @marker_stat = stat($transaction);
+                        my @identity_stat = stat($identity);
+                        @marker_stat && @identity_stat &&
+                            $marker_stat[0] == $identity_stat[0] &&
+                            $marker_stat[1] == $identity_stat[1]
+                            or die "transaction marker identity changed\n";
+                        unlink($transaction) or die "remove transaction marker: $!";
+                        open(my $ack, ">", $done) or die "write transaction cleanup acknowledgment: $!";
+                        close($ack) or die "close transaction cleanup acknowledgment: $!";
+                    }
                     select(undef, undef, undef, 0.1);
                 }
-            ' "$LOCK_FILE" "$lock_ready" 2> "$lock_error" &
+            ' "$LOCK_FILE" "$lock_ready" "$LOCK_TRANSACTION_REQUEST" \
+                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" 2> "$lock_error" &
             ;;
         python3)
             python3 -c '
 import fcntl, os, sys, time
-path, ready = sys.argv[1:]
+path, ready, request, done, transaction = sys.argv[1:]
 parent = os.getppid()
 with open(path, "a") as lock:
     while True:
@@ -207,8 +228,18 @@ with open(path, "a") as lock:
             time.sleep(0.1)
     open(ready, "w").close()
     while os.getppid() == parent:
+        if os.path.exists(request) and not os.path.exists(done):
+            with open(request) as command:
+                identity = command.readline().rstrip("\n")
+            marker_stat = os.stat(transaction)
+            identity_stat = os.stat(identity)
+            if (marker_stat.st_dev, marker_stat.st_ino) != (identity_stat.st_dev, identity_stat.st_ino):
+                raise SystemExit("transaction marker identity changed")
+            os.unlink(transaction)
+            open(done, "w").close()
         time.sleep(0.1)
-            ' "$LOCK_FILE" "$lock_ready" 2> "$lock_error" &
+            ' "$LOCK_FILE" "$lock_ready" "$LOCK_TRANSACTION_REQUEST" \
+                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" 2> "$lock_error" &
             ;;
     esac
     LOCK_GUARD_PID=$!
@@ -237,6 +268,22 @@ with open(path, "a") as lock:
             sleep 0.05
         done
     fi
+}
+
+remove_transaction_marker() {
+    local request_tmp="$LOCK_TRANSACTION_REQUEST.tmp"
+
+    printf '%s\n' "$TRANSACTION_IDENTITY" > "$request_tmp"
+    mv "$request_tmp" "$LOCK_TRANSACTION_REQUEST"
+    while [[ ! -e "$LOCK_TRANSACTION_DONE" ]]; do
+        if ! lock_guard_is_running; then
+            wait "$LOCK_GUARD_PID" 2>/dev/null || true
+            echo "error: lock guardian failed to remove the publication transaction marker" >&2
+            [[ ! -s "$LOCK_STATE_DIR/error" ]] || sed -n '1,5p' "$LOCK_STATE_DIR/error" >&2
+            return 1
+        fi
+        sleep 0.05
+    done
 }
 
 remove_legacy_lock_dir() {
@@ -496,13 +543,7 @@ if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH:-}" ]]; then
     done
 fi
 
-ensure_lock_held
-if [[ ! "$TRANSACTION_FILE" -ef "$TRANSACTION_IDENTITY" ]]; then
-    echo "error: legacy hash publication transaction marker changed" >&2
-    exit 1
-fi
-ensure_lock_held
-rm -f "$TRANSACTION_FILE"
+remove_transaction_marker
 rm -f "$TRANSACTION_IDENTITY"
 TRANSACTION_IDENTITY=""
 
