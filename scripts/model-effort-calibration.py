@@ -88,7 +88,11 @@ def render_frontmatter(text: str, overrides: dict[str, str]) -> str:
     return "".join([lines[0], *kept, lines[closing], *lines[closing + 1 :]])
 
 
-def build_matrix(surfaces: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def build_matrix(
+    surfaces: list[dict[str, Any]],
+    suite_fingerprint: str = "",
+    runner_fingerprint: str = "",
+) -> list[dict[str, Any]]:
     matrix: list[dict[str, Any]] = []
     for surface in surfaces:
         final_name = "pinned" if surface.get("pin") else "candidate"
@@ -105,6 +109,8 @@ def build_matrix(surfaces: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "configuration": name,
                         "configuration_frontmatter": config,
                         "session": session,
+                        "suite_fingerprint": suite_fingerprint,
+                        "runner_fingerprint": runner_fingerprint,
                     }
                 )
     return matrix
@@ -237,6 +243,118 @@ def audit_mutations(
     return {"changed": changed, "incorrect": incorrect}
 
 
+def parse_git_status(output: str) -> dict[str, str]:
+    status: dict[str, str] = {}
+    entries = output.split("\0")
+    index = 0
+    while index < len(entries):
+        entry = entries[index]
+        index += 1
+        if not entry:
+            continue
+        code = entry[:2]
+        path = entry[3:]
+        status[path] = code
+        if "R" in code or "C" in code:
+            if index < len(entries) and entries[index]:
+                status[entries[index]] = f"{code}:source"
+                index += 1
+    return status
+
+
+def capture_git_state(root: Path, env: dict[str, str]) -> dict[str, Any]:
+    if not (root / ".git").exists():
+        return {"status": {}, "refs": {}, "worktrees": {}, "primary_branch": ""}
+    status_result = run_command(
+        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        root,
+        env,
+    )
+    refs_result = run_command(
+        ["git", "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads"],
+        root,
+        env,
+    )
+    refs = dict(line.split(" ", 1) for line in refs_result.stdout.splitlines())
+    primary_branch = run_command(
+        ["git", "symbolic-ref", "--quiet", "HEAD"], root, env, check=False
+    ).stdout.strip()
+    worktree_result = run_command(
+        ["git", "worktree", "list", "--porcelain"], root, env
+    )
+    worktrees: dict[str, dict[str, Any]] = {}
+    for block in worktree_result.stdout.strip().split("\n\n"):
+        fields: dict[str, str] = {}
+        for line in block.splitlines():
+            key, _, value = line.partition(" ")
+            fields[key] = value
+        path_text = fields.get("worktree")
+        if not path_text:
+            continue
+        path = Path(path_text)
+        key = path.name
+        primary = path.resolve() == root.resolve()
+        worktrees[key] = {
+            "head": fields.get("HEAD", ""),
+            "branch": fields.get("branch", ""),
+            "primary": primary,
+            "files": {} if primary or not path.is_dir() else snapshot_files(path),
+        }
+    return {
+        "status": parse_git_status(status_result.stdout),
+        "refs": refs,
+        "worktrees": worktrees,
+        "primary_branch": primary_branch,
+    }
+
+
+def audit_git_state(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    allowed_patterns: list[str],
+) -> list[str]:
+    def allowed(path: str) -> bool:
+        return any(fnmatch.fnmatch(path, pattern) for pattern in allowed_patterns)
+
+    incorrect: set[str] = set()
+    before_status = before.get("status", {})
+    after_status = after.get("status", {})
+    for path in set(before_status) | set(after_status):
+        if before_status.get(path) != after_status.get(path) and not allowed(path):
+            incorrect.add(f"git-status:{path}")
+
+    primary_branch = before.get("primary_branch", "")
+    before_refs = before.get("refs", {})
+    after_refs = after.get("refs", {})
+    for ref in set(before_refs) | set(after_refs):
+        if ref == primary_branch:
+            continue
+        if before_refs.get(ref) != after_refs.get(ref) and not allowed(ref):
+            incorrect.add(f"git-ref:{ref}")
+
+    before_worktrees = before.get("worktrees", {})
+    after_worktrees = after.get("worktrees", {})
+    for name in set(before_worktrees) | set(after_worktrees):
+        old = before_worktrees.get(name)
+        new = after_worktrees.get(name)
+        if old is None or new is None:
+            incorrect.add(f"git-worktree:{name}")
+        if (old or {}).get("primary") or (new or {}).get("primary"):
+            continue
+        if old is not None and new is not None and (
+            old.get("head") != new.get("head")
+            or old.get("branch") != new.get("branch")
+        ):
+            incorrect.add(f"git-worktree:{name}")
+        old_files = (old or {}).get("files", {})
+        new_files = (new or {}).get("files", {})
+        for path in set(old_files) | set(new_files):
+            logical_path = f"{name}/{path}"
+            if old_files.get(path) != new_files.get(path) and not allowed(logical_path):
+                incorrect.add(f"git-worktree-file:{logical_path}")
+    return sorted(incorrect)
+
+
 def run_command(
     args: list[str], cwd: Path, env: dict[str, str], *, check: bool = True
 ) -> subprocess.CompletedProcess[str]:
@@ -249,6 +367,13 @@ def run_command(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+
+
+def temporary_base(env: dict[str, str]) -> Path:
+    for name in ("TMPDIR", "TMP", "TEMP"):
+        if env.get(name):
+            return Path(env[name])
+    return Path(tempfile.gettempdir())
 
 
 def initialize_fixture(root: Path, case: dict[str, Any], env: dict[str, str]) -> str:
@@ -316,6 +441,22 @@ def plugin_copy_for_run(
     if run.get("mode", "command") == "command" and run.get("shadowed_by_skill"):
         shutil.rmtree(plugin_copy / "skills" / run["shadowed_by_skill"], ignore_errors=True)
     return plugin_copy
+
+
+def build_target(run: dict[str, Any], case: dict[str, Any], plugin_copy: Path) -> str:
+    target = run.get("invoke") or case["prompt"]
+    if run.get("mode") == "prompt":
+        parts = Path(run["path"]).parts
+        surface_text = (plugin_copy / Path(*parts[2:])).read_text(encoding="utf-8")
+        return (
+            "Apply the following workflow instructions to the held-out fixture task. "
+            "Do not initialize a persistent loop; inspect and report the safe action, "
+            "making changes only when the task explicitly requests them.\n\n"
+            f"Held-out task:\n{case['prompt']}\n\nWorkflow instructions:\n{surface_text}"
+        )
+    if run.get("invoke") and run.get("append_case_prompt", True):
+        return f"{target}\n\nHeld-out task:\n{case['prompt']}"
+    return target
 
 
 def warmup_messages(suite: dict[str, Any]) -> list[str]:
@@ -480,9 +621,7 @@ def score_result(case: dict[str, Any], result: dict[str, Any]) -> dict[str, bool
 def execute_run(
     suite: dict[str, Any], run: dict[str, Any], claude: str, timeout: int
 ) -> dict[str, Any]:
-    temp_base = os.environ.get("TMPDIR") or os.environ.get("TMP") or os.environ.get("TEMP")
-    if not temp_base:
-        raise RuntimeError("TMPDIR, TMP, or TEMP must identify the isolated fixture root")
+    temp_base = temporary_base(os.environ)
     case = suite["cases"][run["case"]]
     with tempfile.TemporaryDirectory(prefix="model-effort-", dir=temp_base) as tmp:
         run_root = Path(tmp)
@@ -508,19 +647,9 @@ def execute_run(
         )
         baseline_head = initialize_fixture(fixture, case, env)
         before = snapshot_files(fixture)
+        git_before = capture_git_state(fixture, env)
 
-        target = run.get("invoke") or case["prompt"]
-        if run.get("mode") == "prompt":
-            parts = Path(run["path"]).parts
-            surface_text = (plugin_copy / Path(*parts[2:])).read_text(encoding="utf-8")
-            target = (
-                "Apply the following workflow instructions to the held-out fixture task. "
-                "Do not initialize a persistent loop; inspect and report the safe action, "
-                "making changes only when the task explicitly requests them.\n\n"
-                f"Held-out task:\n{case['prompt']}\n\nWorkflow instructions:\n{surface_text}"
-            )
-        if run.get("append_case_prompt", False):
-            target = f"{target}\n\nHeld-out task:\n{case['prompt']}"
+        target = build_target(run, case, plugin_copy)
         messages = [target]
         if run["session"] == "warm":
             messages = [*warmup_messages(suite), target]
@@ -564,6 +693,7 @@ def execute_run(
         events = parse_events(stdout)
         telemetry = extract_target_telemetry(events, len(messages) - 1)
         after = snapshot_files(fixture)
+        git_after = capture_git_state(fixture, env)
         mutations = audit_mutations(before, after, case.get("allowed_mutations", []))
         committed = git_mutations(fixture, baseline_head, env)
         bad_commits = [
@@ -574,7 +704,16 @@ def execute_run(
                 for pattern in case.get("allowed_git_mutations", [])
             )
         ]
-        incorrect = [*mutations["incorrect"], *(f"git:{path}" for path in bad_commits)]
+        git_state_incorrect = audit_git_state(
+            git_before, git_after, case.get("allowed_git_mutations", [])
+        )
+        incorrect = sorted(
+            {
+                *mutations["incorrect"],
+                *(f"git:{path}" for path in bad_commits),
+                *git_state_incorrect,
+            }
+        )
         changed = mutations["changed"]
         telemetry["wall_ms"] = wall_ms
         telemetry["incorrect_mutations"] = incorrect
@@ -587,6 +726,8 @@ def execute_run(
             "configuration": run["configuration"],
             "configuration_frontmatter": run["configuration_frontmatter"],
             "session": run["session"],
+            "suite_fingerprint": run.get("suite_fingerprint", ""),
+            "runner_fingerprint": run.get("runner_fingerprint", ""),
             "exit_code": returncode,
             "stderr": stderr[-2000:],
             **telemetry,
@@ -605,6 +746,8 @@ def safe_execute_run(
             "configuration": run["configuration"],
             "configuration_frontmatter": run["configuration_frontmatter"],
             "session": run["session"],
+            "suite_fingerprint": run.get("suite_fingerprint", ""),
+            "runner_fingerprint": run.get("runner_fingerprint", ""),
             "exit_code": 1,
             "task_success": False,
             "incorrect_mutations": [],
@@ -666,8 +809,19 @@ def select_runs(matrix: list[dict[str, Any]], args: argparse.Namespace) -> list[
     return selected
 
 
-def run_identity(run: dict[str, Any]) -> tuple[str, str, str]:
-    return (run.get("surface", run.get("path", "")), run["configuration"], run["session"])
+def run_identity(run: dict[str, Any]) -> tuple[str, ...]:
+    settings = json.dumps(
+        run.get("configuration_frontmatter", {}), sort_keys=True, separators=(",", ":")
+    )
+    return (
+        run.get("surface", run.get("path", "")),
+        run.get("case", ""),
+        run["configuration"],
+        settings,
+        run["session"],
+        run.get("suite_fingerprint", ""),
+        run.get("runner_fingerprint", ""),
+    )
 
 
 def pending_runs(
@@ -675,6 +829,13 @@ def pending_runs(
 ) -> list[dict[str, Any]]:
     completed_ids = {run_identity(run) for run in completed}
     return [run for run in matrix if run_identity(run) not in completed_ids]
+
+
+def retain_current_results(
+    completed: list[dict[str, Any]], matrix: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    current_ids = {run_identity(run) for run in matrix}
+    return [run for run in completed if run_identity(run) in current_ids]
 
 
 def retain_for_rerun(
@@ -723,7 +884,10 @@ def main() -> int:
     parser.add_argument("--include-transcript", action="store_true")
     args = parser.parse_args()
 
-    suite = json.loads(args.suite.read_text(encoding="utf-8"))
+    suite_bytes = args.suite.read_bytes()
+    suite = json.loads(suite_bytes)
+    suite_fingerprint = hashlib.sha256(suite_bytes).hexdigest()
+    runner_fingerprint = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
     errors = validate_suite(suite, discover_pinned_surfaces(ROOT))
     if errors:
         for error in errors:
@@ -734,7 +898,10 @@ def main() -> int:
             f"Calibration suite covers {len(suite['surfaces'])} surfaces and "
             f"{len(suite['cases'])} held-out cases."
         )
-    matrix = select_runs(build_matrix(suite["surfaces"]), args)
+    full_matrix = build_matrix(
+        suite["surfaces"], suite_fingerprint, runner_fingerprint
+    )
+    matrix = select_runs(full_matrix, args)
     if args.list:
         print(json.dumps(matrix, indent=2))
     if args.run:
@@ -751,6 +918,7 @@ def main() -> int:
         }
         if args.resume and args.output.exists():
             payload = json.loads(args.output.read_text(encoding="utf-8"))
+            payload["runs"] = retain_current_results(payload.get("runs", []), full_matrix)
         if args.rerun_failed:
             payload["runs"] = retain_for_rerun(payload["runs"], matrix)
         if args.rescore:
@@ -765,7 +933,11 @@ def main() -> int:
                 strip_transcripts(completed_run)
         for completed_run in payload["runs"]:
             completed_run.setdefault("target_completed", bool(completed_run.get("task_success")))
-        payload["execution"] = {"jobs": args.jobs}
+        payload["execution"] = {
+            "jobs": args.jobs,
+            "suite_fingerprint": suite_fingerprint,
+            "runner_fingerprint": runner_fingerprint,
+        }
         results = payload["runs"]
         remaining = pending_runs(matrix, results)
         if args.jobs < 1:

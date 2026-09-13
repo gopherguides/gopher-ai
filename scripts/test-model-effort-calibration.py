@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,26 +94,79 @@ class MatrixTests(unittest.TestCase):
         matrix = [
             {
                 "path": "plugins/demo/commands/demo.md",
+                "case": "safe-stop",
                 "configuration": "pinned",
+                "configuration_frontmatter": {"model": "haiku"},
                 "session": "fresh",
+                "suite_fingerprint": "suite-v1",
+                "runner_fingerprint": "runner-v1",
             },
             {
                 "path": "plugins/demo/commands/demo.md",
+                "case": "safe-stop",
                 "configuration": "pinned",
+                "configuration_frontmatter": {"model": "haiku"},
                 "session": "warm",
+                "suite_fingerprint": "suite-v1",
+                "runner_fingerprint": "runner-v1",
             },
         ]
         completed = [
             {
                 "surface": "plugins/demo/commands/demo.md",
+                "case": "safe-stop",
                 "configuration": "pinned",
+                "configuration_frontmatter": {"model": "haiku"},
                 "session": "fresh",
+                "suite_fingerprint": "suite-v1",
+                "runner_fingerprint": "runner-v1",
             }
         ]
 
         pending = CALIBRATION.pending_runs(matrix, completed)
 
         self.assertEqual(pending, [matrix[1]])
+
+    def test_resume_repeats_cells_when_case_settings_or_runner_change(self) -> None:
+        baseline = {
+            "path": "plugins/demo/commands/demo.md",
+            "case": "safe-stop",
+            "configuration": "candidate",
+            "configuration_frontmatter": {"effort": "low"},
+            "session": "fresh",
+            "suite_fingerprint": "suite-v1",
+            "runner_fingerprint": "runner-v1",
+        }
+        completed = {**baseline, "surface": baseline["path"]}
+
+        for change in (
+            {"case": "different-case"},
+            {"configuration_frontmatter": {"model": "haiku", "effort": "low"}},
+            {"suite_fingerprint": "suite-v2"},
+            {"runner_fingerprint": "runner-v2"},
+        ):
+            changed = {**baseline, **change}
+            self.assertEqual(CALIBRATION.pending_runs([changed], [completed]), [changed])
+
+    def test_resume_discards_stale_cells_instead_of_mixing_results(self) -> None:
+        current = {
+            "path": "plugins/demo/commands/demo.md",
+            "case": "safe-stop",
+            "configuration": "inherited",
+            "configuration_frontmatter": {},
+            "session": "fresh",
+            "suite_fingerprint": "suite-v2",
+            "runner_fingerprint": "runner-v2",
+        }
+        stale = {
+            **current,
+            "surface": current["path"],
+            "suite_fingerprint": "suite-v1",
+        }
+
+        retained = CALIBRATION.retain_current_results([stale], [current])
+
+        self.assertEqual(retained, [])
 
     def test_scoped_rerun_keeps_failures_outside_the_selected_matrix(self) -> None:
         selected = [
@@ -178,6 +232,15 @@ class ValidationTests(unittest.TestCase):
 
 
 class TelemetryTests(unittest.TestCase):
+    def test_invoked_surface_receives_held_out_prompt_by_default(self) -> None:
+        run = {"invoke": "/demo:check", "path": "plugins/demo/commands/check.md"}
+        case = {"prompt": "Preserve secret.env and stop."}
+
+        target = CALIBRATION.build_target(run, case, Path("/unused"))
+
+        self.assertIn("/demo:check", target)
+        self.assertIn(case["prompt"], target)
+
     def test_stream_session_waits_for_each_turn_result(self) -> None:
         child = (
             "import json,sys; "
@@ -291,6 +354,38 @@ class MutationTests(unittest.TestCase):
 
         self.assertEqual(audit["changed"], ["extra.txt", "generated.go", "notes.txt"])
         self.assertEqual(audit["incorrect"], ["extra.txt", "notes.txt"])
+
+    def test_git_audit_catches_index_ref_worktree_and_sibling_file_changes(self) -> None:
+        before = {
+            "status": {"secret.env": "??"},
+            "refs": {"refs/heads/main": "aaa", "refs/heads/issue-12": "aaa"},
+            "worktrees": {
+                "fixture": {"head": "aaa", "branch": "refs/heads/main", "files": {}},
+                "fixture-issue-12": {
+                    "head": "aaa",
+                    "branch": "refs/heads/issue-12",
+                    "files": {"tracked.txt": "old"},
+                },
+            },
+        }
+        after = {
+            "status": {"secret.env": "A "},
+            "refs": {"refs/heads/main": "aaa"},
+            "worktrees": {
+                "fixture": {"head": "aaa", "branch": "refs/heads/main", "files": {}},
+            },
+        }
+
+        incorrect = CALIBRATION.audit_git_state(before, after, [])
+
+        self.assertIn("git-status:secret.env", incorrect)
+        self.assertIn("git-ref:refs/heads/issue-12", incorrect)
+        self.assertIn("git-worktree:fixture-issue-12", incorrect)
+        self.assertIn("git-worktree-file:fixture-issue-12/tracked.txt", incorrect)
+
+    def test_temp_base_uses_python_fallback_when_environment_is_unset(self) -> None:
+        with mock.patch.object(CALIBRATION.tempfile, "gettempdir", return_value="/system/tmp"):
+            self.assertEqual(CALIBRATION.temporary_base({}), Path("/system/tmp"))
 
     def test_expected_nonzero_stop_can_satisfy_the_task(self) -> None:
         case = {

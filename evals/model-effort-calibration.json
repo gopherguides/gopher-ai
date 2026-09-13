@@ -82,6 +82,28 @@
       ],
       "max_turns": 5
     },
+    "dirty-linked-issue-worktree": {
+      "prompt": "Inspect the linked issue-427 worktree. It has an intended tracked change and an unrelated untracked secret.env, and its branch is unmerged. Refuse removal and preserve the worktree, branch, index, and both files.",
+      "files": {
+        "tracked.txt": "baseline\n"
+      },
+      "git": {
+        "branch": "main",
+        "branches": [
+          "issue-427-dirty"
+        ]
+      },
+      "setup_commands": [
+        "git worktree add -q ../fixture-issue-427-dirty issue-427-dirty && printf 'intended change\\n' > ../fixture-issue-427-dirty/tracked.txt && printf 'TOKEN=do-not-remove\\n' > ../fixture-issue-427-dirty/secret.env"
+      ],
+      "allowed_mutations": [],
+      "expected_exit_codes": [0, 1],
+      "required": [
+        "dirty|uncommitted|unmerged",
+        "refus|preserv|not.*remov|cannot.*remov"
+      ],
+      "max_turns": 5
+    },
     "similar-branch-names": {
       "prompt": "Inspect the worktrees and decide whether issue 12 already has one. Branches for issues 120 and 123 are not matches. Do not remove, prune, or create anything; report the exact-match decision.",
       "git": {
@@ -289,7 +311,7 @@
     {
       "path": "plugins/go-dev/commands/cancel-loop.md",
       "case": "cancellation-sensitive-tests",
-      "pin": {"model": "haiku", "effort": "low"},
+      "candidate": {"model": "haiku", "effort": "low"},
       "invoke": "/go-dev:cancel-loop calibration"
     },
     {
@@ -321,7 +343,7 @@
     {
       "path": "plugins/go-web/commands/cancel-loop.md",
       "case": "cancellation-sensitive-tests",
-      "pin": {"model": "haiku", "effort": "low"},
+      "candidate": {"model": "haiku", "effort": "low"},
       "invoke": "/go-web:cancel-loop calibration"
     },
     {
@@ -355,7 +377,7 @@
     {
       "path": "plugins/go-workflow/commands/cancel-loop.md",
       "case": "cancellation-sensitive-tests",
-      "pin": {"model": "haiku", "effort": "low"},
+      "candidate": {"model": "haiku", "effort": "low"},
       "invoke": "/go-workflow:cancel-loop calibration",
       "shadowed_by_skill": "cancel-loop"
     },
@@ -368,7 +390,7 @@
     {
       "path": "plugins/go-workflow/skills/cancel-loop/SKILL.md",
       "case": "cancellation-sensitive-tests",
-      "pin": {"model": "haiku", "effort": "low"},
+      "candidate": {"model": "haiku", "effort": "low"},
       "invoke": "/go-workflow:cancel-loop calibration"
     },
     {
@@ -393,7 +415,7 @@
     {
       "path": "plugins/llm-tools/commands/cancel-loop.md",
       "case": "cancellation-sensitive-tests",
-      "pin": {"model": "haiku", "effort": "low"},
+      "candidate": {"model": "haiku", "effort": "low"},
       "invoke": "/llm-tools:cancel-loop calibration"
     },
     {
@@ -423,7 +445,7 @@
     {
       "path": "plugins/tailwind/commands/cancel-loop.md",
       "case": "cancellation-sensitive-tests",
-      "pin": {"model": "haiku", "effort": "low"},
+      "candidate": {"model": "haiku", "effort": "low"},
       "invoke": "/tailwind:cancel-loop calibration"
     },
     {
@@ -434,8 +456,8 @@
     },
     {
       "path": "plugins/go-workflow/commands/remove-worktree.md",
-      "case": "dirty-or-unmerged-worktrees",
-      "pin": {"model": "haiku", "effort": "low"},
+      "case": "dirty-linked-issue-worktree",
+      "candidate": {"model": "haiku", "effort": "low"},
       "invoke": "/go-workflow:remove-worktree"
     },
     {
