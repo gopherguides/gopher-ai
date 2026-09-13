@@ -12,7 +12,7 @@ for router_name in ship start-issue address-review complete-issue review-deep; d
   case "$router_name" in
     ship)
       required_routes='lib/ship/bootstrap.md lib/ship/reentry.md lib/ship/context.md lib/ship/local-review.md lib/ship/push-and-pr.md lib/ship/ci-watch.md lib/ship/bot-watch.md lib/ship/address-bots.md lib/ship/merge.md'
-      required_contracts='one canonical state file|exact-head CI|UI-visible changes require passing E2E|Never use admin override|Standalone success|Embedded success'
+      required_contracts='Bind the invocation arguments as `SKILL_ARGS` for|one canonical state file|exact-head CI|UI-visible changes require passing E2E|Never use admin override|Standalone success|Embedded success'
       ;;
     start-issue)
       required_routes='lib/start-issue/setup.md lib/start-issue/loop-state.md lib/start-issue/workspace.md lib/start-issue/manual-workflow.md lib/start-issue/orchestrated-workflow.md lib/start-issue/ci-monitoring.md'

@@ -1,6 +1,6 @@
 ---
 name: ship
-description: "Ship a PR end-to-end: verify locally, push, create/update the PR, watch CI, handle review feedback, and merge without admin override. Use for 'ship', 'ship it', or 'push and merge'. SKIP if the user only wants a PR opened; use create-pr."
+description: "Ship a PR through local verification, push, CI, review, and merge without admin override. Use for 'ship', 'ship it', or 'push and merge'. SKIP if the user only wants a PR opened; use create-pr."
 argument-hint: "[--llm codex|gemini|ollama|fable] [--passes <n>] [--no-merge] [--skip-coverage] [--coverage-threshold <n>] [--tier flex|standard|priority]"
 disable-model-invocation: true
 ---
@@ -16,7 +16,7 @@ disable-model-invocation: true
 
 Before decisions or delegation, read `<PLUGIN_ROOT>/lib/driver-interaction.md`.
 Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving any workflow choice.
-Bind `SKILL_ARGS` for `$go-workflow:ship` by reading
+Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:ship` by reading
 `<PLUGIN_ROOT>/lib/skill-arguments.md` with this compatibility payload:
 
 <claude-skill-arguments>
@@ -24,8 +24,8 @@ $ARGUMENTS
 </claude-skill-arguments>
 
 Run `source "<PLUGIN_ROOT>/lib/github-rest.sh"`. Routine PR metadata, formal reviews,
-CI, mergeability, and ordinary squash merge use its REST helpers. GraphQL is
-limited to review threads, closing-issue references, and required merge queues.
+CI, mergeability, and squash merge use its REST helpers. Use GraphQL only for
+review threads, closing-issue references, or required merge queues.
 
 ## Setup, Arguments, and Re-entry
 
