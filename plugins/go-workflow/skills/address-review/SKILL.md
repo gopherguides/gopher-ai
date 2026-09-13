@@ -14,334 +14,98 @@ disable-model-invocation: true
 - **Codex:** Start from the directory containing the absolute selected `SKILL.md` path, then ascend two directories (`skills/<name>` -> plugin root).
 - **Claude Code:** Bind it to the injected `${CLAUDE_PLUGIN_ROOT}` value.
 
-Before requesting decisions or delegating work, read
-`<PLUGIN_ROOT>/lib/driver-interaction.md` and follow its
-cross-platform capability-binding rules.
+Before decisions or delegation, read `<PLUGIN_ROOT>/lib/driver-interaction.md`.
+Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving any workflow choice.
+Bind `SKILL_ARGS` for `$go-workflow:address-review` by reading
+`<PLUGIN_ROOT>/lib/skill-arguments.md` with this compatibility payload:
 
-Read `<PLUGIN_ROOT>/lib/decision-gates.md` before resolving any workflow
-choice.
-
-Bind the invocation arguments as `SKILL_ARGS` for `$go-workflow:address-review` by
-reading `<PLUGIN_ROOT>/lib/skill-arguments.md` with this Claude Code compatibility payload:
 <claude-skill-arguments>
 $ARGUMENTS
 </claude-skill-arguments>
 
-```bash
-source "<PLUGIN_ROOT>/lib/github-rest.sh"
-```
+Run `source "<PLUGIN_ROOT>/lib/github-rest.sh"`.
 
-## Output Durability
+## Entry and Durable State
 
-Replies to review comments and any new commit messages describe what behavior changed and why, not file paths or line numbers. A reviewer reading the reply six months later, after the file in question has moved, must still understand what was fixed.
+Read `<PLUGIN_ROOT>/skills/address-review/entry.md` completely and execute
+argument parsing, numeric validation, current-branch PR auto-detection, and
+repository resolution. `--no-watch` disables only Step 12. If no PR is found,
+use the missing-intent gate and stop before loop initialization or completion.
 
-**If `SKILL_ARGS` is empty or not provided:**
+Read `<PLUGIN_ROOT>/skills/address-review/loop-management.md` completely and
+execute **Embedded Workflow Contract**, **Loop Initialization**, and **Re-entry
+Check**. Standalone address-review owns its loop; embedded address-review uses
+the caller state file and child path, never changes root promises or emits a
+terminal marker.
 
-Auto-detect PR from current branch:
+If this skill or a supporting file sets `WORKFLOW_RESULT=INCOMPLETE`, execute
+**Hard Invariant Failure** from `loop-management.md` and stop. The embedded
+branch returns structured incomplete state without a marker.
 
-```bash
-CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
-WORKTREE_PATH="$CURRENT_CHECKOUT_ROOT"
-CURRENT_PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr 2>/dev/null) || true
-jq -r '.number' <<< "$CURRENT_PR_JSON" 2>/dev/null
-```
+A resumed standalone `watching` phase in watch mode skips to Step 12. In
+`--no-watch` mode it clears the phase and performs a full fix cycle.
 
-If no PR is found, display usage:
+## Context and Checkout
 
-**Claude Code:** `/go-workflow:address-review [PR-number] [--no-watch]`
+Read `<PLUGIN_ROOT>/skills/address-review/setup-and-discovery.md` completely.
+Gather REST PR context, detect review bots from REST reviews and GraphQL threads,
+and preserve matched logins in `DETECTED_BOTS`.
 
-**Codex:** `$go-workflow:address-review [PR-number] [--no-watch]`
+Read `<PLUGIN_ROOT>/skills/address-review/checkout-rebase.md` completely and
+execute Step 1. Use the REST-declared PR head, preserve fork/base metadata,
+rebase only when behind, push with lease when required, and re-check current-head
+CI. An unresolved rebase conflict is incomplete.
 
-**Example:** `/address-review 123` or just `/address-review` on a PR branch. Add `--no-watch` to exit after one fix cycle instead of watching for bot re-reviews.
+## Step 2: Fetch Feedback
 
-This is a **missing-intent gate**. Request: "No PR was found for the current
-branch. What PR number should I address?" If structured input is unavailable,
-ask in the final response and stop before loop initialization or a completion
-claim.
-
----
-
-**If PR number is available (from `SKILL_ARGS` or auto-detected):**
-
-## Parse Arguments
-
-```bash
-WATCH_MODE=true
-PR_ARG=""
-for arg in $SKILL_ARGS; do
-  case "$arg" in
-    --no-watch) WATCH_MODE=false ;;
-    *) PR_ARG="$arg" ;;
-  esac
-done
-echo "WATCH_MODE=$WATCH_MODE PR_ARG=$PR_ARG"
-```
-
-## Security Validation
-
-!if [ -n "$PR_ARG" ] && ! echo "$PR_ARG" | grep -qE '^[0-9]+$'; then echo "Error: PR number must be numeric"; exit 1; fi
-
-## Resolve PR Number
-
-```bash
-CURRENT_CHECKOUT_ROOT=$(git rev-parse --show-toplevel)
-ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / {sub(/^worktree /, ""); print; exit}')
-WORKTREE_PATH="${WORKTREE_PATH:-$CURRENT_CHECKOUT_ROOT}"
-if [ -z "$ORIGINAL_REPO_ROOT" ] || [ "${ORIGINAL_REPO_ROOT#/}" = "$ORIGINAL_REPO_ROOT" ] ||
-   [ -z "$WORKTREE_PATH" ] || [ "${WORKTREE_PATH#/}" = "$WORKTREE_PATH" ] || [ ! -d "$WORKTREE_PATH" ]; then
-  echo "ERROR: Could not resolve absolute repository paths."
-  exit 1
-fi
-CURRENT_REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
-REPO_SLUG="${REPO_SLUG:-$CURRENT_REPO_SLUG}"
-if [ -n "$PR_ARG" ]; then
-  RESOLVED_PR="$PR_ARG"
-elif CURRENT_PR_JSON=$(cd "$WORKTREE_PATH" && github_current_pr 2>/dev/null); then
-  RESOLVED_PR=$(jq -er '.number' <<< "$CURRENT_PR_JSON")
-else
-  RESOLVED_PR="auto"
-fi
-PR_NUM="$RESOLVED_PR"
-echo "Resolved PR: $RESOLVED_PR"
-```
-
-## Embedded Workflow Contract
-
-Address-review is embedded only when both caller variables are explicitly set.
-Never infer composition from a generic inherited `STATE_FILE`:
-
-```bash
-EMBEDDED_WORKFLOW=false
-source "<PLUGIN_ROOT>/lib/loop-state.sh"
-RESOLVED_ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')
-if [ -z "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ "${RESOLVED_ORIGINAL_REPO_ROOT#/}" = "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ ! -d "$RESOLVED_ORIGINAL_REPO_ROOT" ]; then
-  echo "Error: Could not resolve the absolute primary worktree root."
-  exit 1
-fi
-if [ -n "${CALLER_LOOP_STATE_FILE:-}" ] && [ -n "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
-  EMBEDDED_WORKFLOW=true
-  STATE_FILE="$CALLER_LOOP_STATE_FILE"
-  WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "address_review")
-  initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
-  ORIGINAL_REPO_ROOT=$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')
-  WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
-  REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
-elif [ -n "${CALLER_LOOP_STATE_FILE:-}" ] || [ -n "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
-  echo "Error: Embedded address-review requires both caller state variables."
-  exit 1
-else
-  ORIGINAL_REPO_ROOT="$RESOLVED_ORIGINAL_REPO_ROOT"
-  WORKTREE_PATH="$CURRENT_CHECKOUT_ROOT"
-  REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
-  STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/address-review-${RESOLVED_PR:-auto}.loop.local.json"
-  mkdir -p "$(dirname "$STATE_FILE")"
-  STATE_FILE=$(cd "$(dirname "$STATE_FILE")" && pwd)/$(basename "$STATE_FILE")
-  WORKFLOW_STATE_PATH='[]'
-fi
-
-LOOP_STATE_FILE="$STATE_FILE"
-```
-
-When embedded, every phase and field operation uses `STATE_FILE` plus
-`WORKFLOW_STATE_PATH`. Address-review never changes the root completion promise
-or terminal allowlist, never initializes another loop, and returns only through
-`set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" RESULT REASON PHASE`.
-
-## Loop Initialization & Re-entry
-
-Read `loop-management.md` for loop setup and phase re-entry logic. Key behavior:
-- If resuming `watching` phase in watch mode → skip to Step 12 (watch loop)
-- If resuming `watching` phase in no-watch mode → clear phase, run full fix cycle
-- Otherwise → continue normally
-
-## Hard Invariant Failure
-
-When this skill or a supporting file reports
-`WORKFLOW_RESULT=INCOMPLETE`, persist the supplied reason:
-
-```bash
-INVARIANT_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-}}"
-if [ -z "$INVARIANT_STATE_FILE" ] || [ ! -f "$INVARIANT_STATE_FILE" ]; then
-  echo "Error: Cannot persist address-review invariant failure without loop state."
-  exit 1
-fi
-source "<PLUGIN_ROOT>/lib/loop-state.sh"
-if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
-  set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$WORKFLOW_REASON" "incomplete"
-  echo "ADDRESS_REVIEW_RESULT=incomplete"
-  echo "ADDRESS_REVIEW_REASON=$WORKFLOW_REASON"
-else
-  set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"
-  echo "<done>INCOMPLETE</done>"
-fi
-```
-
-Stop after this block. Never fetch feedback, edit files, push, or claim
-completion from an invariant-failure path. The embedded branch returns the
-structured incomplete state and emits no terminal marker.
-
-## Context & Bot Discovery
-
-Read `setup-and-discovery.md` for REST PR context gathering, mode banner display, and bot discovery from REST formal reviews plus GraphQL review threads. Match discovered authors against `bot-registry.md`.
-Store the matched bot logins in `DETECTED_BOTS`; leave it empty when the
-registry match finds none.
-
----
-
-## Step 1: Checkout PR Branch and Rebase
-
-Read `checkout-rebase.md` for the full procedure: fetch and checkout the REST-declared PR head without overwriting local work, preserve fork/base metadata, check if behind, rebase + force-push if needed, and wait for CI after rebase.
-
-## Step 2: Fetch All Review Feedback
-
-Read `fetch-feedback.md` for GraphQL review threads (line-specific, auto-resolvable) and REST formal reviews (CHANGES_REQUESTED).
+Read `<PLUGIN_ROOT>/skills/address-review/fetch-feedback.md` completely.
+Gather resolvable GraphQL threads and REST `CHANGES_REQUESTED` reviews.
 
 ## Steps 3-9: Fix Cycle
 
-Read `fix-cycle.md` for the complete fix cycle:
-- **Step 3:** Categorize comments into Group A (resolvable threads) and Group B (pending reviews)
-- **Clean-review path:** Set `REVIEW_CLEAN=true`, persist `review_clean=true` to the active state, skip inapplicable mutation work, and continue through local verification, CI, and Step 11
-- **Step 4:** Address each comment — parallel dispatch for 3+ comments on different files, sequential otherwise. Understand request, locate code, make minimal fix, validate against feedback
-- **Step 4.5:** Generate tests for testable fixes (read `test-generation.md`)
-- **Step 5:** Verify locally — `go -C "$WORKTREE_PATH" build`, `go -C "$WORKTREE_PATH" test`, and a worktree-scoped `golangci-lint`
-- **Step 6:** Commit and push, capture `BOT_REVIEW_BASELINE` timestamp
-- **Step 7:** Watch CI — retry up to 3x if no checks reported
-- **Step 8:** Reply to each comment
-- **Step 9:** Resolve review threads via GraphQL (Group A only)
+Read `<PLUGIN_ROOT>/skills/address-review/fix-cycle.md` completely and execute
+the full categorize/fix/test/verify/commit/CI/reply/resolve cycle.
 
-## Step 10: Request Re-review
+A clean review sets and persists `REVIEW_CLEAN=true`, skips only mutation,
+reply, resolution, and re-review actions, but still performs local verification,
+exact-head CI, and Step 11. For feedback, make minimal fixes, add tests for
+observable behavior, stage only owned files, push, reply with durable behavior
+descriptions, and resolve only Group A threads after verification.
 
-Read `bot-registry.md` for the full re-review procedure (Steps 10a-10e) including bot detection, opt-out checks, and data-driven re-review triggering.
+## Step 10: Re-review
 
-## Step 11: Verify Completion
+Read `<PLUGIN_ROOT>/skills/address-review/bot-registry.md` completely and
+execute its data-driven re-review procedure only for detected reviewers that
+left applicable feedback.
 
-Confirm all resolvable threads are resolved and CI is passing:
+## Step 11: Completion Check
 
-```bash
-PR_JSON=$(cd "$WORKTREE_PATH" && github_pr "$PR_NUM") || {
-  WORKFLOW_RESULT=INCOMPLETE
-  WORKFLOW_REASON=pr-metadata-api-failure
-}
-if [ -z "${WORKFLOW_REASON:-}" ]; then
-  PR_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON") || {
-    WORKFLOW_RESULT=INCOMPLETE
-    WORKFLOW_REASON=invalid-pr-metadata
-  }
-fi
-if [ -z "${WORKFLOW_REASON:-}" ]; then
-  REVIEW_HEAD_EXPECTATION="${EXPECTED_REVIEW_HEAD:-$(git -C "$WORKTREE_PATH" rev-parse HEAD)}"
-fi
-if [ -z "${WORKFLOW_REASON:-}" ] &&
-   [ "$PR_HEAD_SHA" != "$REVIEW_HEAD_EXPECTATION" ]; then
-  WORKFLOW_RESULT=INCOMPLETE
-  WORKFLOW_REASON=pr-head-shift
-fi
-if [ -z "${WORKFLOW_REASON:-}" ]; then
-  OWNER=$(jq -er '.base.repo.owner.login' <<< "$PR_JSON")
-  REPO=$(jq -er '.base.repo.name' <<< "$PR_JSON")
+Read `<PLUGIN_ROOT>/skills/address-review/completion-check.md` completely and
+execute it. Completion requires the PR head to equal `EXPECTED_REVIEW_HEAD`
+(or current local HEAD), zero unresolved threads, and successful exact-head CI.
+Metadata failure, missing checks, API failure, or a head shift is incomplete.
 
-  (cd "$WORKTREE_PATH" && gh api graphql -f query='
-    query($owner: String!, $repo: String!, $pr: Int!) {
-      repository(owner: $owner, name: $repo) {
-        pullRequest(number: $pr) {
-          reviewThreads(first: 100) {
-            nodes { isResolved }
-          }
-        }
-      }
-    }
-  ' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR_NUM") | jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved == false)) | length'
-fi
-```
+## Step 12: Bot Watch
 
-Pin completion checks to the exact published PR head:
+Skip when `WATCH_MODE=false` or no registered review bot was detected.
+Otherwise read `<PLUGIN_ROOT>/skills/address-review/watch-loop.md` completely
+and execute its bounded quiet-period, approval, re-trigger, and exhaustion rules.
 
-```bash
-if [ -z "${WORKFLOW_REASON:-}" ]; then
-  CHECK_STATUS=0
-  CHECKS_JSON=$(cd "$WORKTREE_PATH" && github_watch_pr_checks "$PR_NUM" "$PR_HEAD_SHA") || CHECK_STATUS=$?
-  case "$CHECK_STATUS" in
-    0) printf '%s\n' "$CHECKS_JSON" | jq '.' ;;
-    1) echo "CI failed. Return to the fix cycle and do not claim completion." ;;
-    2) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-registration-timeout ;;
-    3) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-api-failure ;;
-    4) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=pr-head-shift ;;
-    *) WORKFLOW_RESULT=INCOMPLETE; WORKFLOW_REASON=checks-unknown-failure ;;
-  esac
-fi
-```
+## Standalone and Embedded Completion
 
-For metadata failures, an `EXPECTED_REVIEW_HEAD` mismatch, statuses 2-4, or an
-unknown status, follow **Hard Invariant Failure**. A registration timeout, API
-failure, or PR head shift is never a successful CI result.
+Embedded consumers execute Steps 2-11 only and return control to the caller
+after Step 11.
+They preserve `REVIEW_CLEAN` and durable `review_clean`, and emit no terminal
+marker. Ship or E2E remains the top-level owner of later CI, bot watch, posting,
+merge, and completion gates.
 
-## Step 12: Watch for Bot Re-review
+Standalone `--no-watch` completes after rebase, local verification, exact-head
+CI, Step 11, and all applicable feedback replies/resolutions/re-review requests.
+Default watch mode additionally requires every detected review bot to signal
+approval according to `bot-registry.md`.
 
-**Skip if `WATCH_MODE` is `false` or no review bots were detected.**
-
-Read `watch-loop.md` for Phase Transition logic, bot polling, quiet period detection, timeout handling, and re-trigger procedures.
-
----
-
-## Embedded Consumer Contract
-
-When ship, e2e-verify, or another workflow executes Steps 2-11, return control
-to the caller after Step 11 and emit no terminal marker. The caller remains the
-top-level owner of its later verification, posting, merge, and completion
-gates.
-
-On the no-feedback path, return `REVIEW_CLEAN=true` and persist
-`review_clean=true` to the caller's `STATE_FILE` when available. Embedded
-consumers skip the inapplicable edit, commit, reply, resolution, and re-review
-steps, but still execute Step 5 local verification, Step 7 CI, and Step 11
-completion verification before regaining control.
-
----
-
-## Completion Criteria
-
-The standalone address-review owns its final marker only after Step 11 and all
-applicable completion criteria pass. Embedded consumers follow the contract
-above instead.
-
-### With `--no-watch`:
-Output `<done>COMPLETE</done>` when: branch rebased; local verification passes;
-CI is green; Step 11 confirms no unresolved threads; and, when feedback was
-found, all feedback is addressed, fixes are validated and pushed, replies are
-posted, threads are resolved, and re-review is requested. A clean review skips
-only those feedback-specific actions.
-
-### Default (watch mode):
-All above, PLUS all detected review bots signaled approval per `bot-registry.md`.
-
-When all criteria are met:
-
-```bash
-if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
-  set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "complete" "" "completed"
-  echo "ADDRESS_REVIEW_RESULT=complete"
-else
-  set_loop_terminal_result "$STATE_FILE" "complete" "" "completed" "COMPLETE"
-  echo "<done>COMPLETE</done>"
-fi
-```
-
-If the user exits or skips a bot before all detected bots approve, follow the
-**Incomplete Approval Outcome** procedure in `watch-loop.md`. Persist
-`approval_result` and `approval_reason`; standalone address-review emits its
-allowlisted `INCOMPLETE` marker while embedded address-review returns its
-structured failure without a marker.
-
-**Safety:** If 15+ iterations complete without success, document the blocking
-evidence and stop incomplete. Do not bypass review or approval criteria.
-
-## Supporting Files
-
-- `bot-registry.md` — Bot registry table, detection logic, and Step 10 re-review procedures
-- `test-generation.md` — Step 4.5 test generation guidelines and testability rules
-- `watch-loop.md` — Phase Transition logic and Step 12 watch loop procedures
-- `loop-management.md` — Loop initialization and re-entry check logic
-- `setup-and-discovery.md` — PR context gathering, mode banner, and bot discovery
-- `checkout-rebase.md` — Step 1 checkout and rebase procedure
-- `fetch-feedback.md` — Step 2 GraphQL queries for review feedback
-- `fix-cycle.md` — Steps 3-9 categorize, fix, verify, commit, CI, reply, resolve
+Only then execute **Completion Criteria** from `completion-check.md`.
+Standalone emits
+`<done>COMPLETE</done>`; embedded address-review returns
+`ADDRESS_REVIEW_RESULT=complete` without a marker. After 15 unsuccessful
+iterations, persist incomplete evidence and stop.

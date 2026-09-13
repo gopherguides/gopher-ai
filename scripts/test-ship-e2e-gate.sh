@@ -15,6 +15,8 @@ esac
 LOCAL_REVIEW="$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
 E2E_EXECUTION="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/e2e-test-execution.md"
 SHIP_SKILL="$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
+SHIP_BOOTSTRAP="$ROOT_DIR/plugins/go-workflow/lib/ship/bootstrap.md"
+SHIP_REENTRY="$ROOT_DIR/plugins/go-workflow/lib/ship/reentry.md"
 MERGE_DOC="$ROOT_DIR/plugins/go-workflow/lib/ship/merge.md"
 STATE_FIELDS="$ROOT_DIR/plugins/go-workflow/lib/ship/state-fields.md"
 CI_WATCH="$ROOT_DIR/plugins/go-workflow/lib/ship/ci-watch.md"
@@ -22,6 +24,7 @@ RESUME_MESSAGES="$ROOT_DIR/plugins/go-workflow/lib/ship/resume-messages.json"
 STOP_HOOK="$ROOT_DIR/plugins/go-workflow/hooks/stop-hook.sh"
 LOOP_LIB="$ROOT_DIR/plugins/go-workflow/lib/loop-state.sh"
 COMPLETE_ISSUE="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"
+COMPLETE_SELF_REVIEW="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/self-review.md"
 ADDRESS_BOTS="$ROOT_DIR/plugins/go-workflow/lib/ship/address-bots.md"
 
 ERRORS=0
@@ -230,11 +233,11 @@ require_text "$LOCAL_REVIEW" "e2e_result.*blocked" \
   "ship local review must persist blocked E2E state"
 require_text "$LOCAL_REVIEW" "No merge" \
   "ship local review must explicitly stop before merge"
-require_text "$SHIP_SKILL" "E2E may be reused only when" \
+require_text "$SHIP_SKILL" "--skip-coverage.*never waives coverage" \
   "ship skill must not document --skip-coverage as unconditional E2E skip"
-require_text "$SHIP_SKILL" "e2e_result=blocked" \
+require_text "$SHIP_SKILL" "blocks before push or merge" \
   "ship skill must document blocked E2E state in the top-level phase summary"
-require_text "$SHIP_SKILL" "skipped only because the[[:space:]]*$" \
+require_text "$SHIP_SKILL" "non-UI E2E skip" \
   "ship completion criteria must limit E2E skip to non-UI/no-web cases"
 reject_text "$LOCAL_REVIEW" "If server fails to start within 30s.*skip to Step 8\\. Do NOT block shipping" \
   "ship local review still silently skips when dev server is missing"
@@ -303,7 +306,7 @@ fi
 rm -f "$BROWSER_FAILURE_BLOCK"
 rm -rf "$BROWSER_FAILURE_TMP"
 
-require_text "$SHIP_SKILL" "SHIP_MERGE_STRATEGY.*--squash.*--rebase.*--merge" \
+require_text "$SHIP_SKILL" "configured merge" \
   "ship skill must document explicit strategy before squash-first fallback"
 
 require_text "$MERGE_DOC" "e2e_result.*blocked" \
@@ -420,13 +423,13 @@ rm -rf "$MERGE_FIXTURE_WORKTREE"
 require_text "$STATE_FIELDS" "blocked" \
   "ship state fields must document blocked E2E result"
 
-require_text "$SHIP_SKILL" '\| `reviewing` \| Expired review recovery, then Step 9' \
+require_text "$SHIP_REENTRY" '\| `reviewing` \| Expired review recovery, then Step 9' \
   "ship re-entry must not resume an expired in-session review"
-require_text "$SHIP_SKILL" '\| `review-required` \| Step 5' \
+require_text "$SHIP_REENTRY" '\| `review-required` \| Step 5' \
   "ship must preserve a not-yet-started review after a PR head shift"
 require_text "$CI_WATCH" 'set_loop_phase.*"review-required"' \
   "CI head shifts must request one new review without marking it in flight"
-require_text "$SHIP_SKILL" "Never end a session with staged or committed-but-unpushed work" \
+require_text "$SHIP_REENTRY" "make the validated work durable before doing anything else" \
   "ship must make validated work durable before yielding"
 require_text "$LOCAL_REVIEW" "Delegate synchronously" \
   "ship agent reviews must run synchronously"
@@ -434,7 +437,7 @@ require_text "$LOCAL_REVIEW" 'review_result="skipped"' \
   "ship must record headless agent review skips"
 require_text "$RESUME_MESSAGES" "Do not start another review.*Commit the validated staged diff.*push every local commit.*non-draft PR" \
   "ship reviewing resume message must drive commit, push, and PR creation"
-require_text "$COMPLETE_ISSUE" '`reviewing` → Phase 3' \
+require_text "$COMPLETE_SELF_REVIEW" 'continue to Phase 3' \
   "complete-issue must not resume an expired agent review"
 
 CI_SHIFT_BLOCK=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-ci-shift-XXXXXX")
@@ -539,6 +542,8 @@ fi
 
 SHIP_STATE_DOCS="
 $SHIP_SKILL
+$SHIP_BOOTSTRAP
+$SHIP_REENTRY
 $STATE_FIELDS
 $LOCAL_REVIEW
 $CI_WATCH
@@ -555,9 +560,9 @@ validate_ship_state_contract() {
   local state_doc
 
   canonical_count=$({ grep -F '.local/state/ship.loop.local.json' $SHIP_STATE_DOCS 2>/dev/null || true; } | wc -l | tr -d ' ')
-  if [ "$skill_file" != "$SHIP_SKILL" ]; then
+  if [ "$skill_file" != "$SHIP_BOOTSTRAP" ]; then
     canonical_count=$({ grep -F '.local/state/ship.loop.local.json' "$skill_file" \
-      "$STATE_FIELDS" "$LOCAL_REVIEW" "$CI_WATCH" "$MERGE_DOC" \
+      "$SHIP_REENTRY" "$STATE_FIELDS" "$LOCAL_REVIEW" "$CI_WATCH" "$MERGE_DOC" \
       "$ROOT_DIR/plugins/go-workflow/lib/ship/prerequisites.md" \
       "$ROOT_DIR/plugins/go-workflow/lib/ship/bot-watch.md" \
       "$ROOT_DIR/plugins/go-workflow/lib/ship/address-bots.md" \
@@ -583,7 +588,7 @@ validate_ship_state_contract() {
 }
 
 echo -n "Ship state contract uses one resolved file and path-aware access... "
-if validate_ship_state_contract "$SHIP_SKILL"; then
+if validate_ship_state_contract "$SHIP_BOOTSTRAP"; then
   echo "OK"
 else
   echo "FAIL"
@@ -592,7 +597,7 @@ fi
 
 MUTATED_SHIP_SKILL=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-mutated-ship-skill-XXXXXX")
 sed 's#\.local/state/ship\.loop\.local\.json#.local/state/ship-v2.loop.local.json#' \
-  "$SHIP_SKILL" > "$MUTATED_SHIP_SKILL"
+  "$SHIP_BOOTSTRAP" > "$MUTATED_SHIP_SKILL"
 echo -n "Ship state contract assertion rejects a mutated standalone filename... "
 if validate_ship_state_contract "$MUTATED_SHIP_SKILL"; then
   echo "FAIL"
@@ -604,7 +609,7 @@ rm -f "$MUTATED_SHIP_SKILL"
 
 MUTATED_LEGACY_SHIP_SKILL=$(mktemp "${TMPDIR:-/tmp}/gopher-ai-mutated-legacy-ship-skill-XXXXXX")
 sed 's/mv "$LEGACY_STATE_FILE" "$CANONICAL_STATE_FILE"/:/' \
-  "$SHIP_SKILL" > "$MUTATED_LEGACY_SHIP_SKILL"
+  "$SHIP_BOOTSTRAP" > "$MUTATED_LEGACY_SHIP_SKILL"
 echo -n "Ship state contract assertion rejects disabled linked-worktree migration... "
 if validate_ship_state_contract "$MUTATED_LEGACY_SHIP_SKILL"; then
   echo "FAIL"
@@ -620,7 +625,7 @@ awk '
   section && /^```bash$/ { block=1; next }
   block && /^```$/ { exit }
   block { print }
-' "$SHIP_SKILL" > "$SHIP_BOOTSTRAP_BLOCK"
+' "$SHIP_BOOTSTRAP" > "$SHIP_BOOTSTRAP_BLOCK"
 sed 's|<PLUGIN_ROOT>|${CLAUDE_PLUGIN_ROOT}|g' "$SHIP_BOOTSTRAP_BLOCK" > "${SHIP_BOOTSTRAP_BLOCK}.bound"
 mv "${SHIP_BOOTSTRAP_BLOCK}.bound" "$SHIP_BOOTSTRAP_BLOCK"
 
@@ -987,7 +992,7 @@ awk '
   section && /^```bash$/ { block=1; next }
   block && /^```$/ { exit }
   block { print }
-' "$SHIP_SKILL" > "$SHIP_FAILURE_BLOCK"
+' "$SHIP_REENTRY" > "$SHIP_FAILURE_BLOCK"
 sed 's|<PLUGIN_ROOT>|${CLAUDE_PLUGIN_ROOT}|g' "$SHIP_FAILURE_BLOCK" > "${SHIP_FAILURE_BLOCK}.bound"
 mv "${SHIP_FAILURE_BLOCK}.bound" "$SHIP_FAILURE_BLOCK"
 

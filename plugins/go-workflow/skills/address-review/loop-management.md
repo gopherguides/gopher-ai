@@ -1,4 +1,48 @@
-# Loop Initialization & Re-entry Check
+# Address-Review Durable State and Re-entry
+
+Loaded by `skills/address-review/SKILL.md` after entry resolution. Execute the embedded contract before loop initialization, then apply re-entry and invariant handling.
+
+## Embedded Workflow Contract
+
+Address-review is embedded only when both caller variables are explicitly set.
+Never infer composition from a generic inherited `STATE_FILE`:
+
+```bash
+EMBEDDED_WORKFLOW=false
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
+RESOLVED_ORIGINAL_REPO_ROOT=$(git -C "$CURRENT_CHECKOUT_ROOT" worktree list --porcelain | awk '/^worktree / { sub(/^worktree /, ""); print; exit }')
+if [ -z "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ "${RESOLVED_ORIGINAL_REPO_ROOT#/}" = "$RESOLVED_ORIGINAL_REPO_ROOT" ] || [ ! -d "$RESOLVED_ORIGINAL_REPO_ROOT" ]; then
+  echo "Error: Could not resolve the absolute primary worktree root."
+  exit 1
+fi
+if [ -n "${CALLER_LOOP_STATE_FILE:-}" ] && [ -n "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
+  EMBEDDED_WORKFLOW=true
+  STATE_FILE="$CALLER_LOOP_STATE_FILE"
+  WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "address_review")
+  initialize_workflow_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
+  ORIGINAL_REPO_ROOT=$(get_loop_field "$STATE_FILE" "original_repo_root" '[]')
+  WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
+  REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
+elif [ -n "${CALLER_LOOP_STATE_FILE:-}" ] || [ -n "${CALLER_WORKFLOW_STATE_PATH:-}" ]; then
+  echo "Error: Embedded address-review requires both caller state variables."
+  exit 1
+else
+  ORIGINAL_REPO_ROOT="$RESOLVED_ORIGINAL_REPO_ROOT"
+  WORKTREE_PATH="$CURRENT_CHECKOUT_ROOT"
+  REPO_SLUG=$(cd "$WORKTREE_PATH" && gh api "repos/{owner}/{repo}" --jq '.full_name')
+  STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/address-review-${RESOLVED_PR:-auto}.loop.local.json"
+  mkdir -p "$(dirname "$STATE_FILE")"
+  STATE_FILE=$(cd "$(dirname "$STATE_FILE")" && pwd)/$(basename "$STATE_FILE")
+  WORKFLOW_STATE_PATH='[]'
+fi
+
+LOOP_STATE_FILE="$STATE_FILE"
+```
+
+When embedded, every phase and field operation uses `STATE_FILE` plus
+`WORKFLOW_STATE_PATH`. Address-review never changes the root completion promise
+or terminal allowlist, never initializes another loop, and returns only through
+`set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" RESULT REASON PHASE`.
 
 ## Loop Initialization
 
@@ -99,3 +143,30 @@ fi
 ```
 
 Continue with full fix cycle. **Otherwise:** Continue normally.
+
+
+## Hard Invariant Failure
+
+When this skill or a supporting file reports
+`WORKFLOW_RESULT=INCOMPLETE`, persist the supplied reason:
+
+```bash
+INVARIANT_STATE_FILE="${STATE_FILE:-${LOOP_STATE_FILE:-}}"
+if [ -z "$INVARIANT_STATE_FILE" ] || [ ! -f "$INVARIANT_STATE_FILE" ]; then
+  echo "Error: Cannot persist address-review invariant failure without loop state."
+  exit 1
+fi
+source "<PLUGIN_ROOT>/lib/loop-state.sh"
+if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+  set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$WORKFLOW_REASON" "incomplete"
+  echo "ADDRESS_REVIEW_RESULT=incomplete"
+  echo "ADDRESS_REVIEW_REASON=$WORKFLOW_REASON"
+else
+  set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"
+  echo "<done>INCOMPLETE</done>"
+fi
+```
+
+Stop after this block. Never fetch feedback, edit files, push, or claim
+completion from an invariant-failure path. The embedded branch returns the
+structured incomplete state and emits no terminal marker.

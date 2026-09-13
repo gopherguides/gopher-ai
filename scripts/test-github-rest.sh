@@ -408,7 +408,7 @@ import subprocess
 import sys
 
 root = pathlib.Path(sys.argv[1])
-text = (root / "plugins/go-workflow/skills/review-deep/SKILL.md").read_text()
+text = (root / "plugins/go-workflow/skills/review-deep/scope-discovery.md").read_text()
 start = text.index("**Strategy 2")
 block = text[start:].split("```bash\n", 1)[1].split("```", 1)[0]
 prefix = """

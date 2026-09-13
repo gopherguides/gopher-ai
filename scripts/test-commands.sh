@@ -15,6 +15,7 @@ ERRORS=0
 
 echo "=== Command File Tests ==="
 
+/bin/bash "$ROOT_DIR/scripts/test-skill-router-budget.sh"
 /bin/bash "$ROOT_DIR/scripts/test-managed-shell-entrypoints.sh"
 bash "$ROOT_DIR/scripts/test-review-plan.sh"
 bash "$ROOT_DIR/scripts/test-codex-compatibility-lanes.sh"
@@ -76,7 +77,7 @@ CODEX_COMMAND="$ROOT_DIR/plugins/llm-tools/commands/codex.md"
 NONINTERACTIVE_CODEX_FILES=(
   "$ROOT_DIR/plugins/llm-tools/commands/review-loop.md"
   "$ROOT_DIR/plugins/llm-tools/commands/llm-compare.md"
-  "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/self-review.md"
   "$ROOT_DIR/plugins/go-workflow/lib/ship/prerequisites.md"
   "$ROOT_DIR/plugins/go-workflow/lib/ship/local-review.md"
 )
@@ -159,7 +160,12 @@ echo -n "User-only workflows avoid blocked Skill-tool composition... "
 TMUX_START_SCRIPT="$ROOT_DIR/plugins/go-workflow/scripts/tmux-start.sh"
 COMPLETE_ISSUE_SKILL="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"
 COMPLETE_ISSUE_LOOP="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/loop-state.md"
+COMPLETE_ISSUE_IMPLEMENTATION="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/implementation-handoff.md"
+COMPLETE_ISSUE_SELF_REVIEW="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/self-review.md"
+COMPLETE_ISSUE_VERIFICATION="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/verification-handoff.md"
 START_ISSUE_SKILL="$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md"
+START_ISSUE_SETUP="$ROOT_DIR/plugins/go-workflow/lib/start-issue/setup.md"
+START_ISSUE_LOOP="$ROOT_DIR/plugins/go-workflow/lib/start-issue/loop-state.md"
 E2E_FINISH="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/mode-finish.md"
 E2E_SKILL_CONTRACT="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
 E2E_SETUP_CONTRACT="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/setup.md"
@@ -167,6 +173,7 @@ E2E_LOOP_CONTRACT="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/loop-state.md
 E2E_REVIEW_CONTRACT="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/review-and-generated-output.md"
 ADDRESS_REVIEW_SKILL="$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md"
 ADDRESS_REVIEW_LOOP="$ROOT_DIR/plugins/go-workflow/skills/address-review/loop-management.md"
+ADDRESS_REVIEW_COMPLETION="$ROOT_DIR/plugins/go-workflow/skills/address-review/completion-check.md"
 BLOCKED_COMPOSITION=$(awk '/Invoke `[$](start-issue|e2e-verify|ship)([ `])/' "$COMPLETE_ISSUE_SKILL" "$E2E_FINISH")
 
 file_contains() {
@@ -372,10 +379,10 @@ if [ -n "$BLOCKED_COMPOSITION" ]; then
   echo "FAIL"
   echo "$BLOCKED_COMPOSITION"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'Read `<PLUGIN_ROOT>/skills/start-issue/SKILL.md`' "$COMPLETE_ISSUE_SKILL"; then
+elif ! file_contains 'Read `<PLUGIN_ROOT>/skills/start-issue/SKILL.md`' "$COMPLETE_ISSUE_IMPLEMENTATION"; then
   echo "FAIL (complete-issue does not load start-issue directly)"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'Read `<PLUGIN_ROOT>/skills/e2e-verify/SKILL.md`' "$COMPLETE_ISSUE_SKILL"; then
+elif ! file_contains 'Read `<PLUGIN_ROOT>/skills/e2e-verify/SKILL.md`' "$COMPLETE_ISSUE_VERIFICATION"; then
   echo "FAIL (complete-issue does not load e2e-verify directly)"
   ERRORS=$((ERRORS + 1))
 elif ! file_contains 'skills/ship/SKILL.md' "$E2E_FINISH"; then
@@ -403,7 +410,10 @@ validate_composition_contract() {
   local fixture_root="$1"
   local complete_skill="$fixture_root/plugins/go-workflow/skills/complete-issue/SKILL.md"
   local complete_loop="$fixture_root/plugins/go-workflow/skills/complete-issue/loop-state.md"
+  local complete_implementation="$fixture_root/plugins/go-workflow/skills/complete-issue/implementation-handoff.md"
+  local complete_verification="$fixture_root/plugins/go-workflow/skills/complete-issue/verification-handoff.md"
   local start_skill="$fixture_root/plugins/go-workflow/skills/start-issue/SKILL.md"
+  local start_loop="$fixture_root/plugins/go-workflow/lib/start-issue/loop-state.md"
   local e2e_skill="$fixture_root/plugins/go-workflow/skills/e2e-verify/SKILL.md"
   local e2e_loop="$fixture_root/plugins/go-workflow/skills/e2e-verify/loop-state.md"
   local e2e_review="$fixture_root/plugins/go-workflow/skills/e2e-verify/review-and-generated-output.md"
@@ -415,16 +425,20 @@ validate_composition_contract() {
 
   grep -Fq 'STATE_FILE=$(cd "$(dirname "$STATE_FILE")" && pwd)/$(basename "$STATE_FILE")' "$complete_loop" || return 1
   grep -Fq '"$STATE_FILE" '\''["COMPLETE","INCOMPLETE"]'\''' "$complete_loop" || return 1
-  grep -Fq 'START_ISSUE_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "start_issue")' "$complete_skill" || return 1
-  grep -Fq 'E2E_VERIFY_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "e2e_verify")' "$complete_skill" || return 1
-  grep -Fq 'CALLER_LOOP_STATE_FILE="$STATE_FILE"' "$complete_skill" || return 1
-  [ "$(grep -Fc 'CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"' "$complete_skill")" -ge 2 ] || return 1
-  [ "$(grep -Fc 'WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"' "$complete_skill")" -ge 2 ] || return 1
-  grep -Fq 'set_loop_terminal_result "$STATE_FILE" "incomplete"' "$complete_skill" || return 1
+  grep -Fq 'START_ISSUE_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "start_issue")' "$complete_implementation" || return 1
+  grep -Fq 'E2E_VERIFY_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "e2e_verify")' "$complete_verification" || return 1
+  grep -Fq 'CALLER_LOOP_STATE_FILE="$STATE_FILE"' "$complete_implementation" || return 1
+  grep -Fq 'CALLER_LOOP_STATE_FILE="$STATE_FILE"' "$complete_verification" || return 1
+  grep -Fq 'CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"' "$complete_implementation" || return 1
+  grep -Fq 'CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"' "$complete_verification" || return 1
+  grep -Fq 'WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"' "$complete_implementation" || return 1
+  grep -Fq 'WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"' "$complete_verification" || return 1
+  grep -Fq 'set_loop_terminal_result "$STATE_FILE" "incomplete"' "$complete_implementation" || return 1
+  grep -Fq 'set_loop_terminal_result "$STATE_FILE" "incomplete"' "$complete_verification" || return 1
   grep -Fq 'ADDRESS_REVIEW_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "address_review")' "$e2e_review" || return 1
   grep -Fq 'SHIP_STATE_PATH=$(child_workflow_path "$WORKFLOW_STATE_PATH" "ship")' "$e2e_finish" || return 1
 
-  for embedded_file in "$start_skill" "$e2e_loop" "$address_skill"; do
+  for embedded_file in "$start_loop" "$e2e_loop" "$address_loop"; do
     embedded_section=$(composition_contract_section "$embedded_file")
     [ -n "$embedded_section" ] || return 1
     grep -Fq 'CALLER_LOOP_STATE_FILE' <<< "$embedded_section" || return 1
@@ -435,15 +449,15 @@ validate_composition_contract() {
     if grep -Fq '<done>' <<< "$embedded_section"; then return 1; fi
   done
 
-  grep -Fq 'WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "start_issue")' "$start_skill" || return 1
+  grep -Fq 'WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "start_issue")' "$start_loop" || return 1
   grep -Fq 'WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "e2e_verify")' "$e2e_loop" || return 1
-  grep -Fq 'WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "address_review")' "$address_skill" || return 1
+  grep -Fq 'WORKFLOW_STATE_PATH=$(child_workflow_path "$CALLER_WORKFLOW_STATE_PATH" "address_review")' "$address_loop" || return 1
   grep -Fq 'CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"' "$e2e_review" || return 1
   grep -Fq 'CALLER_WORKFLOW_STATE_PATH="$WORKFLOW_STATE_PATH"' "$e2e_finish" || return 1
   grep -Fq 'WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"' "$e2e_review" || return 1
   grep -Fq 'WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"' "$e2e_finish" || return 1
 
-  grep -Fq '"$STATE_FILE" '\''["COMPLETE","INCOMPLETE"]'\''' "$start_skill" || return 1
+  grep -Fq '"$STATE_FILE" '\''["COMPLETE","INCOMPLETE"]'\''' "$start_loop" || return 1
   grep -Fq '"$STATE_FILE" '\''["VERIFIED","E2E_FAIL","INCOMPLETE"]'\''' "$e2e_loop" || return 1
   grep -Fq '"$LOOP_STATE_FILE" '\''["COMPLETE","INCOMPLETE"]'\''' "$address_loop" || return 1
 }
@@ -509,7 +523,11 @@ else
   mkdir -p "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/address-review"
   cp "$COMPLETE_ISSUE_SKILL" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/SKILL.md"
   cp "$COMPLETE_ISSUE_LOOP" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/loop-state.md"
+  cp "$COMPLETE_ISSUE_IMPLEMENTATION" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/implementation-handoff.md"
+  cp "$COMPLETE_ISSUE_VERIFICATION" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/verification-handoff.md"
   cp "$START_ISSUE_SKILL" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/start-issue/SKILL.md"
+  mkdir -p "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/lib/start-issue"
+  cp "$START_ISSUE_LOOP" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/lib/start-issue/loop-state.md"
   cp "$E2E_SKILL_CONTRACT" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/SKILL.md"
   cp "$E2E_LOOP_CONTRACT" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/loop-state.md"
   cp "$E2E_REVIEW_CONTRACT" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/review-and-generated-output.md"
@@ -517,24 +535,24 @@ else
   cp "$ADDRESS_REVIEW_SKILL" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/address-review/SKILL.md"
   cp "$ADDRESS_REVIEW_LOOP" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/address-review/loop-management.md"
 
-  seed_composition_mutation "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/start-issue/SKILL.md" '"<PLUGIN_ROOT>/scripts/setup-loop.sh" "nested" "COMPLETE"'
+  seed_composition_mutation "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/lib/start-issue/loop-state.md" '"<PLUGIN_ROOT>/scripts/setup-loop.sh" "nested" "COMPLETE"'
   if validate_composition_contract "$COMPOSITION_MUTATION_ROOT"; then
     COMPOSITION_FAILURE="validator accepted an embedded setup-loop mutation"
   fi
-  cp "$START_ISSUE_SKILL" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/start-issue/SKILL.md"
+  cp "$START_ISSUE_LOOP" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/lib/start-issue/loop-state.md"
   seed_composition_mutation "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/loop-state.md" '<done>VERIFIED</done>'
   if validate_composition_contract "$COMPOSITION_MUTATION_ROOT"; then
     COMPOSITION_FAILURE="validator accepted an embedded terminal marker mutation"
   fi
   cp "$E2E_LOOP_CONTRACT" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/e2e-verify/loop-state.md"
-  sed '/START_ISSUE_STATE_PATH=$(child_workflow_path/d' "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/SKILL.md" > "$COMPOSITION_MUTATION_ROOT/complete-without-start"
-  mv "$COMPOSITION_MUTATION_ROOT/complete-without-start" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/SKILL.md"
+  sed '/START_ISSUE_STATE_PATH=$(child_workflow_path/d' "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/implementation-handoff.md" > "$COMPOSITION_MUTATION_ROOT/complete-without-start"
+  mv "$COMPOSITION_MUTATION_ROOT/complete-without-start" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/implementation-handoff.md"
   if validate_composition_contract "$COMPOSITION_MUTATION_ROOT"; then
     COMPOSITION_FAILURE="validator accepted a missing start-issue ownership contract"
   fi
-  cp "$COMPLETE_ISSUE_SKILL" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/SKILL.md"
-  sed '/WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"/d' "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/SKILL.md" > "$COMPOSITION_MUTATION_ROOT/complete-without-restore"
-  mv "$COMPOSITION_MUTATION_ROOT/complete-without-restore" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/SKILL.md"
+  cp "$COMPLETE_ISSUE_IMPLEMENTATION" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/implementation-handoff.md"
+  sed '/WORKFLOW_STATE_PATH="$CALLER_WORKFLOW_STATE_PATH"/d' "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/implementation-handoff.md" > "$COMPOSITION_MUTATION_ROOT/complete-without-restore"
+  mv "$COMPOSITION_MUTATION_ROOT/complete-without-restore" "$COMPOSITION_MUTATION_ROOT/plugins/go-workflow/skills/complete-issue/implementation-handoff.md"
   if validate_composition_contract "$COMPOSITION_MUTATION_ROOT"; then
     COMPOSITION_FAILURE="validator accepted a missing caller-path restoration"
   fi
@@ -603,7 +621,7 @@ START_ISSUE_DISPATCH=$(awk '
   /^## Surface Dispatch Decision$/ { active = 1; next }
   active && /^## / { exit }
   active { print }
-' "$START_ISSUE_SKILL")
+' "$START_ISSUE_SETUP")
 START_ISSUE_PROMPT_CONTRACT=$(awk '
   /^## Reusable Prompt Contract$/ { active = 1; next }
   active && /^## / { exit }
@@ -624,14 +642,14 @@ START_ISSUE_FLAG_PARSER=$(awk '
   section && /^```bash$/ { code = 1; next }
   code && /^```$/ { exit }
   code { print }
-' "$START_ISSUE_SKILL")
+' "$START_ISSUE_SETUP")
 START_ISSUE_DEFAULT_PARSE=$(SKILL_ARGS="328" bash -euo pipefail -c \
   "$START_ISSUE_FLAG_PARSER"$'\n''printf "PARSED:%s:%s\n" "$ISSUE_NUM" "$NO_AGENTS"')
 START_ISSUE_MANUAL_PARSE=$(SKILL_ARGS="328 --no-agents" bash -euo pipefail -c \
   "$START_ISSUE_FLAG_PARSER"$'\n''printf "PARSED:%s:%s\n" "$ISSUE_NUM" "$NO_AGENTS"')
-START_ISSUE_PARSER_LINE=$(awk '/^## Security Validation & Flag Parsing$/ { print NR; exit }' "$START_ISSUE_SKILL")
-START_ISSUE_FLAG_STORE_LINE=$(awk '/^- `NO_AGENTS`:/{ print NR; exit }' "$START_ISSUE_SKILL")
-START_ISSUE_DISPATCH_LINE=$(awk '/^## Surface Dispatch Decision$/ { print NR; exit }' "$START_ISSUE_SKILL")
+START_ISSUE_PARSER_LINE=$(awk '/^## Security Validation & Flag Parsing$/ { print NR; exit }' "$START_ISSUE_SETUP")
+START_ISSUE_FLAG_STORE_LINE=$(awk '/^- `NO_AGENTS`:/{ print NR; exit }' "$START_ISSUE_SETUP")
+START_ISSUE_DISPATCH_LINE=$(awk '/^## Surface Dispatch Decision$/ { print NR; exit }' "$START_ISSUE_SETUP")
 START_ISSUE_SURFACE_FAILURE=""
 
 record_start_issue_surface_failure() {
@@ -1101,8 +1119,8 @@ elif [ -z "$E2E_ADDRESS_REVIEW_LINE" ] || [ -z "$E2E_EMPTY_INDEX_LINE" ] ||
      ! file_contains 'PUBLISHED_FINAL_REVIEW_HEAD' "$E2E_REVIEW" ||
      ! file_contains '[ "$PUBLISHED_FINAL_REVIEW_HEAD" != "$FINAL_REVIEW_HEAD" ]' "$E2E_REVIEW" ||
      ! file_contains 'EXPECTED_REVIEW_HEAD="$FINAL_REVIEW_HEAD"' "$E2E_REVIEW" ||
-     ! file_contains 'REVIEW_HEAD_EXPECTATION="${EXPECTED_REVIEW_HEAD:-$(git -C "$WORKTREE_PATH" rev-parse HEAD)}"' "$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md" ||
-     ! file_contains '[ "$PR_HEAD_SHA" != "$REVIEW_HEAD_EXPECTATION" ]' "$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md" ||
+     ! file_contains 'REVIEW_HEAD_EXPECTATION="${EXPECTED_REVIEW_HEAD:-$(git -C "$WORKTREE_PATH" rev-parse HEAD)}"' "$ADDRESS_REVIEW_COMPLETION" ||
+     ! file_contains '[ "$PR_HEAD_SHA" != "$REVIEW_HEAD_EXPECTATION" ]' "$ADDRESS_REVIEW_COMPLETION" ||
      ! file_contains 'repeat **Step 11' "$E2E_REVIEW"; then
   echo "FAIL (fix modes do not refresh, commit, and verify the final generated-output head in order)"
   ERRORS=$((ERRORS + 1))
@@ -1117,7 +1135,7 @@ echo -n "Go-workflow stages only phase-owned files... "
 COMPLETE_ISSUE_PHASES="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/phases.md"
 COMPLETE_ISSUE_SKILL_INDEX_GUARDS=$(awk \
   '/^[[:space:]]*if ! git -C "[$]WORKTREE_PATH" diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
-  "$COMPLETE_ISSUE_SKILL")
+  "$COMPLETE_ISSUE_SELF_REVIEW")
 COMPLETE_ISSUE_PHASE_INDEX_GUARDS=$(awk \
   '/^[[:space:]]*if ! git -C "[$]WORKTREE_PATH" diff --cached --quiet; then$/ { count++ } END { print count + 0 }' \
   "$COMPLETE_ISSUE_PHASES")
@@ -1131,7 +1149,7 @@ if [ -n "$LIVE_BROAD_STAGING" ]; then
   echo "FAIL (live broad staging commands found)"
   echo "$LIVE_BROAD_STAGING"
   ERRORS=$((ERRORS + 1))
-elif ! file_contains 'git -C "$WORKTREE_PATH" add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_SKILL" ||
+elif ! file_contains 'git -C "$WORKTREE_PATH" add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_SELF_REVIEW" ||
      ! file_contains 'git -C "$WORKTREE_PATH" add -- "${REVIEW_FILES[@]}"' "$COMPLETE_ISSUE_PHASES"; then
   echo "FAIL (complete-issue review-owned staging command missing)"
   ERRORS=$((ERRORS + 1))
@@ -1164,10 +1182,13 @@ fi
 
 echo -n "Issue-to-PR workflows persist absolute repository and worktree paths... "
 START_ISSUE_SKILL="$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md"
+START_ISSUE_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/lib/start-issue/loop-state.md"
 START_ISSUE_WORKTREE_CREATE="$ROOT_DIR/plugins/go-workflow/lib/start-issue/worktree-create.md"
+COMPLETE_ISSUE_IMPLEMENTATION_STATE="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/implementation-handoff.md"
 COMPLETE_ISSUE_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/complete-issue/loop-state.md"
 E2E_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/loop-state.md"
 SHIP_SKILL="$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
+SHIP_BOOTSTRAP_STATE="$ROOT_DIR/plugins/go-workflow/lib/ship/bootstrap.md"
 ADDRESS_REVIEW_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/address-review/loop-management.md"
 PATH_CONTRACT_FAILURE=""
 
@@ -1183,20 +1204,20 @@ setup_loop_uses_state_path() {
   ' "$file"
 }
 
-if ! file_contains 'ORIGINAL_REPO_ROOT=' "$START_ISSUE_SKILL" ||
-   ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/start-issue-$ISSUE_NUM.loop.local.json"' "$START_ISSUE_SKILL" ||
-   ! file_contains '"$STATE_FILE"' "$START_ISSUE_SKILL" ||
-   ! file_contains 'set_loop_field "$STATE_FILE" "original_repo_root" "$ORIGINAL_REPO_ROOT"' "$START_ISSUE_SKILL" ||
-   ! file_contains 'set_loop_field "$STATE_FILE" "worktree_path" "$WORKTREE_PATH"' "$START_ISSUE_SKILL"; then
+if ! file_contains 'ORIGINAL_REPO_ROOT=' "$START_ISSUE_LOOP_STATE" ||
+   ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/start-issue-$ISSUE_NUM.loop.local.json"' "$START_ISSUE_LOOP_STATE" ||
+   ! file_contains '"$STATE_FILE"' "$START_ISSUE_LOOP_STATE" ||
+   ! file_contains 'set_loop_field "$STATE_FILE" "original_repo_root" "$ORIGINAL_REPO_ROOT"' "$START_ISSUE_LOOP_STATE" ||
+   ! file_contains 'set_loop_field "$STATE_FILE" "worktree_path" "$WORKTREE_PATH"' "$START_ISSUE_LOOP_STATE"; then
   PATH_CONTRACT_FAILURE="start-issue does not bootstrap and persist absolute path outputs"
 elif ! file_contains '.worktree_path = $worktree_path' "$START_ISSUE_WORKTREE_CREATE"; then
   PATH_CONTRACT_FAILURE="worktree creation does not persist its absolute output"
-elif file_contains 'WORKTREE_PATH=$(pwd)' "$COMPLETE_ISSUE_SKILL" ||
-     file_contains 'STATE_FILE="$(pwd)' "$COMPLETE_ISSUE_SKILL"; then
+elif file_contains 'WORKTREE_PATH=$(pwd)' "$COMPLETE_ISSUE_IMPLEMENTATION_STATE" ||
+     file_contains 'STATE_FILE="$(pwd)' "$COMPLETE_ISSUE_IMPLEMENTATION_STATE"; then
   PATH_CONTRACT_FAILURE="complete-issue still rediscovers paths from pwd"
-elif ! file_contains 'WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '\''[]'\'')' "$COMPLETE_ISSUE_SKILL" ||
-     ! file_contains 'WORKFLOW_REASON=start-issue-worktree-path-invalid' "$COMPLETE_ISSUE_SKILL" ||
-     ! file_contains 'set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"' "$COMPLETE_ISSUE_SKILL"; then
+elif ! file_contains 'WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '\''[]'\'')' "$COMPLETE_ISSUE_IMPLEMENTATION_STATE" ||
+     ! file_contains 'WORKFLOW_REASON=start-issue-worktree-path-invalid' "$COMPLETE_ISSUE_IMPLEMENTATION_STATE" ||
+     ! file_contains 'set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"' "$COMPLETE_ISSUE_IMPLEMENTATION_STATE"; then
   PATH_CONTRACT_FAILURE="complete-issue does not consume and validate the persisted start-issue output"
 elif ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/complete-issue-${ISSUE_NUM}.loop.local.json"' "$COMPLETE_ISSUE_LOOP_STATE" ||
      ! file_contains '"$STATE_FILE"' "$COMPLETE_ISSUE_LOOP_STATE" ||
@@ -1206,16 +1227,16 @@ elif ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/complete-issu
 elif ! file_contains 'STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/e2e-verify-${PR_NUM}.loop.local.json"' "$E2E_LOOP_CONTRACT" ||
      ! file_contains '"$STATE_FILE"' "$E2E_LOOP_STATE"; then
   PATH_CONTRACT_FAILURE="e2e-verify loop bootstrap is not absolutely anchored"
-elif ! file_contains 'CANONICAL_STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/ship.loop.local.json"' "$SHIP_SKILL" ||
-     ! file_contains '"$STATE_FILE"' "$SHIP_SKILL"; then
+elif ! file_contains 'CANONICAL_STATE_FILE="$ORIGINAL_REPO_ROOT/.local/state/ship.loop.local.json"' "$SHIP_BOOTSTRAP_STATE" ||
+     ! file_contains '"$STATE_FILE"' "$SHIP_BOOTSTRAP_STATE"; then
   PATH_CONTRACT_FAILURE="ship loop bootstrap is not absolutely anchored"
 elif ! file_contains 'LOOP_STATE_FILE="${STATE_FILE:-$ORIGINAL_REPO_ROOT/.local/state/${SAFE_LOOP_NAME}.loop.local.json}"' "$ADDRESS_REVIEW_LOOP_STATE" ||
      ! file_contains '"$LOOP_STATE_FILE"' "$ADDRESS_REVIEW_LOOP_STATE"; then
   PATH_CONTRACT_FAILURE="address-review loop bootstrap is not absolutely anchored"
-elif ! setup_loop_uses_state_path "$START_ISSUE_SKILL" '"$STATE_FILE"' ||
+elif ! setup_loop_uses_state_path "$START_ISSUE_LOOP_STATE" '"$STATE_FILE"' ||
      ! setup_loop_uses_state_path "$COMPLETE_ISSUE_LOOP_STATE" '"$STATE_FILE"' ||
      ! setup_loop_uses_state_path "$E2E_LOOP_STATE" '"$STATE_FILE"' ||
-     ! setup_loop_uses_state_path "$SHIP_SKILL" '"$STATE_FILE"' ||
+     ! setup_loop_uses_state_path "$SHIP_BOOTSTRAP_STATE" '"$STATE_FILE"' ||
      ! setup_loop_uses_state_path "$ADDRESS_REVIEW_LOOP_STATE" '"$LOOP_STATE_FILE"'; then
   PATH_CONTRACT_FAILURE="a setup-loop bootstrap does not pass its absolute state path as argument six"
 fi
@@ -1230,10 +1251,16 @@ fi
 echo -n "Post-worktree workflow commands are explicitly scoped... "
 POST_WORKTREE_FILES=(
   "$START_ISSUE_SKILL"
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/setup.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/loop-state.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/start-issue/workspace.md"
   "$ROOT_DIR/plugins/go-workflow/lib/start-issue/orchestrated-workflow.md"
   "$ROOT_DIR/plugins/go-workflow/lib/start-issue/manual-workflow.md"
   "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/SKILL.md"
   "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/phases.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/implementation-handoff.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/self-review.md"
+  "$ROOT_DIR/plugins/go-workflow/skills/complete-issue/verification-handoff.md"
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/SKILL.md"
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/setup.md"
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/investigate.md"
@@ -1243,6 +1270,9 @@ POST_WORKTREE_FILES=(
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/pr-results-comment.md"
   "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/mode-finish.md"
   "$ROOT_DIR/plugins/go-workflow/skills/ship/SKILL.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/bootstrap.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/context.md"
+  "$ROOT_DIR/plugins/go-workflow/lib/ship/reentry.md"
   "$ROOT_DIR/plugins/go-workflow/lib/ship/address-bots.md"
   "$ROOT_DIR/plugins/go-workflow/lib/ship/bot-watch.md"
   "$ROOT_DIR/plugins/go-workflow/lib/ship/ci-watch.md"
@@ -1261,6 +1291,7 @@ UNQUALIFIED_WORKTREE_COMMANDS=$(awk '
       line ~ /gh api .*repos\/[$]REPO_SLUG/ ||
       line ~ /\(cd "[$]WORKTREE_PATH" &&/ ||
       line ~ /\(cd "[$]ORIGINAL_REPO_ROOT" &&/ ||
+      line ~ /\(cd "[$]CURRENT_CHECKOUT_ROOT" &&/ ||
       line ~ /rm .*"[$]WORKTREE_PATH\// ||
       line ~ /rm -f ("\/tmp\/|"[$](PROMPT_FILE|SCHEMA_FILE))/ ||
       line ~ /command -v (go|git|gh|golangci-lint|govulncheck|cargo-llvm-cov|cargo-tarpaulin|pytest|coverage)/ ||
@@ -1386,9 +1417,9 @@ assert_reentry_contract() {
   fi
 }
 
-assert_reentry_contract "start-issue" "$START_ISSUE_SKILL" "start-issue-worktree-path-invalid"
+assert_reentry_contract "start-issue" "$START_ISSUE_LOOP_STATE" "start-issue-worktree-path-invalid"
 assert_reentry_contract "e2e-verify" "$E2E_LOOP_STATE" "e2e-worktree-path-invalid"
-assert_reentry_contract "ship" "$SHIP_SKILL" "ship-worktree-path-invalid"
+assert_reentry_contract "ship" "$SHIP_BOOTSTRAP_STATE" "ship-worktree-path-invalid"
 assert_reentry_contract "address-review" "$ADDRESS_REVIEW_LOOP_STATE" "address-review-worktree-path-invalid"
 
 if [ -n "$REENTRY_FAILURE" ]; then
@@ -1444,6 +1475,7 @@ E2E_REVIEW="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/review-and-generated
 E2E_LOOP_STATE="$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/loop-state.md"
 ADDRESS_REBASE="$ROOT_DIR/plugins/go-workflow/skills/address-review/checkout-rebase.md"
 ADDRESS_SKILL="$ROOT_DIR/plugins/go-workflow/skills/address-review/SKILL.md"
+ADDRESS_LOOP="$ROOT_DIR/plugins/go-workflow/skills/address-review/loop-management.md"
 REVIEW_DEEP_FIX="$ROOT_DIR/plugins/go-workflow/skills/review-deep/fix-and-verify.md"
 START_ISSUE_SKILL="$ROOT_DIR/plugins/go-workflow/skills/start-issue/SKILL.md"
 
@@ -1515,7 +1547,7 @@ elif file_contains "commit to main anyway" "$COMMIT_SKILL" ||
 elif file_contains "Proceed with fixes WITHOUT rebasing" "$SHIP_ADDRESS" ||
      file_contains "proceed without rebasing" "$SHIP_SKILL"; then
   INVARIANT_FAILURE="ship can continue after an unresolved rebase"
-elif ! file_contains 'set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"' "$ADDRESS_SKILL"; then
+elif ! file_contains 'set_loop_terminal_result "$STATE_FILE" "incomplete" "$WORKFLOW_REASON" "incomplete" "INCOMPLETE"' "$ADDRESS_LOOP"; then
   INVARIANT_FAILURE="address-review rebase stops are not durable"
 elif [[ "$REVIEW_DEEP_VERIFICATION" == *"|| true"* ]] ||
      [[ "$E2E_BUILD_VERIFICATION" == *"|| true"* ]]; then
