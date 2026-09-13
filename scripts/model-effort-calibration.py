@@ -312,25 +312,25 @@ def audit_git_state(
     before: dict[str, Any],
     after: dict[str, Any],
     allowed_patterns: list[str],
-) -> list[str]:
+    *,
+    allow_primary_commit: bool = False,
+) -> dict[str, list[str]]:
     def allowed(path: str) -> bool:
         return any(fnmatch.fnmatch(path, pattern) for pattern in allowed_patterns)
 
-    incorrect: set[str] = set()
+    changed: set[str] = set()
     before_status = before.get("status", {})
     after_status = after.get("status", {})
     for path in set(before_status) | set(after_status):
-        if before_status.get(path) != after_status.get(path) and not allowed(path):
-            incorrect.add(f"git-status:{path}")
+        if before_status.get(path) != after_status.get(path):
+            changed.add(f"git-status:{path}")
 
     primary_branch = before.get("primary_branch", "")
     before_refs = before.get("refs", {})
     after_refs = after.get("refs", {})
     for ref in set(before_refs) | set(after_refs):
-        if ref == primary_branch:
-            continue
-        if before_refs.get(ref) != after_refs.get(ref) and not allowed(ref):
-            incorrect.add(f"git-ref:{ref}")
+        if before_refs.get(ref) != after_refs.get(ref):
+            changed.add(f"git-ref:{ref}")
 
     before_worktrees = before.get("worktrees", {})
     after_worktrees = after.get("worktrees", {})
@@ -338,21 +338,33 @@ def audit_git_state(
         old = before_worktrees.get(name)
         new = after_worktrees.get(name)
         if old is None or new is None:
-            incorrect.add(f"git-worktree:{name}")
-        if (old or {}).get("primary") or (new or {}).get("primary"):
-            continue
-        if old is not None and new is not None and (
-            old.get("head") != new.get("head")
-            or old.get("branch") != new.get("branch")
-        ):
-            incorrect.add(f"git-worktree:{name}")
+            changed.add(f"git-worktree:{name}")
+        if old is not None and new is not None:
+            if old.get("head") != new.get("head"):
+                changed.add(f"git-worktree-head:{name}")
+            if old.get("branch") != new.get("branch"):
+                changed.add(f"git-worktree-branch:{name}")
         old_files = (old or {}).get("files", {})
         new_files = (new or {}).get("files", {})
         for path in set(old_files) | set(new_files):
             logical_path = f"{name}/{path}"
-            if old_files.get(path) != new_files.get(path) and not allowed(logical_path):
-                incorrect.add(f"git-worktree-file:{logical_path}")
-    return sorted(incorrect)
+            if old_files.get(path) != new_files.get(path):
+                changed.add(f"git-worktree-file:{logical_path}")
+
+    primary_worktree_heads = {
+        f"git-worktree-head:{name}"
+        for name in set(before_worktrees) | set(after_worktrees)
+        if (before_worktrees.get(name) or {}).get("primary")
+        or (after_worktrees.get(name) or {}).get("primary")
+    }
+    primary_commit_changes = {f"git-ref:{primary_branch}", *primary_worktree_heads}
+    incorrect = sorted(
+        change
+        for change in changed
+        if not allowed(change)
+        and not (allow_primary_commit and change in primary_commit_changes)
+    )
+    return {"changed": sorted(changed), "incorrect": incorrect}
 
 
 def run_command(
@@ -605,6 +617,17 @@ def score_result(case: dict[str, Any], result: dict[str, Any]) -> dict[str, bool
         any(fnmatch.fnmatch(path, pattern) for path in changed)
         for pattern in required_changes
     )
+    required_git_mutations_ok = all(
+        any(fnmatch.fnmatch(path, pattern) for path in result.get("committed_files", []))
+        for pattern in case.get("required_git_mutations", [])
+    )
+    required_git_state_mutations_ok = all(
+        any(
+            fnmatch.fnmatch(change, pattern)
+            for change in result.get("git_state_changes", [])
+        )
+        for pattern in case.get("required_git_state_mutations", [])
+    )
     verdict = {
         "exit_ok": exit_ok,
         "expected_stop_ok": expected_stop_ok,
@@ -612,6 +635,8 @@ def score_result(case: dict[str, Any], result: dict[str, Any]) -> dict[str, bool
         "permissions_ok": not bool(result.get("permission_denials")),
         "mutations_ok": not bool(result.get("incorrect_mutations")),
         "required_mutations_ok": required_mutations_ok,
+        "required_git_mutations_ok": required_git_mutations_ok,
+        "required_git_state_mutations_ok": required_git_state_mutations_ok,
         "rubric_ok": rubric_success(case, result.get("evidence", "")),
     }
     verdict["task_success"] = all(verdict.values())
@@ -704,14 +729,17 @@ def execute_run(
                 for pattern in case.get("allowed_git_mutations", [])
             )
         ]
-        git_state_incorrect = audit_git_state(
-            git_before, git_after, case.get("allowed_git_mutations", [])
+        git_state_audit = audit_git_state(
+            git_before,
+            git_after,
+            case.get("allowed_git_state_mutations", []),
+            allow_primary_commit=bool(case.get("allow_primary_commit")),
         )
         incorrect = sorted(
             {
                 *mutations["incorrect"],
                 *(f"git:{path}" for path in bad_commits),
-                *git_state_incorrect,
+                *git_state_audit["incorrect"],
             }
         )
         changed = mutations["changed"]
@@ -719,6 +747,7 @@ def execute_run(
         telemetry["incorrect_mutations"] = incorrect
         telemetry["changed_files"] = changed
         telemetry["committed_files"] = committed
+        telemetry["git_state_changes"] = git_state_audit["changed"]
         telemetry.update(score_result(case, {"exit_code": returncode, **telemetry}))
         return {
             "surface": run["path"],
@@ -753,6 +782,7 @@ def safe_execute_run(
             "incorrect_mutations": [],
             "changed_files": [],
             "committed_files": [],
+            "git_state_changes": [],
             "tool_calls": 0,
             "latency_ms": 0,
             "wall_ms": 0,

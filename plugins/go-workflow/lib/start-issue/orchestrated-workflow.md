@@ -46,7 +46,7 @@ loads the custom agent definition and applies its model policy:
 
 | Role | Prompt | Model policy |
 |------|--------|--------------|
-| Explore | `explore-prompt.md` | `haiku` |
+| Explore | `explore-prompt.md` | `inherit` |
 | Implementer | `implementer-prompt.md` | `inherit` |
 | Spec Review | `spec-review-prompt.md` | `sonnet` |
 | Quality Review | `quality-review-prompt.md` | `sonnet` |

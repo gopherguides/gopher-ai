@@ -376,12 +376,90 @@ class MutationTests(unittest.TestCase):
             },
         }
 
-        incorrect = CALIBRATION.audit_git_state(before, after, [])
+        audit = CALIBRATION.audit_git_state(before, after, [])
 
-        self.assertIn("git-status:secret.env", incorrect)
-        self.assertIn("git-ref:refs/heads/issue-12", incorrect)
-        self.assertIn("git-worktree:fixture-issue-12", incorrect)
-        self.assertIn("git-worktree-file:fixture-issue-12/tracked.txt", incorrect)
+        self.assertIn("git-status:secret.env", audit["incorrect"])
+        self.assertIn("git-ref:refs/heads/issue-12", audit["incorrect"])
+        self.assertIn("git-worktree:fixture-issue-12", audit["incorrect"])
+        self.assertIn(
+            "git-worktree-file:fixture-issue-12/tracked.txt", audit["incorrect"]
+        )
+
+    def test_git_audit_requires_explicit_primary_commit_allowance(self) -> None:
+        before = {
+            "status": {},
+            "refs": {"refs/heads/main": "aaa"},
+            "primary_branch": "refs/heads/main",
+            "worktrees": {
+                "fixture": {
+                    "head": "aaa",
+                    "branch": "refs/heads/main",
+                    "primary": True,
+                    "files": {},
+                }
+            },
+        }
+        after = {
+            **before,
+            "refs": {"refs/heads/main": "bbb"},
+            "worktrees": {
+                "fixture": {
+                    **before["worktrees"]["fixture"],
+                    "head": "bbb",
+                }
+            },
+        }
+
+        denied = CALIBRATION.audit_git_state(before, after, [])
+        allowed = CALIBRATION.audit_git_state(
+            before, after, [], allow_primary_commit=True
+        )
+
+        self.assertEqual(
+            denied["incorrect"],
+            ["git-ref:refs/heads/main", "git-worktree-head:fixture"],
+        )
+        self.assertEqual(allowed["incorrect"], [])
+        self.assertEqual(allowed["changed"], denied["changed"])
+
+    def test_git_audit_honors_explicit_status_allowance(self) -> None:
+        before = {
+            "status": {"tracked.txt": " M"},
+            "refs": {},
+            "worktrees": {},
+            "primary_branch": "",
+        }
+        after = {**before, "status": {}}
+
+        audit = CALIBRATION.audit_git_state(
+            before, after, ["git-status:tracked.txt"]
+        )
+
+        self.assertEqual(audit["changed"], ["git-status:tracked.txt"])
+        self.assertEqual(audit["incorrect"], [])
+
+    def test_required_git_state_mutation_must_occur(self) -> None:
+        case = {
+            "required_git_state_mutations": [
+                "git-worktree:fixture-issue-12-complete",
+                "git-ref:refs/heads/issue-12-complete",
+            ]
+        }
+
+        missing = CALIBRATION.score_result(case, {"exit_code": 0})
+        present = CALIBRATION.score_result(
+            case,
+            {
+                "exit_code": 0,
+                "git_state_changes": [
+                    "git-worktree:fixture-issue-12-complete",
+                    "git-ref:refs/heads/issue-12-complete",
+                ],
+            },
+        )
+
+        self.assertFalse(missing["required_git_state_mutations_ok"])
+        self.assertTrue(present["required_git_state_mutations_ok"])
 
     def test_temp_base_uses_python_fallback_when_environment_is_unset(self) -> None:
         with mock.patch.object(CALIBRATION.tempfile, "gettempdir", return_value="/system/tmp"):

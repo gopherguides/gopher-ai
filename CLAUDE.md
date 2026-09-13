@@ -157,13 +157,13 @@ The checked-in calibration suite and [issue 427 results](docs/model-effort-calib
 
 | Tier | Surfaces | Measured reason |
 |---|---|---|
-| `model: haiku` + `effort: low` | `clear-cache`, `create-worktree`, `gopher-ai-refresh`, `prune-worktree` | Fresh and warm tasks passed with no incorrect mutations; the model switch reduced cost enough to pay for the new cache prefix. |
+| `model: haiku` + `effort: low` | `clear-cache`, `create-worktree`, `gopher-ai-refresh` | Fresh and warm tasks passed with no incorrect mutations; the model switch reduced cost enough to pay for the new cache prefix. |
 | `model: sonnet` | `quality-review-prompt`, `spec-review-prompt` | Both review agents passed fresh and warm judgment cases with lower latency and cost than the inherited model. |
-| Inherit both | Cancellation, bounded reports and fixes (`standup`, `changelog`, `weekly-summary`, `validate-skills`, `lint-fix`, `commit`), exploration and implementation, Tailwind workflows, `remove-worktree`, diagnosis, code design, and multi-step workflows | Effort-only overrides cost more as a group after warm-session cache loss. Haiku cancellation, exploration, removal, and Tailwind candidates failed at least one held-out task. |
+| Inherit both | Cancellation, bounded reports and fixes (`standup`, `changelog`, `weekly-summary`, `validate-skills`, `lint-fix`, `commit`), exploration and implementation, Tailwind workflows, worktree removal/pruning, diagnosis, code design, and multi-step workflows | Effort-only overrides cost more as a group after warm-session cache loss. Haiku cancellation, exploration, cleanup, and Tailwind candidates failed at least one held-out task. |
 
-Unmeasured destructive operations inherit. `prune-worktree` is an exception only because both fresh and warm calibration fixtures rejected similar issue branch names without changing refs, registered worktrees, or sibling files. `remove-worktree` stays inherited because its Haiku warm run failed against an actual dirty, unmerged linked worktree. A future model alias change must earn the prune exception again.
+Destructive operations inherit. Haiku removal failed a warm dirty-worktree run in repeat measurement, while Haiku pruning failed an eligible-cleanup run after exercising issue state, merge state, worktree removal, and branch cleanup. A future model alias change must earn an exception again.
 
-Overrides are not free. Switching models mid-session forfeits the prompt cache built for the previous model, and changing `effort:` can break the cached prefix too. Across the measured effort-only surfaces, warm low-effort runs averaged 36% more cost even when they lowered latency, so do not optimize from model-tier intuition alone.
+Overrides are not free. Switching models mid-session forfeits the prompt cache built for the previous model, and changing `effort:` can break the cached prefix too. Across the measured effort-only surfaces, warm low-effort runs averaged 40% more cost even when they lowered latency, so do not optimize from model-tier intuition alone.
 
 Before adding or changing an override, add representative held-out coverage to `evals/model-effort-calibration.json`, run `scripts/model-effort-calibration.py` in fresh and warm conditions, and require task success with zero incorrect mutations before comparing tool calls, latency, tokens, cache traffic, and cost. Script-level checks (`scripts/test-commands.sh`) establish packaging validity, not model quality.
 

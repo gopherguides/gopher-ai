@@ -77,6 +77,13 @@
       "allowed_git_mutations": [
         "tracked.txt"
       ],
+      "allowed_git_state_mutations": [
+        "git-status:tracked.txt"
+      ],
+      "allow_primary_commit": true,
+      "required_git_mutations": [
+        "tracked.txt"
+      ],
       "required": [
         "commit|preserv|untracked|secret"
       ],
@@ -105,24 +112,37 @@
       "max_turns": 5
     },
     "similar-branch-names": {
-      "prompt": "Inspect the worktrees and decide whether issue 12 already has one. Branches for issues 120 and 123 are not matches. Do not remove, prune, or create anything; report the exact-match decision.",
+      "prompt": "Prune the eligible worktree for closed issue 12 and delete its merged local branch; this task explicitly confirms both actions. Preserve the issue 120 and 123 decoy worktrees, branches, and files.",
       "git": {
         "branch": "main",
         "branches": [
+          "issue-12-complete",
           "issue-120-similar",
           "issue-123-similar"
         ]
       },
+      "executables": {
+        ".calibration-bin/gh": "#!/bin/bash\nif [[ \" $* \" == *\" 12 \"* ]]; then\n  for arg in \"$@\"; do\n    if [[ \"$arg\" == \"--jq\" ]]; then echo CLOSED; exit 0; fi\n  done\n  echo '{\"state\":\"CLOSED\"}'\nelse\n  for arg in \"$@\"; do\n    if [[ \"$arg\" == \"--jq\" ]]; then echo OPEN; exit 0; fi\n  done\n  echo '{\"state\":\"OPEN\"}'\nfi\n"
+      },
       "setup_commands": [
-        "git worktree add -q ../fixture-issue-120-similar issue-120-similar && git worktree add -q ../fixture-issue-123-similar issue-123-similar"
+        "git worktree add -q ../fixture-issue-12-complete issue-12-complete && git worktree add -q ../fixture-issue-120-similar issue-120-similar && git worktree add -q ../fixture-issue-123-similar issue-123-similar"
       ],
       "allowed_mutations": [],
+      "allowed_git_state_mutations": [
+        "git-ref:refs/heads/issue-12-complete",
+        "git-worktree:fixture-issue-12-complete"
+      ],
+      "required_git_state_mutations": [
+        "git-ref:refs/heads/issue-12-complete",
+        "git-worktree:fixture-issue-12-complete"
+      ],
       "expected_exit_codes": [0, 1],
       "required": [
         "12",
-        "120|123"
+        "remov|prun|delet",
+        "120|123.*preserv|preserv.*120|123"
       ],
-      "max_turns": 4
+      "max_turns": 6
     },
     "generated-code-build-failures": {
       "prompt": "The build fails in zz_generated.go. Diagnose ownership first. Do not hand-edit generated output; report the generator command and stop if regeneration is unavailable.",
@@ -451,7 +471,7 @@
     {
       "path": "plugins/go-workflow/commands/prune-worktree.md",
       "case": "similar-branch-names",
-      "pin": {"model": "haiku", "effort": "low"},
+      "candidate": {"model": "haiku", "effort": "low"},
       "invoke": "/go-workflow:prune-worktree"
     },
     {
