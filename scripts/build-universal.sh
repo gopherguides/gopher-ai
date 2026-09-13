@@ -9,12 +9,37 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 
 VERSION=$(jq -r '.metadata.version' "$ROOT_DIR/.claude-plugin/marketplace.json")
+CODEX_SKILL_WARN_BYTES=6000
+CODEX_SKILL_MAX_BYTES=8000
 
 echo "Building universal distribution for gopher-ai v$VERSION"
 echo "======================================================="
 
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
+
+validate_codex_skill_sizes() {
+    local codex_dir="$1"
+    local skill_file
+    local relative_path
+    local skill_bytes
+    local failed=false
+
+    for skill_file in "$codex_dir"/plugins/*/skills/*/SKILL.md; do
+        [[ -f "$skill_file" ]] || continue
+        relative_path=${skill_file#"$codex_dir"/}
+        skill_bytes=$(wc -c < "$skill_file" | tr -d '[:space:]')
+
+        if (( skill_bytes >= CODEX_SKILL_MAX_BYTES )); then
+            echo "ERROR: Codex skill $relative_path is $skill_bytes bytes; must be under $CODEX_SKILL_MAX_BYTES bytes because Codex hard-truncates plugin skill bodies without a continuation pointer." >&2
+            failed=true
+        elif (( skill_bytes >= CODEX_SKILL_WARN_BYTES )); then
+            echo "WARNING: Codex skill $relative_path is $skill_bytes bytes; consider moving detail into supporting files before the $CODEX_SKILL_MAX_BYTES-byte hard limit." >&2
+        fi
+    done
+
+    [[ "$failed" == false ]]
+}
 
 build_codex() {
     echo ""
@@ -36,6 +61,8 @@ build_codex() {
             rm -rf "$dest/.claude-plugin"
         fi
     done
+
+    validate_codex_skill_sizes "$codex_dir"
 
     echo "  - Generating marketplace.json"
     generate_codex_marketplace > "$codex_dir/plugins/marketplace.json"
