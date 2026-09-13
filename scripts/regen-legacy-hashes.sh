@@ -271,9 +271,11 @@ with open(path, "a") as lock:
 }
 
 remove_transaction_marker() {
+    local identity="$1"
     local request_tmp="$LOCK_TRANSACTION_REQUEST.tmp"
 
-    printf '%s\n' "$TRANSACTION_IDENTITY" > "$request_tmp"
+    rm -f "$LOCK_TRANSACTION_REQUEST" "$LOCK_TRANSACTION_DONE"
+    printf '%s\n' "$identity" > "$request_tmp"
     mv "$request_tmp" "$LOCK_TRANSACTION_REQUEST"
     while [[ ! -e "$LOCK_TRANSACTION_DONE" ]]; do
         if ! lock_guard_is_running; then
@@ -284,6 +286,7 @@ remove_transaction_marker() {
         fi
         sleep 0.05
     done
+    rm -f "$LOCK_TRANSACTION_REQUEST" "$LOCK_TRANSACTION_DONE"
 }
 
 remove_legacy_lock_dir() {
@@ -334,6 +337,11 @@ recover_interrupted_publication() {
         return 1
     fi
 
+    TRANSACTION_IDENTITY=$(/usr/bin/mktemp "$ROOT_DIR/scripts/.legacy-skill-hashes.transaction.recovery.XXXXXX")
+    rm -f "$TRANSACTION_IDENTITY"
+    ln "$TRANSACTION_FILE" "$TRANSACTION_IDENTITY"
+    ensure_lock_held
+
     [[ ! -f "$MANIFEST" ]] || manifest_hash="$(hash_file "$MANIFEST")"
     [[ ! -f "$HOOK_MANIFEST" ]] || hook_hash="$(hash_file "$HOOK_MANIFEST")"
 
@@ -351,7 +359,18 @@ recover_interrupted_publication() {
         return 1
     fi
 
-    rm -f "$TRANSACTION_FILE"
+    # Deterministic synchronization point used only to exercise lock loss
+    # after recovery but before the resolved transaction marker is removed.
+    if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_RECOVERY:-}" ]]; then
+        touch "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_RECOVERY}.ready"
+        while [[ ! -e "$GOPHER_AI_REGEN_TEST_HOLD_AFTER_RECOVERY" ]]; do
+            sleep 0.05
+        done
+    fi
+
+    remove_transaction_marker "$TRANSACTION_IDENTITY"
+    rm -f "$TRANSACTION_IDENTITY"
+    TRANSACTION_IDENTITY=""
     echo "recovered interrupted legacy hash manifest publication" >&2
 }
 
@@ -543,7 +562,7 @@ if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH:-}" ]]; then
     done
 fi
 
-remove_transaction_marker
+remove_transaction_marker "$TRANSACTION_IDENTITY"
 rm -f "$TRANSACTION_IDENTITY"
 TRANSACTION_IDENTITY=""
 

@@ -449,6 +449,119 @@ else
   fi
 fi
 
+echo -n "A lock-losing recovery preserves its successor's transaction marker... "
+RECOVERY_REPO=$(new_fixture recovery-successor)
+RECOVERY_RELEASE="$TEST_ROOT/recovery-successor-release"
+RECOVERY_READY="$RECOVERY_RELEASE.ready"
+RECOVERY_GUARD_PID_FILE="$TEST_ROOT/recovery-successor-guardian.pid"
+RECOVERY_INITIAL_LOG="$TEST_ROOT/recovery-successor-initial.log"
+RECOVERY_FIRST_LOG="$TEST_ROOT/recovery-successor-first.log"
+RECOVERY_SECOND_LOG="$TEST_ROOT/recovery-successor-second.log"
+RECOVERY_FINAL_LOG="$TEST_ROOT/recovery-successor-final.log"
+printf '%s\n' 'initial interrupted publication' > \
+  "$RECOVERY_REPO/plugins/example/skills/example/SKILL.md"
+run_with_deadline "$RECOVERY_INITIAL_LOG" \
+  env GOPHER_AI_REGEN_FAILPOINT=after-primary-publish \
+  /bin/bash "$RECOVERY_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+RECOVERY_INITIAL_STATUS=$RUN_STATUS
+
+if [ "$RECOVERY_INITIAL_STATUS" -ne 97 ] ||
+   [ ! -f "$RECOVERY_REPO/scripts/.legacy-skill-hashes.transaction" ] ||
+   cmp -s "$RECOVERY_REPO/scripts/legacy-skill-hashes.txt" \
+         "$RECOVERY_REPO/plugins/go-workflow/hooks/legacy-skill-hashes.txt"; then
+  echo "FAIL (fixture did not begin with a recoverable publication gap)"
+  sed -n '1,20p' "$RECOVERY_INITIAL_LOG"
+  ERRORS=$((ERRORS + 1))
+else
+  GOPHER_AI_REGEN_TEST_HOLD_AFTER_RECOVERY="$RECOVERY_RELEASE" \
+  GOPHER_AI_REGEN_TEST_LOCK_GUARD_PID_FILE="$RECOVERY_GUARD_PID_FILE" \
+    /bin/bash "$RECOVERY_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$RECOVERY_FIRST_LOG" 2>&1 &
+  RECOVERY_FIRST_PID=$!
+  BACKGROUND_PIDS="$BACKGROUND_PIDS $RECOVERY_FIRST_PID"
+
+  RECOVERY_FIRST_READY=false
+  for _ in $(seq 1 100); do
+    if [ -e "$RECOVERY_READY" ] && [ -s "$RECOVERY_GUARD_PID_FILE" ]; then
+      RECOVERY_FIRST_READY=true
+      break
+    fi
+    if ! kill -0 "$RECOVERY_FIRST_PID" 2>/dev/null; then
+      break
+    fi
+    sleep 0.05
+  done
+
+  if [ "$RECOVERY_FIRST_READY" != true ]; then
+    echo "FAIL (recovery writer never reached its marker-removal hold)"
+    kill "$RECOVERY_FIRST_PID" 2>/dev/null || true
+    wait "$RECOVERY_FIRST_PID" 2>/dev/null || true
+    BACKGROUND_PIDS="${BACKGROUND_PIDS/ $RECOVERY_FIRST_PID/}"
+    ERRORS=$((ERRORS + 1))
+  else
+    read -r RECOVERY_GUARD_PID < "$RECOVERY_GUARD_PID_FILE"
+    kill -9 "$RECOVERY_GUARD_PID" 2>/dev/null || true
+    printf '%s\n' 'successor after interrupted recovery' > \
+      "$RECOVERY_REPO/plugins/example/skills/example/SKILL.md"
+    run_with_deadline "$RECOVERY_SECOND_LOG" \
+      env GOPHER_AI_REGEN_FAILPOINT=after-primary-publish \
+      /bin/bash "$RECOVERY_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+    RECOVERY_SECOND_STATUS=$RUN_STATUS
+
+    RECOVERY_SECOND_GAP=false
+    if [ "$RECOVERY_SECOND_STATUS" -eq 97 ] &&
+       [ -f "$RECOVERY_REPO/scripts/.legacy-skill-hashes.transaction" ] &&
+       ! cmp -s "$RECOVERY_REPO/scripts/legacy-skill-hashes.txt" \
+                "$RECOVERY_REPO/plugins/go-workflow/hooks/legacy-skill-hashes.txt"; then
+      RECOVERY_SECOND_GAP=true
+    fi
+
+    touch "$RECOVERY_RELEASE"
+    RECOVERY_FIRST_STATUS=0
+    wait "$RECOVERY_FIRST_PID" || RECOVERY_FIRST_STATUS=$?
+    BACKGROUND_PIDS="${BACKGROUND_PIDS/ $RECOVERY_FIRST_PID/}"
+
+    if [ "$RECOVERY_SECOND_GAP" = true ] &&
+       [ -f "$RECOVERY_REPO/scripts/.legacy-skill-hashes.transaction" ]; then
+      run_with_deadline "$RECOVERY_FINAL_LOG" \
+        env GOPHER_AI_REGEN_FAILPOINT=collection \
+        /bin/bash "$RECOVERY_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+      RECOVERY_FINAL_STATUS=$RUN_STATUS
+    else
+      RECOVERY_FINAL_STATUS=125
+    fi
+
+    if [ "$RECOVERY_SECOND_STATUS" -ne 97 ]; then
+      echo "FAIL (successor did not stop after publishing its primary manifest)"
+      sed -n '1,20p' "$RECOVERY_SECOND_LOG"
+      ERRORS=$((ERRORS + 1))
+    elif [ "$RECOVERY_SECOND_GAP" != true ]; then
+      echo "FAIL (successor did not leave a recoverable publication gap)"
+      ERRORS=$((ERRORS + 1))
+    elif [ "$RECOVERY_FIRST_STATUS" -eq 0 ] ||
+         ! grep -q 'lock guardian failed to remove the publication transaction marker' \
+             "$RECOVERY_FIRST_LOG"; then
+      echo "FAIL (recovery writer did not abort after losing its guardian)"
+      sed -n '1,20p' "$RECOVERY_FIRST_LOG"
+      ERRORS=$((ERRORS + 1))
+    elif [ "$RECOVERY_FINAL_STATUS" -eq 125 ]; then
+      echo "FAIL (recovery writer removed the successor's transaction marker)"
+      ERRORS=$((ERRORS + 1))
+    elif [ "$RECOVERY_FINAL_STATUS" -eq 124 ]; then
+      echo "FAIL (final recovery waited on a released publication lock)"
+      ERRORS=$((ERRORS + 1))
+    elif ! grep -q 'recovered interrupted legacy hash manifest publication' "$RECOVERY_FINAL_LOG" ||
+         ! cmp -s "$RECOVERY_REPO/scripts/legacy-skill-hashes.txt" \
+                  "$RECOVERY_REPO/plugins/go-workflow/hooks/legacy-skill-hashes.txt" ||
+         [ -e "$RECOVERY_REPO/scripts/.legacy-skill-hashes.transaction" ]; then
+      echo "FAIL (successor publication was not recovered from its preserved marker)"
+      sed -n '1,20p' "$RECOVERY_FINAL_LOG"
+      ERRORS=$((ERRORS + 1))
+    else
+      echo "OK"
+    fi
+  fi
+fi
+
 echo -n "An active collection responds promptly to TERM... "
 ACTIVE_REPO=$(new_fixture cancel-collection)
 ACTIVE_CHILD="$TEST_ROOT/cancel-collection-child"
