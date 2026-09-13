@@ -14,6 +14,14 @@ esac
 
 ERRORS=0
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 run_commit_worktree_tests() (
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
   local fixture primary linked mode before plugin output current_hash pair manifest compat_bin cmd
@@ -73,7 +81,7 @@ run_commit_worktree_tests() (
   }
 
   echo "  Shared-sync gate rejects manifests missing a current skill hash..."
-  current_hash=$(sha256sum "$linked/plugins/go-workflow/skills/e2e-verify/SKILL.md" | awk '{print $1}')
+  current_hash=$(sha256_file "$linked/plugins/go-workflow/skills/e2e-verify/SKILL.md")
   pair="$current_hash e2e-verify"
   for manifest in \
     "$linked/scripts/legacy-skill-hashes.txt" \
