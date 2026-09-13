@@ -193,24 +193,62 @@ acquire_lock() {
                 while (getppid() == $parent) {
                     if (-e $request && !-e $done) {
                         open(my $command, "<", $request) or die "read transaction cleanup request: $!";
-                        my $identity = <$command>;
+                        my @command = <$command>;
                         close($command) or die "close transaction cleanup request: $!";
-                        defined($identity) or die "empty transaction cleanup request\n";
-                        chomp($identity);
-                        my @marker_stat = stat($transaction);
-                        my @identity_stat = stat($identity);
-                        @marker_stat && @identity_stat &&
-                            $marker_stat[0] == $identity_stat[0] &&
-                            $marker_stat[1] == $identity_stat[1]
-                            or die "transaction marker identity changed\n";
-                        unlink($transaction) or die "remove transaction marker: $!";
+                        chomp(@command);
+                        my $operation = shift(@command) // "";
+                        if ($operation eq "remove" && @command == 1) {
+                            my ($identity) = @command;
+                            my @marker_stat = stat($transaction);
+                            my @identity_stat = stat($identity);
+                            @marker_stat && @identity_stat &&
+                                $marker_stat[0] == $identity_stat[0] &&
+                                $marker_stat[1] == $identity_stat[1]
+                                or die "transaction marker identity changed\n";
+                            unlink($transaction) or die "remove transaction marker: $!";
+                        } elsif ($operation eq "publish" && @command == 5) {
+                            my ($staged_transaction, $identity, $staged_manifest,
+                                $manifest, $staged_hook_manifest) = @command;
+                            my @staged_stat = stat($staged_transaction);
+                            my @identity_stat = stat($identity);
+                            @staged_stat && @identity_stat &&
+                                $staged_stat[0] == $identity_stat[0] &&
+                                $staged_stat[1] == $identity_stat[1]
+                                or die "staged transaction identity changed\n";
+                            rename($staged_transaction, $transaction)
+                                or die "publish transaction marker: $!";
+                            rename($staged_manifest, $manifest)
+                                or die "publish primary manifest: $!";
+                            if (($ENV{GOPHER_AI_REGEN_FAILPOINT} // "") eq "after-primary-publish") {
+                                print STDERR "error: injected legacy hash regeneration failure at after-primary-publish\n";
+                                exit 97;
+                            }
+                            rename($staged_hook_manifest, $ARGV[5])
+                                or die "publish hook manifest: $!";
+                            if (my $hold = $ENV{GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH}) {
+                                open(my $hold_ready, ">", "$hold.ready") or die "write mirror hold ready: $!";
+                                close($hold_ready) or die "close mirror hold ready: $!";
+                                until (-e $hold) {
+                                    exit 2 if getppid() != $parent;
+                                    select(undef, undef, undef, 0.05);
+                                }
+                            }
+                            my @marker_stat = stat($transaction);
+                            @marker_stat &&
+                                $marker_stat[0] == $identity_stat[0] &&
+                                $marker_stat[1] == $identity_stat[1]
+                                or die "transaction marker identity changed\n";
+                            unlink($transaction) or die "remove transaction marker: $!";
+                        } else {
+                            die "invalid lock guardian request\n";
+                        }
                         open(my $ack, ">", $done) or die "write transaction cleanup acknowledgment: $!";
                         close($ack) or die "close transaction cleanup acknowledgment: $!";
                     }
                     select(undef, undef, undef, 0.1);
                 }
             ' "$LOCK_FILE" "$lock_ready" "$LOCK_TRANSACTION_REQUEST" \
-                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" 2> "$lock_error" &
+                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" "$HOOK_MANIFEST" 2> "$lock_error" &
             ;;
         python3)
             python3 -c '
@@ -230,16 +268,44 @@ with open(path, "a") as lock:
     while os.getppid() == parent:
         if os.path.exists(request) and not os.path.exists(done):
             with open(request) as command:
-                identity = command.readline().rstrip("\n")
-            marker_stat = os.stat(transaction)
-            identity_stat = os.stat(identity)
-            if (marker_stat.st_dev, marker_stat.st_ino) != (identity_stat.st_dev, identity_stat.st_ino):
-                raise SystemExit("transaction marker identity changed")
-            os.unlink(transaction)
+                command = [line.rstrip("\n") for line in command]
+            operation, *args = command
+            if operation == "remove" and len(args) == 1:
+                identity = args[0]
+                marker_stat = os.stat(transaction)
+                identity_stat = os.stat(identity)
+                if (marker_stat.st_dev, marker_stat.st_ino) != (identity_stat.st_dev, identity_stat.st_ino):
+                    raise SystemExit("transaction marker identity changed")
+                os.unlink(transaction)
+            elif operation == "publish" and len(args) == 5:
+                staged_transaction, identity, staged_manifest, manifest, staged_hook_manifest = args
+                staged_stat = os.stat(staged_transaction)
+                identity_stat = os.stat(identity)
+                if (staged_stat.st_dev, staged_stat.st_ino) != (identity_stat.st_dev, identity_stat.st_ino):
+                    raise SystemExit("staged transaction identity changed")
+                os.replace(staged_transaction, transaction)
+                os.replace(staged_manifest, manifest)
+                if os.environ.get("GOPHER_AI_REGEN_FAILPOINT") == "after-primary-publish":
+                    sys.stderr.write("error: injected legacy hash regeneration failure at after-primary-publish\n")
+                    raise SystemExit(97)
+                os.replace(staged_hook_manifest, sys.argv[6])
+                hold = os.environ.get("GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH")
+                if hold:
+                    open(hold + ".ready", "w").close()
+                    while not os.path.exists(hold):
+                        if os.getppid() != parent:
+                            raise SystemExit(2)
+                        time.sleep(0.05)
+                marker_stat = os.stat(transaction)
+                if (marker_stat.st_dev, marker_stat.st_ino) != (identity_stat.st_dev, identity_stat.st_ino):
+                    raise SystemExit("transaction marker identity changed")
+                os.unlink(transaction)
+            else:
+                raise SystemExit("invalid lock guardian request")
             open(done, "w").close()
         time.sleep(0.1)
             ' "$LOCK_FILE" "$lock_ready" "$LOCK_TRANSACTION_REQUEST" \
-                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" 2> "$lock_error" &
+                "$LOCK_TRANSACTION_DONE" "$TRANSACTION_FILE" "$HOOK_MANIFEST" 2> "$lock_error" &
             ;;
     esac
     LOCK_GUARD_PID=$!
@@ -270,23 +336,31 @@ with open(path, "a") as lock:
     fi
 }
 
-remove_transaction_marker() {
-    local identity="$1"
+run_guardian_command() {
     local request_tmp="$LOCK_TRANSACTION_REQUEST.tmp"
+    local guardian_status=1
 
     rm -f "$LOCK_TRANSACTION_REQUEST" "$LOCK_TRANSACTION_DONE"
-    printf '%s\n' "$identity" > "$request_tmp"
+    printf '%s\n' "$@" > "$request_tmp"
     mv "$request_tmp" "$LOCK_TRANSACTION_REQUEST"
     while [[ ! -e "$LOCK_TRANSACTION_DONE" ]]; do
         if ! lock_guard_is_running; then
-            wait "$LOCK_GUARD_PID" 2>/dev/null || true
-            echo "error: lock guardian failed to remove the publication transaction marker" >&2
+            wait "$LOCK_GUARD_PID" 2>/dev/null && guardian_status=0 || guardian_status=$?
+            echo "error: lock guardian failed during legacy hash publication" >&2
             [[ ! -s "$LOCK_STATE_DIR/error" ]] || sed -n '1,5p' "$LOCK_STATE_DIR/error" >&2
-            return 1
+            return "$guardian_status"
         fi
         sleep 0.05
     done
     rm -f "$LOCK_TRANSACTION_REQUEST" "$LOCK_TRANSACTION_DONE"
+}
+
+remove_transaction_marker() {
+    run_guardian_command remove "$1"
+}
+
+publish_manifests() {
+    run_guardian_command publish "$@"
 }
 
 remove_legacy_lock_dir() {
@@ -534,16 +608,14 @@ STAGED_TRANSACTION=$(/usr/bin/mktemp "$ROOT_DIR/scripts/.legacy-skill-hashes.tra
 printf '%s\n' "$candidate_hash" > "$STAGED_TRANSACTION"
 TRANSACTION_IDENTITY="${STAGED_TRANSACTION}.identity"
 ln "$STAGED_TRANSACTION" "$TRANSACTION_IDENTITY"
-ensure_lock_held
-mv "$STAGED_TRANSACTION" "$TRANSACTION_FILE"
+publish_manifests \
+    "$STAGED_TRANSACTION" \
+    "$TRANSACTION_IDENTITY" \
+    "$STAGED_MANIFEST" \
+    "$MANIFEST" \
+    "$STAGED_HOOK_MANIFEST"
 STAGED_TRANSACTION=""
-
-ensure_lock_held
-mv "$STAGED_MANIFEST" "$MANIFEST"
 STAGED_MANIFEST=""
-inject_failure after-primary-publish
-ensure_lock_held
-mv "$STAGED_HOOK_MANIFEST" "$HOOK_MANIFEST"
 STAGED_HOOK_MANIFEST=""
 
 if [[ "$(hash_file "$MANIFEST")" != "$candidate_hash" ]] ||
@@ -553,16 +625,6 @@ if [[ "$(hash_file "$MANIFEST")" != "$candidate_hash" ]] ||
     exit 1
 fi
 
-# Deterministic synchronization point used only to exercise lock loss after
-# both manifest renames but before transaction cleanup.
-if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH:-}" ]]; then
-    touch "${GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH}.ready"
-    while [[ ! -e "$GOPHER_AI_REGEN_TEST_HOLD_AFTER_MIRROR_PUBLISH" ]]; do
-        sleep 0.05
-    done
-fi
-
-remove_transaction_marker "$TRANSACTION_IDENTITY"
 rm -f "$TRANSACTION_IDENTITY"
 TRANSACTION_IDENTITY=""
 

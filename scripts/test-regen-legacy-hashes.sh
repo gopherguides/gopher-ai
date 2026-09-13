@@ -426,7 +426,7 @@ else
     echo "FAIL (successor did not leave a recoverable publication gap)"
     ERRORS=$((ERRORS + 1))
   elif [ "$MARKER_FIRST_STATUS" -eq 0 ] ||
-       ! grep -q 'lock guardian failed to remove the publication transaction marker' \
+       ! grep -q 'lock guardian failed during legacy hash publication' \
            "$MARKER_FIRST_LOG"; then
     echo "FAIL (first writer did not abort after losing its guardian)"
     sed -n '1,20p' "$MARKER_FIRST_LOG"
@@ -538,7 +538,7 @@ else
       echo "FAIL (successor did not leave a recoverable publication gap)"
       ERRORS=$((ERRORS + 1))
     elif [ "$RECOVERY_FIRST_STATUS" -eq 0 ] ||
-         ! grep -q 'lock guardian failed to remove the publication transaction marker' \
+         ! grep -q 'lock guardian failed during legacy hash publication' \
              "$RECOVERY_FIRST_LOG"; then
       echo "FAIL (recovery writer did not abort after losing its guardian)"
       sed -n '1,20p' "$RECOVERY_FIRST_LOG"
