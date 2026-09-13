@@ -270,6 +270,83 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
+echo -n "A writer aborts if its lock guardian exits... "
+GUARD_REPO=$(new_fixture guardian-exit)
+GUARD_RELEASE="$TEST_ROOT/guardian-exit-release"
+GUARD_READY="$GUARD_RELEASE.ready"
+GUARD_PID_FILE="$TEST_ROOT/guardian-exit.pid"
+GUARD_LOG="$TEST_ROOT/guardian-exit.log"
+GUARD_SUCCESSOR_LOG="$TEST_ROOT/guardian-exit-successor.log"
+cp "$GUARD_REPO/scripts/legacy-skill-hashes.txt" "$GUARD_REPO/guardian-primary.before"
+cp "$GUARD_REPO/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$GUARD_REPO/guardian-mirror.before"
+GOPHER_AI_REGEN_TEST_HOLD_LOCK="$GUARD_RELEASE" \
+GOPHER_AI_REGEN_TEST_LOCK_GUARD_PID_FILE="$GUARD_PID_FILE" \
+  /bin/bash "$GUARD_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$GUARD_LOG" 2>&1 &
+GUARD_WRITER_PID=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $GUARD_WRITER_PID"
+
+GUARD_HELD=false
+for _ in $(seq 1 100); do
+  if [ -e "$GUARD_READY" ] && [ -s "$GUARD_PID_FILE" ]; then
+    GUARD_HELD=true
+    break
+  fi
+  if ! kill -0 "$GUARD_WRITER_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.05
+done
+
+if [ "$GUARD_HELD" != true ]; then
+  echo "FAIL (writer never exposed the guardian test point)"
+  ERRORS=$((ERRORS + 1))
+else
+  read -r GUARD_PID < "$GUARD_PID_FILE"
+  kill -9 "$GUARD_PID" 2>/dev/null || true
+  GUARD_ABORTED=false
+  for _ in $(seq 1 40); do
+    if ! kill -0 "$GUARD_WRITER_PID" 2>/dev/null; then
+      GUARD_ABORTED=true
+      break
+    fi
+    sleep 0.05
+  done
+  GUARD_WRITER_STATUS=0
+  if [ "$GUARD_ABORTED" = true ]; then
+    wait "$GUARD_WRITER_PID" || GUARD_WRITER_STATUS=$?
+    BACKGROUND_PIDS="${BACKGROUND_PIDS/ $GUARD_WRITER_PID/}"
+  fi
+
+  run_with_deadline "$GUARD_SUCCESSOR_LOG" \
+    env GOPHER_AI_REGEN_FAILPOINT=collection \
+    /bin/bash "$GUARD_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
+  if [ "$GUARD_ABORTED" != true ]; then
+    kill "$GUARD_WRITER_PID" 2>/dev/null || true
+    wait "$GUARD_WRITER_PID" 2>/dev/null || true
+    BACKGROUND_PIDS="${BACKGROUND_PIDS/ $GUARD_WRITER_PID/}"
+    echo "FAIL (writer continued after its guardian exited)"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$GUARD_WRITER_STATUS" -eq 0 ] ||
+       ! grep -q 'lost legacy hash publication lock' "$GUARD_LOG"; then
+    echo "FAIL (writer did not report the lost publication lock)"
+    sed -n '1,20p' "$GUARD_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif ! cmp -s "$GUARD_REPO/guardian-primary.before" "$GUARD_REPO/scripts/legacy-skill-hashes.txt" ||
+       ! cmp -s "$GUARD_REPO/guardian-mirror.before" "$GUARD_REPO/plugins/go-workflow/hooks/legacy-skill-hashes.txt"; then
+    echo "FAIL (writer published after losing its lock guardian)"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$RUN_STATUS" -eq 124 ]; then
+    echo "FAIL (successor did not acquire the released guardian lock)"
+    ERRORS=$((ERRORS + 1))
+  elif ! grep -q 'injected legacy hash regeneration failure at collection' "$GUARD_SUCCESSOR_LOG"; then
+    echo "FAIL (successor did not reach collection after guardian exit)"
+    sed -n '1,20p' "$GUARD_SUCCESSOR_LOG"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+fi
+
 echo -n "An active collection responds promptly to TERM... "
 ACTIVE_REPO=$(new_fixture cancel-collection)
 ACTIVE_CHILD="$TEST_ROOT/cancel-collection-child"

@@ -110,6 +110,22 @@ LOCK_GUARD_PID=""
 LOCK_STATE_DIR=""
 COLLECTION_PID=""
 
+lock_guard_is_running() {
+    local job_pid
+
+    while IFS= read -r job_pid; do
+        [[ "$job_pid" != "$LOCK_GUARD_PID" ]] || return 0
+    done < <(jobs -pr)
+    return 1
+}
+
+ensure_lock_held() {
+    if [[ -z "$LOCK_GUARD_PID" ]] || ! lock_guard_is_running; then
+        echo "error: lost legacy hash publication lock" >&2
+        return 1
+    fi
+}
+
 cleanup() {
     status=$?
     trap - EXIT INT TERM HUP
@@ -194,6 +210,9 @@ with open(path, "a") as lock:
             ;;
     esac
     LOCK_GUARD_PID=$!
+    if [[ -n "${GOPHER_AI_REGEN_TEST_LOCK_GUARD_PID_FILE:-}" ]]; then
+        printf '%s\n' "$LOCK_GUARD_PID" > "$GOPHER_AI_REGEN_TEST_LOCK_GUARD_PID_FILE"
+    fi
 
     while [[ ! -e "$lock_ready" ]]; do
         if ! kill -0 "$LOCK_GUARD_PID" 2>/dev/null; then
@@ -207,10 +226,12 @@ with open(path, "a") as lock:
         fi
         sleep 0.1
     done
+    ensure_lock_held
     # Deterministic synchronization point used only by the concurrency test.
     if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_LOCK:-}" ]]; then
         touch "${GOPHER_AI_REGEN_TEST_HOLD_LOCK}.ready"
         while [[ ! -e "$GOPHER_AI_REGEN_TEST_HOLD_LOCK" ]]; do
+            ensure_lock_held
             sleep 0.05
         done
     fi
@@ -443,12 +464,15 @@ fi
 candidate_hash="$(hash_file "$CANDIDATE")"
 STAGED_TRANSACTION=$(/usr/bin/mktemp "$ROOT_DIR/scripts/.legacy-skill-hashes.transaction.XXXXXX")
 printf '%s\n' "$candidate_hash" > "$STAGED_TRANSACTION"
+ensure_lock_held
 mv "$STAGED_TRANSACTION" "$TRANSACTION_FILE"
 STAGED_TRANSACTION=""
 
+ensure_lock_held
 mv "$STAGED_MANIFEST" "$MANIFEST"
 STAGED_MANIFEST=""
 inject_failure after-primary-publish
+ensure_lock_held
 mv "$STAGED_HOOK_MANIFEST" "$HOOK_MANIFEST"
 STAGED_HOOK_MANIFEST=""
 
