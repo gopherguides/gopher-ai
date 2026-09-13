@@ -160,8 +160,7 @@ echo -n "A reused lock-owner PID is recognized as stale... "
 REUSED_PID_REPO=$(new_fixture reused-pid)
 REUSED_PID_LOG="$TEST_ROOT/reused-pid.log"
 mkdir "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock"
-printf '%s\n' "$$" > "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock/pid"
-printf '%s\n' 'owner-token-not-held-by-this-pid' > "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
+printf '%s %s\n' "$$" 'owner-token-not-held-by-this-pid' > "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
 RUN_DEADLINE_ATTEMPTS=400 run_with_deadline "$REUSED_PID_LOG" \
   env GOPHER_AI_REGEN_FAILPOINT=collection \
   /bin/bash "$REUSED_PID_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
@@ -210,7 +209,7 @@ else
   mv "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock" \
      "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock.former"
   mkdir "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock"
-  printf '%s\n' 'successor-token' > "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
+  printf '%s %s\n' '99999999' 'successor-token' > "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
   touch "$REPLACED_LOCK_RELEASE"
   REPLACED_LOCK_STATUS=0
   wait "$REPLACED_LOCK_PID" || REPLACED_LOCK_STATUS=$?
@@ -231,8 +230,88 @@ else
     "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock.former"
 fi
 
+echo -n "Stale recovery revalidates a lock changed before its claim... "
+CLAIM_RACE_REPO=$(new_fixture claim-race)
+CLAIM_RELEASE="$TEST_ROOT/claim-race-release"
+CLAIM_READY="$CLAIM_RELEASE.ready"
+CLAIM_RESTORED="$TEST_ROOT/claim-race-restored"
+CLAIM_LOG="$TEST_ROOT/claim-race.log"
+SUCCESSOR_RELEASE="$TEST_ROOT/claim-race-successor-release"
+SUCCESSOR_READY="$SUCCESSOR_RELEASE.ready"
+SUCCESSOR_LOG="$TEST_ROOT/claim-race-successor.log"
+mkdir "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock"
+printf '%s %s\n' '99999999' 'stale-token' > "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
+GOPHER_AI_REGEN_TEST_BEFORE_STALE_CLAIM="$CLAIM_RELEASE" \
+GOPHER_AI_REGEN_TEST_STALE_CLAIM_RESTORED_FILE="$CLAIM_RESTORED" \
+GOPHER_AI_REGEN_FAILPOINT=collection \
+  /bin/bash "$CLAIM_RACE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$CLAIM_LOG" 2>&1 &
+CLAIM_PID=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $CLAIM_PID"
+
+CLAIM_PAUSED=false
+for _ in $(seq 1 100); do
+  if [ -e "$CLAIM_READY" ]; then
+    CLAIM_PAUSED=true
+    break
+  fi
+  if ! kill -0 "$CLAIM_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.05
+done
+
+if [ "$CLAIM_PAUSED" = true ]; then
+  rm -rf "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock"
+  GOPHER_AI_REGEN_TEST_HOLD_LOCK="$SUCCESSOR_RELEASE" \
+    /bin/bash "$CLAIM_RACE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$SUCCESSOR_LOG" 2>&1 &
+  SUCCESSOR_PID=$!
+  BACKGROUND_PIDS="$BACKGROUND_PIDS $SUCCESSOR_PID"
+  for _ in $(seq 1 100); do
+    [ ! -e "$SUCCESSOR_READY" ] || break
+    sleep 0.05
+  done
+  SUCCESSOR_TOKEN=$(awk '{print $2}' "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock/owner-token" 2>/dev/null || true)
+  touch "$CLAIM_RELEASE"
+  for _ in $(seq 1 100); do
+    [ ! -e "$CLAIM_RESTORED" ] || break
+    sleep 0.05
+  done
+  CURRENT_TOKEN=$(awk '{print $2}' "$CLAIM_RACE_REPO/scripts/.regen-legacy-hashes.lock/owner-token" 2>/dev/null || true)
+  touch "$SUCCESSOR_RELEASE"
+  SUCCESSOR_STATUS=0
+  CLAIM_STATUS=0
+  wait "$SUCCESSOR_PID" || SUCCESSOR_STATUS=$?
+  wait "$CLAIM_PID" || CLAIM_STATUS=$?
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $SUCCESSOR_PID/}"
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $CLAIM_PID/}"
+
+  if [ ! -e "$CLAIM_RESTORED" ]; then
+    echo "FAIL (recoverer did not detect that lock ownership changed)"
+    ERRORS=$((ERRORS + 1))
+  elif [ -z "$SUCCESSOR_TOKEN" ] || [ "$CURRENT_TOKEN" != "$SUCCESSOR_TOKEN" ]; then
+    echo "FAIL (recoverer did not restore the successor's owner token)"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$SUCCESSOR_STATUS" -ne 0 ]; then
+    echo "FAIL (successor writer exited $SUCCESSOR_STATUS)"
+    sed -n '1,20p' "$SUCCESSOR_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$CLAIM_STATUS" -eq 0 ] ||
+       ! grep -q 'injected legacy hash regeneration failure at collection' "$CLAIM_LOG"; then
+    echo "FAIL (recoverer did not safely retry after ownership changed)"
+    sed -n '1,20p' "$CLAIM_LOG"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+else
+  echo "FAIL (recoverer never exposed the pre-claim test point)"
+  ERRORS=$((ERRORS + 1))
+fi
+
 echo -n "Concurrent regenerations serialize on one publication lock... "
 CONCURRENT_REPO=$(new_fixture concurrent)
+CONCURRENT_LINK="$TEST_ROOT/concurrent-link"
+ln -s "$CONCURRENT_REPO" "$CONCURRENT_LINK"
 RELEASE_FILE="$TEST_ROOT/release-first-writer"
 READY_FILE="$RELEASE_FILE.ready"
 WAIT_FILE="$TEST_ROOT/second-writer-waiting"
@@ -260,7 +339,7 @@ if [ "$READY" != true ]; then
   ERRORS=$((ERRORS + 1))
 else
   GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE="$WAIT_FILE" \
-    /bin/bash "$CONCURRENT_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$SECOND_LOG" 2>&1 &
+    /bin/bash "$CONCURRENT_LINK/scripts/regen-legacy-hashes.sh" --base-ref main >"$SECOND_LOG" 2>&1 &
   SECOND_PID=$!
   BACKGROUND_PIDS="$BACKGROUND_PIDS $SECOND_PID"
 

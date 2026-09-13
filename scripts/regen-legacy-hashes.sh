@@ -114,11 +114,12 @@ cleanup() {
     [[ -z "$STAGED_HOOK_MANIFEST" ]] || rm -f "$STAGED_HOOK_MANIFEST"
     [[ -z "$STAGED_TRANSACTION" ]] || rm -f "$STAGED_TRANSACTION"
     if [[ "$LOCK_HELD" == "true" ]]; then
+        current_lock_pid=""
         current_lock_token=""
         if [[ -r "$LOCK_DIR/owner-token" ]]; then
-            read -r current_lock_token < "$LOCK_DIR/owner-token" || current_lock_token=""
+            read -r current_lock_pid current_lock_token < "$LOCK_DIR/owner-token" || current_lock_token=""
         fi
-        if [[ -n "$LOCK_TOKEN" && "$current_lock_token" == "$LOCK_TOKEN" ]]; then
+        if [[ "$current_lock_pid" == "$$" && -n "$LOCK_TOKEN" && "$current_lock_token" == "$LOCK_TOKEN" ]]; then
             rm -rf "$LOCK_DIR"
         fi
         exec 9>&-
@@ -134,14 +135,12 @@ lock_owner_holds_token() {
     local owner_pid="$1"
     local token_file="$2"
     local fd=""
-    local target=""
     local lsof_bin=""
 
-    if [[ -d "/proc/$owner_pid/fd" ]]; then
+    if [[ -d "/proc/$owner_pid/fd" && -r "/proc/$owner_pid/fd" && -x "/proc/$owner_pid/fd" ]]; then
         for fd in "/proc/$owner_pid/fd"/*; do
             [[ -e "$fd" ]] || continue
-            target="$(readlink "$fd" 2>/dev/null || true)"
-            if [[ "$target" == "$token_file" ]]; then
+            if [[ "$fd" -ef "$token_file" ]]; then
                 return 0
             fi
         done
@@ -159,12 +158,69 @@ lock_owner_holds_token() {
     "$lsof_bin" -a -p "$owner_pid" -- "$token_file" >/dev/null 2>&1
 }
 
+reclaim_stale_lock() {
+    local expected_pid="$1"
+    local expected_token="$2"
+    local claim_file="$LOCK_DIR.owner-token-claim.$$.$RANDOM"
+    local claimed_pid=""
+    local claimed_token=""
+    local extra=""
+
+    if ! mv "$LOCK_DIR/owner-token" "$claim_file" 2>/dev/null; then
+        return 1
+    fi
+    read -r claimed_pid claimed_token extra < "$claim_file" || true
+    if [[ "$claimed_pid" != "$expected_pid" || "$claimed_token" != "$expected_token" || -n "$extra" ]]; then
+        if [[ -d "$LOCK_DIR" && ! -e "$LOCK_DIR/owner-token" ]] &&
+           mv "$claim_file" "$LOCK_DIR/owner-token" 2>/dev/null; then
+            if [[ -n "${GOPHER_AI_REGEN_TEST_STALE_CLAIM_RESTORED_FILE:-}" ]]; then
+                touch "$GOPHER_AI_REGEN_TEST_STALE_CLAIM_RESTORED_FILE"
+            fi
+            return 1
+        fi
+        echo "error: publication lock ownership changed during stale recovery" >&2
+        return 2
+    fi
+
+    rm -f "$LOCK_DIR/pid"
+    if rmdir "$LOCK_DIR" 2>/dev/null; then
+        rm -f "$claim_file"
+        return 0
+    fi
+
+    if [[ -d "$LOCK_DIR" && ! -e "$LOCK_DIR/owner-token" ]]; then
+        mv "$claim_file" "$LOCK_DIR/owner-token" 2>/dev/null || true
+    fi
+    echo "error: could not reclaim stale legacy hash publication lock" >&2
+    return 2
+}
+
+reclaim_incomplete_lock() {
+    local claim_file="$LOCK_DIR.pid-claim.$$.$RANDOM"
+    local claimed_pid=false
+
+    [[ ! -e "$LOCK_DIR/owner-token" ]] || return 1
+    if [[ -e "$LOCK_DIR/pid" ]]; then
+        mv "$LOCK_DIR/pid" "$claim_file" 2>/dev/null || return 1
+        claimed_pid=true
+    fi
+    if rmdir "$LOCK_DIR" 2>/dev/null; then
+        [[ "$claimed_pid" == false ]] || rm -f "$claim_file"
+        return 0
+    fi
+    if [[ "$claimed_pid" == true && -d "$LOCK_DIR" && ! -e "$LOCK_DIR/pid" ]]; then
+        mv "$claim_file" "$LOCK_DIR/pid" 2>/dev/null || true
+    fi
+    return 1
+}
+
 acquire_lock() {
     local owner_pid=""
     local owner_token=""
+    local owner_extra=""
     local owner_status=0
+    local reclaim_status=0
     local missing_owner_attempts=0
-    local stale_lock=""
 
     while ! mkdir "$LOCK_DIR" 2>/dev/null; do
         if [[ ! -d "$LOCK_DIR" ]]; then
@@ -178,14 +234,15 @@ acquire_lock() {
 
         owner_pid=""
         owner_token=""
-        if [[ -r "$LOCK_DIR/pid" ]]; then
+        owner_extra=""
+        if [[ -r "$LOCK_DIR/owner-token" ]]; then
+            read -r owner_pid owner_token owner_extra < "$LOCK_DIR/owner-token" || owner_token=""
+        elif [[ -r "$LOCK_DIR/pid" ]]; then
+            # Compatibility with a hard-kill lock from the PID-only format.
             read -r owner_pid < "$LOCK_DIR/pid" || owner_pid=""
         fi
-        if [[ -r "$LOCK_DIR/owner-token" ]]; then
-            read -r owner_token < "$LOCK_DIR/owner-token" || owner_token=""
-        fi
 
-        if [[ "$owner_pid" =~ ^[0-9]+$ && -n "$owner_token" ]]; then
+        if [[ "$owner_pid" =~ ^[0-9]+$ && -n "$owner_token" && -z "$owner_extra" ]]; then
             missing_owner_attempts=0
             owner_status=0
             if kill -0 "$owner_pid" 2>/dev/null; then
@@ -198,10 +255,18 @@ acquire_lock() {
                 owner_status=1
             fi
             if [[ "$owner_status" -eq 1 ]]; then
-                stale_lock="$LOCK_DIR.stale.$$"
-                if mv "$LOCK_DIR" "$stale_lock" 2>/dev/null; then
-                    rm -rf "$stale_lock"
+                if [[ -n "${GOPHER_AI_REGEN_TEST_BEFORE_STALE_CLAIM:-}" ]]; then
+                    touch "${GOPHER_AI_REGEN_TEST_BEFORE_STALE_CLAIM}.ready"
+                    while [[ ! -e "$GOPHER_AI_REGEN_TEST_BEFORE_STALE_CLAIM" ]]; do
+                        sleep 0.05
+                    done
+                fi
+                reclaim_status=0
+                reclaim_stale_lock "$owner_pid" "$owner_token" || reclaim_status=$?
+                if [[ "$reclaim_status" -eq 0 ]]; then
                     continue
+                elif [[ "$reclaim_status" -eq 2 ]]; then
+                    return 1
                 fi
             fi
         else
@@ -211,9 +276,7 @@ acquire_lock() {
             # window, but never trust PID-only ownership indefinitely.
             if { [[ "$owner_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$owner_pid" 2>/dev/null; } ||
                [[ "$missing_owner_attempts" -ge 50 ]]; then
-                stale_lock="$LOCK_DIR.stale.$$"
-                if mv "$LOCK_DIR" "$stale_lock" 2>/dev/null; then
-                    rm -rf "$stale_lock"
+                if reclaim_incomplete_lock; then
                     continue
                 fi
             fi
@@ -221,12 +284,11 @@ acquire_lock() {
         sleep 0.1
     done
 
-    LOCK_HELD=true
     LOCK_TOKEN="$$.$(date +%s).$RANDOM.$RANDOM"
     : > "$LOCK_DIR/owner-token"
     exec 9<> "$LOCK_DIR/owner-token"
-    printf '%s\n' "$LOCK_TOKEN" >&9
-    printf '%s\n' "$$" > "$LOCK_DIR/pid"
+    printf '%s %s\n' "$$" "$LOCK_TOKEN" >&9
+    LOCK_HELD=true
 
     # Deterministic synchronization point used only by the concurrency test.
     if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_LOCK:-}" ]]; then
@@ -297,6 +359,8 @@ remove_abandoned_staging_files() {
     # A SIGKILL can bypass EXIT cleanup, so remove its non-authoritative files
     # after transaction recovery has preserved the published candidate.
     rm -f \
+        "$ROOT_DIR/scripts"/.regen-legacy-hashes.lock.owner-token-claim.* \
+        "$ROOT_DIR/scripts"/.regen-legacy-hashes.lock.pid-claim.* \
         "$ROOT_DIR/scripts"/.legacy-skill-hashes.primary.* \
         "$ROOT_DIR/scripts"/.legacy-skill-hashes.recovery.* \
         "$ROOT_DIR/scripts"/.legacy-skill-hashes.transaction.* \
