@@ -1,11 +1,44 @@
 ---
 name: templui
-description: "templUI component library for Go templ apps. templUI is vanilla JavaScript only - zero JS frameworks (per templui.io). Covers Script() setup, Go variable interpolation into inline JavaScript, HTML-to-templ conversion, HTMX integration, and optional Alpine.js as a separate app-level state layer. Use when user pastes templUI/templ code, builds templUI components, asks 'how do I add an icon/button/dialog/dropdown' in templ, or interpolates Go state into client-side scripts. SKIP generic htmx issues with no templUI/component context."
+description: "Version-aware templUI v1 and shadcn-templ v2 component guidance for Go/templ apps. Use for component installation, UI blocks, Script() setup, HTML-to-templ conversion, or Go-to-JavaScript interpolation. Offers an upgrade when legacy templUI is encountered. Skips generic HTMX issues and full goilerplate application generation."
 ---
 
-# templUI Best Practices
+# templUI and shadcn-templ
 
-Apply templUI patterns when building Go/Templ web applications.
+## Select the generation first
+
+Inspect `go.mod`, component imports, `.templui.json`, `components.json`, and local component
+source before selecting examples or installing dependencies. Copied v1 components may have
+no module dependency; `components.json` alone is not enough without its schema and provenance.
+
+- **Legacy:** `github.com/templui/templui`, `.templui.json`, v1 component source, or original
+  templUI Pro/goilerplate v1–v2 blocks. Ask whether to upgrade before dependent edits.
+- **Current:** `github.com/axadrn/shadcn-templ/v2` or shadcn-templ v2 configuration/source.
+  Read [shadcn-templ.md](shadcn-templ.md); the v1 examples below do not apply automatically.
+- **Mixed/unknown:** inspect the actual APIs and ask which generation is the target.
+
+Whenever a new task encounters legacy usage, ask:
+
+> This uses legacy templUI v1. Would you like to upgrade to shadcn-templ, or keep v1 for this task?
+
+Use the active surface's question UI when available and wait before edits that depend on
+the answer. Read-only inspection may continue. Honor an explicit choice already made in
+this task; ask again when a later task encounters legacy usage. If upgrading, explain the
+component, CSS, and JavaScript changes and agree on the migration scope before editing.
+Do not interpret a UI upgrade as permission to regenerate the app with goilerplate.
+
+For new projects, offer shadcn-templ and verify its current release status (the v2 docs
+currently identify it as beta). If the user chooses v1, use the legacy references below.
+Do not silently introduce v1 through an older scaffold template.
+
+The original 222 premium blocks are frozen on v1 and distinct from the new public
+[shadcn-templ blocks](https://shadcn-templ.com/blocks). If an installed private `templui-pro`
+skill is available, use it for licensed legacy catalog navigation. Otherwise ask for the
+user's authorized local library; do not invent premium source or vendor it into this plugin.
+
+## Legacy v1 guidance
+
+Use the following only after the user chooses to keep v1 for the current task.
 
 ## CRITICAL: templUI Uses Vanilla JavaScript (Zero JS Frameworks)
 
@@ -42,7 +75,7 @@ Go expressions `{ value }` do NOT interpolate inside `<script>` tags. Five patte
 Includes when-to-use table and common mistakes.
 
 ### `templui-cli.md` — templUI CLI Tool
-Install, init, add components, force-update, list available. **Always use CLI to add/update components** — manual copies miss Script() templates.
+Install, init, add components, force-update, list available. Choose the existing project’s module-import or CLI-copy workflow; they use different import paths.
 
 ### `script-templates.md` — Script() Templates (REQUIRED)
 Components with JavaScript need Script() calls in base layout `<head>`. Lists all Script() imports (popover, dropdown, dialog, accordion, tabs, carousel, toast, clipboard), component dependency table, and troubleshooting for non-working components.

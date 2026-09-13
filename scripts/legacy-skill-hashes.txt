@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after finalizing SKILL.md changes.
 #
-# Total entries: 353
+# Total entries: 354
 002bd0c3859a936f2bbfa90a8c967db4d141b99a741e4c23f0d5bec397a2d3fc complete-issue
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0232ae1141f76c0ba40045649179a566080de9fc717c6cb08c3961b827fe3e88 create-pr
@@ -57,6 +57,7 @@
 2656ea1fdf9b4e5d9512f6ca9d72147cd52a8d838d0304d85ff8dbf819cc542f complete-issue
 268241ea357f8423f4025fabe0ef026258e8ee5e1e84512f25293b836e02d1e3 e2e-verify
 271a1c41a77bf182feba2130189c505d9135cd4f64c9aaedb7d61a31f0dd4c48 e2e-verify
+2799789dd35c409b67e53615457d1a3e025955a8109b3961dc91f141291e5e0b templui
 29918284702686ce0fdfca1e311481fe39568c1a6c3cd18676b0e7908a324db3 commit
 2a0307e6609645170075f607ec67789ec28bbae910323e796df7f4a31fc22c83 create-pr
 2a903a9c729ed072861576c51f94926e17148734c577aa7e01501666f0be5cbf remove-worktree

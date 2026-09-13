@@ -12,6 +12,19 @@ literal path.
 Preserve it literally, trim only surrounding whitespace, and never evaluate it as shell code
 or read it from an environment variable.
 
+## UI Generation Selection
+
+Before introducing UI components or changing existing UI code, read
+`<PLUGIN_ROOT>/skills/templui/SKILL.md` and follow its generation check. Whenever legacy
+usage is encountered, ask whether to upgrade or keep v1 for this task and wait before
+dependent edits, unless the user already answered for this task.
+
+For shadcn-templ v2, follow `<PLUGIN_ROOT>/skills/templui/shadcn-templ.md` within the chosen
+application stack. Skip the bundled v1 CSS/head examples and legacy CLI steps below;
+initialize v2 with the actual CSS path and verify the generated assets and component APIs.
+For an approved v1 choice, use the v1 instructions below. A UI choice does not authorize
+switching the app to the separate goilerplate v3 generator.
+
 ## Cross-Platform Interaction
 
 When the workflow needs a user choice, use the active surface's native structured-input
@@ -147,16 +160,16 @@ The admin dashboard includes:
 - Responsive mobile navigation
 - **templUI component library** (requires installation - see below)
 
-**If Admin Dashboard is selected:**
+**If Admin Dashboard is selected and the user chose legacy v1:**
 
-The admin dashboard uses [templUI](https://templui.io), a component library for Templ. After project creation, install the templUI CLI and add the required components:
+The admin dashboard uses [templUI](https://templui.io), a component library for Templ. After project creation, install the v1 CLI, initialize `.templui.json` if absent with `templui init@v1`, and add the required components:
 
 ```bash
 # Install templUI CLI
-go install github.com/templui/templui@latest
+go install github.com/templui/templui/cmd/templui@v1
 
 # Add required components for admin dashboard
-templui add sidebar button card icon
+templui add@v1 sidebar button card icon
 ```
 
 This will create a `components/` directory with the templUI components. The generated `input.css` already includes the source path for this directory.
@@ -313,7 +326,7 @@ this order (dependencies matter). `<db>` is the selected database: `postgres`, `
 | templ/meta.templ | templates/layouts/meta.templ | |
 | templ/base.templ | templates/layouts/base.templ | |
 | templ/home.templ | templates/pages/home.templ | |
-| css/input.css OR css/input-templui.css | static/css/input.css | Use the templUI variant only if the admin dashboard was selected |
+| css/input.css OR css/input-templui.css | static/css/input.css | Use the templUI variant only for an approved v1 admin dashboard; initialize v2 CSS through its CLI |
 | ci/ci.yml | .github/workflows/ci.yml | Keep ONLY the `sqlc-vet` job variant for the selected database; delete the other two commented variants |
 | ci/dependabot.yml | .github/dependabot.yml | |
 
@@ -377,7 +390,7 @@ Dashboard page with:
 
 Admin route handlers.
 
-#### static/css/input.css (templUI variant)
+#### static/css/input.css (legacy templUI v1 variant only)
 
 Use `<PLUGIN_ROOT>/templates/css/input-templui.css` (already listed in the core files
 table). It adds `@source "../../components/**/*.templ"` and the full set of templUI CSS
@@ -387,13 +400,13 @@ syntax (NOT `@variant dark`).
 After creating it, install the templUI CLI and the required components:
 
 ```bash
-go install github.com/templui/templui@latest
-templui add sidebar button card icon
+go install github.com/templui/templui/cmd/templui@v1
+templui add@v1 sidebar button card icon
 ```
 
 Also uncomment `e.Static("/assets", "assets")` in `internal/handler/handler.go`.
 
-#### templates/layouts/base.templ (templUI head changes)
+#### templates/layouts/base.templ (legacy templUI v1 head changes only)
 
 When using templUI components, you MUST include their Script() templates in the `<head>`.
 Read `<PLUGIN_ROOT>/templates/templ/base-templui-head.templ` for the exact imports and

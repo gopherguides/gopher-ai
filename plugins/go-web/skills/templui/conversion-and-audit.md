@@ -1,5 +1,8 @@
 # Converting Sites to Templ/templUI
 
+Legacy v1 only: complete the generation check and upgrade question in `SKILL.md` first.
+For shadcn-templ v2, use `shadcn-templ.md` and the installed component source instead.
+
 When converting HTML/React/Vue to Go/Templ:
 
 ## Conversion Process
@@ -53,7 +56,7 @@ for _, item := range items {
 
 **Audit Checklist:**
 1. **Script() Templates**: Are all required Script() calls in the base layout?
-2. **CLI Installation**: Were components added via `templui add` or manually copied?
+2. **Dependency Installation**: Do imports match the project’s v1 module or CLI-copy workflow?
 3. **Component Consistency**: Same patterns using same components?
 4. **Base Component Usage**: Custom code that could use templUI?
 5. **Dark Mode**: Tailwind dark: variants used?
@@ -66,7 +69,11 @@ for _, item := range items {
 
 ---
 
-## Import Pattern
+## Module Import Pattern
+
+These imports use the v1 module dependency. For CLI-installed copies, use the project module
+and configured component directory instead. Review local edits before any forced reinstall.
+The reinstall commands below apply only to CLI-owned local components.
 
 ```go
 import "github.com/templui/templui/components/button"
@@ -89,16 +96,16 @@ See the templ-interpolation.md reference for full details.
 
 **Component not responding to clicks:**
 1. Check Script() is in layout: `@dropdown.Script()`, `@popover.Script()`
-2. Reinstall: `templui add -f dropdown popover`
+2. Reinstall: `templui --force add@v1 dropdown popover`
 3. Check browser console for JS errors
 
 **Dropdown/Tooltip not positioning correctly:**
 1. Ensure `@popover.Script()` is in layout (uses Floating UI)
-2. Reinstall popover: `templui add -f popover`
+2. Reinstall popover: `templui --force add@v1 popover`
 
 **Dialog/Sheet not opening:**
 1. Add `@dialog.Script()` to layout
-2. Reinstall: `templui add -f dialog`
+2. Reinstall: `templui --force add@v1 dialog`
 
 ---
 

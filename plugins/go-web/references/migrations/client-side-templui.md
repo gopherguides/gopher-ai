@@ -1,4 +1,9 @@
-# Client-Side Interactivity with templUI
+# Client-Side Interactivity with templUI v1
+
+Before using these legacy examples, read `<PLUGIN_ROOT>/skills/templui/SKILL.md` and ask
+whether to upgrade or keep v1 for this task. Honor an answer already given for the task.
+For an upgrade or an existing v2 app, use `<PLUGIN_ROOT>/skills/templui/shadcn-templ.md`
+and its current component docs; do not apply the v1 APIs below.
 
 Loaded on demand by /go-web:convert-to-go-project when the source project uses jQuery, React state, or other client-side JavaScript for UI interactivity (dropdowns, modals, sidebars, tabs).
 
