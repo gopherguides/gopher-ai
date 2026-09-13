@@ -24,7 +24,7 @@ sha256_file() {
 
 run_commit_worktree_tests() (
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
-  local fixture primary linked mode before plugin output current_hash pair manifest compat_bin cmd
+  local fixture primary linked mode before plugin output current_hash pair manifest compat_bin cmd skill_path staged_copy
   fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-commit-worktree.XXXXXX")
   primary="$fixture/primary checkout"
   linked="$fixture/linked checkout"
@@ -68,6 +68,24 @@ run_commit_worktree_tests() (
     done
     /bin/bash "$linked/scripts/check-shared-sync.sh" >/dev/null || return 1
   done
+
+  echo "  Installed hook validates partially staged skill contents..."
+  skill_path="plugins/go-workflow/skills/e2e-verify/SKILL.md"
+  printf '\npartially staged skill content\n' >> "$linked/$skill_path"
+  git -C "$linked" add "$skill_path"
+  staged_copy="$fixture/staged-skill.md"
+  git -C "$linked" show ":$skill_path" > "$staged_copy"
+  current_hash=$(sha256_file "$staged_copy")
+  git -C "$linked" show "HEAD:$skill_path" > "$linked/$skill_path"
+  if output=$(git -C "$linked" commit -qm "partially staged skill" 2>&1); then
+    echo "FAIL (hook accepted a staged skill hash missing from the manifests)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "missing current skill hash: $current_hash e2e-verify" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree "$skill_path"
 
   echo "  Shared-sync gate supports stock macOS shasum..."
   compat_bin="$fixture/shasum-only-bin"

@@ -10,6 +10,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+USE_INDEX=false
+if [ "${1:-}" = "--cached" ]; then
+  USE_INDEX=true
+elif [ "$#" -ne 0 ]; then
+  echo "Usage: $0 [--cached]" >&2
+  exit 2
+fi
+
 SHARED_DIR="$ROOT_DIR/shared"
 PLUGINS_DIR="$ROOT_DIR/plugins"
 
@@ -41,6 +49,14 @@ sha256_file() {
     sha256sum "$1" | awk '{print $1}'
   else
     shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+sha256_index_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    git -C "$ROOT_DIR" show ":$1" | sha256sum | awk '{print $1}'
+  else
+    git -C "$ROOT_DIR" show ":$1" | shasum -a 256 | awk '{print $1}'
   fi
 }
 
@@ -114,23 +130,55 @@ done
 LEGACY_MANIFEST="$ROOT_DIR/scripts/legacy-skill-hashes.txt"
 LEGACY_HOOK_MANIFEST="$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt"
 
-if [ ! -f "$LEGACY_MANIFEST" ] || [ ! -f "$LEGACY_HOOK_MANIFEST" ]; then
+if [ "$USE_INDEX" = true ]; then
+  LEGACY_MANIFEST_CONTENT=$(git -C "$ROOT_DIR" show ':scripts/legacy-skill-hashes.txt') || {
+    echo "ERROR: legacy skill hash manifest is missing from the index"
+    exit 1
+  }
+  LEGACY_HOOK_MANIFEST_CONTENT=$(git -C "$ROOT_DIR" show ':plugins/go-workflow/hooks/legacy-skill-hashes.txt') || {
+    echo "ERROR: legacy hook skill hash manifest is missing from the index"
+    exit 1
+  }
+fi
+
+if [ "$USE_INDEX" = false ] && { [ ! -f "$LEGACY_MANIFEST" ] || [ ! -f "$LEGACY_HOOK_MANIFEST" ]; }; then
   echo "ERROR: legacy skill hash manifest is missing"
   OUT_OF_SYNC=1
-elif ! cmp -s "$LEGACY_MANIFEST" "$LEGACY_HOOK_MANIFEST"; then
+elif [ "$USE_INDEX" = true ] && [ "$LEGACY_MANIFEST_CONTENT" != "$LEGACY_HOOK_MANIFEST_CONTENT" ]; then
+  echo "ERROR: legacy skill hash manifests differ"
+  OUT_OF_SYNC=1
+elif [ "$USE_INDEX" = false ] && ! cmp -s "$LEGACY_MANIFEST" "$LEGACY_HOOK_MANIFEST"; then
   echo "ERROR: legacy skill hash manifests differ"
   OUT_OF_SYNC=1
 else
-  for skill_file in "$PLUGINS_DIR"/*/skills/*/SKILL.md; do
-    [ -f "$skill_file" ] || continue
-    skill_name="$(basename "$(dirname "$skill_file")")"
-    skill_hash="$(sha256_file "$skill_file")"
+  if [ "$USE_INDEX" = true ]; then
+    SKILL_FILES=$(git -C "$ROOT_DIR" ls-files 'plugins/*/skills/*/SKILL.md')
+  else
+    SKILL_FILES=$(printf '%s\n' "$PLUGINS_DIR"/*/skills/*/SKILL.md)
+  fi
+  while IFS= read -r skill_file; do
+    [ -n "$skill_file" ] || continue
+    if [ "$USE_INDEX" = true ]; then
+      skill_name="$(basename "$(dirname "$skill_file")")"
+      skill_hash="$(sha256_index_file "$skill_file")"
+    else
+      [ -f "$skill_file" ] || continue
+      skill_name="$(basename "$(dirname "$skill_file")")"
+      skill_hash="$(sha256_file "$skill_file")"
+    fi
     pair="$skill_hash $skill_name"
-    if ! awk -v pair="$pair" '$0 == pair { found = 1 } END { exit found ? 0 : 1 }' "$LEGACY_MANIFEST"; then
+    if [ "$USE_INDEX" = true ]; then
+      PAIR_PRESENT=$(awk -v pair="$pair" '$0 == pair { found = 1 } END { print found ? "true" : "false" }' <<< "$LEGACY_MANIFEST_CONTENT")
+    elif awk -v pair="$pair" '$0 == pair { found = 1 } END { exit found ? 0 : 1 }' "$LEGACY_MANIFEST"; then
+      PAIR_PRESENT=true
+    else
+      PAIR_PRESENT=false
+    fi
+    if [ "$PAIR_PRESENT" != true ]; then
       echo "ERROR: legacy skill hash manifest missing current skill hash: $pair"
       OUT_OF_SYNC=1
     fi
-  done
+  done <<< "$SKILL_FILES"
 fi
 
 if [ $OUT_OF_SYNC -eq 1 ]; then
