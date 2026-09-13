@@ -16,7 +16,7 @@ ERRORS=0
 
 run_commit_worktree_tests() (
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
-  local fixture primary linked mode before plugin output current_hash pair manifest
+  local fixture primary linked mode before plugin output current_hash pair manifest compat_bin cmd
   fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-commit-worktree.XXXXXX")
   primary="$fixture/primary checkout"
   linked="$fixture/linked checkout"
@@ -60,6 +60,17 @@ run_commit_worktree_tests() (
     done
     /bin/bash "$linked/scripts/check-shared-sync.sh" >/dev/null || return 1
   done
+
+  echo "  Shared-sync gate supports stock macOS shasum..."
+  compat_bin="$fixture/shasum-only-bin"
+  mkdir -p "$compat_bin"
+  for cmd in awk basename cmp diff dirname shasum; do
+    ln -s "$(command -v "$cmd")" "$compat_bin/$cmd"
+  done
+  PATH="$compat_bin" /bin/bash "$linked/scripts/check-shared-sync.sh" >/dev/null || {
+    echo "FAIL (shared-sync errored without sha256sum)"
+    return 1
+  }
 
   echo "  Shared-sync gate rejects manifests missing a current skill hash..."
   current_hash=$(sha256sum "$linked/plugins/go-workflow/skills/e2e-verify/SKILL.md" | awk '{print $1}')

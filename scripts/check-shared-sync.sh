@@ -36,6 +36,14 @@ HOOK_FILES=(
 
 OUT_OF_SYNC=0
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 echo "Checking shared file sync..."
 
 for plugin in "${LOOP_PLUGINS[@]}"; do
@@ -116,7 +124,7 @@ else
   for skill_file in "$PLUGINS_DIR"/*/skills/*/SKILL.md; do
     [ -f "$skill_file" ] || continue
     skill_name="$(basename "$(dirname "$skill_file")")"
-    skill_hash="$(sha256sum "$skill_file" | awk '{print $1}')"
+    skill_hash="$(sha256_file "$skill_file")"
     pair="$skill_hash $skill_name"
     if ! awk -v pair="$pair" '$0 == pair { found = 1 } END { exit found ? 0 : 1 }' "$LEGACY_MANIFEST"; then
       echo "ERROR: legacy skill hash manifest missing current skill hash: $pair"
