@@ -103,9 +103,31 @@ for plugin in "${LOOP_PLUGINS[@]}"; do
   fi
 done
 
+LEGACY_MANIFEST="$ROOT_DIR/scripts/legacy-skill-hashes.txt"
+LEGACY_HOOK_MANIFEST="$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt"
+
+if [ ! -f "$LEGACY_MANIFEST" ] || [ ! -f "$LEGACY_HOOK_MANIFEST" ]; then
+  echo "ERROR: legacy skill hash manifest is missing"
+  OUT_OF_SYNC=1
+elif ! cmp -s "$LEGACY_MANIFEST" "$LEGACY_HOOK_MANIFEST"; then
+  echo "ERROR: legacy skill hash manifests differ"
+  OUT_OF_SYNC=1
+else
+  for skill_file in "$PLUGINS_DIR"/*/skills/*/SKILL.md; do
+    [ -f "$skill_file" ] || continue
+    skill_name="$(basename "$(dirname "$skill_file")")"
+    skill_hash="$(sha256sum "$skill_file" | awk '{print $1}')"
+    pair="$skill_hash $skill_name"
+    if ! awk -v pair="$pair" '$0 == pair { found = 1 } END { exit found ? 0 : 1 }' "$LEGACY_MANIFEST"; then
+      echo "ERROR: legacy skill hash manifest missing current skill hash: $pair"
+      OUT_OF_SYNC=1
+    fi
+  done
+fi
+
 if [ $OUT_OF_SYNC -eq 1 ]; then
   echo ""
-  echo "Files are out of sync! Run: ./scripts/sync-shared.sh"
+  echo "Files are out of sync! Run the applicable sync or legacy hash regeneration script."
   exit 1
 else
   echo "All shared files are in sync."

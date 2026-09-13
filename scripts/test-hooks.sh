@@ -16,13 +16,17 @@ ERRORS=0
 
 run_commit_worktree_tests() (
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
-  local fixture primary linked mode before plugin output
+  local fixture primary linked mode before plugin output current_hash pair manifest
   fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-commit-worktree.XXXXXX")
   primary="$fixture/primary checkout"
   linked="$fixture/linked checkout"
   mkdir -p "$primary"
   git -C "$ROOT_DIR" archive HEAD shared plugins scripts githooks | tar -x -C "$primary"
   cp "$ROOT_DIR/githooks/pre-commit" "$primary/githooks/pre-commit"
+  cp "$ROOT_DIR/scripts/check-shared-sync.sh" "$primary/scripts/check-shared-sync.sh"
+  cp "$ROOT_DIR/scripts/legacy-skill-hashes.txt" "$primary/scripts/legacy-skill-hashes.txt"
+  cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" \
+    "$primary/plugins/go-workflow/hooks/legacy-skill-hashes.txt"
   git -C "$primary" init -qb main
   git -C "$primary" config user.name "Hook Tests"
   git -C "$primary" config user.email hooks@example.com
@@ -56,6 +60,24 @@ run_commit_worktree_tests() (
     done
     /bin/bash "$linked/scripts/check-shared-sync.sh" >/dev/null || return 1
   done
+
+  echo "  Shared-sync gate rejects manifests missing a current skill hash..."
+  current_hash=$(sha256sum "$linked/plugins/go-workflow/skills/e2e-verify/SKILL.md" | awk '{print $1}')
+  pair="$current_hash e2e-verify"
+  for manifest in \
+    "$linked/scripts/legacy-skill-hashes.txt" \
+    "$linked/plugins/go-workflow/hooks/legacy-skill-hashes.txt"; do
+    awk -v pair="$pair" '$0 != pair' "$manifest" > "$manifest.next"
+    mv "$manifest.next" "$manifest"
+  done
+  if output=$(/bin/bash "$linked/scripts/check-shared-sync.sh" 2>&1); then
+    echo "FAIL (shared-sync accepted manifests missing $pair)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "missing current skill hash: $pair" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
 )
 
 if [ "${1:-}" = "--commit-worktree-only" ]; then
