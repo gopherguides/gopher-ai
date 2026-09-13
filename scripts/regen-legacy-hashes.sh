@@ -103,6 +103,7 @@ STAGED_MANIFEST=""
 STAGED_HOOK_MANIFEST=""
 STAGED_TRANSACTION=""
 LOCK_HELD=false
+LOCK_TOKEN=""
 
 cleanup() {
     status=$?
@@ -113,7 +114,14 @@ cleanup() {
     [[ -z "$STAGED_HOOK_MANIFEST" ]] || rm -f "$STAGED_HOOK_MANIFEST"
     [[ -z "$STAGED_TRANSACTION" ]] || rm -f "$STAGED_TRANSACTION"
     if [[ "$LOCK_HELD" == "true" ]]; then
-        rm -rf "$LOCK_DIR"
+        current_lock_token=""
+        if [[ -r "$LOCK_DIR/owner-token" ]]; then
+            read -r current_lock_token < "$LOCK_DIR/owner-token" || current_lock_token=""
+        fi
+        if [[ -n "$LOCK_TOKEN" && "$current_lock_token" == "$LOCK_TOKEN" ]]; then
+            rm -rf "$LOCK_DIR"
+        fi
+        exec 9>&-
     fi
     exit "$status"
 }
@@ -122,14 +130,41 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 trap 'exit 129' HUP
 
+lock_owner_holds_token() {
+    local owner_pid="$1"
+    local token_file="$2"
+    local fd=""
+    local target=""
+    local lsof_bin=""
+
+    if [[ -d "/proc/$owner_pid/fd" ]]; then
+        for fd in "/proc/$owner_pid/fd"/*; do
+            [[ -e "$fd" ]] || continue
+            target="$(readlink "$fd" 2>/dev/null || true)"
+            if [[ "$target" == "$token_file" ]]; then
+                return 0
+            fi
+        done
+        return 1
+    fi
+
+    if [[ -x /usr/sbin/lsof ]]; then
+        lsof_bin=/usr/sbin/lsof
+    elif command -v lsof >/dev/null 2>&1; then
+        lsof_bin="$(command -v lsof)"
+    else
+        return 2
+    fi
+
+    "$lsof_bin" -a -p "$owner_pid" -- "$token_file" >/dev/null 2>&1
+}
+
 acquire_lock() {
     local owner_pid=""
-    local lock_created_at=""
-    local lock_age=0
-    local now=0
+    local owner_token=""
+    local owner_status=0
     local missing_owner_attempts=0
     local stale_lock=""
-    local max_lock_age_seconds=1800
 
     while ! mkdir "$LOCK_DIR" 2>/dev/null; do
         if [[ ! -d "$LOCK_DIR" ]]; then
@@ -142,22 +177,27 @@ acquire_lock() {
         fi
 
         owner_pid=""
-        lock_created_at=""
+        owner_token=""
         if [[ -r "$LOCK_DIR/pid" ]]; then
             read -r owner_pid < "$LOCK_DIR/pid" || owner_pid=""
         fi
-        if [[ -r "$LOCK_DIR/created-at" ]]; then
-            read -r lock_created_at < "$LOCK_DIR/created-at" || lock_created_at=""
+        if [[ -r "$LOCK_DIR/owner-token" ]]; then
+            read -r owner_token < "$LOCK_DIR/owner-token" || owner_token=""
         fi
 
-        if [[ "$owner_pid" =~ ^[0-9]+$ && "$lock_created_at" =~ ^[0-9]+$ ]]; then
+        if [[ "$owner_pid" =~ ^[0-9]+$ && -n "$owner_token" ]]; then
             missing_owner_attempts=0
-            now="$(date +%s)"
-            lock_age=$((now - lock_created_at))
-            # PID reuse cannot make a hard-kill lock permanent. A live PID is
-            # trusted only for a bounded window long enough for a full regen.
-            if ! kill -0 "$owner_pid" 2>/dev/null ||
-               [[ "$lock_age" -lt 0 || "$lock_age" -ge "$max_lock_age_seconds" ]]; then
+            owner_status=0
+            if kill -0 "$owner_pid" 2>/dev/null; then
+                lock_owner_holds_token "$owner_pid" "$LOCK_DIR/owner-token" || owner_status=$?
+                if [[ "$owner_status" -eq 2 ]]; then
+                    echo "error: cannot validate legacy hash publication lock ownership" >&2
+                    return 1
+                fi
+            else
+                owner_status=1
+            fi
+            if [[ "$owner_status" -eq 1 ]]; then
                 stale_lock="$LOCK_DIR.stale.$$"
                 if mv "$LOCK_DIR" "$stale_lock" 2>/dev/null; then
                     rm -rf "$stale_lock"
@@ -166,9 +206,9 @@ acquire_lock() {
             fi
         else
             missing_owner_attempts=$((missing_owner_attempts + 1))
-            # A killed writer can leave the directory before recording its
-            # creation time. Allow a live creator five seconds to finish that
-            # tiny window, but never trust PID-only ownership indefinitely.
+            # A killed writer can leave the directory before opening its owner
+            # token. Allow a live creator five seconds to finish that tiny
+            # window, but never trust PID-only ownership indefinitely.
             if { [[ "$owner_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$owner_pid" 2>/dev/null; } ||
                [[ "$missing_owner_attempts" -ge 50 ]]; then
                 stale_lock="$LOCK_DIR.stale.$$"
@@ -182,8 +222,11 @@ acquire_lock() {
     done
 
     LOCK_HELD=true
+    LOCK_TOKEN="$$.$(date +%s).$RANDOM.$RANDOM"
+    : > "$LOCK_DIR/owner-token"
+    exec 9<> "$LOCK_DIR/owner-token"
+    printf '%s\n' "$LOCK_TOKEN" >&9
     printf '%s\n' "$$" > "$LOCK_DIR/pid"
-    date +%s > "$LOCK_DIR/created-at"
 
     # Deterministic synchronization point used only by the concurrency test.
     if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_LOCK:-}" ]]; then

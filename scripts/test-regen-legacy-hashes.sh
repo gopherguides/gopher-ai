@@ -49,11 +49,12 @@ run_with_deadline() {
   local pid
   local status=0
   local finished=false
+  local attempts="${RUN_DEADLINE_ATTEMPTS:-40}"
 
   "$@" >"$log_file" 2>&1 &
   pid=$!
   BACKGROUND_PIDS="$BACKGROUND_PIDS $pid"
-  for _ in $(seq 1 40); do
+  for _ in $(seq 1 "$attempts"); do
     if ! kill -0 "$pid" 2>/dev/null; then
       finished=true
       break
@@ -160,12 +161,13 @@ REUSED_PID_REPO=$(new_fixture reused-pid)
 REUSED_PID_LOG="$TEST_ROOT/reused-pid.log"
 mkdir "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock"
 printf '%s\n' "$$" > "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock/pid"
-printf '%s\n' '1' > "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock/created-at"
-run_with_deadline "$REUSED_PID_LOG" \
+printf '%s\n' 'owner-token-not-held-by-this-pid' > "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
+RUN_DEADLINE_ATTEMPTS=400 run_with_deadline "$REUSED_PID_LOG" \
   env GOPHER_AI_REGEN_FAILPOINT=collection \
   /bin/bash "$REUSED_PID_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
 if [ "$RUN_STATUS" -eq 124 ]; then
   echo "FAIL (the unrelated live PID was treated as the lock owner)"
+  sed -n '1,20p' "$REUSED_PID_LOG"
   rm -rf "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock"
   ERRORS=$((ERRORS + 1))
 elif ! grep -q 'injected legacy hash regeneration failure at collection' "$REUSED_PID_LOG"; then
@@ -177,6 +179,56 @@ elif [ -e "$REUSED_PID_REPO/scripts/.regen-legacy-hashes.lock" ]; then
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
+fi
+
+echo -n "A former writer cannot remove a successor's lock... "
+REPLACED_LOCK_REPO=$(new_fixture replaced-lock)
+REPLACED_LOCK_RELEASE="$TEST_ROOT/replaced-lock-release"
+REPLACED_LOCK_READY="$REPLACED_LOCK_RELEASE.ready"
+REPLACED_LOCK_LOG="$TEST_ROOT/replaced-lock.log"
+GOPHER_AI_REGEN_TEST_HOLD_LOCK="$REPLACED_LOCK_RELEASE" \
+  /bin/bash "$REPLACED_LOCK_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$REPLACED_LOCK_LOG" 2>&1 &
+REPLACED_LOCK_PID=$!
+BACKGROUND_PIDS="$BACKGROUND_PIDS $REPLACED_LOCK_PID"
+
+REPLACED_LOCK_HELD=false
+for _ in $(seq 1 100); do
+  if [ -e "$REPLACED_LOCK_READY" ]; then
+    REPLACED_LOCK_HELD=true
+    break
+  fi
+  if ! kill -0 "$REPLACED_LOCK_PID" 2>/dev/null; then
+    break
+  fi
+  sleep 0.05
+done
+
+if [ "$REPLACED_LOCK_HELD" != true ]; then
+  echo "FAIL (writer never exposed the held-lock test point)"
+  ERRORS=$((ERRORS + 1))
+else
+  mv "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock" \
+     "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock.former"
+  mkdir "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock"
+  printf '%s\n' 'successor-token' > "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock/owner-token"
+  touch "$REPLACED_LOCK_RELEASE"
+  REPLACED_LOCK_STATUS=0
+  wait "$REPLACED_LOCK_PID" || REPLACED_LOCK_STATUS=$?
+  BACKGROUND_PIDS="${BACKGROUND_PIDS/ $REPLACED_LOCK_PID/}"
+
+  if [ "$REPLACED_LOCK_STATUS" -ne 0 ]; then
+    echo "FAIL (former writer exited $REPLACED_LOCK_STATUS)"
+    sed -n '1,20p' "$REPLACED_LOCK_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ ! -e "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock/owner-token" ]; then
+    echo "FAIL (former writer removed the successor's lock)"
+    ERRORS=$((ERRORS + 1))
+  else
+    echo "OK"
+  fi
+  rm -rf \
+    "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock" \
+    "$REPLACED_LOCK_REPO/scripts/.regen-legacy-hashes.lock.former"
 fi
 
 echo -n "Concurrent regenerations serialize on one publication lock... "
