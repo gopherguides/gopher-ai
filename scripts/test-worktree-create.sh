@@ -136,6 +136,25 @@ test_fresh_branch_uses_remote_main() {
   assert_equal "$BRANCH_NAME" "$(git -C "$worktree" branch --show-current)" "fresh worktree is attached to the issue branch"
 }
 
+test_fresh_worktree_copies_tracked_env_files() {
+  local repo
+  repo=$(create_repo fresh-env-copy)
+  printf 'committed value\n' > "$repo/.envrc"
+  git -C "$repo" add -f .envrc
+  git -C "$repo" commit -qm "add tracked env file"
+  git -C "$repo" push -qu origin main
+  printf 'source value\n' > "$repo/.envrc"
+
+  local output worktree
+  output=$(run_create "$repo" --copy-env)
+  worktree=$(target_path "$repo")
+
+  assert_contains "$output" "Copied .envrc" "fresh worktree reports copied tracked env file"
+  assert_contains "$output" "Copied env files: 1" "fresh worktree reports copied env count"
+  assert_contains "$output" "Skipped existing env files: 0" "fresh worktree reports no skipped env files"
+  assert_equal "source value" "$(tr -d '\n' < "$worktree/.envrc")" "fresh worktree copies source value over tracked env file"
+}
+
 test_matching_worktree_is_reused() {
   local repo
   repo=$(create_repo reuse)
@@ -220,6 +239,7 @@ create_fake_gh
 echo "=== Worktree Create Tests ==="
 test_existing_branch_is_preserved
 test_fresh_branch_uses_remote_main
+test_fresh_worktree_copies_tracked_env_files
 test_matching_worktree_is_reused
 test_checked_out_branch_conflict_is_non_mutating
 test_target_path_conflict_is_non_mutating
