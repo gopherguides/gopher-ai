@@ -97,8 +97,7 @@ you must actively use the worktree path in every tool call.
 | **Glob** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
 | **Grep** | Set `path` parameter to `$WORKTREE_ABS_PATH` |
 
-Self-check before every file operation: "Does this path start with
-`$WORKTREE_ABS_PATH`?" If not, stop and fix it.
+Use absolute paths inside `$WORKTREE_ABS_PATH` for every file operation.
 
 ---
 

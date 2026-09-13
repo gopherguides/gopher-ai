@@ -157,9 +157,9 @@ Every command and skill inherits the session model and effort unless its frontma
 - **Bounded summarization and autofix reporting** (`standup`, `changelog`, `weekly-summary`, `validate-skills`, `lint-fix`, `commit`): `effort: low` only. Keep the session model — a stronger model at low effort usually beats a weaker model at high effort.
 - **Everything else** — diagnosis (`build-fix`), code design (`test-gen`, `bench`), anything that reasons about user intent (`tailwind audit`/`init`), destructive operations (`remove-worktree`, `prune-worktree`), and multi-step workflows (`ship`, `start-issue`, `review-deep`, `e2e-verify`, `migrate`): leave both unset and inherit the session.
 
-Never pin `model:` on a surface that deletes or force-writes. The savings on a rarely-run command are trivial; a wrong delete is not recoverable.
+Never pin `model:` on a surface that can destroy user work — an unmerged branch, an uncommitted diff, a worktree someone is still using. Scripted cleanup of regenerable state is not that: `cancel-loop` removes its own loop state, `clear-cache` and `gopher-ai-refresh` discard caches that rebuild on demand, and `create-worktree` only writes into a directory it just created. Those stay pinned. The distinction is whether a wrong call loses something that cannot be recreated.
 
-Overrides are not free. Switching models mid-session forfeits the prompt cache built for the previous model, so a small command pinned to `haiku` inside a long warm conversation can cost more than it saves. Pin models sparingly, and prefer `effort:` alone where the work is bounded.
+Overrides are not free. Switching models mid-session forfeits the prompt cache built for the previous model, and changing `effort:` can break the cached prefix too, so a small pinned command inside a long warm conversation can cost more than it saves. Pin sparingly, and prefer `effort:` alone where the work is bounded.
 
 Before adding an override, compare inherited settings against the proposed configuration on representative held-out tasks — dirty or unmerged worktrees, failed GitHub lookups, generated-code build failures — and record task success, incorrect mutations, tool calls, and token counts. Script-level checks (`scripts/test-commands.sh`) establish packaging validity, not model quality.
 
