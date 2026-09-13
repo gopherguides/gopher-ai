@@ -1171,6 +1171,10 @@ else
   ERRORS=$((ERRORS + 1))
 fi
 
+if ! /bin/bash "$ROOT_DIR/scripts/test-regen-legacy-hashes.sh"; then
+  ERRORS=$((ERRORS + 1))
+fi
+
 # Regression test for #146 review finding: setting GOPHER_AI_ARCHIVE_URL must
 # bypass the git-clone preference so callers can test PR tarballs / mirrors.
 # This test runs install-codex.sh from a path WITHOUT scripts/build-universal.sh
