@@ -114,7 +114,12 @@ cleanup() {
     status=$?
     trap - EXIT INT TERM HUP
     if [[ -n "$COLLECTION_PID" ]]; then
-        kill "$COLLECTION_PID" 2>/dev/null || true
+        # Monitor mode gives this worker its own process group. Signal the
+        # whole group so a hung git/awk/sort descendant cannot survive its
+        # canceled writer. Fall back to the leader if group signaling races
+        # with startup.
+        kill -TERM -- "-$COLLECTION_PID" 2>/dev/null ||
+            kill "$COLLECTION_PID" 2>/dev/null || true
     fi
     [[ -z "$TMP" ]] || rm -f "$TMP"
     [[ -z "$CANDIDATE" ]] || rm -f "$CANDIDATE"
@@ -325,8 +330,11 @@ TMP=$(/usr/bin/mktemp "$TEMP_BASE/gopher-ai-legacy-hashes.body.XXXXXX")
 collect_hashes() {
     {
     if [[ -n "${GOPHER_AI_REGEN_TEST_COLLECTION_CHILD:-}" ]]; then
+        sleep "${GOPHER_AI_REGEN_TEST_COLLECTION_CHILD_SECONDS:-3}" &
+        test_child_pid=$!
+        printf '%s\n' "$test_child_pid" > "${GOPHER_AI_REGEN_TEST_COLLECTION_CHILD}.pid"
         touch "${GOPHER_AI_REGEN_TEST_COLLECTION_CHILD}.ready"
-        sleep 3
+        wait "$test_child_pid"
     fi
     git rev-list --objects "$BASE_REF" 2>/dev/null \
         | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
@@ -347,11 +355,13 @@ collect_hashes() {
     } | sort -u >"$TMP"
 }
 
-# Waiting explicitly for a background worker lets Bash run the signal traps
-# immediately instead of deferring them behind a foreground collection
-# pipeline. Cleanup terminates the worker and releases the guardian-held lock.
+# Monitor mode gives the background worker and all of its pipeline descendants
+# a dedicated process group. Waiting explicitly lets Bash run signal traps
+# immediately; cleanup terminates that group and releases the guardian lock.
+set -m
 collect_hashes &
 COLLECTION_PID=$!
+set +m
 wait "$COLLECTION_PID"
 COLLECTION_PID=""
 

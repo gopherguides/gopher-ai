@@ -274,9 +274,11 @@ echo -n "An active collection responds promptly to TERM... "
 ACTIVE_REPO=$(new_fixture cancel-collection)
 ACTIVE_CHILD="$TEST_ROOT/cancel-collection-child"
 ACTIVE_READY="$ACTIVE_CHILD.ready"
+ACTIVE_CHILD_PID_FILE="$ACTIVE_CHILD.pid"
 ACTIVE_LOG="$TEST_ROOT/cancel-collection.log"
 ACTIVE_SUCCESSOR_LOG="$TEST_ROOT/cancel-collection-successor.log"
 GOPHER_AI_REGEN_TEST_COLLECTION_CHILD="$ACTIVE_CHILD" \
+GOPHER_AI_REGEN_TEST_COLLECTION_CHILD_SECONDS=30 \
   /bin/bash "$ACTIVE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$ACTIVE_LOG" 2>&1 &
 ACTIVE_PID=$!
 BACKGROUND_PIDS="$BACKGROUND_PIDS $ACTIVE_PID"
@@ -297,6 +299,7 @@ if [ "$ACTIVE_COLLECTION_READY" != true ]; then
   echo "FAIL (writer never entered the active collection test point)"
   ERRORS=$((ERRORS + 1))
 else
+  read -r ACTIVE_CHILD_PID < "$ACTIVE_CHILD_PID_FILE"
   kill -TERM "$ACTIVE_PID" 2>/dev/null || true
   ACTIVE_CANCELLED=false
   for _ in $(seq 1 40); do
@@ -312,6 +315,15 @@ else
     BACKGROUND_PIDS="${BACKGROUND_PIDS/ $ACTIVE_PID/}"
   fi
 
+  ACTIVE_CHILD_STOPPED=false
+  for _ in $(seq 1 40); do
+    if ! kill -0 "$ACTIVE_CHILD_PID" 2>/dev/null; then
+      ACTIVE_CHILD_STOPPED=true
+      break
+    fi
+    sleep 0.05
+  done
+
   run_with_deadline "$ACTIVE_SUCCESSOR_LOG" \
     env GOPHER_AI_REGEN_FAILPOINT=collection \
     /bin/bash "$ACTIVE_REPO/scripts/regen-legacy-hashes.sh" --base-ref main
@@ -324,6 +336,9 @@ else
   elif [ "$ACTIVE_STATUS" -ne 143 ]; then
     echo "FAIL (writer exited $ACTIVE_STATUS instead of 143)"
     sed -n '1,20p' "$ACTIVE_LOG"
+    ERRORS=$((ERRORS + 1))
+  elif [ "$ACTIVE_CHILD_STOPPED" != true ]; then
+    echo "FAIL (collection child survived its canceled process group)"
     ERRORS=$((ERRORS + 1))
   elif [ "$RUN_STATUS" -eq 124 ]; then
     echo "FAIL (successor waited on the canceled collection's lock)"
