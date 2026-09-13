@@ -22,6 +22,8 @@ MANIFEST="$ROOT_DIR/scripts/legacy-skill-hashes.txt"
 # cache directory without the repo's scripts/. Both files are the source of
 # truth, kept identical by this regen.
 HOOK_MANIFEST="$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt"
+LOCK_DIR="$ROOT_DIR/scripts/.regen-legacy-hashes.lock"
+TRANSACTION_FILE="$ROOT_DIR/scripts/.legacy-skill-hashes.transaction"
 
 CHECK_ONLY=false
 BASE_REF=""
@@ -93,14 +95,174 @@ if ! git rev-parse --verify --quiet "${BASE_REF}^{commit}" >/dev/null; then
     exit 1
 fi
 
+TEMP_BASE="${TMPDIR:-${TMP:-${TEMP:-/tmp}}}"
+TEMP_BASE="${TEMP_BASE%/}"
+TMP=""
+CANDIDATE=""
+STAGED_MANIFEST=""
+STAGED_HOOK_MANIFEST=""
+STAGED_TRANSACTION=""
+LOCK_HELD=false
+
+cleanup() {
+    status=$?
+    trap - EXIT INT TERM HUP
+    [[ -z "$TMP" ]] || rm -f "$TMP"
+    [[ -z "$CANDIDATE" ]] || rm -f "$CANDIDATE"
+    [[ -z "$STAGED_MANIFEST" ]] || rm -f "$STAGED_MANIFEST"
+    [[ -z "$STAGED_HOOK_MANIFEST" ]] || rm -f "$STAGED_HOOK_MANIFEST"
+    [[ -z "$STAGED_TRANSACTION" ]] || rm -f "$STAGED_TRANSACTION"
+    if [[ "$LOCK_HELD" == "true" ]]; then
+        rm -rf "$LOCK_DIR"
+    fi
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+acquire_lock() {
+    local owner_pid=""
+    local missing_owner_attempts=0
+    local stale_lock=""
+
+    while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+        if [[ -n "${GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE:-}" ]]; then
+            touch "$GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE"
+        fi
+
+        owner_pid=""
+        if [[ -r "$LOCK_DIR/pid" ]]; then
+            read -r owner_pid < "$LOCK_DIR/pid" || owner_pid=""
+        fi
+        if [[ "$owner_pid" =~ ^[0-9]+$ ]]; then
+            missing_owner_attempts=0
+            if ! kill -0 "$owner_pid" 2>/dev/null; then
+                stale_lock="$LOCK_DIR.stale.$$"
+                if mv "$LOCK_DIR" "$stale_lock" 2>/dev/null; then
+                    rm -rf "$stale_lock"
+                    continue
+                fi
+            fi
+        else
+            missing_owner_attempts=$((missing_owner_attempts + 1))
+            # A killed writer can leave the directory before recording its PID.
+            # Allow a live creator five seconds to finish that tiny window.
+            if [[ "$missing_owner_attempts" -ge 50 ]]; then
+                stale_lock="$LOCK_DIR.stale.$$"
+                if mv "$LOCK_DIR" "$stale_lock" 2>/dev/null; then
+                    rm -rf "$stale_lock"
+                    continue
+                fi
+            fi
+        fi
+        sleep 0.1
+    done
+
+    LOCK_HELD=true
+    printf '%s\n' "$$" > "$LOCK_DIR/pid"
+
+    # Deterministic synchronization point used only by the concurrency test.
+    if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_LOCK:-}" ]]; then
+        touch "${GOPHER_AI_REGEN_TEST_HOLD_LOCK}.ready"
+        while [[ ! -e "$GOPHER_AI_REGEN_TEST_HOLD_LOCK" ]]; do
+            sleep 0.05
+        done
+    fi
+}
+
+hash_file() {
+    sha256sum "$1" | awk '{print $1}'
+}
+
+stage_recovery_copy() {
+    local source="$1"
+    local destination="$2"
+    local expected_hash="$3"
+    local staged
+
+    staged=$(/usr/bin/mktemp "$(dirname "$destination")/.legacy-skill-hashes.recovery.XXXXXX")
+    cp "$source" "$staged"
+    chmod 0644 "$staged"
+    if [[ "$(hash_file "$staged")" != "$expected_hash" ]]; then
+        rm -f "$staged"
+        echo "error: recovered manifest failed transaction hash validation" >&2
+        return 1
+    fi
+    mv "$staged" "$destination"
+}
+
+recover_interrupted_publication() {
+    local expected_hash=""
+    local extra=""
+    local manifest_hash=""
+    local hook_hash=""
+
+    [[ -f "$TRANSACTION_FILE" ]] || return 0
+    if ! read -r expected_hash extra < "$TRANSACTION_FILE" ||
+       [[ ! "$expected_hash" =~ ^[0-9a-f]{64}$ ]] || [[ -n "$extra" ]]; then
+        echo "error: invalid legacy hash publication transaction marker: $TRANSACTION_FILE" >&2
+        return 1
+    fi
+
+    [[ ! -f "$MANIFEST" ]] || manifest_hash="$(hash_file "$MANIFEST")"
+    [[ ! -f "$HOOK_MANIFEST" ]] || hook_hash="$(hash_file "$HOOK_MANIFEST")"
+
+    if [[ "$manifest_hash" == "$expected_hash" && "$hook_hash" == "$expected_hash" ]]; then
+        : # Both renames landed; only marker cleanup was interrupted.
+    elif [[ "$manifest_hash" == "$expected_hash" ]]; then
+        stage_recovery_copy "$MANIFEST" "$HOOK_MANIFEST" "$expected_hash"
+    elif [[ "$hook_hash" == "$expected_hash" ]]; then
+        stage_recovery_copy "$HOOK_MANIFEST" "$MANIFEST" "$expected_hash"
+    elif [[ -f "$MANIFEST" && -f "$HOOK_MANIFEST" ]] && cmp -s "$MANIFEST" "$HOOK_MANIFEST"; then
+        : # The marker landed but publication had not started.
+    else
+        echo "error: interrupted legacy hash publication cannot be recovered automatically" >&2
+        echo "error: neither manifest matches transaction digest $expected_hash" >&2
+        return 1
+    fi
+
+    rm -f "$TRANSACTION_FILE"
+    echo "recovered interrupted legacy hash manifest publication" >&2
+}
+
+remove_abandoned_staging_files() {
+    # The lock proves no live writer owns these same-checkout staging paths.
+    # A SIGKILL can bypass EXIT cleanup, so remove its non-authoritative files
+    # after transaction recovery has preserved the published candidate.
+    rm -f \
+        "$ROOT_DIR/scripts"/.legacy-skill-hashes.primary.* \
+        "$ROOT_DIR/scripts"/.legacy-skill-hashes.recovery.* \
+        "$ROOT_DIR/scripts"/.legacy-skill-hashes.transaction.* \
+        "$(dirname "$HOOK_MANIFEST")"/.legacy-skill-hashes.mirror.* \
+        "$(dirname "$HOOK_MANIFEST")"/.legacy-skill-hashes.recovery.*
+}
+
+inject_failure() {
+    local point="$1"
+    if [[ "${GOPHER_AI_REGEN_FAILPOINT:-}" == "$point" ]]; then
+        echo "error: injected legacy hash regeneration failure at $point" >&2
+        return 97
+    fi
+}
+
+acquire_lock
+
+if [[ "$CHECK_ONLY" == "true" && -f "$TRANSACTION_FILE" ]]; then
+    echo "error: interrupted legacy hash publication requires a normal regeneration run" >&2
+    exit 1
+fi
+recover_interrupted_publication
+remove_abandoned_staging_files
+
 # Collect every blob OID that has ever existed in this branch history at a path
 # matching plugins/<plugin>/skills/<skill>/SKILL.md, then emit
 # <sha256> <skill_name> pairs. The skill name is necessary to preserve
 # per-skill ownership during manifest-based cleanup — a hash that originated
 # from skill A must not be accepted as proof of ownership for a candidate in
 # directory B.
-TMP="$(mktemp)"
-trap 'rm -f "$TMP"' EXIT
+TMP=$(/usr/bin/mktemp "$TEMP_BASE/gopher-ai-legacy-hashes.body.XXXXXX")
 
 {
     git rev-list --objects "$BASE_REF" 2>/dev/null \
@@ -110,6 +272,8 @@ trap 'rm -f "$TMP"' EXIT
             hash="$(git cat-file blob "$blob" 2>/dev/null | sha256sum | awk '{print $1}')"
             [[ -n "$hash" ]] && echo "$hash $skill_name"
         done
+
+    inject_failure collection
 
     for skill_file in "$ROOT_DIR"/plugins/*/skills/*/SKILL.md; do
         [[ -f "$skill_file" ]] || continue
@@ -151,24 +315,68 @@ if [[ "$CHECK_ONLY" == "true" ]]; then
     exit 0
 fi
 
-cat > "$MANIFEST" <<EOF
-# legacy-skill-hashes.txt — manifest of every gopher-ai SKILL.md blob version
-# this repo has ever shipped. Each non-comment line is "<sha256> <skill_name>".
-# Regenerated by scripts/regen-legacy-hashes.sh.
-# Used by scripts/install-codex.sh --cleanup to safely identify legacy gopher-ai
-# installs in ~/.codex/skills/ when running without git history (curl one-liner).
-# Both fields must match for cleanup to consider a candidate gopher-ai-owned —
-# this prevents accepting a hash from skill A as proof of ownership for skill B.
-# DO NOT EDIT BY HAND — re-run the regen script after finalizing SKILL.md changes.
-#
-# Total entries: $count
-EOF
-cat "$TMP" >> "$MANIFEST"
-
-# Mirror to the plugin so the SessionStart hook can read it without depending
-# on the repo's scripts/ directory.
 mkdir -p "$(dirname "$HOOK_MANIFEST")"
-cp "$MANIFEST" "$HOOK_MANIFEST"
+CANDIDATE=$(/usr/bin/mktemp "$TEMP_BASE/gopher-ai-legacy-hashes.manifest.XXXXXX")
+{
+    printf '%s\n' \
+        '# legacy-skill-hashes.txt — manifest of every gopher-ai SKILL.md blob version' \
+        '# this repo has ever shipped. Each non-comment line is "<sha256> <skill_name>".' \
+        '# Regenerated by scripts/regen-legacy-hashes.sh.' \
+        '# Used by scripts/install-codex.sh --cleanup to safely identify legacy gopher-ai' \
+        '# installs in ~/.codex/skills/ when running without git history (curl one-liner).' \
+        '# Both fields must match for cleanup to consider a candidate gopher-ai-owned —' \
+        '# this prevents accepting a hash from skill A as proof of ownership for skill B.' \
+        '# DO NOT EDIT BY HAND — re-run the regen script after finalizing SKILL.md changes.' \
+        '#'
+    printf '# Total entries: %s\n' "$count"
+    cat "$TMP"
+} > "$CANDIDATE"
+
+# Validate the entire candidate before staging anything beside a destination.
+if ! awk '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    NF != 2 || $1 !~ /^[0-9a-f]+$/ || length($1) != 64 || $2 ~ /[[:space:]]/ { exit 1 }
+' "$CANDIDATE"; then
+    echo "error: generated legacy hash manifest has an invalid entry" >&2
+    exit 1
+fi
+candidate_count="$(awk '!/^[[:space:]]*#/ && !/^[[:space:]]*$/ { count++ } END { print count + 0 }' "$CANDIDATE")"
+if [[ "$candidate_count" != "$count" ]]; then
+    echo "error: generated legacy hash manifest count mismatch ($candidate_count != $count)" >&2
+    exit 1
+fi
+
+STAGED_MANIFEST=$(/usr/bin/mktemp "$ROOT_DIR/scripts/.legacy-skill-hashes.primary.XXXXXX")
+STAGED_HOOK_MANIFEST=$(/usr/bin/mktemp "$(dirname "$HOOK_MANIFEST")/.legacy-skill-hashes.mirror.XXXXXX")
+cp "$CANDIDATE" "$STAGED_MANIFEST"
+cp "$CANDIDATE" "$STAGED_HOOK_MANIFEST"
+chmod 0644 "$STAGED_MANIFEST" "$STAGED_HOOK_MANIFEST"
+if ! cmp -s "$CANDIDATE" "$STAGED_MANIFEST" ||
+   ! cmp -s "$CANDIDATE" "$STAGED_HOOK_MANIFEST"; then
+    echo "error: staged legacy hash manifests differ from the validated candidate" >&2
+    exit 1
+fi
+
+candidate_hash="$(hash_file "$CANDIDATE")"
+STAGED_TRANSACTION=$(/usr/bin/mktemp "$ROOT_DIR/scripts/.legacy-skill-hashes.transaction.XXXXXX")
+printf '%s\n' "$candidate_hash" > "$STAGED_TRANSACTION"
+mv "$STAGED_TRANSACTION" "$TRANSACTION_FILE"
+STAGED_TRANSACTION=""
+
+mv "$STAGED_MANIFEST" "$MANIFEST"
+STAGED_MANIFEST=""
+inject_failure after-primary-publish
+mv "$STAGED_HOOK_MANIFEST" "$HOOK_MANIFEST"
+STAGED_HOOK_MANIFEST=""
+
+if [[ "$(hash_file "$MANIFEST")" != "$candidate_hash" ]] ||
+   [[ "$(hash_file "$HOOK_MANIFEST")" != "$candidate_hash" ]] ||
+   ! cmp -s "$MANIFEST" "$HOOK_MANIFEST"; then
+    echo "error: legacy hash manifest publication did not produce identical mirrors" >&2
+    exit 1
+fi
+rm -f "$TRANSACTION_FILE"
 
 echo "regenerated: $MANIFEST ($count unique <hash skill_name> pairs from $BASE_REF plus current skills)"
 echo "mirrored to: $HOOK_MANIFEST"
