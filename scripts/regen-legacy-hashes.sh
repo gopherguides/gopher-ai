@@ -106,7 +106,8 @@ CANDIDATE=""
 STAGED_MANIFEST=""
 STAGED_HOOK_MANIFEST=""
 STAGED_TRANSACTION=""
-LOCK_HELD=false
+LOCK_GUARD_PID=""
+LOCK_STATE_DIR=""
 
 cleanup() {
     status=$?
@@ -116,9 +117,11 @@ cleanup() {
     [[ -z "$STAGED_MANIFEST" ]] || rm -f "$STAGED_MANIFEST"
     [[ -z "$STAGED_HOOK_MANIFEST" ]] || rm -f "$STAGED_HOOK_MANIFEST"
     [[ -z "$STAGED_TRANSACTION" ]] || rm -f "$STAGED_TRANSACTION"
-    if [[ "$LOCK_HELD" == "true" ]]; then
-        exec 9>&-
+    if [[ -n "$LOCK_GUARD_PID" ]]; then
+        kill "$LOCK_GUARD_PID" 2>/dev/null || true
+        wait "$LOCK_GUARD_PID" 2>/dev/null || true
     fi
+    [[ -z "$LOCK_STATE_DIR" ]] || rm -rf "$LOCK_STATE_DIR"
     exit "$status"
 }
 trap cleanup EXIT
@@ -128,41 +131,66 @@ trap 'exit 129' HUP
 
 acquire_lock() {
     local backend=""
-    local lock_status=0
+    local lock_ready=""
+    local lock_error=""
 
-    exec 9>> "$LOCK_FILE"
-    if command -v flock >/dev/null 2>&1; then
-        backend=flock
-    elif command -v perl >/dev/null 2>&1; then
+    LOCK_STATE_DIR=$(/usr/bin/mktemp -d "$TEMP_BASE/gopher-ai-legacy-lock.XXXXXX")
+    lock_ready="$LOCK_STATE_DIR/ready"
+    lock_error="$LOCK_STATE_DIR/error"
+
+    if command -v perl >/dev/null 2>&1; then
         backend=perl
     elif command -v python3 >/dev/null 2>&1; then
         backend=python3
     else
-        echo "error: publication locking requires flock, perl, or python3" >&2
+        echo "error: publication locking requires perl or python3" >&2
         return 1
     fi
 
-    while true; do
-        lock_status=0
-        case "$backend" in
-            flock)
-                flock -n 9 || lock_status=$?
-                ;;
-            perl)
-                perl -MFcntl=:flock -e 'exit(flock(STDOUT, LOCK_EX | LOCK_NB) ? 0 : 1)' >&9 || lock_status=$?
-                ;;
-            python3)
-                python3 -c 'import fcntl, sys
-try:
-    fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
-except BlockingIOError:
-    sys.exit(1)' || lock_status=$?
-                ;;
-        esac
-        if [[ "$lock_status" -eq 0 ]]; then
+    case "$backend" in
+        perl)
+            perl -MFcntl=:flock -e '
+                my ($path, $ready) = @ARGV;
+                open(my $lock, ">>", $path) or die "open lock: $!";
+                my $parent = getppid();
+                until (flock($lock, LOCK_EX | LOCK_NB)) {
+                    exit 2 if getppid() != $parent;
+                    select(undef, undef, undef, 0.1);
+                }
+                open(my $signal, ">", $ready) or die "write ready: $!";
+                close($signal) or die "close ready: $!";
+                while (getppid() == $parent) {
+                    select(undef, undef, undef, 0.1);
+                }
+            ' "$LOCK_FILE" "$lock_ready" 2> "$lock_error" &
+            ;;
+        python3)
+            python3 -c '
+import fcntl, os, sys, time
+path, ready = sys.argv[1:]
+parent = os.getppid()
+with open(path, "a") as lock:
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             break
-        elif [[ "$lock_status" -ne 1 ]]; then
+        except BlockingIOError:
+            if os.getppid() != parent:
+                raise SystemExit(2)
+            time.sleep(0.1)
+    open(ready, "w").close()
+    while os.getppid() == parent:
+        time.sleep(0.1)
+            ' "$LOCK_FILE" "$lock_ready" 2> "$lock_error" &
+            ;;
+    esac
+    LOCK_GUARD_PID=$!
+
+    while [[ ! -e "$lock_ready" ]]; do
+        if ! kill -0 "$LOCK_GUARD_PID" 2>/dev/null; then
+            wait "$LOCK_GUARD_PID" 2>/dev/null || true
             echo "error: failed to acquire legacy hash publication lock" >&2
+            [[ ! -s "$lock_error" ]] || sed -n '1,5p' "$lock_error" >&2
             return 1
         fi
         if [[ -n "${GOPHER_AI_REGEN_TEST_LOCK_WAIT_FILE:-}" ]]; then
@@ -170,8 +198,6 @@ except BlockingIOError:
         fi
         sleep 0.1
     done
-    LOCK_HELD=true
-
     # Deterministic synchronization point used only by the concurrency test.
     if [[ -n "${GOPHER_AI_REGEN_TEST_HOLD_LOCK:-}" ]]; then
         touch "${GOPHER_AI_REGEN_TEST_HOLD_LOCK}.ready"
@@ -293,6 +319,10 @@ fi
 TMP=$(/usr/bin/mktemp "$TEMP_BASE/gopher-ai-legacy-hashes.body.XXXXXX")
 
 {
+    if [[ -n "${GOPHER_AI_REGEN_TEST_COLLECTION_CHILD:-}" ]]; then
+        touch "${GOPHER_AI_REGEN_TEST_COLLECTION_CHILD}.ready"
+        sleep 3
+    fi
     git rev-list --objects "$BASE_REF" 2>/dev/null \
         | awk '$2 ~ "^plugins/[^/]+/skills/[^/]+/SKILL[.]md$" {print $1, $2}' \
         | while read -r blob path; do

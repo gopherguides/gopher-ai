@@ -158,11 +158,11 @@ fi
 
 echo -n "A hard-killed writer releases the publication lock... "
 HARD_KILL_REPO=$(new_fixture hard-kill)
-HARD_KILL_RELEASE="$TEST_ROOT/hard-kill-release"
-HARD_KILL_READY="$HARD_KILL_RELEASE.ready"
+HARD_KILL_CHILD="$TEST_ROOT/hard-kill-collection-child"
+HARD_KILL_READY="$HARD_KILL_CHILD.ready"
 HARD_KILL_LOG="$TEST_ROOT/hard-kill.log"
 HARD_KILL_RECOVERY_LOG="$TEST_ROOT/hard-kill-recovery.log"
-GOPHER_AI_REGEN_TEST_HOLD_LOCK="$HARD_KILL_RELEASE" \
+GOPHER_AI_REGEN_TEST_COLLECTION_CHILD="$HARD_KILL_CHILD" \
   /bin/bash "$HARD_KILL_REPO/scripts/regen-legacy-hashes.sh" --base-ref main >"$HARD_KILL_LOG" 2>&1 &
 HARD_KILL_PID=$!
 BACKGROUND_PIDS="$BACKGROUND_PIDS $HARD_KILL_PID"
