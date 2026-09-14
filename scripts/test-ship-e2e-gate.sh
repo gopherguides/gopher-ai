@@ -423,6 +423,75 @@ rm -rf "$MERGE_FIXTURE_WORKTREE"
 require_text "$STATE_FIELDS" "blocked" \
   "ship state fields must document blocked E2E result"
 
+# Review policy is prompt-driven; guard both backend routing and fix dispatch.
+PREREQUISITES="$ROOT_DIR/plugins/go-workflow/lib/ship/prerequisites.md"
+REVIEW_DEEP_FIX="$ROOT_DIR/plugins/go-workflow/skills/review-deep/fix-and-verify.md"
+reject_text "$PREREQUISITES" 'native Fable delegation|agent-based review|USE_AGENT_REVIEW=true' \
+  "ship must not select a sub-agent as an automatic fallback"
+reject_text "$LOCAL_REVIEW" 'USE_AGENT_REVIEW=true|driver-selected as an unpinned fallback|prefer.*--llm fable' \
+  "ship must not route automatic reviews to delegated backends"
+require_text "$PREREQUISITES" 'review-backend-unavailable' \
+  "ship must explain unavailable review backends"
+require_text "$PREREQUISITES" 'set_loop_field.*"review_result" "skipped"' \
+  "ship must persist unavailable-backend skips"
+require_text "$LOCAL_REVIEW" 'skip Steps 5a through 6' \
+  "skipped reviews must bypass planning, execution, and finding parsing"
+require_text "$LOCAL_REVIEW" 'REVIEW_RESULT=skipped.*Phase 2' \
+  "skipped reviews must not loop back into review"
+require_text "$LOCAL_REVIEW" 'REVIEW_RESULT != skipped' \
+  "skipped reviews must still run final coverage verification"
+require_text "$LOCAL_REVIEW" 'explicitly selected.*--llm fable' \
+  "Fable delegation must require explicit opt-in"
+reject_text "$REVIEW_DEEP_FIX" 'Parallel Fix Dispatch|Dispatch Subagents|run_in_background|delegate a fresh-context' \
+  "review-deep must fix findings in the current session"
+require_text "$REVIEW_DEEP_FIX" 'current context' \
+  "review-deep must document same-context processing"
+
+reject_text "$ROOT_DIR/plugins/go-workflow/skills/review-deep/SKILL.md" 'Use fresh-context parallel fix dispatch' \
+  "review-deep router must not restore parallel fix dispatch"
+require_text "$ROOT_DIR/plugins/go-workflow/skills/review-deep/static-analysis.md" 'REVIEW_CONCURRENCY=no' \
+  "review-deep planner must keep review units in the current session"
+
+# Execute the documented skip transition against standalone and embedded state.
+SKIP_TMP=$(mktemp -d "${TMPDIR:-/tmp}/ship-review-skip-XXXXXX")
+awk '
+  /^  ```bash$/ { block = ""; capture = 1; next }
+  capture && /^  ```$/ {
+    if (block ~ /REVIEW_RESULT=skipped/) printf "%s", block
+    capture = 0
+    next
+  }
+  capture { sub(/^  /, ""); block = block $0 "\n" }
+' "$PREREQUISITES" > "$SKIP_TMP/skip.sh"
+if [ ! -s "$SKIP_TMP/skip.sh" ]; then
+  fail "unavailable-backend skip transition must be executable"
+else
+  for skip_scope in '[]' '["components","ship"]'; do
+    printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"phase":"parent-phase","review_clean":"true","components":{"ship":{"review_clean":"true"}}}' > "$SKIP_TMP/state.json"
+    SKIP_OUTPUT=$(
+      source "$LOOP_LIB"
+      STATE_FILE="$SKIP_TMP/state.json"
+      WORKFLOW_STATE_PATH="$skip_scope"
+      source "$SKIP_TMP/skip.sh"
+      test "$REVIEW_RESULT" = skipped && test "$REVIEW_CLEAN" = false
+    )
+    if [[ "$SKIP_OUTPUT" != *"Local LLM review skipped:"* ]] ||
+       ! jq -e --argjson scope "$skip_scope" '
+         getpath($scope) |
+         .review_result == "skipped" and
+         .review_skip_reason == "review-backend-unavailable" and
+         .review_clean == "false"
+       ' "$SKIP_TMP/state.json" >/dev/null; then
+      fail "unavailable-backend skip must report and persist an honest result ($skip_scope)"
+    fi
+    if [ "$skip_scope" != '[]' ] &&
+       ! jq -e '.phase == "parent-phase" and .review_clean == "true" and .review_result == null' "$SKIP_TMP/state.json" >/dev/null; then
+      fail "embedded review skip must preserve parent workflow state"
+    fi
+  done
+fi
+rm -rf "$SKIP_TMP"
+
 require_text "$SHIP_REENTRY" '\| `reviewing` \| Expired review recovery, then Step 9' \
   "ship re-entry must not resume an expired in-session review"
 require_text "$SHIP_REENTRY" '\| `review-required` \| Step 5' \

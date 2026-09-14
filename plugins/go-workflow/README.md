@@ -113,6 +113,21 @@ re-review only when discovered among the pull request's actual reviewers.
 DISABLE_BOT_REREVIEW=true
 ```
 
+## Local Review Cost and Opt-in
+
+Sub-agent reviews can double the session's token cost by loading another
+context, and are disabled by default in ship and review-deep. Ship tries usable
+external review CLIs; when none is available, it reports and records a skipped
+local review while retaining verification, coverage, E2E, and current-head PR
+CI gates. Review-deep addresses findings in the current context, including
+large sets of findings across multiple files.
+
+A project that wants a sub-agent review must opt in explicitly, for example by
+requesting `$go-workflow:ship --llm fable` in its workflow instructions.
+Review-deep delegation likewise requires an explicit project or user request;
+finding count alone never opts in. Explicit backend choices are not silently
+replaced.
+
 ## Requirements
 
 - GitHub CLI (`gh`) - authenticated

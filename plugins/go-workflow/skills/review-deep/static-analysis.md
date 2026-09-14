@@ -14,12 +14,13 @@ Based on detected scope:
 DIFF=$(git diff "${BASE_BRANCH}...HEAD")
 REVIEW_BASE="$BASE_BRANCH"
 REVIEW_BACKEND=agent
-REVIEW_CONCURRENCY=auto
+REVIEW_CONCURRENCY=no
 ```
 
 Read `../../lib/review-planning.md`, run the shared planner, display its coverage
 plan, and follow it through the final coordinated pass. Do not interrupt solely
-because of raw diff size. Preserve `SCOPE_HINT` as review emphasis.
+because of raw diff size. Process every review unit and the final pass in the
+current context; the agent backend describes this session, not a child agent. Preserve `SCOPE_HINT` as review emphasis.
 
 ## Step 4: Static Analysis
 

@@ -90,8 +90,8 @@ intentional findings and P3 findings below the confidence threshold. Make
 minimal fixes, add tests for observable changes, and track only review-owned
 files.
 
-Use fresh-context parallel fix dispatch only when 3+ findings target independent
-files; otherwise fix sequentially. Verify the applicable build, tests, and lint.
+Review and fix all findings in the current context; never delegate based on
+finding count. Verify the applicable build, tests, and lint.
 Pass only owned files to `review-deep-post-fix.sh` and apply commit/push flags
 independently.
 

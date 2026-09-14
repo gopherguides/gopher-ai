@@ -69,8 +69,8 @@ Include dirty changes only when ownership and fresh validation are unambiguous;
 otherwise preserve unrelated work or stop incomplete.
 
 Read `<PLUGIN_ROOT>/lib/ship/prerequisites.md` when resolving the review
-backend. An unavailable unpinned default may use its evidence-based fallback;
-replacing an explicitly selected backend is a missing-intent gate.
+backend. An unavailable unpinned default uses external CLIs, then a recorded
+skip; no automatic sub-agents. Replacing a pinned backend is a missing-intent gate.
 
 ## Phase 1: Local Review and Verification
 
@@ -115,7 +115,7 @@ checks, and merge queue only when required.
 ## Completion Contract
 
 Return shipped only after fresh evidence proves: local review is clean/maxed or
-durably recorded as `void`/`skipped` for an allowed session reason and the exact
+durably recorded as `void`/`skipped` for an allowed session or backend-unavailable reason and the exact
 current head passes CI; applicable coverage and E2E passed; changes are pushed;
 a non-draft PR exists; detected bots approve or none apply; no unresolved or
 human-requested changes remain; and the PR merged (or `--no-merge` was supplied).

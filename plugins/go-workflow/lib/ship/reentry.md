@@ -40,6 +40,12 @@ If `PHASE` is set (non-empty), this is a stop-hook re-entry. Restore every Step
 `REVIEW_CLEAN=true` to preserve the clean-review fast path. Never read the
 physical root directly because embedded ship owns only its child object.
 
+Ignore legacy `use_agent_review` state; it never authorizes delegation.
+A persisted `llm=fable` with `llm_explicit!=true` is an obsolete automatic
+selection: reset `llm` to `codex` and apply current prerequisite policy before
+any new review. Restore `REVIEW_RESULT` from `review_result` so a skipped
+review resumes verification without running a reviewer.
+
 An in-session review is never resumable. If `PHASE == "reviewing"` on
 re-entry, the reviewer from the earlier session no longer exists. Do not wait
 for it and do not dispatch a replacement. Follow **Expired review recovery**
