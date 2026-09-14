@@ -487,3 +487,13 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [Training Courses](https://gopherguides.com/training)
 - [Corporate Training](https://gopherguides.com/corporate)
 - [Community Resources](https://gopherguides.com/resources)
+
+### Diagnosing SessionStart cleanup
+
+The cleanup hook uses `/bin/bash` on both Claude Code and Codex, including
+macOS system Bash 3.2. Set `GOPHER_AI_CLEANUP_DEBUG=1` in the launching
+environment to report skipped cleanup reasons, the Bash version, and completion
+or marker-write status on stderr. Normal startup stays quiet when nothing is
+removed. Codex's `PLUGIN_ROOT` and `PLUGIN_DATA` take precedence over Claude's
+corresponding variables; unexpected inherited values can select a different
+manifest or completion marker.
