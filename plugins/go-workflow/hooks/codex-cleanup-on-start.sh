@@ -156,7 +156,10 @@ if [[ -d "$SKILLS_HOME" ]]; then
             removed_skill_paths="${removed_skill_paths}${target}\n"
             removed_skills=$((removed_skills + 1))
         }
-    done <<<"$KNOWN_SKILLS"
+    # Bash 5.3 on macOS can block writing a here-string before the loop
+    # starts reading. A separate producer lets the reader drain concurrently
+    # and keeps the removal counters in this shell.
+    done < <(printf '%s\n' "$KNOWN_SKILLS")
 fi
 
 # --- 2. Unmarked plugin cleanup -------------------------------------------

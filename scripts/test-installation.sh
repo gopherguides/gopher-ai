@@ -28,7 +28,25 @@ line_absence_status() {
   return 2
 }
 
+# Resolve Python before hook fixtures deliberately restrict PATH.
+HOOK_TEST_PYTHON=$(command -v python3)
+HOOK_LOG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/gopher-ai-hook-logs.XXXXXX")
+trap 'rm -rf "$HOOK_LOG_DIR"' EXIT
+run_hook() {
+  local log="$1" status
+  shift
+  if "$HOOK_TEST_PYTHON" "$SCRIPT_DIR/run-with-timeout.py" 15 bash "$@" >"$log" 2>&1; then
+    return 0
+  else
+    status=$?
+    cat "$log" >&2
+    return "$status"
+  fi
+}
+
 echo "=== Plugin Installation Tests ==="
+python3 "$SCRIPT_DIR/test-run-with-timeout.py"
+/bin/bash "$SCRIPT_DIR/test-session-start.sh"
 
 echo -n "Gemini generation avoids heredoc and here-string I/O... "
 GEMINI_GENERATORS=$(sed -n '/^generate_gemini_extension_json()/,/^create_archive()/p' "$ROOT_DIR/scripts/build-universal.sh")
@@ -458,7 +476,7 @@ DSSTORE_FIXTURE="$ROOT_DIR/plugins/go-dev/scripts/.DS_Store"
 cleanup_metadata_fixtures() {
   rm -f "$APPLEDOUBLE_FIXTURE" "$COMMAND_APPLEDOUBLE_FIXTURE" "$DSSTORE_FIXTURE"
 }
-trap cleanup_metadata_fixtures EXIT
+trap 'cleanup_metadata_fixtures; rm -rf "$HOOK_LOG_DIR"' EXIT
 printf '%s\n' 'metadata fixture' > "$APPLEDOUBLE_FIXTURE"
 printf '%s\n' 'metadata fixture' > "$COMMAND_APPLEDOUBLE_FIXTURE"
 printf '%s\n' 'metadata fixture' > "$DSSTORE_FIXTURE"
@@ -1322,15 +1340,15 @@ done
 mkdir -p "$TMP_HOME/.codex/skills/user-custom-skill"
 printf -- "---\nname: user-custom-skill\ndescription: stays\n---\n" > "$TMP_HOME/.codex/skills/user-custom-skill/SKILL.md"
 
-CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-1.log 2>&1
+CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" run_hook "$HOOK_LOG_DIR/gopher-ai-hook-1.log" "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh"
 HOOK_EXIT=$?
 if [ "$HOOK_EXIT" -ne 0 ]; then
   echo "FAIL (hook exited $HOOK_EXIT)"
-  cat /tmp/gopher-ai-hook-1.log
+  cat "$HOOK_LOG_DIR/gopher-ai-hook-1.log"
   ERRORS=$((ERRORS + 1))
 elif [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
   echo "FAIL (owned skill not removed: $SEEDED_OWNED)"
-  cat /tmp/gopher-ai-hook-1.log
+  cat "$HOOK_LOG_DIR/gopher-ai-hook-1.log"
   ERRORS=$((ERRORS + 1))
 elif [ ! -d "$TMP_HOME/.codex/skills/user-custom-skill" ]; then
   echo "FAIL (cleanup wrongly removed user-custom-skill)"
@@ -1338,16 +1356,16 @@ elif [ ! -d "$TMP_HOME/.codex/skills/user-custom-skill" ]; then
 elif ! ls "$TMP_HOME/.codex/.gopher-ai-cleanup-"* >/dev/null 2>&1; then
   echo "FAIL (marker file not written)"
   ERRORS=$((ERRORS + 1))
-elif ! grep -q "🧹 gopher-ai: removed" /tmp/gopher-ai-hook-1.log; then
+elif ! grep -q "🧹 gopher-ai: removed" "$HOOK_LOG_DIR/gopher-ai-hook-1.log"; then
   echo "FAIL (no summary printed to stderr)"
-  cat /tmp/gopher-ai-hook-1.log
+  cat "$HOOK_LOG_DIR/gopher-ai-hook-1.log"
   ERRORS=$((ERRORS + 1))
 else
   # Re-run: marker should gate; second run must produce no output and not re-scan.
-  CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-2.log 2>&1
-  if [ -s /tmp/gopher-ai-hook-2.log ]; then
+  CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" run_hook "$HOOK_LOG_DIR/gopher-ai-hook-2.log" "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh"
+  if [ -s "$HOOK_LOG_DIR/gopher-ai-hook-2.log" ]; then
     echo "FAIL (second run was not gated by marker — output produced)"
-    cat /tmp/gopher-ai-hook-2.log
+    cat "$HOOK_LOG_DIR/gopher-ai-hook-2.log"
     ERRORS=$((ERRORS + 1))
   else
     echo "OK"
@@ -1361,13 +1379,13 @@ mkdir -p "$TMP_HOME/.codex/skills"
 mkdir -p "$TMP_HOME/.codex/skills/user-custom-skill"
 printf -- "---\nname: user-custom-skill\ndescription: stays\n---\n" > "$TMP_HOME/.codex/skills/user-custom-skill/SKILL.md"
 CLAUDE_PLUGIN_ROOT="$ROOT_DIR/plugins/go-workflow" HOME="$TMP_HOME" \
-  bash "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-clean.log 2>&1
+  run_hook "$HOOK_LOG_DIR/gopher-ai-hook-clean.log" "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh"
 if [ ! -d "$TMP_HOME/.codex/skills/user-custom-skill" ]; then
   echo "FAIL (cleanup wrongly removed user-custom-skill)"
   ERRORS=$((ERRORS + 1))
-elif [ -s /tmp/gopher-ai-hook-clean.log ]; then
+elif [ -s "$HOOK_LOG_DIR/gopher-ai-hook-clean.log" ]; then
   echo "FAIL (hook printed output when there was nothing to clean)"
-  cat /tmp/gopher-ai-hook-clean.log
+  cat "$HOOK_LOG_DIR/gopher-ai-hook-clean.log"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
@@ -1406,17 +1424,17 @@ else
   done
   # Deliberately do NOT link sha256sum.
   if CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" PATH="$TMP_BIN" \
-     bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-shasum.log 2>&1; then
+     run_hook "$HOOK_LOG_DIR/gopher-ai-hook-shasum.log" "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh"; then
     if [ -d "$TMP_HOME/.codex/skills/$SEEDED_OWNED" ]; then
       echo "FAIL (skill not removed when only shasum is available)"
-      cat /tmp/gopher-ai-hook-shasum.log
+      cat "$HOOK_LOG_DIR/gopher-ai-hook-shasum.log"
       ERRORS=$((ERRORS + 1))
     else
       echo "OK"
     fi
   else
     echo "FAIL (hook errored without sha256sum)"
-    cat /tmp/gopher-ai-hook-shasum.log
+    cat "$HOOK_LOG_DIR/gopher-ai-hook-shasum.log"
     ERRORS=$((ERRORS + 1))
   fi
   rm -rf "$TMP_BIN"
@@ -1520,12 +1538,12 @@ echo -n "SessionStart hook short-circuits when ~/.codex/ missing... "
 TMP_HOME=$(mktemp -d)
 # No ~/.codex/ at all — hook must exit 0 silently.
 CLAUDE_PLUGIN_ROOT="$ROOT_DIR/plugins/go-workflow" HOME="$TMP_HOME" \
-  bash "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-nocodex.log 2>&1
+  run_hook "$HOOK_LOG_DIR/gopher-ai-hook-nocodex.log" "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh"
 HOOK_EXIT=$?
 if [ "$HOOK_EXIT" -ne 0 ]; then
   echo "FAIL (hook should exit 0 on no ~/.codex/)"
   ERRORS=$((ERRORS + 1))
-elif [ -s /tmp/gopher-ai-hook-nocodex.log ]; then
+elif [ -s "$HOOK_LOG_DIR/gopher-ai-hook-nocodex.log" ]; then
   echo "FAIL (hook printed output when ~/.codex/ was missing)"
   ERRORS=$((ERRORS + 1))
 else
@@ -2193,14 +2211,14 @@ printf '{\n  "name": "go-workflow",\n  "version": "0.1.0",\n  "author": { "email
   > "$TMP_HOME/.codex/plugins/go-workflow/.codex-plugin/plugin.json"
 
 CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" \
-  bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/tmp/gopher-ai-hook-plugins.log 2>&1
+  run_hook "$HOOK_LOG_DIR/gopher-ai-hook-plugins.log" "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh"
 if [ -d "$TMP_HOME/.codex/plugins/go-dev" ]; then
   echo "FAIL (unmarked gopher-ai plugin not removed: go-dev)"
-  cat /tmp/gopher-ai-hook-plugins.log
+  cat "$HOOK_LOG_DIR/gopher-ai-hook-plugins.log"
   ERRORS=$((ERRORS + 1))
 elif [ -d "$TMP_HOME/.codex/plugins/llm-tools" ]; then
   echo "FAIL (marked legacy plugin not removed: llm-tools — should now be stale too)"
-  cat /tmp/gopher-ai-hook-plugins.log
+  cat "$HOOK_LOG_DIR/gopher-ai-hook-plugins.log"
   ERRORS=$((ERRORS + 1))
 elif [ ! -d "$TMP_HOME/.codex/plugins/go-workflow" ]; then
   echo "FAIL (user-authored plugin wrongly removed: go-workflow)"
@@ -2220,7 +2238,7 @@ cp "$ROOT_DIR/plugins/go-workflow/hooks/codex-cleanup-on-start.sh" "$TMP_PLUGIN/
 cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" "$TMP_PLUGIN/hooks/"
 cp "$ROOT_DIR/plugins/go-workflow/.claude-plugin/plugin.json" "$TMP_PLUGIN/.claude-plugin/"
 CLAUDE_PLUGIN_ROOT="$TMP_PLUGIN" HOME="$TMP_HOME" \
-  bash "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh" >/dev/null 2>&1
+  run_hook "$HOOK_LOG_DIR/gopher-ai-hook-cache.log" "$TMP_PLUGIN/hooks/codex-cleanup-on-start.sh"
 if [ ! -f "$TMP_HOME/.codex/plugins/cache/gopher-ai/go-dev/abc12345/SKILL.md" ]; then
   echo "FAIL (cache wrongly cleared by hook)"
   ERRORS=$((ERRORS + 1))
