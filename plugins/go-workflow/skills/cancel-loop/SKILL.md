@@ -3,8 +3,6 @@ name: cancel-loop
 description: "Cancel active persistent go-workflow loop state. Use when the user explicitly invokes the qualified cancel-loop skill with an optional loop name."
 argument-hint: "[loop-name]"
 disable-model-invocation: true
-model: haiku
-effort: low
 ---
 
 # Cancel Loop

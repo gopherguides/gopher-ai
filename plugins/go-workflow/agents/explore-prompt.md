@@ -1,7 +1,6 @@
 ---
 name: explore-prompt
 description: Explore a Go codebase before an implementation task — surface relevant files, conventions, tests, and architectural touchpoints.
-model: haiku
 ---
 
 # Explore Agent Prompt

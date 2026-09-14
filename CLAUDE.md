@@ -151,16 +151,20 @@ Skill and command bodies enter the context window when invoked and stay there fo
 
 **Model and effort tiering:**
 
-Every command and skill inherits the session model and effort unless its frontmatter says otherwise, so an Opus session runs `/cancel-loop` at Opus rates. Set `model:` and `effort:` to push work down to the cheapest tier that still does the job. Use rolling aliases (`haiku`, `sonnet`, `fable`, `inherit`) — never a dated model ID, which goes stale on every model release. When a command and a same-named skill both exist, the skill wins the collision and supplies the invocation metadata, so set the keys on both or the override silently does nothing.
+Every command and skill inherits the session model and effort unless its frontmatter says otherwise, so an Opus session runs `/cancel-loop` at Opus rates. Use rolling aliases (`haiku`, `sonnet`, `fable`, `inherit`) — never a dated model ID, which goes stale on every model release. When a command and a same-named skill both exist, the skill wins the collision and supplies the invocation metadata, so measure and set both surfaces or the apparent override may do nothing.
 
-- **Deterministic script-driven work** (`cancel-loop`, `clear-cache`, `create-worktree`, `gopher-ai-refresh`): `model: haiku` + `effort: low`. These run fixed scripts and branch on exit codes.
-- **Bounded summarization and autofix reporting** (`standup`, `changelog`, `weekly-summary`, `validate-skills`, `lint-fix`, `commit`): `effort: low` only. Keep the session model — a stronger model at low effort usually beats a weaker model at high effort.
-- **Everything else** — diagnosis (`build-fix`), code design (`test-gen`, `bench`), anything that reasons about user intent (`tailwind audit`/`init`), destructive operations (`remove-worktree`, `prune-worktree`), and multi-step workflows (`ship`, `start-issue`, `review-deep`, `e2e-verify`, `migrate`): leave both unset and inherit the session.
+The checked-in calibration suite and [issue 427 results](docs/model-effort-calibration-results-427.md) establish the current tiers:
 
-Never pin `model:` on a surface that can destroy user work — an unmerged branch, an uncommitted diff, a worktree someone is still using. Scripted cleanup of regenerable state is not that: `cancel-loop` removes its own loop state, `clear-cache` and `gopher-ai-refresh` discard caches that rebuild on demand, and `create-worktree` either creates an isolated directory or reuses the exact matching worktree while skipping and reporting existing destination env entries, including symlinks. Those stay pinned. The distinction is whether a wrong call loses something that cannot be recreated.
+| Tier | Surfaces | Measured reason |
+|---|---|---|
+| `model: haiku` + `effort: low` | `clear-cache`, `create-worktree`, `gopher-ai-refresh` | Fresh and warm tasks passed with no incorrect mutations; the model switch reduced cost enough to pay for the new cache prefix. |
+| `model: sonnet` | `quality-review-prompt`, `spec-review-prompt` | Both review agents passed fresh and warm judgment cases with lower latency and cost than the inherited model. |
+| Inherit both | Cancellation, bounded reports and fixes (`standup`, `changelog`, `weekly-summary`, `validate-skills`, `lint-fix`, `commit`), exploration and implementation, Tailwind workflows, worktree removal/pruning, diagnosis, code design, and multi-step workflows | Effort-only overrides cost more as a group after warm-session cache loss. Haiku cancellation, exploration, cleanup, and Tailwind candidates failed at least one held-out task. |
 
-Overrides are not free. Switching models mid-session forfeits the prompt cache built for the previous model, and changing `effort:` can break the cached prefix too, so a small pinned command inside a long warm conversation can cost more than it saves. Pin sparingly, and prefer `effort:` alone where the work is bounded.
+Destructive operations inherit. Haiku removal failed a warm dirty-worktree run in repeat measurement, while Haiku pruning failed an eligible-cleanup run after exercising issue state, merge state, worktree removal, and branch cleanup. A future model alias change must earn an exception again.
 
-Before adding an override, compare inherited settings against the proposed configuration on representative held-out tasks — dirty or unmerged worktrees, failed GitHub lookups, generated-code build failures — and record task success, incorrect mutations, tool calls, and token counts. Script-level checks (`scripts/test-commands.sh`) establish packaging validity, not model quality.
+Overrides are not free. Switching models mid-session forfeits the prompt cache built for the previous model, and changing `effort:` can break the cached prefix too. Across the measured effort-only surfaces, warm low-effort runs averaged 40% more cost even when they lowered latency, so do not optimize from model-tier intuition alone.
+
+Before adding or changing an override, add representative held-out coverage to `evals/model-effort-calibration.json`, run `scripts/model-effort-calibration.py` in fresh and warm conditions, and require task success with zero incorrect mutations before comparing tool calls, latency, tokens, cache traffic, and cost. Script-level checks (`scripts/test-commands.sh`) establish packaging validity, not model quality.
 
 Do not add verification rituals ("double-check your work") or thoroughness boosters ("be maximally thorough") to prompts. Current models do this natively; the instructions just buy duplicate tool calls.
