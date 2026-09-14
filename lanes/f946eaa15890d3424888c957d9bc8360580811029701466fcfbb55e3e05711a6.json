@@ -1,1 +1,1 @@
-{"writers":{"88ba7eef8d21e9fa1a0222241f378e16":{"instance_identity":"88ba7eef8d21e9fa1a0222241f378e16","issue":"I_kwDOQp9bm88AAAABRQRVVw","from":"Todo","to":"In Progress","reason":"dispatch_start","fence_token":834,"written_at":"2026-09-14T18:07:26.215957Z"}}}
+{"writers":{"88ba7eef8d21e9fa1a0222241f378e16":{"instance_identity":"88ba7eef8d21e9fa1a0222241f378e16","issue":"I_kwDOQp9bm88AAAABRQRVVw","from":"In Progress","to":"Merging","reason":"ready","fence_token":853,"written_at":"2026-09-14T18:27:02.897497959Z"}}}
