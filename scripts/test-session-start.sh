@@ -18,9 +18,22 @@ for interpreter in /bin/bash "$(command -v bash)" /opt/homebrew/bin/bash; do
   mkdir -p "$TEST_ROOT/home/.codex/skills/owned"
   printf '%s\n' '---' 'name: owned' 'description: legacy fixture' '---' > "$TEST_ROOT/home/.codex/skills/owned/SKILL.md"
   rm -f "$TEST_ROOT/home/.codex/.gopher-ai-cleanup-v3-test"
-  HOME="$TEST_ROOT/home" CLAUDE_PLUGIN_ROOT="$TEST_ROOT/plugin" \
+  HOME="$TEST_ROOT/home" PLUGIN_ROOT="$TEST_ROOT/plugin" PLUGIN_DATA="" \
+    CLAUDE_PLUGIN_ROOT="$TEST_ROOT/plugin" CLAUDE_PLUGIN_DATA="" \
     python3 "$SCRIPT_DIR/run-with-timeout.py" 5 "$interpreter" "$TEST_ROOT/plugin/hooks/codex-cleanup-on-start.sh"
   test ! -d "$TEST_ROOT/home/.codex/skills/owned"
   test -f "$TEST_ROOT/home/.codex/.gopher-ai-cleanup-v3-test"
+  HOME="$TEST_ROOT/home" PLUGIN_ROOT="$TEST_ROOT/plugin" PLUGIN_DATA="" \
+    CLAUDE_PLUGIN_DATA="" GOPHER_AI_CLEANUP_DEBUG=1 \
+    python3 "$SCRIPT_DIR/run-with-timeout.py" 5 "$interpreter" "$TEST_ROOT/plugin/hooks/codex-cleanup-on-start.sh" \
+    > "$TEST_ROOT/stdout" 2> "$TEST_ROOT/stderr"
+  test ! -s "$TEST_ROOT/stdout"
+  grep -q 'cleanup skipped: already completed' "$TEST_ROOT/stderr"
+  # Explicit diagnostics make a safe early exit distinguishable from cleanup.
+  HOME="$TEST_ROOT/home" PLUGIN_ROOT="$TEST_ROOT/missing" GOPHER_AI_CLEANUP_DEBUG=1 \
+    python3 "$SCRIPT_DIR/run-with-timeout.py" 5 "$interpreter" "$TEST_ROOT/plugin/hooks/codex-cleanup-on-start.sh" \
+    > "$TEST_ROOT/stdout" 2> "$TEST_ROOT/stderr"
+  test ! -s "$TEST_ROOT/stdout"
+  grep -q 'cleanup skipped: legacy manifest missing' "$TEST_ROOT/stderr"
 done
 echo "SessionStart interpreter regression passed"

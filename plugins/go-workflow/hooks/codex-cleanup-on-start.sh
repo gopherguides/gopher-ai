@@ -25,6 +25,17 @@
 
 set -u
 
+# Opt-in stderr diagnostics preserve quiet startup and successful hook status.
+cleanup_trace() {
+    if [[ "${GOPHER_AI_CLEANUP_DEBUG:-0}" == "1" ]]; then
+        printf 'gopher-ai: cleanup %s (bash %s)\n' "$1" "$BASH_VERSION" >&2
+    fi
+}
+cleanup_skip() {
+    cleanup_trace "skipped: $1"
+    exit 0
+}
+
 PLUGIN_ROOT="${PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
 PLUGIN_DATA_ROOT="${PLUGIN_DATA:-${CLAUDE_PLUGIN_DATA:-}}"
 MANIFEST="$PLUGIN_ROOT/hooks/legacy-skill-hashes.txt"
@@ -36,8 +47,8 @@ PLUGINS_HOME="$HOME/.codex/plugins"
 KNOWN_PLUGINS="go-dev go-web go-workflow gopher-guides llm-tools tailwind"
 
 # Fast-exit: nothing to clean.
-[[ -d "$HOME/.codex" ]] || exit 0
-[[ -f "$MANIFEST" ]] || exit 0
+[[ -d "$HOME/.codex" ]] || cleanup_skip "Codex home missing: $HOME/.codex"
+[[ -f "$MANIFEST" ]] || cleanup_skip "legacy manifest missing: $MANIFEST"
 
 # Marker file scoped to (cleanup logic version, plugin version). Bump the
 # CLEANUP_LOGIC_VERSION whenever this script gains a new cleanup mode that
@@ -62,7 +73,7 @@ if [[ -n "$PLUGIN_DATA_ROOT" ]]; then
 else
     MARKER="$HOME/.codex/.gopher-ai-cleanup-${CLEANUP_LOGIC_VERSION}-${PLUGIN_VERSION}"
 fi
-[[ -f "$MARKER" ]] && exit 0
+[[ -f "$MARKER" ]] && cleanup_skip "already completed: $MARKER"
 
 # Detect a portable sha256 implementation. macOS ships `shasum -a 256` but not
 # `sha256sum`; some minimal Linux installs and busybox-based systems ship
@@ -81,10 +92,10 @@ elif command -v openssl >/dev/null 2>&1; then
         openssl dgst -sha256 "$@" 2>/dev/null | awk '{print $NF, "-"}'
     }
 fi
-[[ -n "$SHA256_CMD" ]] || exit 0
+[[ -n "$SHA256_CMD" ]] || cleanup_skip "no SHA-256 implementation available"
 
-for cmd in awk basename; do
-    command -v "$cmd" >/dev/null 2>&1 || exit 0
+for cmd in awk basename sort; do
+    command -v "$cmd" >/dev/null 2>&1 || cleanup_skip "required command missing: $cmd"
 done
 
 # Wrap the chosen hash command so call sites stay uniform.
@@ -121,7 +132,7 @@ KNOWN_SKILLS="$(awk '
     { print $2 }
 ' "$MANIFEST" | sort -u)"
 
-[[ -n "$KNOWN_SKILLS" ]] || exit 0
+[[ -n "$KNOWN_SKILLS" ]] || cleanup_skip "legacy manifest contains no skills: $MANIFEST"
 
 # --- 1. Skills cleanup ----------------------------------------------------
 # Walk candidates in ~/.codex/skills/ and remove those passing all three checks.
@@ -303,7 +314,11 @@ fi
 
 # Always write the marker so we don't re-scan next session.
 mkdir -p "$(dirname "$MARKER")" 2>/dev/null
-: > "$MARKER" 2>/dev/null
+if { : > "$MARKER"; } 2>/dev/null; then
+    cleanup_trace "completed: removed $removed_skills skills and $removed_plugins plugins; marker: $MARKER"
+else
+    cleanup_trace "marker write failed: $MARKER"
+fi
 
 if [[ "$removed_skills" -gt 0 || "$removed_plugins" -gt 0 ]]; then
     {
