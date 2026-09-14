@@ -571,6 +571,45 @@ if ! jq -e '.phase == "ci-watch"' "$DIRTY_HEAD_SHIFT_TMP/.local/state/ship.loop.
   fail "dirty-tree head-shift recovery must not advance the ship phase"
 fi
 
+# A new head must invalidate an unavailable-backend skip in either state scope.
+for shift_scope in '[]' '["components","ship"]'; do
+  jq -n '{schema_version:2,owner_workflow:"ship",loop_name:"ship",completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],phase:"parent-phase",review_result:"parent-result",components:{}}' > "$DIRTY_HEAD_SHIFT_TMP/shift.json"
+  (
+    source "$LOOP_LIB"
+    STATE_FILE="$DIRTY_HEAD_SHIFT_TMP/shift.json"
+    WORKFLOW_STATE_PATH="$shift_scope"
+    set_loop_field "$STATE_FILE" "review_result" "skipped" "$WORKFLOW_STATE_PATH"
+    set_loop_field "$STATE_FILE" "review_skip_reason" "review-backend-unavailable" "$WORKFLOW_STATE_PATH"
+    set_loop_field "$STATE_FILE" "review_clean" "false" "$WORKFLOW_STATE_PATH"
+    set_loop_json_field "$STATE_FILE" "pass" 3 "$WORKFLOW_STATE_PATH"
+    github_pr() { printf '%s\n' '{"head":{"sha":"new-sha","ref":"fixture"}}'; }
+    # Stub repository synchronization; run the real workflow state transition.
+    git() {
+      case "$3" in
+        config) echo origin ;;
+        branch) echo fixture ;;
+        status|fetch|checkout|reset) return 0 ;;
+        *) return 1 ;;
+      esac
+    }
+    HEAD_SHA="old-sha"
+    PR_NUM=1
+    WORKTREE_PATH="$DIRTY_HEAD_SHIFT_TMP"
+    source "$CI_SHIFT_BLOCK"
+  )
+  if ! jq -e --argjson scope "$shift_scope" '
+    getpath($scope) | .head_sha == "new-sha" and .phase == "review-required" and
+    .pass == 0 and .review_clean == "" and .review_result == "" and .review_skip_reason == ""
+  ' "$DIRTY_HEAD_SHIFT_TMP/shift.json" >/dev/null; then
+    fail "head shift must invalidate stale review skips ($shift_scope)"
+  fi
+  if [ "$shift_scope" != '[]' ] && ! jq -e '
+    .phase == "parent-phase" and .review_result == "parent-result"
+  ' "$DIRTY_HEAD_SHIFT_TMP/shift.json" >/dev/null; then
+    fail "embedded head shift must preserve parent review state"
+  fi
+done
+
 rm -f "$CI_SHIFT_BLOCK"
 rm -rf "$DIRTY_HEAD_SHIFT_TMP"
 
