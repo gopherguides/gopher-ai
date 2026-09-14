@@ -54,6 +54,8 @@ workspace:
     cleanup_idle_ttl_ms: 86400000
     cleanup_sweep_interval_ms: 600000
 agent:
+    # 2026-09-13: disabled pending detent#2538 (brake counts cached prompt tokens and infra-failed attempts; false parks on subscription).
+    no_progress_token_limit: 0
     max_concurrent_agents: 3
     max_turns: 20
     max_retry_backoff_ms: 300000
@@ -268,14 +270,8 @@ schedule_ownership:
     repository: gopherguides/gopher-ai
 
 agents:
-    model_selection:
-        preset: sol_first
-        normal_model: gpt-5.6-sol
-        complex_model: gpt-5.6-sol
-        levels:
-            normal:
-                effort: high
-            complex:
-                effort: high
-            very_complex:
-                effort: high
+    # Model and reasoning effort are deliberately NOT set here. The fleet
+    # default lives once in the instance config (~/.detent/global.yaml).
+    # A project block would override the instance layer, which is how six
+    # copies of this setting drifted apart. Omission inherits.
+    model_selection: {}
