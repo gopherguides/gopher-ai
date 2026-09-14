@@ -14,15 +14,27 @@ esac
 
 ERRORS=0
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
 run_commit_worktree_tests() (
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
-  local fixture primary linked mode before plugin output
+  local fixture primary linked mode before plugin output current_hash pair manifest compat_bin cmd skill_path staged_copy shared_path hidden_plugin
   fixture=$(mktemp -d "$HOOK_TMP_BASE/gopher-ai-commit-worktree.XXXXXX")
   primary="$fixture/primary checkout"
   linked="$fixture/linked checkout"
   mkdir -p "$primary"
   git -C "$ROOT_DIR" archive HEAD shared plugins scripts githooks | tar -x -C "$primary"
   cp "$ROOT_DIR/githooks/pre-commit" "$primary/githooks/pre-commit"
+  cp "$ROOT_DIR/scripts/check-shared-sync.sh" "$primary/scripts/check-shared-sync.sh"
+  cp "$ROOT_DIR/scripts/legacy-skill-hashes.txt" "$primary/scripts/legacy-skill-hashes.txt"
+  cp "$ROOT_DIR/plugins/go-workflow/hooks/legacy-skill-hashes.txt" \
+    "$primary/plugins/go-workflow/hooks/legacy-skill-hashes.txt"
   git -C "$primary" init -qb main
   git -C "$primary" config user.name "Hook Tests"
   git -C "$primary" config user.email hooks@example.com
@@ -56,6 +68,120 @@ run_commit_worktree_tests() (
     done
     /bin/bash "$linked/scripts/check-shared-sync.sh" >/dev/null || return 1
   done
+
+  echo "  Installed hook validates partially staged skill contents..."
+  skill_path="plugins/go-workflow/skills/e2e-verify/SKILL.md"
+  printf '\npartially staged skill content\n' >> "$linked/$skill_path"
+  git -C "$linked" add "$skill_path"
+  staged_copy="$fixture/staged-skill.md"
+  git -C "$linked" show ":$skill_path" > "$staged_copy"
+  current_hash=$(sha256_file "$staged_copy")
+  git -C "$linked" show "HEAD:$skill_path" > "$linked/$skill_path"
+  if output=$(git -C "$linked" commit -qm "partially staged skill" 2>&1); then
+    echo "FAIL (hook accepted a staged skill hash missing from the manifests)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "missing current skill hash: $current_hash e2e-verify" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree "$skill_path"
+
+  echo "  Installed hook validates partially staged shared contents..."
+  shared_path="shared/commands/cancel-loop.md"
+  printf '\npartially staged shared content\n' >> "$linked/$shared_path"
+  git -C "$linked" add "$shared_path"
+  git -C "$linked" show "HEAD:$shared_path" > "$linked/$shared_path"
+  if output=$(git -C "$linked" commit -qm "partially staged shared file" 2>&1); then
+    echo "FAIL (hook accepted indexed shared/plugin content that differs)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "differs from shared/commands/cancel-loop.md in the index" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree \
+    "$shared_path" \
+    plugins/go-workflow/commands/cancel-loop.md \
+    plugins/go-web/commands/cancel-loop.md \
+    plugins/go-dev/commands/cancel-loop.md \
+    plugins/tailwind/commands/cancel-loop.md \
+    plugins/llm-tools/commands/cancel-loop.md
+
+  echo "  Installed hook validates staged shared file modes..."
+  shared_path="plugins/go-web/scripts/setup-loop.sh"
+  git -C "$linked" update-index --chmod=-x "$shared_path"
+  if output=$(git -C "$linked" commit -qm "non-executable shared mirror" 2>&1); then
+    echo "FAIL (hook accepted a staged shared mirror with a different file mode)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "differs from shared/scripts/setup-loop.sh in the index" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree "$shared_path"
+
+  echo "  Installed hook validates indexed plugins absent from the worktree..."
+  shared_path="plugins/go-web/commands/cancel-loop.md"
+  printf '\nindexed plugin content\n' >> "$linked/$shared_path"
+  git -C "$linked" add "$shared_path"
+  hidden_plugin="$fixture/hidden-go-web"
+  mv "$linked/plugins/go-web" "$hidden_plugin"
+  if output=$(git -C "$linked" commit -qm "hidden plugin directory" 2>&1); then
+    echo "FAIL (hook skipped an indexed plugin absent from the worktree)"
+    mv "$hidden_plugin" "$linked/plugins/go-web"
+    return 1
+  fi
+  mv "$hidden_plugin" "$linked/plugins/go-web"
+  printf '%s\n' "$output" | grep -F "differs from shared/commands/cancel-loop.md in the index" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree "$shared_path"
+
+  echo "  Installed hook compares indexed manifest bytes exactly..."
+  manifest="plugins/go-workflow/hooks/legacy-skill-hashes.txt"
+  printf '\n' >> "$linked/$manifest"
+  git -C "$linked" add "$manifest"
+  git -C "$linked" show "HEAD:$manifest" > "$linked/$manifest"
+  if output=$(git -C "$linked" commit -qm "manifest trailing newline" 2>&1); then
+    echo "FAIL (hook accepted indexed manifests with different trailing newlines)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "legacy skill hash manifests differ" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
+  git -C "$linked" restore --staged --worktree "$manifest"
+
+  echo "  Shared-sync gate supports stock macOS shasum..."
+  compat_bin="$fixture/shasum-only-bin"
+  mkdir -p "$compat_bin"
+  for cmd in awk basename cmp diff dirname shasum; do
+    ln -s "$(command -v "$cmd")" "$compat_bin/$cmd"
+  done
+  PATH="$compat_bin" /bin/bash "$linked/scripts/check-shared-sync.sh" >/dev/null || {
+    echo "FAIL (shared-sync errored without sha256sum)"
+    return 1
+  }
+
+  echo "  Shared-sync gate rejects manifests missing a current skill hash..."
+  current_hash=$(sha256_file "$linked/plugins/go-workflow/skills/e2e-verify/SKILL.md")
+  pair="$current_hash e2e-verify"
+  for manifest in \
+    "$linked/scripts/legacy-skill-hashes.txt" \
+    "$linked/plugins/go-workflow/hooks/legacy-skill-hashes.txt"; do
+    awk -v pair="$pair" '$0 != pair' "$manifest" > "$manifest.next"
+    mv "$manifest.next" "$manifest"
+  done
+  if output=$(/bin/bash "$linked/scripts/check-shared-sync.sh" 2>&1); then
+    echo "FAIL (shared-sync accepted manifests missing $pair)"
+    return 1
+  fi
+  printf '%s\n' "$output" | grep -F "missing current skill hash: $pair" >/dev/null || {
+    printf '%s\n' "$output"
+    return 1
+  }
 )
 
 if [ "${1:-}" = "--commit-worktree-only" ]; then

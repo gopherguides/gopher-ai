@@ -40,5 +40,5 @@ if [ -n "$SHARED_CHANGED" ]; then
   echo "Synced files staged for commit."
 fi
 
-# Verify sync is correct
-/bin/bash "$ROOT_DIR/scripts/check-shared-sync.sh"
+# Verify the exact snapshot being committed is correct.
+/bin/bash "$ROOT_DIR/scripts/check-shared-sync.sh" --cached
