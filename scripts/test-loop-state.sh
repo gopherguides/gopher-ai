@@ -69,6 +69,131 @@ printf '%s\n' "$REENTRY_BEFORE" > "$FRESH_STATE"
 assert_eq "sole-target re-entry preserves semantic state" "$REENTRY_BEFORE" \
   "$(jq -cS . "$FRESH_STATE")"
 
+TERMINAL_REENTRY_DIR=$(fixture terminal-reentry)
+(
+  cd "$TERMINAL_REENTRY_DIR"
+  run_setup "e2e-verify-2110" "VERIFIED" "" "e2e-testing" '{}' "" \
+    '["VERIFIED","E2E_FAIL","INCOMPLETE"]' >/dev/null
+  source "$LOOP_LIB"
+  set_loop_field "$TERMINAL_REENTRY_DIR/.local/state/e2e-verify-2110.loop.local.json" "e2e_result" "pass"
+  set_loop_field "$TERMINAL_REENTRY_DIR/.local/state/e2e-verify-2110.loop.local.json" "worktree_path" "/foreign/worktree"
+  set_loop_terminal_result "$TERMINAL_REENTRY_DIR/.local/state/e2e-verify-2110.loop.local.json" \
+    "verified" "" "completed" "VERIFIED"
+)
+TERMINAL_REENTRY_STATE="$TERMINAL_REENTRY_DIR/.local/state/e2e-verify-2110.loop.local.json"
+TERMINAL_REENTRY_BEFORE=$(cat "$TERMINAL_REENTRY_STATE")
+assert_eq "proven terminal root is not active" "0" \
+  "$(source "$LOOP_LIB"; count_active_loops "$TERMINAL_REENTRY_DIR/.local/state" "" false)"
+assert_eq "default discovery preserves terminal records for hook cleanup" "$TERMINAL_REENTRY_STATE" \
+  "$(source "$LOOP_LIB"; find_active_loops "$TERMINAL_REENTRY_DIR/.local/state")"
+TERMINAL_REENTRY_STATUS=0
+(cd "$TERMINAL_REENTRY_DIR"; run_setup "e2e-verify-2110" "VERIFIED" >/dev/null 2>&1) || TERMINAL_REENTRY_STATUS=$?
+assert_eq "current terminal loop can re-enter" "0" "$TERMINAL_REENTRY_STATUS"
+assert_eq "terminal re-entry preserves exact record" "$TERMINAL_REENTRY_BEFORE" "$(cat "$TERMINAL_REENTRY_STATE")"
+LATER_E2E_STATUS=0
+(cd "$TERMINAL_REENTRY_DIR"; run_setup "e2e-verify-2111" "VERIFIED" >/dev/null 2>&1) || LATER_E2E_STATUS=$?
+assert_eq "terminal E2E allows later E2E" "0" "$LATER_E2E_STATUS"
+assert_eq "later E2E leaves foreign record unchanged" "$TERMINAL_REENTRY_BEFORE" "$(cat "$TERMINAL_REENTRY_STATE")"
+TERMINAL_BUSY_STATUS=0
+(cd "$TERMINAL_REENTRY_DIR"; run_setup "e2e-verify-2110" "VERIFIED" >/dev/null 2>&1) || TERMINAL_BUSY_STATUS=$?
+assert_eq "terminal re-entry refuses another active loop" "true" "$([ "$TERMINAL_BUSY_STATUS" -ne 0 ] && echo true || echo false)"
+
+for TERMINAL_MUTATION in \
+  '.phase = "e2e-testing"' \
+  '.iteration = "broken"' \
+  '.max_iterations = -1' \
+  '.generated_commit_status = "push-pending"' \
+  '.generated_commit_status = "committing"' \
+  '.phase = "incomplete" | .result = "incomplete" | .workflow_result = "incomplete" | .completion_promise = "INCOMPLETE" | .generated_commit_status = "push-pending"' \
+  '.awaiting_driver_input = true' \
+  '.awaiting_driver_input = "false"' \
+  '.schema_version = 3' \
+  'del(.schema_version)' \
+  '.owner_workflow = "ship"' \
+  '.components = []' \
+  'del(.session_id, .loop_instance_id)' \
+  '.loop_name = "unknown" | .owner_workflow = "unknown"' \
+  '.workflow_result = "incomplete"' \
+  'del(.result)' \
+  '.completion_promise = "INCOMPLETE"' \
+  '.terminal_promises = ["INCOMPLETE"]' \
+  '.terminal_promises = ["VERIFIED", "VERIFIED"]'; do
+  UNPROVEN_DIR=$(mktemp -d "$FIXTURE_BASE/unproven.XXXXXX")
+  mkdir -p "$UNPROVEN_DIR/.local/state"
+  UNPROVEN_STATE="$UNPROVEN_DIR/.local/state/e2e-verify-2110.loop.local.json"
+  printf '%s\n' "$TERMINAL_REENTRY_BEFORE" | jq "$TERMINAL_MUTATION" > "$UNPROVEN_STATE"
+  UNPROVEN_BEFORE=$(cat "$UNPROVEN_STATE")
+  UNPROVEN_STATUS=0
+  (cd "$UNPROVEN_DIR"; run_setup "e2e-verify-2111" "VERIFIED" >/dev/null 2>&1) || UNPROVEN_STATUS=$?
+  assert_eq "unproven state blocks: $TERMINAL_MUTATION" "true" "$([ "$UNPROVEN_STATUS" -ne 0 ] && echo true || echo false)"
+  assert_eq "unproven state is unchanged: $TERMINAL_MUTATION" "$UNPROVEN_BEFORE" "$(cat "$UNPROVEN_STATE")"
+done
+HIDDEN_DIR=$(fixture hidden-blocker)
+printf '%s\n' '{broken' > "$HIDDEN_DIR/.local/state/.hidden.loop.local.json"
+HIDDEN_STATUS=0
+(cd "$HIDDEN_DIR"; run_setup "e2e-verify-2111" "VERIFIED" >/dev/null 2>&1) || HIDDEN_STATUS=$?
+assert_eq "hidden malformed state blocks initialization" "true" "$([ "$HIDDEN_STATUS" -ne 0 ] && echo true || echo false)"
+
+for TERMINAL_CASE in \
+  'start-issue-42 complete completed COMPLETE' \
+  'complete-issue-42 complete completed COMPLETE' \
+  'address-review-42 complete completed COMPLETE' \
+  'ship shipped complete SHIPPED' \
+  'e2e-verify-42 e2e-fail e2e-failed E2E_FAIL' \
+  'e2e-verify-42 incomplete incomplete INCOMPLETE' \
+  'start-issue-42 incomplete incomplete INCOMPLETE' \
+  'complete-issue-42 incomplete incomplete INCOMPLETE' \
+  'ship incomplete incomplete INCOMPLETE' \
+  'address-review-42 incomplete approval-incomplete INCOMPLETE'; do
+  read -r TERMINAL_NAME TERMINAL_RESULT TERMINAL_PHASE TERMINAL_PROMISE <<< "$TERMINAL_CASE"
+  PROVEN_DIR=$(mktemp -d "$FIXTURE_BASE/proven.XXXXXX")
+  (
+    cd "$PROVEN_DIR"
+    run_setup "$TERMINAL_NAME" "$TERMINAL_PROMISE" >/dev/null
+    source "$LOOP_LIB"
+    set_loop_terminal_result "$PROVEN_DIR/.local/state/$TERMINAL_NAME.loop.local.json" \
+      "$TERMINAL_RESULT" "" "$TERMINAL_PHASE" "$TERMINAL_PROMISE"
+  )
+  assert_eq "terminal contract is inactive: $TERMINAL_CASE" "0" \
+    "$(source "$LOOP_LIB"; count_active_loops "$PROVEN_DIR/.local/state" "" false)"
+done
+
+MALFORMED_DIR=$(fixture malformed-blocker)
+printf '%s\n' '{broken' > "$MALFORMED_DIR/.local/state/broken.loop.local.json"
+MALFORMED_STATUS=0
+(cd "$MALFORMED_DIR"; run_setup "e2e-verify-2111" "VERIFIED" >/dev/null 2>&1) || MALFORMED_STATUS=$?
+assert_eq "malformed state blocks initialization" "true" "$([ "$MALFORMED_STATUS" -ne 0 ] && echo true || echo false)"
+
+TERMINAL_HOOK_DIR=$(fixture terminal-hook)
+TERMINAL_HOOK_STATE="$TERMINAL_HOOK_DIR/.local/state/e2e-verify-42.loop.local.json"
+TERMINAL_HOOK_TRANSCRIPT="$TERMINAL_HOOK_DIR/transcript.jsonl"
+printf '%s\n' '{}' > "$TERMINAL_HOOK_TRANSCRIPT"
+(
+  cd "$TERMINAL_HOOK_DIR"
+  export CLAUDE_SESSION_ID=terminal-hook-session
+  run_setup "e2e-verify-42" "VERIFIED" >/dev/null
+  source "$LOOP_LIB"
+  set_loop_terminal_result "$TERMINAL_HOOK_STATE" "verified" "" "completed" "VERIFIED"
+  run_setup "later-loop" "DONE" "" "testing" >/dev/null
+)
+TERMINAL_HOOK_BEFORE=$(cat "$TERMINAL_HOOK_STATE")
+TERMINAL_HOOK_OUTPUT=$(
+  cd "$TERMINAL_HOOK_DIR"
+  jq -n --arg transcript "$TERMINAL_HOOK_TRANSCRIPT" \
+    '{session_id:"terminal-hook-session",transcript_path:$transcript}' | /bin/bash "$ROOT_DIR/shared/hooks/stop-hook.sh"
+)
+assert_eq "hook continues the later active loop without ambiguity" "2" \
+  "$(jq -r .iteration "$TERMINAL_HOOK_DIR/.local/state/later-loop.loop.local.json")"
+assert_eq "hook retains terminal record before its marker" "$TERMINAL_HOOK_BEFORE" "$(cat "$TERMINAL_HOOK_STATE")"
+printf '%s\n' '{"role":"assistant","message":{"content":[{"type":"text","text":"<done>VERIFIED</done>"}]}}' > "$TERMINAL_HOOK_TRANSCRIPT"
+(
+  cd "$TERMINAL_HOOK_DIR"
+  jq -n --arg transcript "$TERMINAL_HOOK_TRANSCRIPT" \
+    '{session_id:"terminal-hook-session",transcript_path:$transcript}' | /bin/bash "$ROOT_DIR/shared/hooks/stop-hook.sh" >/dev/null
+)
+assert_eq "hook cleans owned terminal record after its marker" "false" \
+  "$([ -e "$TERMINAL_HOOK_STATE" ] && echo true || echo false)"
+
 GUARD_DIR=$(fixture guard)
 (
   cd "$GUARD_DIR"
