@@ -404,6 +404,13 @@ while IFS= read -r CANDIDATE_STATE_FILE; do
     continue
   fi
   if session_owns_loop_state "$CANDIDATE_STATE_FILE"; then
+    if loop_state_is_terminal "$CANDIDATE_STATE_FILE"; then
+      TERMINAL_PROMISE=$(jq -r '.completion_promise' "$CANDIDATE_STATE_FILE")
+      if check_completion_promise "$TERMINAL_PROMISE" "$TRANSCRIPT_PATH"; then
+        cleanup_loop "$CANDIDATE_STATE_FILE"
+      fi
+      continue
+    fi
     if state_has_no_repository_target "$CANDIDATE_STATE_FILE"; then
       loop_log "stop-hook: pruning targetless loop state '$CANDIDATE_STATE_FILE'"
       cleanup_loop "$CANDIDATE_STATE_FILE"

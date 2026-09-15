@@ -65,8 +65,8 @@ release_setup_lock() {
 }
 trap release_setup_lock EXIT
 
-STATE_FILES=$(find_active_loops "$OWNER_STATE_DIR")
-ACTIVE_COUNT=$(count_active_loops "$OWNER_STATE_DIR")
+STATE_FILES=$(find_active_loops "$OWNER_STATE_DIR" "$STATE_FILE" false)
+ACTIVE_COUNT=$(count_active_loops "$OWNER_STATE_DIR" "$STATE_FILE" false)
 if [ -f "$STATE_FILE" ]; then
   if [ "$ACTIVE_COUNT" -ne 1 ]; then
     printf 'Error: loop re-entry is ambiguous because multiple active states exist:\n%s\n' \

@@ -481,18 +481,68 @@ check_completion_promise() {
   return 1
 }
 
+loop_state_is_terminal() {
+  local state_file="$1"
+  local loop_name expected_owner
+  [ -f "$state_file" ] && [ -r "$state_file" ] || return 1
+  loop_name=$(jq -er '.loop_name | select(type == "string" and length > 0)' "$state_file" 2>/dev/null) || return 1
+  expected_owner=$(owner_workflow_for_loop "$loop_name")
+  jq -se --arg owner "$expected_owner" '
+    length == 1 and (.[0] |
+      type == "object" and
+      .schema_version == 2 and
+      (.iteration | type == "number" and floor == . and . > 0) and
+      (.max_iterations == null or (.max_iterations | type == "number" and floor == . and . > 0)) and
+      (.generated_commit_status == null or .generated_commit_status == "") and
+      .owner_workflow == $owner and
+      (.components | type == "object") and
+      .awaiting_driver_input == false and
+      ((.session_id | type == "string" and length > 0) or
+       (.loop_instance_id | type == "string" and length > 0)) and
+      (.completion_promise | type == "string" and length > 0) and
+      (.completion_promise as $promise | .terminal_promises |
+        type == "array" and length > 0 and
+        all(.[]; type == "string" and length > 0) and
+        (unique | length) == length and index($promise) != null) and
+      .result == .workflow_result and
+      (if .owner_workflow == "e2e-verify" then
+         (.phase == "completed" and .result == "verified" and .completion_promise == "VERIFIED") or
+         (.phase == "e2e-failed" and .result == "e2e-fail" and .completion_promise == "E2E_FAIL") or
+         (.phase == "incomplete" and .result == "incomplete" and .completion_promise == "INCOMPLETE")
+       elif .owner_workflow == "ship" then
+         (.phase == "complete" and .result == "shipped" and .completion_promise == "SHIPPED") or
+         (.phase == "incomplete" and .result == "incomplete" and .completion_promise == "INCOMPLETE")
+       elif (["start-issue", "complete-issue", "address-review"] | index($owner)) != null then
+         (.phase == "completed" and .result == "complete" and .completion_promise == "COMPLETE") or
+         ((.phase == "incomplete" or ($owner == "address-review" and .phase == "approval-incomplete")) and
+          .result == "incomplete" and .completion_promise == "INCOMPLETE")
+       else false end)
+    )
+  ' "$state_file" >/dev/null 2>&1
+}
+
 find_active_loops() {
   local state_dir="${1:-$(loop_state_directory)}"
+  local current_state_file="${2:-}"
+  local include_terminal="${3:-true}"
+  local state_file
   if [ ! -d "$state_dir" ]; then
     return 0
   fi
-  find "$state_dir" -maxdepth 1 -name '*.loop.local.json' 2>/dev/null | LC_ALL=C sort
+  for state_file in "$state_dir/"*.loop.local.json "$state_dir/".*.loop.local.json "$state_dir/.loop.local.json"; do
+    [ -e "$state_file" ] || [ -L "$state_file" ] || continue
+    if [ "$include_terminal" != false ] || [ "$state_file" = "$current_state_file" ] || ! loop_state_is_terminal "$state_file"; then
+      printf '%s\n' "$state_file"
+    fi
+  done | LC_ALL=C sort
 }
 
 count_active_loops() {
   local state_dir="${1:-$(loop_state_directory)}"
+  local current_state_file="${2:-}"
+  local include_terminal="${3:-true}"
   local count
-  count=$(find_active_loops "$state_dir" | wc -l | tr -d ' ')
+  count=$(find_active_loops "$state_dir" "$current_state_file" "$include_terminal" | wc -l | tr -d ' ')
   printf '%s\n' "$count"
 }
 
