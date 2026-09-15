@@ -128,6 +128,30 @@ for TERMINAL_MUTATION in \
   assert_eq "unproven state blocks: $TERMINAL_MUTATION" "true" "$([ "$UNPROVEN_STATUS" -ne 0 ] && echo true || echo false)"
   assert_eq "unproven state is unchanged: $TERMINAL_MUTATION" "$UNPROVEN_BEFORE" "$(cat "$UNPROVEN_STATE")"
 done
+for COMPONENT_STATUS in committing push-pending unknown '' null; do
+  for COMPONENT_PATH in '["components","e2e_verify"]' '["components","e2e_verify","components","ship"]'; do
+    COMPONENT_DIR=$(mktemp -d "$FIXTURE_BASE/component.XXXXXX")
+    mkdir -p "$COMPONENT_DIR/.local/state"
+    COMPONENT_STATE="$COMPONENT_DIR/.local/state/complete-issue-456.loop.local.json"
+    printf '%s\n' "$TERMINAL_REENTRY_BEFORE" | jq --arg status "$COMPONENT_STATUS" --argjson path "$COMPONENT_PATH" '
+      .loop_name = "complete-issue-456" | .owner_workflow = "complete-issue" |
+      .phase = "incomplete" | .result = "incomplete" | .workflow_result = "incomplete" |
+      .completion_promise = "INCOMPLETE" | .terminal_promises = ["COMPLETE", "INCOMPLETE"] |
+      setpath($path; {components: {}, generated_commit_status: (if $status == "null" then null else $status end)})
+    ' > "$COMPONENT_STATE"
+    COMPONENT_BEFORE=$(cat "$COMPONENT_STATE")
+    COMPONENT_EXPECTED=1
+    case "$COMPONENT_STATUS" in ''|null) COMPONENT_EXPECTED=0 ;; esac
+    assert_eq "component transaction discovery: $COMPONENT_PATH $COMPONENT_STATUS" "$COMPONENT_EXPECTED" \
+      "$(source "$LOOP_LIB"; count_active_loops "$COMPONENT_DIR/.local/state" "" false)"
+    COMPONENT_SETUP_STATUS=0
+    (cd "$COMPONENT_DIR"; run_setup "e2e-verify-456" "VERIFIED" >/dev/null 2>&1) || COMPONENT_SETUP_STATUS=$?
+    assert_eq "component transaction startup: $COMPONENT_PATH $COMPONENT_STATUS" "$COMPONENT_EXPECTED" \
+      "$([ "$COMPONENT_SETUP_STATUS" -ne 0 ] && echo 1 || echo 0)"
+    assert_eq "component transaction is unchanged: $COMPONENT_PATH $COMPONENT_STATUS" "$COMPONENT_BEFORE" "$(cat "$COMPONENT_STATE")"
+  done
+done
+
 HIDDEN_DIR=$(fixture hidden-blocker)
 printf '%s\n' '{broken' > "$HIDDEN_DIR/.local/state/.hidden.loop.local.json"
 HIDDEN_STATUS=0
