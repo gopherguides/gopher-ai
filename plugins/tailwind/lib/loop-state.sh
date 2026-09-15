@@ -493,7 +493,9 @@ loop_state_is_terminal() {
       .schema_version == 2 and
       (.iteration | type == "number" and floor == . and . > 0) and
       (.max_iterations == null or (.max_iterations | type == "number" and floor == . and . > 0)) and
-      (.generated_commit_status == null or .generated_commit_status == "") and
+      all(recurse(.components[]?);
+        type == "object" and
+        (.generated_commit_status == null or .generated_commit_status == "")) and
       .owner_workflow == $owner and
       (.components | type == "object") and
       .awaiting_driver_input == false and
