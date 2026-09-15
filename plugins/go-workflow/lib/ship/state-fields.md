@@ -75,15 +75,14 @@ routing and subsequent steps depend on these exact names.
 | `e2e_skip_reason` | string | Step 7.6e | Empty on pass; otherwise machine-readable reason such as `"no-ui-visible-changes"`, `"missing-browser-tooling"`, `"browser-tool-call-failed"`, or `"dev-server-unavailable"` |
 | `e2e_pages_tested` | int | Step 7.6e | Number of routes tested |
 | `review_clean` | string | Step 5c | `"true"` when LLM returned no findings — fast-path past Step 6 on re-entry |
-| `review_result` | string | Step 2 recovery, Step 5 | `"void"` when a prior session's review expired or `"skipped"` when a headless worker cannot run it synchronously |
-| `review_skip_reason` | string | Step 2 recovery, Step 5 | `"session-boundary"` or `"headless-worker"` when no local agent review result is used |
+| `review_result` | string | Step 2 recovery, Step 5 | `"void"` when a prior session's review expired or `"skipped"` when no unpinned external CLI is usable or a headless worker cannot run an explicitly selected Fable review synchronously |
+| `review_skip_reason` | string | Step 2 recovery, Step 5 | `"session-boundary"`, `"headless-worker"`, or `"review-backend-unavailable"` when no local review result is used |
 | `head_sha` | string | Step 9c, 10e, 12c | Latest pushed commit; CI watch is anchored to this |
 | `gemini_tier` | string | Step 1 | `flex`/`standard`/`priority` (gemini only; warning rendered at review time) |
 | `ollama_model` | string | Step 5b | Installed Ollama model selected once and reused for every review pass |
 | `workflow_result` | string | Hard invariant failure | `"incomplete"` when an invariant stops the workflow |
 | `workflow_reason` | string | Hard invariant failure | Machine-readable hard-stop reason |
 | `llm_check_failed` | string | Step 4b | `"true"` after diagnostic; cleared on Retry success |
-| `use_agent_review` | string | Step 4b | `"true"` when the driver selected agent-based review for an unpinned backend or the user authorized replacing a pinned backend |
 | `quick_mode` | string | Step 5b | `"true"` when the driver selected `codex review --base` after evidence showed exhaustive mode could not complete |
 | `awaiting_driver_input` | boolean | Driver interaction rules | `true` while the workflow is paused for missing intent |
 | `driver_input_reason` | string | Driver interaction rules | Missing intent recorded while the loop is paused |

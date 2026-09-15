@@ -423,6 +423,108 @@ rm -rf "$MERGE_FIXTURE_WORKTREE"
 require_text "$STATE_FIELDS" "blocked" \
   "ship state fields must document blocked E2E result"
 
+# Review policy is prompt-driven; guard both backend routing and fix dispatch.
+PREREQUISITES="$ROOT_DIR/plugins/go-workflow/lib/ship/prerequisites.md"
+REVIEW_DEEP_FIX="$ROOT_DIR/plugins/go-workflow/skills/review-deep/fix-and-verify.md"
+reject_text "$PREREQUISITES" 'native Fable delegation|agent-based review|USE_AGENT_REVIEW=true' \
+  "ship must not select a sub-agent as an automatic fallback"
+reject_text "$LOCAL_REVIEW" 'USE_AGENT_REVIEW=true|driver-selected as an unpinned fallback|prefer.*--llm fable' \
+  "ship must not route automatic reviews to delegated backends"
+require_text "$PREREQUISITES" 'review-backend-unavailable' \
+  "ship must explain unavailable review backends"
+require_text "$PREREQUISITES" 'set_loop_field.*"review_result" "skipped"' \
+  "ship must persist unavailable-backend skips"
+require_text "$LOCAL_REVIEW" 'skip Steps 5a through 6' \
+  "skipped reviews must bypass planning, execution, and finding parsing"
+require_text "$LOCAL_REVIEW" 'REVIEW_RESULT=skipped.*Phase 2' \
+  "skipped reviews must not loop back into review"
+require_text "$LOCAL_REVIEW" 'REVIEW_RESULT != skipped' \
+  "skipped reviews must still run final coverage verification"
+require_text "$LOCAL_REVIEW" 'explicitly selected.*--llm fable' \
+  "Fable delegation must require explicit opt-in"
+reject_text "$REVIEW_DEEP_FIX" 'Parallel Fix Dispatch|Dispatch Subagents|run_in_background|delegate a fresh-context' \
+  "review-deep must fix findings in the current session"
+require_text "$REVIEW_DEEP_FIX" 'current context' \
+  "review-deep must document same-context processing"
+
+reject_text "$ROOT_DIR/plugins/go-workflow/skills/review-deep/SKILL.md" 'Use fresh-context parallel fix dispatch' \
+  "review-deep router must not restore parallel fix dispatch"
+require_text "$ROOT_DIR/plugins/go-workflow/skills/review-deep/static-analysis.md" 'REVIEW_CONCURRENCY=no' \
+  "review-deep planner must keep review units in the current session"
+
+# Execute the documented skip transition against standalone and embedded state.
+SKIP_TMP=$(mktemp -d "${TMPDIR:-/tmp}/ship-review-skip-XXXXXX")
+awk '
+  /^  ```bash$/ { block = ""; capture = 1; next }
+  capture && /^  ```$/ {
+    if (block ~ /REVIEW_RESULT=skipped/) printf "%s", block
+    capture = 0
+    next
+  }
+  capture { sub(/^  /, ""); block = block $0 "\n" }
+' "$PREREQUISITES" > "$SKIP_TMP/skip.sh"
+if [ ! -s "$SKIP_TMP/skip.sh" ]; then
+  fail "unavailable-backend skip transition must be executable"
+else
+  for skip_scope in '[]' '["components","ship"]'; do
+    printf '%s\n' '{"schema_version":2,"owner_workflow":"ship","loop_name":"ship","completion_promise":"SHIPPED","terminal_promises":["SHIPPED","INCOMPLETE"],"phase":"parent-phase","review_clean":"true","components":{"ship":{"review_clean":"true"}}}' > "$SKIP_TMP/state.json"
+    SKIP_OUTPUT=$(
+      source "$LOOP_LIB"
+      STATE_FILE="$SKIP_TMP/state.json"
+      WORKFLOW_STATE_PATH="$skip_scope"
+      source "$SKIP_TMP/skip.sh"
+      test "$REVIEW_RESULT" = skipped && test "$REVIEW_CLEAN" = false
+    )
+    if [[ "$SKIP_OUTPUT" != *"Local LLM review skipped:"* ]] ||
+       ! jq -e --argjson scope "$skip_scope" '
+         getpath($scope) |
+         .review_result == "skipped" and
+         .review_skip_reason == "review-backend-unavailable" and
+         .review_clean == "false"
+       ' "$SKIP_TMP/state.json" >/dev/null; then
+      fail "unavailable-backend skip must report and persist an honest result ($skip_scope)"
+    fi
+    if [ "$skip_scope" != '[]' ] &&
+       ! jq -e '.phase == "parent-phase" and .review_clean == "true" and .review_result == null' "$SKIP_TMP/state.json" >/dev/null; then
+      fail "embedded review skip must preserve parent workflow state"
+    fi
+  done
+fi
+# Resume an interrupted skip through verification, preserving the owning scope.
+awk '
+  /^## 2\. Re-entry Check/ { section=1 }
+  section && /^```bash$/ { capture=1; next }
+  capture && /^```$/ { exit }
+  capture { print }
+' "$SHIP_REENTRY" > "$SKIP_TMP/reentry.sh"
+for resume_scope in '[]' '["components","ship"]'; do
+  for resume_result in skipped pending; do
+    jq -n --argjson scope "$resume_scope" --arg result "$resume_result" '
+      {phase:"parent-phase",review_result:"parent-result",components:{}} |
+      setpath($scope; {phase:"reviewing",review_result:$result,
+        review_skip_reason:"review-backend-unavailable",review_clean:"false",components:{}}) |
+      . + {schema_version:2,owner_workflow:"ship",loop_name:"ship",
+        completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"]}
+    ' > "$SKIP_TMP/state.json"
+    (
+      source "$LOOP_LIB"
+      STATE_FILE="$SKIP_TMP/state.json"
+      WORKFLOW_STATE_PATH="$resume_scope"
+      source "$SKIP_TMP/reentry.sh"
+      expected_phase=reviewing
+      if [ "$resume_result" = skipped ]; then expected_phase=verifying; fi
+      test "$PHASE" = "$expected_phase" || exit 1
+      test "$(get_loop_field "$STATE_FILE" phase "$WORKFLOW_STATE_PATH")" = "$expected_phase" || exit 1
+      test "$(get_loop_field "$STATE_FILE" review_result "$WORKFLOW_STATE_PATH")" = "$resume_result"
+    ) || fail "interrupted $resume_result review must resume at the safe phase ($resume_scope)"
+    if [ "$resume_scope" != '[]' ] &&
+       ! jq -e '.phase == "parent-phase" and .review_result == "parent-result"' "$SKIP_TMP/state.json" >/dev/null; then
+      fail "embedded review recovery must preserve parent state"
+    fi
+  done
+done
+rm -rf "$SKIP_TMP"
+
 require_text "$SHIP_REENTRY" '\| `reviewing` \| Expired review recovery, then Step 9' \
   "ship re-entry must not resume an expired in-session review"
 require_text "$SHIP_REENTRY" '\| `review-required` \| Step 5' \
@@ -501,6 +603,45 @@ fi
 if ! jq -e '.phase == "ci-watch"' "$DIRTY_HEAD_SHIFT_TMP/.local/state/ship.loop.local.json" >/dev/null; then
   fail "dirty-tree head-shift recovery must not advance the ship phase"
 fi
+
+# A new head must invalidate an unavailable-backend skip in either state scope.
+for shift_scope in '[]' '["components","ship"]'; do
+  jq -n '{schema_version:2,owner_workflow:"ship",loop_name:"ship",completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"],phase:"parent-phase",review_result:"parent-result",components:{}}' > "$DIRTY_HEAD_SHIFT_TMP/shift.json"
+  (
+    source "$LOOP_LIB"
+    STATE_FILE="$DIRTY_HEAD_SHIFT_TMP/shift.json"
+    WORKFLOW_STATE_PATH="$shift_scope"
+    set_loop_field "$STATE_FILE" "review_result" "skipped" "$WORKFLOW_STATE_PATH"
+    set_loop_field "$STATE_FILE" "review_skip_reason" "review-backend-unavailable" "$WORKFLOW_STATE_PATH"
+    set_loop_field "$STATE_FILE" "review_clean" "false" "$WORKFLOW_STATE_PATH"
+    set_loop_json_field "$STATE_FILE" "pass" 3 "$WORKFLOW_STATE_PATH"
+    github_pr() { printf '%s\n' '{"head":{"sha":"new-sha","ref":"fixture"}}'; }
+    # Stub repository synchronization; run the real workflow state transition.
+    git() {
+      case "$3" in
+        config) echo origin ;;
+        branch) echo fixture ;;
+        status|fetch|checkout|reset) return 0 ;;
+        *) return 1 ;;
+      esac
+    }
+    HEAD_SHA="old-sha"
+    PR_NUM=1
+    WORKTREE_PATH="$DIRTY_HEAD_SHIFT_TMP"
+    source "$CI_SHIFT_BLOCK"
+  )
+  if ! jq -e --argjson scope "$shift_scope" '
+    getpath($scope) | .head_sha == "new-sha" and .phase == "review-required" and
+    .pass == 0 and .review_clean == "" and .review_result == "" and .review_skip_reason == ""
+  ' "$DIRTY_HEAD_SHIFT_TMP/shift.json" >/dev/null; then
+    fail "head shift must invalidate stale review skips ($shift_scope)"
+  fi
+  if [ "$shift_scope" != '[]' ] && ! jq -e '
+    .phase == "parent-phase" and .review_result == "parent-result"
+  ' "$DIRTY_HEAD_SHIFT_TMP/shift.json" >/dev/null; then
+    fail "embedded head shift must preserve parent review state"
+  fi
+done
 
 rm -f "$CI_SHIFT_BLOCK"
 rm -rf "$DIRTY_HEAD_SHIFT_TMP"

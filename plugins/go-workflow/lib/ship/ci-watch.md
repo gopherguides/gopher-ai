@@ -153,6 +153,8 @@ if [ "$FINAL_SHA" != "$HEAD_SHA" ]; then
   set_loop_field "$STATE_FILE" "head_sha" "$HEAD_SHA" "$WORKFLOW_STATE_PATH"
   set_loop_json_field "$STATE_FILE" "pass" 0 "$WORKFLOW_STATE_PATH"
   set_loop_field "$STATE_FILE" "review_clean" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "review_result" "" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "review_skip_reason" "" "$WORKFLOW_STATE_PATH"
   set_loop_phase "$STATE_FILE" "review-required" "$WORKFLOW_STATE_PATH"
 fi
 ```
@@ -170,7 +172,9 @@ fetch, check out, or reset until the working tree is clean.
 
 The reset on SHA shift is critical: if a concurrent push lands content that
 wasn't reviewed locally, we MUST re-review it. The pass counter is reset to
-0 so the user gets full max-passes coverage of the new code. The distinct
+0 so the user gets full max-passes coverage of the new code. Clear the previous
+review result and skip reason so Step 5 reassesses backend availability for the
+new head instead of honoring a stale skip. The distinct
 `review-required` phase survives a session boundary because no reviewer has
 started yet; once Step 5 changes it to `reviewing`, the normal expired-review
 recovery applies.

@@ -23,12 +23,16 @@ elif [ "$LLM_CHOICE" = "fable" ]; then
 fi
 ```
 
-For `fable`: no external CLI is required when the active surface can delegate
-the review to a Claude subagent (subscription-billed). When that delegation
+For explicitly selected `--llm fable` only: no external CLI is required when the
+active surface can delegate the review to a Claude subagent (subscription-billed). When that delegation
 capability is unavailable, **never shell out to `claude -p`** (headless print
 mode bills metered API usage, not the subscription); use the tmux-driven
 interactive Claude window path described in `local-review.md`. If neither is
 available, apply the recovery policy below.
+
+A CLI on PATH is not sufficient: it must be usable in the active session.
+When nested Codex execution is prohibited by the active driver, treat Codex as
+unavailable without launching it. Never substitute native delegation for it.
 
 ## Diagnostic Output
 
@@ -78,18 +82,23 @@ Then classify the decision:
   input is unavailable, ask in the final response and stop without advancing
   the phase or claiming completion.
 - If `LLM_EXPLICIT=false`, resolve a **driver-resolvable gate**. Select the first
-  usable independent path in this order: native Fable delegation, installed
-  Gemini, installed Ollama with a model, then agent-based review. State
-  `Decision`, `Evidence`, and `Rationale`.
-- If no review path is usable, stop incomplete with
-  `WORKFLOW_REASON=review-backend-unavailable`.
+  usable external CLI in this order: installed Gemini, then installed Ollama
+  with a model. Persist the selected `llm` and keep `llm_explicit=false`.
+  State `Decision`, `Evidence`, and `Rationale`.
+- Never select Fable or any sub-agent automatically. Fable requires an explicit
+  `--llm fable` invocation or an explicit user decision to replace the backend.
+  For an authorized replacement, persist `llm=fable` and `llm_explicit=true`.
+- If no external review CLI is usable for an unpinned backend, record the skip:
 
-When the selected path is agent-based review, set `USE_AGENT_REVIEW=true` and
-`CODEX_EXEC_FALLBACK=true`, then persist:
+  ```bash
+  REVIEW_RESULT=skipped
+  REVIEW_CLEAN=false
+  set_loop_field "$STATE_FILE" "review_result" "skipped" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "review_skip_reason" "review-backend-unavailable" "$WORKFLOW_STATE_PATH"
+  set_loop_field "$STATE_FILE" "review_clean" "false" "$WORKFLOW_STATE_PATH"
+  echo "Local LLM review skipped: no usable external review CLI (review-backend-unavailable). Continuing with verification and PR CI."
+  ```
 
-```bash
-set_loop_field "$STATE_FILE" "use_agent_review" "true" "$WORKFLOW_STATE_PATH"
-```
-
-Continue to Step 5 — Phase 1 will route through the agent-based review
-section in `local-review.md`.
+Continue to Step 5. A skipped review bypasses review planning and execution;
+local verification, applicable coverage/E2E, commit, push, non-draft PR creation,
+and exact-head CI remain mandatory. A skip is never a clean-review verdict.

@@ -58,49 +58,13 @@ A fix is **not testable** if it's purely cosmetic:
 
 ---
 
-## Parallel Fix Dispatch
+## Same-Context Fix Processing
 
-When there are **3 or more findings targeting different files**, use parallel dispatch for faster resolution:
-
-### 1. Group Findings by File
-
-Findings in the same file must be handled by one subagent (sequential within file).
-
-### 2. Group by Shared Test Files
-
-If two source files are in the same Go package, they may share `_test.go` files. Check:
-
-```bash
-# For each pair of source files, check if they're in the same package
-dirname "file1.go" == dirname "file2.go"
-```
-
-Files in the same package must be in the same group to avoid write conflicts on test files.
-
-### 3. Dispatch Subagents
-
-For each file group, delegate a fresh-context implementation worker through the
-active surface, selecting sonnet when the surface supports model choice, with:
-
-- "You are fixing review findings in `{FILE_PATH}`. Working directory: `{PROJECT_ROOT}`."
-- All findings for that file (title, body, line range, priority, category, confidence)
-- "For each finding: read the file, evaluate validity, fix if valid (skip if not), generate test if testable. Report: STATUS (fixed/skipped), FILES_CHANGED, TEST_RESULTS, SKIPPED findings with reasons."
-
-Dispatch all groups in parallel using `run_in_background: true`.
-
-### 4. Collect Results
-
-After all subagents complete, aggregate:
-- Total FIXED count
-- Total SKIPPED count with reasons
-- All files changed
-- All test results
-
-Proceed to verification with combined results.
-
-**Fall back to sequential processing** when:
-- Fewer than 3 findings
-- All findings target the same file
+Address all findings in the current context, in priority order, regardless of
+finding count or how many files they touch. Do not delegate fresh-context
+reviewers or implementation workers automatically. Group related findings and
+shared test files as needed, then track total FIXED, SKIPPED (with reasons),
+owned files, and test results before verification.
 
 ---
 
