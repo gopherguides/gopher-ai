@@ -490,6 +490,39 @@ else
     fi
   done
 fi
+# Resume an interrupted skip through verification, preserving the owning scope.
+awk '
+  /^## 2\. Re-entry Check/ { section=1 }
+  section && /^```bash$/ { capture=1; next }
+  capture && /^```$/ { exit }
+  capture { print }
+' "$SHIP_REENTRY" > "$SKIP_TMP/reentry.sh"
+for resume_scope in '[]' '["components","ship"]'; do
+  for resume_result in skipped pending; do
+    jq -n --argjson scope "$resume_scope" --arg result "$resume_result" '
+      {phase:"parent-phase",review_result:"parent-result",components:{}} |
+      setpath($scope; {phase:"reviewing",review_result:$result,
+        review_skip_reason:"review-backend-unavailable",review_clean:"false",components:{}}) |
+      . + {schema_version:2,owner_workflow:"ship",loop_name:"ship",
+        completion_promise:"SHIPPED",terminal_promises:["SHIPPED","INCOMPLETE"]}
+    ' > "$SKIP_TMP/state.json"
+    (
+      source "$LOOP_LIB"
+      STATE_FILE="$SKIP_TMP/state.json"
+      WORKFLOW_STATE_PATH="$resume_scope"
+      source "$SKIP_TMP/reentry.sh"
+      expected_phase=reviewing
+      if [ "$resume_result" = skipped ]; then expected_phase=verifying; fi
+      test "$PHASE" = "$expected_phase" || exit 1
+      test "$(get_loop_field "$STATE_FILE" phase "$WORKFLOW_STATE_PATH")" = "$expected_phase" || exit 1
+      test "$(get_loop_field "$STATE_FILE" review_result "$WORKFLOW_STATE_PATH")" = "$resume_result"
+    ) || fail "interrupted $resume_result review must resume at the safe phase ($resume_scope)"
+    if [ "$resume_scope" != '[]' ] &&
+       ! jq -e '.phase == "parent-phase" and .review_result == "parent-result"' "$SKIP_TMP/state.json" >/dev/null; then
+      fail "embedded review recovery must preserve parent state"
+    fi
+  done
+done
 rm -rf "$SKIP_TMP"
 
 require_text "$SHIP_REENTRY" '\| `reviewing` \| Expired review recovery, then Step 9' \

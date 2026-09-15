@@ -26,7 +26,8 @@ complete in the current session, do not start it. Persist `review_result="skippe
 `review_skip_reason="headless-worker"`, then continue through verification,
 commit, push, and non-draft PR creation. PR CI is the authoritative remote
 gate. A successor that finds `phase="reviewing"` follows the expired-review
-recovery in `skills/ship/SKILL.md`; it never restarts the review.
+routing in `lib/ship/reentry.md`: a persisted skip resumes Step 7; only an
+actual expired review uses expired-review recovery. It never restarts the review.
 
 Restore `REVIEW_RESULT` from the persisted `review_result` before any backend
 detection or planning. If `REVIEW_RESULT=skipped`, display the persisted skip

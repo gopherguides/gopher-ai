@@ -32,6 +32,11 @@ for permission to bypass the invariant and never output `SHIPPED` on this path.
 [ -f "$STATE_FILE" ] && read_loop_state "$STATE_FILE" "$WORKFLOW_STATE_PATH"
 WORKTREE_PATH=$(get_loop_field "$STATE_FILE" "worktree_path" '[]')
 REPO_SLUG=$(get_loop_field "$STATE_FILE" "repo_slug" '[]')
+REVIEW_RESULT=$(get_loop_field "$STATE_FILE" "review_result" "$WORKFLOW_STATE_PATH")
+if [ "${PHASE:-}" = "reviewing" ] && [ "$REVIEW_RESULT" = "skipped" ]; then
+  set_loop_phase "$STATE_FILE" "verifying" "$WORKFLOW_STATE_PATH"
+  PHASE=verifying
+fi
 ```
 
 If `PHASE` is set (non-empty), this is a stop-hook re-entry. Restore every Step
@@ -45,6 +50,10 @@ A persisted `llm=fable` with `llm_explicit!=true` is an obsolete automatic
 selection: reset `llm` to `codex` and apply current prerequisite policy before
 any new review. Restore `REVIEW_RESULT` from `review_result` so a skipped
 review resumes verification without running a reviewer.
+
+The transition above runs before expired-review recovery and phase routing. A
+skipped review has no expired reviewer and no proof of local verification;
+resume at Step 7, retaining coverage and E2E before commit or push.
 
 An in-session review is never resumable. If `PHASE == "reviewing"` on
 re-entry, the reviewer from the earlier session no longer exists. Do not wait
