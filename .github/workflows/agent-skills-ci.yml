@@ -1,14 +1,7 @@
+# Zero CI (2026-09-28): no push or PR runs. Workers run make check locally and post the local-gate status; an hourly build on mac-studio runs the full suite and cuts releases.
 name: Agent Skills CI
 
 on:
-  push:
-    branches: [main]
-    paths: ['agent-skills/**', '.github/workflows/agent-skills-ci.yml']
-  merge_group:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
-    paths: ['agent-skills/**', '.github/workflows/agent-skills-ci.yml']
   workflow_dispatch:
     inputs:
       test-corp:
