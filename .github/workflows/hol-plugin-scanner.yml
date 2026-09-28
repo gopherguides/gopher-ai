@@ -1,18 +1,7 @@
+# Zero CI (2026-09-28): no push or PR runs. Workers run make check locally and post the local-gate status; an hourly build on mac-studio runs the full suite and cuts releases.
 name: HOL Plugin Scanner
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/hol-plugin-scanner.yml"
-      - "plugins/go-workflow/**"
-  merge_group:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
-    paths:
-      - ".github/workflows/hol-plugin-scanner.yml"
-      - "plugins/go-workflow/**"
   workflow_dispatch:
 
 permissions:
