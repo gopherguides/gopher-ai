@@ -25,6 +25,8 @@ Before coding, resolve every native dependency, Workpad blocker, and issue-body
 
 Run the authoritative validation command from `gate.run` in `detent.yaml`; never duplicate it here.
 
+Zero CI: GitHub Actions does not run on pushes or PRs. After the configured gate (`gate.run` in `detent.yaml`) passes on the exact commit you pushed, post the `local-gate` commit status on that SHA: `gh api -X POST repos/gopherguides/gopher-ai/statuses/$(git rev-parse HEAD) -f state=success -f context=local-gate -f description="detent gate passed locally"`. Post it only for a commit whose full gate passed in this session; if the gate fails, fix it instead of posting. Any later push, including a rebase onto develop, needs a fresh gate and a fresh local-gate status. Never poll or wait on CI. Open PRs against develop.
+
 ## State Flow
 
 Use the current Detent state as the source of truth for which section applies.
@@ -33,10 +35,10 @@ Use the current Detent state as the source of truth for which section applies.
 
 1. Move the issue to `In Progress`.
 2. Initialize the Workpad with the plan, acceptance criteria, validation plan, and `in_progress` status.
-3. Fetch `origin/main`, confirm the Detent worktree base, resolve dependencies, then follow `$go-workflow:start-issue <number>` through PR creation and current-head CI.
-4. Run focused checks and the configured validation gate.
+3. Fetch `origin/develop`, confirm the Detent worktree base, resolve dependencies, then follow `$go-workflow:start-issue <number>` through PR creation against `develop`.
+4. Run focused checks and the configured validation gate, then post the `local-gate` status on the pushed head.
 5. Follow `$go-workflow:address-review` for any PR feedback.
-6. Leave the issue in `In Progress`. Set Workpad `status: complete` with no blockers or human action only when the PR is non-draft, references the issue, validation and current-head CI are green, and no actionable review remains. Detent auto-promotes directly to `Merging`; never use `Human Review`.
+6. Leave the issue in `In Progress`. Set Workpad `status: complete` with no blockers or human action only when the PR is non-draft, references the issue, the configured gate passed on the current head with its `local-gate` status posted, and no actionable review remains. Detent auto-promotes directly to `Merging`; never use `Human Review`.
 
 ### For In Progress
 
@@ -45,7 +47,7 @@ When implementation is complete, run the full gate and apply Todo's completion r
 
 ### For Rework
 
-Re-read all human, CI, and bot feedback, move the issue to `In Progress`, and follow
+Re-read all human and bot feedback, move the issue to `In Progress`, and follow
 `$go-workflow:address-review`. Rerun the full gate and apply Todo's completion rule.
 
 ### For Merging
@@ -85,7 +87,7 @@ new skills and commands with no named consumer.
 
 A precise symptom plus expected behavior satisfies this; a wish with no
 checkable end state fails it. An issue whose `Depends on:` reference is
-not merged into `origin/main` is not ready; leave it in `Backlog` and
+not merged into `origin/develop` is not ready; leave it in `Backlog` and
 say what is missing.
 
 ### Size
