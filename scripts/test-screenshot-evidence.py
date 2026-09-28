@@ -20,7 +20,7 @@ class ScreenshotEvidenceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR"))
         self.addCleanup(self.temp.cleanup)
-        self.run = Path(self.temp.name)
+        self.run = Path(self.temp.name).resolve()
         (self.run / "images").mkdir()
         self.calls = []
         self.version = "gh version 2.100.0 (2026-09-03)"
