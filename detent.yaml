@@ -103,7 +103,7 @@ agent:
         # gate (CI green), then promote directly to Merging. Human Review is never
         # entered unless the optout label is applied or the gate wait times out.
         gate_wait_state: source
-        optout_label: requires-human-review
+        optout_label: detent-optout-disabled
         allowed_issue_labels: []
         rework_limit: 3
     skills:
@@ -158,6 +158,7 @@ gate:
     kind: command
     run: >-
         /bin/bash -c 'source ./scripts/gate-environment.sh && python3 -m pip install --disable-pip-version-check --requirement requirements-test.txt && /bin/bash ./scripts/test-commands.sh && /bin/bash ./scripts/test-hooks.sh && /bin/bash ./scripts/test-ship-e2e-gate.sh && /bin/bash ./scripts/check-shared-sync.sh && shellcheck agent-skills/scripts/*.sh && for skill_dir in agent-skills/skills/*/; do skill_name=$(basename "$skill_dir"); skill_file="$skill_dir/SKILL.md"; test -f "$skill_file"; lines=$(wc -l < "$skill_file"); test "$lines" -lt 500; name=$(sed -n "/^---$/,/^---$/p" "$skill_file" | awk "/^name:/ {print \$2; exit}"); test "$name" = "$skill_name"; rg -q "^description:" "$skill_file"; done && ruby -ryaml -e "YAML.load_file(ARGV[0])" agent-skills/config/severity.yaml && (cd agent-skills/examples/demo-repo && go build -o "${TMPDIR:-/tmp}/gopher-ai-demo" . && /bin/bash ../../../scripts/run-go-tests.sh ./...)'
+    local_status: local-gate
     # Flipped back to false 2026-09-04 (operator): the 2026-08-15 setting assumed
     # the bounded gate wait was harmless when no review arrived. It is not -- the
     # fall-through lands the card in Human Review, which is exactly what this
