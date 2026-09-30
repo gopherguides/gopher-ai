@@ -65,6 +65,7 @@ release_setup_lock() {
 }
 trap release_setup_lock EXIT
 
+reclaim_abandoned_loops "$OWNER_STATE_DIR" "$STATE_FILE"
 STATE_FILES=$(find_active_loops "$OWNER_STATE_DIR" "$STATE_FILE" false)
 ACTIVE_COUNT=$(count_active_loops "$OWNER_STATE_DIR" "$STATE_FILE" false)
 if [ -f "$STATE_FILE" ]; then
