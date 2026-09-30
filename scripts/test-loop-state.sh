@@ -14,6 +14,17 @@ case "$LOOP_TMP_BASE/" in
     ;;
 esac
 FIXTURE_BASE=$(mktemp -d "$LOOP_TMP_BASE/gopher-ai-loop-state.XXXXXX")
+GH_STUB_DIR="$FIXTURE_BASE/gh-stub"
+GH_PR_STATES="$FIXTURE_BASE/gh-pr-states"
+mkdir -p "$GH_STUB_DIR"
+: > "$GH_PR_STATES"
+cat > "$GH_STUB_DIR/gh" <<GH_STUB
+#!/bin/bash
+[ "\$1 \$2" = "pr view" ] || exit 1
+awk -v pr="\$3" '\$1 == pr { print \$2; found = 1 } END { exit !found }' "$GH_PR_STATES"
+GH_STUB
+chmod +x "$GH_STUB_DIR/gh"
+export PATH="$GH_STUB_DIR:$PATH"
 
 PASS=0
 FAIL=0
@@ -152,6 +163,41 @@ for COMPONENT_STATUS in committing push-pending unknown '' null; do
   done
 done
 
+ABANDONED_DIR=$(fixture abandoned-owner)
+(
+  cd "$ABANDONED_DIR"
+  run_setup "e2e-verify-2160" "VERIFIED" 30 "building" '{}' "" \
+    '["VERIFIED","E2E_FAIL","INCOMPLETE"]' >/dev/null
+)
+ABANDONED_STATE="$ABANDONED_DIR/.local/state/e2e-verify-2160.loop.local.json"
+jq '.result = "" | .workflow_result = "" | .build_result = ""' "$ABANDONED_STATE" > "$ABANDONED_STATE.tmp"
+mv "$ABANDONED_STATE.tmp" "$ABANDONED_STATE"
+ABANDONED_BEFORE=$(cat "$ABANDONED_STATE")
+printf '%s\n' "2160 OPEN" > "$GH_PR_STATES"
+OPEN_OWNER_STATUS=0
+(cd "$ABANDONED_DIR"; run_setup "e2e-verify-2161" "VERIFIED" >/dev/null 2>&1) || OPEN_OWNER_STATUS=$?
+assert_eq "nonterminal state with open owner blocks" "true" "$([ "$OPEN_OWNER_STATUS" -ne 0 ] && echo true || echo false)"
+assert_eq "nonterminal state with open owner is unchanged" "$ABANDONED_BEFORE" "$(cat "$ABANDONED_STATE")"
+: > "$GH_PR_STATES"
+UNKNOWN_OWNER_STATUS=0
+(cd "$ABANDONED_DIR"; run_setup "e2e-verify-2161" "VERIFIED" >/dev/null 2>&1) || UNKNOWN_OWNER_STATUS=$?
+assert_eq "nonterminal state with unknown owner blocks" "true" "$([ "$UNKNOWN_OWNER_STATUS" -ne 0 ] && echo true || echo false)"
+assert_eq "nonterminal state with unknown owner is unchanged" "$ABANDONED_BEFORE" "$(cat "$ABANDONED_STATE")"
+for OWNER_STATE in MERGED CLOSED; do
+  printf '%s\n' "$ABANDONED_BEFORE" > "$ABANDONED_STATE"
+  rm -rf "$ABANDONED_DIR/.local/state/e2e-verify-2161.loop.local.json" "$ABANDONED_DIR/.local/state/abandoned"
+  printf '%s\n' "2160 $OWNER_STATE" > "$GH_PR_STATES"
+  RECLAIM_STATUS=0
+  RECLAIM_OUTPUT=$(cd "$ABANDONED_DIR"; run_setup "e2e-verify-2161" "VERIFIED" 2>&1) || RECLAIM_STATUS=$?
+  assert_eq "$OWNER_STATE owner no longer blocks" "0" "$RECLAIM_STATUS"
+  assert_eq "$OWNER_STATE owner record leaves active discovery" "false" \
+    "$([ -e "$ABANDONED_STATE" ] && echo true || echo false)"
+  assert_eq "$OWNER_STATE owner reclaim is logged" "true" \
+    "$(printf '%s\n' "$RECLAIM_OUTPUT" | grep -q "owner pull request #2160 is $OWNER_STATE" && echo true || echo false)"
+  assert_eq "$OWNER_STATE owner record is archived intact" "$ABANDONED_BEFORE" \
+    "$(cat "$ABANDONED_DIR/.local/state/abandoned/"e2e-verify-2160.loop.local.json.*)"
+done
+: > "$GH_PR_STATES"
 HIDDEN_DIR=$(fixture hidden-blocker)
 printf '%s\n' '{broken' > "$HIDDEN_DIR/.local/state/.hidden.loop.local.json"
 HIDDEN_STATUS=0

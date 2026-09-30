@@ -539,6 +539,48 @@ find_active_loops() {
   done | LC_ALL=C sort
 }
 
+loop_owner_pull_request() {
+  local loop_name="$1"
+  case "$loop_name" in
+    e2e-verify-*|address-review-*) ;;
+    *) return 1 ;;
+  esac
+  printf '%s\n' "${loop_name##*-}" | grep -E '^[1-9][0-9]*$'
+}
+
+loop_state_is_abandoned() {
+  local state_file="$1"
+  local loop_name pr_number pr_state
+  [ -f "$state_file" ] && [ ! -L "$state_file" ] && [ -r "$state_file" ] || return 1
+  loop_state_is_terminal "$state_file" && return 1
+  loop_name=$(jq -er '.loop_name | select(type == "string" and length > 0)' "$state_file" 2>/dev/null) || return 1
+  jq -e --arg owner "$(owner_workflow_for_loop "$loop_name")" \
+    'type == "object" and .owner_workflow == $owner' "$state_file" >/dev/null 2>&1 || return 1
+  pr_number=$(loop_owner_pull_request "$loop_name") || return 1
+  pr_state=$(gh pr view "$pr_number" --json state --jq .state 2>/dev/null) || return 1
+  case "$pr_state" in
+    MERGED|CLOSED) printf '%s\n' "$pr_number $pr_state" ;;
+    *) return 1 ;;
+  esac
+}
+
+reclaim_abandoned_loops() {
+  local state_dir="${1:-$(loop_state_directory)}"
+  local current_state_file="${2:-}"
+  local state_file owner archive_dir archive_file
+  archive_dir="$state_dir/abandoned"
+  while IFS= read -r state_file; do
+    [ -n "$state_file" ] && [ "$state_file" != "$current_state_file" ] || continue
+    owner=$(loop_state_is_abandoned "$state_file") || continue
+    mkdir -p "$archive_dir" || return 1
+    archive_file="$archive_dir/$(basename "$state_file").$(date -u +%Y%m%dT%H%M%SZ).$$"
+    mv "$state_file" "$archive_file" || return 1
+    printf 'Reclaimed abandoned loop state %s: owner pull request #%s is %s; archived to %s\n' \
+      "$state_file" "${owner% *}" "${owner#* }" "$archive_file" >&2
+    loop_log "reclaim_abandoned_loops: archived $state_file (PR #${owner% *} ${owner#* }) to $archive_file"
+  done < <(find_active_loops "$state_dir" "$current_state_file" false)
+}
+
 count_active_loops() {
   local state_dir="${1:-$(loop_state_directory)}"
   local current_state_file="${2:-}"
