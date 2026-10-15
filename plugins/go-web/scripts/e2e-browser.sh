@@ -53,8 +53,35 @@ load_state() {
   MARKER_URL=$(jq -r '.marker_url // empty' "$STATE_FILE")
 }
 
+process_alive() {
+  local state
+  state=$(ps -o stat= -p "$1" 2>/dev/null) || return 1
+  case "$state" in
+    ""|*Z*) return 1 ;;
+  esac
+}
+
+run_bounded() {
+  local limit="$1" pid waited=0
+  shift
+  "$@" &
+  pid=$!
+  while process_alive "$pid"; do
+    if [ "$waited" -ge "$((limit * 4))" ]; then
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 1
+      kill -KILL "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 0.25
+    waited=$((waited + 1))
+  done
+  wait "$pid"
+}
+
 session_status() {
-  "$CLI_PATH" status --sessionId="$SESSION_ID" 2>/dev/null
+  run_bounded "${E2E_BROWSER_STATUS_TIMEOUT:-15}" "$CLI_PATH" status --sessionId="$SESSION_ID" 2>/dev/null
 }
 
 running_daemon_pid() {
@@ -74,7 +101,7 @@ session_stopped() {
     *"daemon is not running"*) ;;
     *) return 1 ;;
   esac
-  if [ -n "$DAEMON_PID" ] && kill -0 "$DAEMON_PID" 2>/dev/null; then
+  if [ -n "$DAEMON_PID" ] && process_alive "$DAEMON_PID"; then
     return 1
   fi
   return 0
@@ -107,8 +134,8 @@ stop_session() {
     return 0
   fi
   [ -x "$CLI_PATH" ] || { echo "e2e-browser: recorded CLI is unavailable: $CLI_PATH" >&2; return 1; }
-  if ! "$CLI_PATH" stop --sessionId="$SESSION_ID" >/dev/null 2>&1; then
-    echo "e2e-browser: stop failed for session $SESSION_ID" >&2
+  if ! run_bounded "${E2E_BROWSER_STOP_TIMEOUT:-30}" "$CLI_PATH" stop --sessionId="$SESSION_ID" >/dev/null 2>&1; then
+    echo "e2e-browser: stop failed or timed out for session $SESSION_ID" >&2
     return 1
   fi
   attempt=0

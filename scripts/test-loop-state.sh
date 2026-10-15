@@ -193,7 +193,7 @@ for OWNER_STATE in MERGED CLOSED; do
   assert_eq "$OWNER_STATE owner record leaves active discovery" "false" \
     "$([ -e "$ABANDONED_STATE" ] && echo true || echo false)"
   assert_eq "$OWNER_STATE owner reclaim is logged" "true" \
-    "$(printf '%s\n' "$RECLAIM_OUTPUT" | grep -q "owner pull request #2160 is $OWNER_STATE" && echo true || echo false)"
+    "$(grep -q "owner pull request #2160 is $OWNER_STATE" <<< "$RECLAIM_OUTPUT" && echo true || echo false)"
   assert_eq "$OWNER_STATE owner record is archived intact" "$ABANDONED_BEFORE" \
     "$(cat "$ABANDONED_DIR/.local/state/abandoned/"e2e-verify-2160.loop.local.json.*)"
 done

@@ -66,8 +66,16 @@ cmd="${args[0]:-}"
 dir="$root/sessions/${session:-default}"
 printf '%s %s\n' "${session:-default}" "${args[*]}" >> "$root/log"
 
+alive() {
+  local state
+  state=$(ps -o stat= -p "$1" 2>/dev/null) || return 1
+  case "$state" in
+    ""|*Z*) return 1 ;;
+  esac
+}
+
 running() {
-  [ -f "$dir/pid" ] && kill -0 "$(cat "$dir/pid")" 2>/dev/null
+  [ -f "$dir/pid" ] && alive "$(cat "$dir/pid")"
 }
 
 launch() {
@@ -97,9 +105,11 @@ case "$cmd" in
     ;;
   stop)
     [ ! -e "$root/fail-stop" ] || exit 1
+    [ ! -e "$root/hang-stop" ] || exec sleep 600
     if running; then
       kill "$(cat "$dir/pid")"
-      while kill -0 "$(cat "$dir/pid")" 2>/dev/null; do sleep 0.01; done
+      waited=0
+      while alive "$(cat "$dir/pid")" && [ "$waited" -lt 200 ]; do sleep 0.01; waited=$((waited + 1)); done
     fi
     rm -f "$dir/pid"
     ;;
@@ -130,8 +140,24 @@ state_field() {
   jq -r ".$2 | values" "$1"
 }
 
+process_alive() {
+  local state
+  state=$(ps -o stat= -p "$1" 2>/dev/null) || return 1
+  case "$state" in
+    ""|*Z*) return 1 ;;
+  esac
+}
+
 daemon_alive() {
-  kill -0 "$1" 2>/dev/null && echo true || echo false
+  process_alive "$1" && echo true || echo false
+}
+
+file_mode() {
+  if stat -c '%a' "$1" >/dev/null 2>&1; then
+    stat -c '%a' "$1"
+  else
+    stat -f '%Lp' "$1"
+  fi
 }
 
 succeeds() {
@@ -150,7 +176,7 @@ PID_B=$(state_field "$STATE_B" daemon_pid)
 assert_eq "sessions use distinct ids" "false" \
   "$([ "$(state_field "$STATE_A" session)" = "$(state_field "$STATE_B" session)" ] && echo true || echo false)"
 assert_eq "state records the marker page" "2" "$(state_field "$STATE_A" marker_id)"
-assert_eq "state is private" "600" "$(stat -f '%Lp' "$STATE_A" 2>/dev/null || stat -c '%a' "$STATE_A")"
+assert_eq "state is private" "600" "$(file_mode "$STATE_A")"
 assert_eq "start refuses to overwrite recorded ownership" "false" "$(succeeds /bin/bash "$HELPER" start "$STATE_A")"
 
 PAGE_ID=$(/bin/bash "$HELPER" call "$STATE_A" new_page "http://localhost:8080/" | jq -r '.pages[] | select(.selected) | .id')
@@ -178,11 +204,12 @@ assert_eq "a stopped session stays down" "false" \
 assert_eq "stop with no recorded state succeeds" "true" "$(succeeds /bin/bash "$HELPER" stop "$WORK/runs/none/session.json")"
 
 kill "$PID_B"
-while kill -0 "$PID_B" 2>/dev/null; do sleep 0.01; done
+WAITED=0
+while process_alive "$PID_B" && [ "$WAITED" -lt 200 ]; do sleep 0.01; WAITED=$((WAITED + 1)); done
 SESSION_B=$(state_field "$STATE_B" session)
 assert_eq "a lost session fails the call" "false" "$(succeeds /bin/bash "$HELPER" call "$STATE_B" list_pages)"
 assert_eq "a lost session is not reconnected" "false" \
-  "$([ -f "$FAKE_CDT_ROOT/sessions/$SESSION_B/pid" ] && kill -0 "$(cat "$FAKE_CDT_ROOT/sessions/$SESSION_B/pid")" 2>/dev/null && echo true || echo false)"
+  "$([ -f "$FAKE_CDT_ROOT/sessions/$SESSION_B/pid" ] && process_alive "$(cat "$FAKE_CDT_ROOT/sessions/$SESSION_B/pid")" && echo true || echo false)"
 chrome-devtools start --sessionId="$SESSION_B" >/dev/null
 REPLACEMENT_PID=$(cat "$FAKE_CDT_ROOT/sessions/$SESSION_B/pid")
 assert_eq "a replacement browser is rejected" "false" "$(succeeds /bin/bash "$HELPER" call "$STATE_B" list_pages)"
@@ -213,6 +240,17 @@ assert_eq "failed cleanup keeps ownership for retry" "true" "$(state_field "$STA
 rm -f "$FAKE_CDT_ROOT/fail-stop"
 assert_eq "cleanup retry succeeds" "true" "$(succeeds /bin/bash "$HELPER" stop "$STATE_RETRY")"
 assert_eq "cleanup retry stops the daemon" "false" "$(daemon_alive "$PID_RETRY")"
+
+STATE_HUNG="$WORK/runs/hung/session.json"
+/bin/bash "$HELPER" start "$STATE_HUNG" >/dev/null
+PID_HUNG=$(state_field "$STATE_HUNG" daemon_pid)
+touch "$FAKE_CDT_ROOT/hang-stop"
+assert_eq "a hung stop command times out as a failure" "false" \
+  "$(E2E_BROWSER_STOP_TIMEOUT=1 succeeds /bin/bash "$HELPER" stop "$STATE_HUNG")"
+assert_eq "a hung stop keeps ownership for retry" "true" "$(state_field "$STATE_HUNG" active)"
+rm -f "$FAKE_CDT_ROOT/hang-stop"
+assert_eq "retry after a hung stop succeeds" "true" "$(succeeds /bin/bash "$HELPER" stop "$STATE_HUNG")"
+assert_eq "retry after a hung stop stops the daemon" "false" "$(daemon_alive "$PID_HUNG")"
 
 echo "=== Loop Cleanup Wiring Tests ==="
 
