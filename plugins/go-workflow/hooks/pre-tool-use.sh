@@ -8,6 +8,11 @@
 
 set -euo pipefail
 
+# Hooks inherit the host process environment, not the user's shell profile.
+# GUI-launched hosts get launchd's minimal PATH, so add the usual install
+# locations before checking whether tools such as gh or golangci-lint are installed.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+
 HOOK_INPUT=$(cat)
 TOOL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
 TOOL_INPUT=$(echo "$HOOK_INPUT" | jq -r '.tool_input // empty' 2>/dev/null)
@@ -33,20 +38,39 @@ check_env_vars() {
   fi
 }
 
+# Reports whether a go-installed tool is available. The Go bin directory is
+# resolved only when the tool is not already on PATH, because running go adds
+# a process start to the hook and only the golangci-lint and templ checks need it.
+go_tool_available() {
+  command -v "$1" &>/dev/null && return 0
+  # go install writes to GOBIN, else the first GOPATH entry's bin directory.
+  # Ask go for the effective values so settings stored with `go env -w` count.
+  local gobin="" gopath=""
+  if command -v go &>/dev/null; then
+    { IFS= read -r gobin; IFS= read -r gopath; } < <(GOTOOLCHAIN=local go env GOBIN GOPATH 2>/dev/null) || true
+  fi
+  gobin="${gobin:-${GOBIN:-}}"
+  if [ -z "$gobin" ]; then
+    gopath="${gopath:-${GOPATH:-${HOME:+$HOME/go}}}"
+    [ -n "$gopath" ] && gobin="${gopath%%:*}/bin"
+  fi
+  [ -n "$gobin" ] && [ -x "$gobin/$1" ]
+}
+
 check_tool_availability() {
   local cmd_text
   cmd_text=$(echo "$TOOL_INPUT" | jq -r '.command // .cmd // empty' 2>/dev/null)
   [ -z "$cmd_text" ] && return 0
   case "$TOOL_NAME" in
     Bash|bash)
-      if echo "$cmd_text" | grep -q 'golangci-lint' && ! command -v golangci-lint &>/dev/null; then
+      if echo "$cmd_text" | grep -q 'golangci-lint' && ! go_tool_available golangci-lint; then
         # Allow go install commands for the tool itself
         if ! echo "$cmd_text" | grep -qE 'go install.*golangci-lint'; then
           printf '{"decision":"block","reason":"golangci-lint is not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"}\n'
           exit 0
         fi
       fi
-      if echo "$cmd_text" | grep -q 'templ ' && ! command -v templ &>/dev/null; then
+      if echo "$cmd_text" | grep -q 'templ ' && ! go_tool_available templ; then
         # Allow go install commands for the tool itself
         if ! echo "$cmd_text" | grep -qE 'go install.*templ'; then
           printf '{"decision":"block","reason":"templ is not installed. Install with: go install github.com/a-h/templ/cmd/templ@latest"}\n'
