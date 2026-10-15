@@ -109,7 +109,7 @@ session_stopped() {
 
 run_tool() {
   local response
-  response=$("$CLI_PATH" "$@" --sessionId="$SESSION_ID" --output-format=json) || return 1
+  response=$(run_bounded "${E2E_BROWSER_TOOL_TIMEOUT:-120}" "$CLI_PATH" "$@" --sessionId="$SESSION_ID" --output-format=json) || return 1
   if ! jq -e 'type == "object" or (type == "array" and all(.[]; type == "string"))' \
       <<< "$response" >/dev/null 2>&1; then
     printf '%s\n' "$response" >&2
@@ -174,7 +174,7 @@ case "$ACTION" in
     (set -o noclobber; printf '%s\n' "$STATE_JSON" > "$STATE_FILE") 2>/dev/null ||
       die "state file already exists; reuse its session or stop it first: $STATE_FILE"
     load_state
-    if ! "$CLI_PATH" start --sessionId="$SESSION_ID" --isolated \
+    if ! run_bounded "${E2E_BROWSER_START_TIMEOUT:-60}" "$CLI_PATH" start --sessionId="$SESSION_ID" --isolated \
         --headless="${E2E_BROWSER_HEADLESS:-false}" \
         --no-usage-statistics --no-performance-crux >/dev/null 2>&1; then
       fail_start "browser startup failed"

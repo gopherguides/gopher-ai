@@ -94,6 +94,7 @@ case "$cmd" in
     running && kill "$(cat "$dir/pid")"
     launch
     [ ! -e "$root/fail-start" ] || exit 1
+    [ ! -e "$root/hang-start" ] || exec sleep 600
     ;;
   status)
     if running; then
@@ -124,6 +125,7 @@ case "$cmd" in
         ;;
       list_pages) pages_json 0 ;;
       *)
+        [ ! -e "$root/hang-tool" ] || exec sleep 600
         if [ -e "$root/tool-error" ]; then
           echo '[{"type":"text","text":"Error: simulated tool failure"}]'
         else
@@ -251,6 +253,24 @@ assert_eq "a hung stop keeps ownership for retry" "true" "$(state_field "$STATE_
 rm -f "$FAKE_CDT_ROOT/hang-stop"
 assert_eq "retry after a hung stop succeeds" "true" "$(succeeds /bin/bash "$HELPER" stop "$STATE_HUNG")"
 assert_eq "retry after a hung stop stops the daemon" "false" "$(daemon_alive "$PID_HUNG")"
+
+STATE_HUNG_TOOL="$WORK/runs/hung-tool/session.json"
+/bin/bash "$HELPER" start "$STATE_HUNG_TOOL" >/dev/null
+touch "$FAKE_CDT_ROOT/hang-tool"
+assert_eq "a hung tool call times out as a failure" "false" \
+  "$(E2E_BROWSER_TOOL_TIMEOUT=1 succeeds /bin/bash "$HELPER" call "$STATE_HUNG_TOOL" click 1 uid)"
+rm -f "$FAKE_CDT_ROOT/hang-tool"
+assert_eq "cleanup after a hung tool call succeeds" "true" "$(succeeds /bin/bash "$HELPER" stop "$STATE_HUNG_TOOL")"
+
+STATE_HUNG_START="$WORK/runs/hung-start/session.json"
+touch "$FAKE_CDT_ROOT/hang-start"
+assert_eq "a hung startup times out as a failure" "false" \
+  "$(E2E_BROWSER_START_TIMEOUT=1 succeeds /bin/bash "$HELPER" start "$STATE_HUNG_START")"
+rm -f "$FAKE_CDT_ROOT/hang-start"
+HUNG_START_SESSION=$(state_field "$STATE_HUNG_START" session)
+assert_eq "a hung startup stops its partial session" "false" "$(state_field "$STATE_HUNG_START" active)"
+assert_eq "a hung startup leaves no daemon" "false" \
+  "$([ -f "$FAKE_CDT_ROOT/sessions/$HUNG_START_SESSION/pid" ] && echo true || echo false)"
 
 echo "=== Loop Cleanup Wiring Tests ==="
 
