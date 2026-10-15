@@ -7,7 +7,7 @@
 # this prevents accepting a hash from skill A as proof of ownership for skill B.
 # DO NOT EDIT BY HAND — re-run the regen script after finalizing SKILL.md changes.
 #
-# Total entries: 362
+# Total entries: 363
 002bd0c3859a936f2bbfa90a8c967db4d141b99a741e4c23f0d5bec397a2d3fc complete-issue
 017e2d820506e7bef4a89a4d65839150db1ffdc124852a43dc916023e6d37e16 review-deep
 0232ae1141f76c0ba40045649179a566080de9fc717c6cb08c3961b827fe3e88 create-pr
@@ -189,6 +189,7 @@
 7cf4bd534a172caf7e833734a3d609868eeceb805f8015f26bc66000e9331c56 ship
 7dece5ebd557d88145a6c02ab7b90565d27a291ebffca3eb37279541f337cf08 review-deep
 7ed76eaaaa6bb7ff16d73e3c80f04b15d8c222179521567d56458ff751e217c3 gemini-image
+7edacd67f014f2e3f34ecd6d614c716a6f098a548c36f37b6770ce3eea17ed35 e2e-verify
 803fa70e402244af6d5ab118726e27e8155fbe1460dd4d832e9f78fc960ad96a address-review
 8069d12d0d41ef9846c6baaf97c32a1f1684223dee3ccf3d676c78209d749782 e2e-verify
 8148bae20e2555f847eedf339bba33d5ab6df87602569b18036e767c0073befe go-profiling-optimization

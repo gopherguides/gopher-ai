@@ -6,7 +6,32 @@ finish action), maps `MODE` to the closing action, and contains the
 
 ## Step 7.0: E2E Gate (applies to every mode before any finish action)
 
-**Before** doing anything in the per-mode table below, evaluate `E2E_RESULT`:
+**Before** doing anything in the per-mode table below, confirm that any
+browser this run recorded is stopped. This also covers re-entry into the
+posting or shipping phase. A failed stop is a blocking failure:
+
+```bash
+E2E_BROWSER_STATE=$(get_loop_field "$STATE_FILE" "e2e_browser_state" "$WORKFLOW_STATE_PATH")
+if [ -n "$E2E_BROWSER_STATE" ]; then
+  if ! /bin/bash "<PLUGIN_ROOT>/scripts/e2e-browser.sh" stop "$E2E_BROWSER_STATE"; then
+    set_loop_field "$STATE_FILE" "e2e_browser_cleanup" "failed" "$WORKFLOW_STATE_PATH"
+    WORKFLOW_RESULT=e2e-fail
+    WORKFLOW_REASON=browser-cleanup-failed
+    if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
+      set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "e2e-fail" "$WORKFLOW_REASON" "e2e-failed"
+      echo "E2E_VERIFY_RESULT=e2e-fail"
+      echo "E2E_VERIFY_REASON=$WORKFLOW_REASON"
+    else
+      set_loop_terminal_result "$STATE_FILE" "e2e-fail" "$WORKFLOW_REASON" "e2e-failed" "E2E_FAIL"
+      echo "<done>E2E_FAIL</done>"
+    fi
+    exit 0
+  fi
+  set_loop_field "$STATE_FILE" "e2e_browser_cleanup" "stopped" "$WORKFLOW_STATE_PATH"
+fi
+```
+
+Then evaluate `E2E_RESULT`:
 
 - **UI-visible diff** (`WEB_CHANGES`, `HANDLER_CHANGES`, or layout-sensitive
   keywords detected — see `e2e-test-execution.md` §5a.1):

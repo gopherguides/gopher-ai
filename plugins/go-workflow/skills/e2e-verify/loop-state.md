@@ -54,9 +54,15 @@ terminal allowlist, never initializes another loop, and returns only through
 ## Hard Invariant Failure
 
 When this skill or a supporting file reports
-`WORKFLOW_RESULT=INCOMPLETE`, persist the supplied reason:
+`WORKFLOW_RESULT=INCOMPLETE`, stop any owned browser, then persist the
+supplied reason:
 
 ```bash
+E2E_BROWSER_STATE=$(get_loop_field "$STATE_FILE" "e2e_browser_state" "$WORKFLOW_STATE_PATH" 2>/dev/null || true)
+if [ -n "$E2E_BROWSER_STATE" ] &&
+   ! /bin/bash "<PLUGIN_ROOT>/scripts/e2e-browser.sh" stop "$E2E_BROWSER_STATE"; then
+  set_loop_field "$STATE_FILE" "e2e_browser_cleanup" "failed" "$WORKFLOW_STATE_PATH"
+fi
 if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
   set_workflow_result "$STATE_FILE" "$WORKFLOW_STATE_PATH" "incomplete" "$WORKFLOW_REASON" "incomplete"
   echo "E2E_VERIFY_RESULT=incomplete"
@@ -226,6 +232,14 @@ persisted reason, re-emits only its terminal promise, and stops:
 
 ```bash
 if [ "$PHASE" = "e2e-failed" ]; then
+  E2E_BROWSER_STATE=$(get_loop_field "$STATE_FILE" "e2e_browser_state" "$WORKFLOW_STATE_PATH")
+  if [ -n "$E2E_BROWSER_STATE" ]; then
+    if /bin/bash "<PLUGIN_ROOT>/scripts/e2e-browser.sh" stop "$E2E_BROWSER_STATE"; then
+      set_loop_field "$STATE_FILE" "e2e_browser_cleanup" "stopped" "$WORKFLOW_STATE_PATH"
+    else
+      set_loop_field "$STATE_FILE" "e2e_browser_cleanup" "failed" "$WORKFLOW_STATE_PATH"
+    fi
+  fi
   WORKFLOW_REASON=$(get_loop_field "$STATE_FILE" "reason" "$WORKFLOW_STATE_PATH")
   echo "E2E verification failed: $WORKFLOW_REASON"
   if [ "$EMBEDDED_WORKFLOW" = "true" ]; then
@@ -260,6 +274,9 @@ set_loop_json_field "$STATE_FILE" "generated_files" "$GENERATED_FILES_JSON" "$WO
 ```
 
 ## Persist E2E Result (Step 5)
+
+Run only after section 5j of `e2e-test-execution.md`, so a failed browser
+cleanup is already reflected in `E2E_RESULT`.
 
 ```bash
 set_loop_field "$STATE_FILE" "e2e_result" "$E2E_RESULT" "$WORKFLOW_STATE_PATH"

@@ -1,4 +1,4 @@
-# Step 5: E2E Test Execution via Chrome DevTools MCP
+# Step 5: E2E Test Execution via the Chrome DevTools CLI
 
 This step performs browser-based E2E testing of web-facing changes. For
 UI-visible diffs it is **mandatory and blocking**; failures stop the workflow
@@ -31,9 +31,9 @@ Skipping is allowed only when there is genuinely nothing to verify. If there
 **Fail** (set `E2E_RESULT="missing-browser-tooling"` and stop E2E) when the diff
 IS UI-visible (see section 5a.1) and:
 
-- Chrome DevTools MCP tools are NOT available
-  (neither `mcp__chrome-devtools__navigate_page` nor
-  `mcp__chrome-devtools-mcp__navigate_page` is in the available tools list).
+- The `chrome-devtools` CLI (from the `chrome-devtools-mcp` npm package) is
+  not installed, or `e2e-browser.sh start` cannot launch and verify the
+  owned session (section 5a.2).
 
 In every fail case, still proceed to Step 6 to post the failure comment so the
 gate in `SKILL.md` Step 7 can stop the workflow.
@@ -72,20 +72,46 @@ Both this step and `SKILL.md` section 7 use the same definition. The diff is
 A UI-visible diff requires `E2E_RESULT=pass` to pass the Step 7 gate. A
 non-UI-visible diff is allowed to set `E2E_RESULT=skipped`.
 
-## 5a.2 MCP connection and callability
+## 5a.2 Browser ownership and callability
 
-The official Chrome DevTools Claude plugin exposes
-`mcp__chrome-devtools__*`; existing user configurations may expose
-`mcp__chrome-devtools-mcp__*`. Resolve the available namespace once and use it
-consistently. The examples below show the latter namespace.
+Every E2E run drives its own browser through
+`<PLUGIN_ROOT>/scripts/e2e-browser.sh`, never through the host's persistent
+Chrome DevTools MCP server. Finishing this skill does not stop that server,
+and its `close_page` refuses to close the last tab, so MCP-driven runs leak
+windows. The helper wraps the `chrome-devtools` CLI:
 
-Tool discovery is not proof that the browser is usable. The server connects
+- `start STATE` records ownership in `STATE` before launching an isolated
+  browser under a unique `--sessionId`, then opens a private marker page.
+- `call STATE <tool> [args]` runs one CLI tool in that session. It first
+  proves the recorded daemon pid and marker page still exist and checks again
+  afterwards, so a lost or replaced browser is never silently restarted to
+  keep collecting evidence. Exit-zero CLI errors are returned as failures.
+- `stop STATE` stops exactly the recorded session, waits until the daemon is
+  gone, and only then marks the state inactive. Repeating it is a no-op. A
+  failed stop leaves the state active so cleanup can be retried.
+
+Tool names below are Chrome DevTools tools executed with
+`/bin/bash "$E2E_BROWSER" call "$E2E_BROWSER_STATE" <tool> ...`. Page-scoped
+tools take `"$E2E_PAGE_ID"` as their first argument; `evaluate_script` takes
+it as `--pageId "$E2E_PAGE_ID"`. Optional parameters are flags (run
+`chrome-devtools <tool> --help`). The CLI has no `fill_form` or `wait_for`:
+use one `fill "$E2E_PAGE_ID" <uid> <value>` per field (uids come from
+`take_snapshot`), and replace `wait_for` with bounded polling through
+`evaluate_script` or `take_snapshot`. Never pass `--sessionId` or
+`--output-format`; the helper owns them. Never touch the marker page.
+
+Starting is not proof that the browser is usable: the server connects
 successfully but the first browser tool call fails, or a later call may fail
-after some routes were inspected. In either case, set
+after some routes were inspected. If startup or any `call` fails, set
 `E2E_RESULT='missing-browser-tooling'`, preserve the actual `PAGES_TESTED`
-count, stop the E2E run, and proceed only to Step 6 so the failure is posted.
-Do not report `partial` or `skipped`, and do not continue after an MCP
-reconnection because the selected page and browser state are no longer proven.
+count, stop the E2E run, run section 5j, and proceed only to Step 6 so the
+failure is posted. Do not report `partial` or `skipped`, and do not start a
+second session to continue, because the earlier page and browser state are
+no longer proven.
+
+Run section 5j on every exit after section 5f starts the browser, including
+route failures, invariant stops, and cancellation. Loop cancellation and stop
+hook cleanup also stop every recorded session before removing loop state.
 
 ## 5b. Load the Spec (REQUIRED: do this BEFORE any browser testing)
 
@@ -192,11 +218,38 @@ If the server fails to start within 30 seconds:
 
 ## 5f. Login Flow (if applicable)
 
-Detect if the app requires authentication:
+Start the owned browser before the first browser call. A resumed run reuses
+the persisted state path instead of starting a second session. The state lives
+outside the checkout under `${XDG_STATE_HOME:-$HOME/.local/state}`, so it
+survives re-entry without adding untracked files.
 
-1. Use `mcp__chrome-devtools-mcp__new_page` to open a browser tab
-2. Use `mcp__chrome-devtools-mcp__navigate_page` to `http://localhost:$PORT/`
-3. Check if the page redirected to a login/auth page (URL contains `/login`, `/sign-in`, `/auth`)
+```bash
+E2E_BROWSER="<PLUGIN_ROOT>/scripts/e2e-browser.sh"
+E2E_BROWSER_STATE=$(get_loop_field "$STATE_FILE" "e2e_browser_state" "$WORKFLOW_STATE_PATH")
+if [ -z "$E2E_BROWSER_STATE" ]; then
+  E2E_BROWSER_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/go-workflow/e2e-browser"
+  mkdir -p "$E2E_BROWSER_ROOT"
+  E2E_BROWSER_STATE="$(mktemp -d "$E2E_BROWSER_ROOT/run.XXXXXX")/session.json"
+  set_loop_field "$STATE_FILE" "e2e_browser_state" "$E2E_BROWSER_STATE" "$WORKFLOW_STATE_PATH"
+  if ! /bin/bash "$E2E_BROWSER" start "$E2E_BROWSER_STATE"; then
+    E2E_RESULT='missing-browser-tooling'
+  fi
+fi
+```
+
+If startup failed, run section 5j and proceed only to Step 6. Otherwise:
+
+1. Open the app with `new_page "http://localhost:$PORT/"` and record the
+   selected page ID it returns:
+   ```bash
+   E2E_PAGE_ID=$(/bin/bash "$E2E_BROWSER" call "$E2E_BROWSER_STATE" new_page "http://localhost:$PORT/" |
+     jq -er '.pages[] | select(.selected) | .id')
+   set_loop_field "$STATE_FILE" "e2e_page_id" "$E2E_PAGE_ID" "$WORKFLOW_STATE_PATH"
+   ```
+   On re-entry, read `e2e_page_id` back with `get_loop_field`.
+2. Check whether the page redirected to a login/auth page (URL contains
+   `/login`, `/sign-in`, `/auth`), using `list_pages` or
+   `evaluate_script "() => location.href" --pageId "$E2E_PAGE_ID"`.
 
 **If login is required:**
 
@@ -209,20 +262,19 @@ Detect if the app requires authentication:
    done
    ```
 2. If credentials found:
-   - Use `mcp__chrome-devtools-mcp__fill_form` with the discovered credentials
-   - Use `mcp__chrome-devtools-mcp__click` on the submit/login button
-   - Use `mcp__chrome-devtools-mcp__wait_for` to confirm navigation after login
-   - Use `mcp__chrome-devtools-mcp__take_screenshot` to capture post-login state
+   - Use `take_snapshot` to find field uids, then one `fill` per credential
+   - Use `click` on the submit/login button
+   - Poll `evaluate_script "() => location.href"` (bounded, about 10 seconds) to confirm navigation after login
+   - Use `take_screenshot` with `--filePath "$SCREENSHOT_PATH"` to capture post-login state
    - **READ the screenshot**; verify you're logged in and see the expected post-login page
 3. If no credentials found: skip login, test only public routes
 
 ## 5g. Visual Stabilization Protocol
 
-**Before every screenshot**, use
-`mcp__chrome-devtools-mcp__evaluate_script` once with the self-contained
-function below. One call avoids relying on JavaScript state created by earlier
-tool calls. If `evaluate_script` is unavailable, use `wait_for` with a
-reasonable timeout before capturing.
+**Before every screenshot**, run `evaluate_script` once with the
+self-contained function below and `--pageId "$E2E_PAGE_ID"`. One call avoids
+relying on JavaScript state created by earlier tool calls. If it fails, that
+is a failed browser call (section 5a.2).
 
 After `new_page`, `navigate_page`, or `resize_page`, compare the returned
 `url` with the route being tested. Allow an expected canonical or authentication redirect when the application behavior or login flow explains it, and continue
@@ -231,11 +283,9 @@ call, navigate to the intended route once more. If the tool still succeeds but
 returns an unexpected URL, record a route failure with `E2E_RESULT='fail'`;
 that is application behavior, not missing tooling.
 
-If a page-scoped tool schema exposes an explicit page identifier, pass the
-same identifier to every page-scoped call. Otherwise, the current server's
-selected page is connection state: never assume it survives a tool error or
-MCP reconnect. A tool error or a lost selected-page target uses the
-`missing-browser-tooling` failure path in section 5a.2.
+Pass the same `E2E_PAGE_ID` to every page-scoped call. A tool error or a lost
+page or session uses the `missing-browser-tooling` failure path in section
+5a.2.
 
 Remove the `document.activeElement?.blur()` statement when testing a
 focus-dependent state such as validation, keyboard navigation, or an active
@@ -314,7 +364,7 @@ Identify routes from changed files:
 **For each route, execute the FULL test sequence:**
 
 ### 1. Navigate
-`mcp__chrome-devtools-mcp__navigate_page` to `http://localhost:$PORT<route>`
+`navigate_page "$E2E_PAGE_ID" --url "http://localhost:$PORT<route>"`
 
 ### 2. Stabilize
 Run the Visual Stabilization Protocol (section 5g) to ensure the page is fully rendered.
@@ -331,13 +381,13 @@ breakpoint), capture multiple viewports per route, not just one:
   surface itself** (e.g. the actual printable page, the QR-rendering
   component), not just the surrounding admin page.
 
-Use `mcp__chrome-devtools-mcp__resize_page` between captures, then re-run the
+Use `resize_page "$E2E_PAGE_ID" <width> <height>` between captures, then re-run the
 Visual Stabilization Protocol (section 5g) before each new screenshot.
 
 ### 4. Screenshot
-`mcp__chrome-devtools-mcp__take_screenshot` to capture the rendered page (per
-viewport, if step 3 added more than one), with `filePath: SCREENSHOT_PATH`
-and `format: "png"`. Open that file for the inspection below.
+`take_screenshot "$E2E_PAGE_ID" --filePath "$SCREENSHOT_PATH" --format png`
+to capture the rendered page (per viewport, if step 3 added more than one).
+Open that file for the inspection below.
 
 ### 5. READ THE SCREENSHOT (MANDATORY)
 
@@ -373,14 +423,14 @@ state, set `E2E_RESULT='uninspected-screenshots'`; Step 7's gate treats this
 the same as `fail`.
 
 ### 6. Console Check
-`mcp__chrome-devtools-mcp__list_console_messages`: check for JavaScript errors. Console errors supplement visual verification; they do not replace it. A page can have a clean console and still look broken.
+`list_console_messages "$E2E_PAGE_ID"`: check for JavaScript errors. Console errors supplement visual verification; they do not replace it. A page can have a clean console and still look broken.
 
 ### 7. Network Check
-`mcp__chrome-devtools-mcp__list_network_requests`: verify no failed requests (5xx responses). Supplementary, like the console check. A 5xx on a UI-visible diff is a `fail` per section 5j.
+`list_network_requests "$E2E_PAGE_ID"`: verify no failed requests (5xx responses). Supplementary, like the console check. A 5xx on a UI-visible diff is a `fail` per section 5j.
 
 ### 8. Form Interaction (if the page contains forms related to changed code)
-- Use `mcp__chrome-devtools-mcp__fill` to populate form fields with test data
-- Use `mcp__chrome-devtools-mcp__click` to submit
+- Use `take_snapshot` for uids, then `fill` to populate form fields with test data
+- Use `click` to submit
 - **Take another screenshot AFTER submission**
 - **READ that screenshot**; verify the success/error state matches expectations
 - Check console/network for errors
@@ -404,10 +454,32 @@ If test data was inserted for edge case testing, clean it up afterwards to avoid
 
 ## 5j. Cleanup
 
-Kill the dev server (only if we started it):
+Stop the owned browser before posting results or returning to a caller, even
+after a failed browser call. Do not close tabs, call `window.close()`, or kill
+Chrome by name; the helper stops only this run's session and leaves personal
+Chrome and other runs alone.
 
 ```bash
-if [ "$SERVER_ALREADY_RUNNING" != "true" ] && [ -n "$SERVER_PID" ]; then
+E2E_BROWSER_STATE=$(get_loop_field "$STATE_FILE" "e2e_browser_state" "$WORKFLOW_STATE_PATH")
+if [ -n "$E2E_BROWSER_STATE" ]; then
+  if /bin/bash "<PLUGIN_ROOT>/scripts/e2e-browser.sh" stop "$E2E_BROWSER_STATE"; then
+    set_loop_field "$STATE_FILE" "e2e_browser_cleanup" "stopped" "$WORKFLOW_STATE_PATH"
+  else
+    set_loop_field "$STATE_FILE" "e2e_browser_cleanup" "failed" "$WORKFLOW_STATE_PATH"
+    case "${E2E_RESULT:-}" in pass|skipped|'') E2E_RESULT='fail' ;; esac
+  fi
+fi
+```
+
+A failed stop keeps the browser state for retry, is recorded in the results,
+and blocks verification, labels, and ship. It never replaces an existing
+failure result.
+
+Kill the dev server only if this run started it, even when browser cleanup
+failed:
+
+```bash
+if [ "${SERVER_ALREADY_RUNNING:-true}" != "true" ] && [ -n "${SERVER_PID:-}" ]; then
   kill $SERVER_PID 2>/dev/null || true
 fi
 ```
@@ -427,7 +499,7 @@ Collect results:
   `E2E_RESULT='fail'`.
 - Console JavaScript errors are recorded in findings. They are not load-bearing on their
   own, but combined with a visual defect they reinforce the fail.
-- An MCP tool call failure on the first call or mid-test sets
+- Browser startup or a tool call failure on the first call or mid-test sets
   `E2E_RESULT='missing-browser-tooling'`. Preserve `PAGES_TESTED`; the browser
   cannot inspect what it cannot reach.
 - Any route where a screenshot was taken but not read contributes to

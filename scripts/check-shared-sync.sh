@@ -33,6 +33,7 @@ COMMON_FILES=(
   "lib/screenshot-evidence.md"
   "scripts/setup-loop.sh"
   "scripts/cleanup-loop.sh"
+  "scripts/e2e-browser.sh"
   "lib/loop-state.sh"
   "commands/cancel-loop.md"
 )

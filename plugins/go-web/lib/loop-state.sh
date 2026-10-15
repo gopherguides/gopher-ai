@@ -1,5 +1,18 @@
 #!/bin/bash
 
+if [ -n "${BASH_SOURCE[0]:-}" ]; then
+  LOOP_STATE_LIBRARY_FILE="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION:-}" ]; then
+  eval 'LOOP_STATE_LIBRARY_FILE=${(%):-%x}'
+else
+  LOOP_STATE_LIBRARY_FILE=""
+fi
+if [ -n "$LOOP_STATE_LIBRARY_FILE" ]; then
+  LOOP_STATE_PLUGIN_ROOT=$(cd "$(dirname "$LOOP_STATE_LIBRARY_FILE")/.." && pwd)
+else
+  LOOP_STATE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+fi
+
 resolve_loop_owner_root() {
   local root
   root=""
@@ -433,9 +446,34 @@ resume_loop_after_driver() {
   loop_log "resume_loop_after_driver: file=$state_file"
 }
 
+loop_browser_states() {
+  jq -r '[.. | objects | .e2e_browser_state? | select(type == "string" and length > 0)] | unique[]' \
+    "$1" 2>/dev/null || true
+}
+
+stop_loop_browser_sessions() {
+  local state_file="$1"
+  local browser_states browser_state helper
+  browser_states=$(loop_browser_states "$state_file")
+  [ -n "$browser_states" ] || return 0
+  helper="${LOOP_STATE_PLUGIN_ROOT:-}/scripts/e2e-browser.sh"
+  if [ -z "${LOOP_STATE_PLUGIN_ROOT:-}" ] || [ ! -f "$helper" ]; then
+    printf 'Cannot locate e2e-browser.sh; retaining %s for browser cleanup.\n' "$state_file" >&2
+    return 1
+  fi
+  while IFS= read -r browser_state; do
+    if ! /bin/bash "$helper" stop "$browser_state"; then
+      printf 'E2E browser cleanup failed; retaining %s for retry.\n' "$state_file" >&2
+      loop_log "stop_loop_browser_sessions: stop failed for $browser_state"
+      return 1
+    fi
+  done <<< "$browser_states"
+}
+
 cleanup_loop() {
   local state_file="$1"
   loop_log "cleanup_loop: file=$state_file"
+  stop_loop_browser_sessions "$state_file" || return 1
   rm -f "$state_file"
 }
 
@@ -572,6 +610,7 @@ reclaim_abandoned_loops() {
   while IFS= read -r state_file; do
     [ -n "$state_file" ] && [ "$state_file" != "$current_state_file" ] || continue
     owner=$(loop_state_is_abandoned "$state_file") || continue
+    stop_loop_browser_sessions "$state_file" >&2 || continue
     mkdir -p "$archive_dir" || return 1
     archive_file="$archive_dir/$(basename "$state_file").$(date -u +%Y%m%dT%H%M%SZ).$$"
     mv "$state_file" "$archive_file" || return 1
