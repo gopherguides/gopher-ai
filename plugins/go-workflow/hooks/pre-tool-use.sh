@@ -17,7 +17,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin:${PATH:-/usr/bin
 gobin=""
 gopath=""
 if command -v go &>/dev/null; then
-  { IFS= read -r gobin; IFS= read -r gopath; } < <(go env GOBIN GOPATH 2>/dev/null) || true
+  { IFS= read -r gobin; IFS= read -r gopath; } < <(GOTOOLCHAIN=local go env GOBIN GOPATH 2>/dev/null) || true
 fi
 gobin="${gobin:-${GOBIN:-}}"
 if [ -z "$gobin" ]; then
