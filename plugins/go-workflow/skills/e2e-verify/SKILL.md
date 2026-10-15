@@ -113,7 +113,7 @@ Do not fix findings in this mode.
 Set phase to `e2e-testing`, refresh PR metadata, and read
 `<PLUGIN_ROOT>/skills/e2e-verify/e2e-test-execution.md` completely. Execute
 its full procedure, including per-route navigate, stabilize, screenshot, READ,
-spec comparison, evidence recording, and cleanup.
+spec comparison, evidence, and owned-browser cleanup on every exit.
 
 Then read **Persist E2E Result** in
 `<PLUGIN_ROOT>/skills/e2e-verify/loop-state.md` and execute it.

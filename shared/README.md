@@ -12,6 +12,7 @@ Claude Code plugins require files to be local to the plugin directory (`${CLAUDE
 |------|---------|-----------|
 | `scripts/setup-loop.sh` | Initialize a persistent loop | All loop plugins |
 | `scripts/cleanup-loop.sh` | Clean up loop state files | All loop plugins |
+| `scripts/e2e-browser.sh` | Start, call, and stop the isolated Chrome DevTools session an E2E run owns | All loop plugins |
 | `lib/loop-state.sh` | Shared functions for state management | All loop plugins |
 | `commands/cancel-loop.md` | `/cancel-loop` command for users | All loop plugins |
 | `hooks/stop-hook.sh` | Stop hook to intercept session exit | **go-workflow only** |
