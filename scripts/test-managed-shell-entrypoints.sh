@@ -78,6 +78,14 @@ require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-state.sh" clear' \
 require_text '/bin/bash "<PLUGIN_ROOT>/scripts/setup-loop.sh"' \
   "$ROOT_DIR/plugins/go-workflow/lib/start-issue/loop-state.md" \
   "start-issue skill must route loop setup through /bin/bash"
+for e2e_doc in e2e-test-execution.md loop-state.md mode-finish.md; do
+  require_text '/bin/bash "<PLUGIN_ROOT>/scripts/e2e-browser.sh" stop "$E2E_BROWSER_STATE"' \
+    "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/$e2e_doc" \
+    "e2e-verify $e2e_doc must stop the owned browser through /bin/bash"
+done
+require_text '/bin/bash "$E2E_BROWSER" start "$E2E_BROWSER_STATE"' \
+  "$ROOT_DIR/plugins/go-workflow/skills/e2e-verify/e2e-test-execution.md" \
+  "e2e-verify must start the owned browser through /bin/bash"
 require_text '/bin/bash "<PLUGIN_ROOT>/scripts/worktree-create.sh" env-files' \
   "$ROOT_DIR/plugins/go-workflow/lib/start-issue/worktree-create.md" \
   "start-issue workflow must route environment discovery through /bin/bash"

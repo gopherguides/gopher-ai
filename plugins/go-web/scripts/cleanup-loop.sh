@@ -18,7 +18,10 @@ if [ -n "$LOOP_NAME" ]; then
   STATE_FILE="$STATE_DIR/${SAFE_LOOP_NAME}.loop.local.json"
 
   if [ -f "$STATE_FILE" ]; then
-    rm -f "$STATE_FILE"
+    if ! cleanup_loop "$STATE_FILE"; then
+      echo "Loop '$LOOP_NAME' kept: its E2E browser session could not be stopped. Run /cancel-loop again to retry."
+      exit 1
+    fi
     echo "Loop '$LOOP_NAME' cancelled."
   else
     echo "No active loop found with name '$LOOP_NAME'."
@@ -30,11 +33,20 @@ else
   if [ -z "$LOOP_FILES" ]; then
     echo "No active loops found."
   else
-    echo "$LOOP_FILES" | while read -r file; do
+    RETAINED=0
+    while read -r file; do
       loop_name=$(jq -r '.loop_name // "unknown"' "$file" 2>/dev/null || echo "unknown")
-      rm -f "$file"
-      echo "Cancelled loop: $loop_name"
-    done
+      if cleanup_loop "$file"; then
+        echo "Cancelled loop: $loop_name"
+      else
+        echo "Kept loop: $loop_name (its E2E browser session could not be stopped)"
+        RETAINED=$((RETAINED + 1))
+      fi
+    done <<< "$LOOP_FILES"
+    if [ "$RETAINED" -gt 0 ]; then
+      echo "$RETAINED loop(s) kept for browser cleanup. Run /cancel-loop again to retry."
+      exit 1
+    fi
     echo "All active loops cancelled."
   fi
 fi
