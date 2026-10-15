@@ -11,7 +11,13 @@ set -euo pipefail
 # Hooks inherit the host process environment, not the user's shell profile.
 # GUI-launched hosts get launchd's minimal PATH, so add the usual install
 # locations before checking whether tools such as gh or golangci-lint are installed.
-export PATH="/opt/homebrew/bin:/usr/local/bin:${GOBIN:-${GOPATH:-$HOME/go}/bin}:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
+# go install writes to GOBIN, else the first GOPATH entry's bin directory.
+gobin="${GOBIN:-}"
+if [ -z "$gobin" ]; then
+  gopath="${GOPATH:-${HOME:+$HOME/go}}"
+  [ -n "$gopath" ] && gobin="${gopath%%:*}/bin"
+fi
+export PATH="/opt/homebrew/bin:/usr/local/bin${gobin:+:$gobin}:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
 
 HOOK_INPUT=$(cat)
 TOOL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
