@@ -112,9 +112,11 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    VERSION="NEW_VERSION"
    CODEX_ASSET="dist/gopher-ai-codex-plugins-v${VERSION}.tar.gz"
    GEMINI_ASSET="dist/gopher-ai-gemini-extensions-v${VERSION}.tar.gz"
+   OPENCODE_ASSET="dist/gopher-ai-opencode-v${VERSION}.tar.gz"
 
    test -f "$CODEX_ASSET"
    test -f "$GEMINI_ASSET"
+   test -f "$OPENCODE_ASSET"
 
    CODEX_MANIFESTS=$(tar -tzf "$CODEX_ASSET" | rg '/\.codex-plugin/plugin\.json$')
    test -n "$CODEX_MANIFESTS"
@@ -127,6 +129,8 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    while IFS= read -r manifest; do
      tar -xOzf "$GEMINI_ASSET" "$manifest" | jq -e --arg v "$VERSION" '.version == $v' >/dev/null
    done <<< "$GEMINI_MANIFESTS"
+
+   test "$(tar -xOzf "$OPENCODE_ASSET" opencode/gopher-ai/VERSION)" = "$VERSION"
    ```
 
    Stop immediately if any command in this step fails. Do not commit, push,
@@ -180,14 +184,14 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
 8. **Create and Verify a Draft Release**
 
    Use the strategy detected in step 2. Create a draft targeted at the exact
-   CI-verified commit and upload both already-verified archives in the same
+   CI-verified commit and upload all three already-verified archives in the same
    command. GitHub creates the tag from that commit when the draft is published.
 
    #### Strategy A: PR-Based Workflow (≥50% PR references)
 
    Use GitHub's auto-generated notes which work well for PR-based repos:
    ```bash
-   gh release create vX.Y.Z --draft --target "$RELEASE_SHA" --title "vX.Y.Z" --generate-notes "$CODEX_ASSET" "$GEMINI_ASSET"
+   gh release create vX.Y.Z --draft --target "$RELEASE_SHA" --title "vX.Y.Z" --generate-notes "$CODEX_ASSET" "$GEMINI_ASSET" "$OPENCODE_ASSET"
    ```
 
    #### Strategy B: Conventional Commits (<50% PR references)
@@ -215,7 +219,7 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
 
    **Full Changelog**: https://github.com/OWNER/REPO/compare/vOLD...vNEW
    EOF
-   )" "$CODEX_ASSET" "$GEMINI_ASSET"
+   )" "$CODEX_ASSET" "$GEMINI_ASSET" "$OPENCODE_ASSET"
    ```
 
    **Formatting rules for conventional commits:**
@@ -231,9 +235,9 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    RELEASE=$(gh api --paginate --slurp "repos/{owner}/{repo}/releases" | jq --arg tag "vX.Y.Z" 'add | map(select(.tag_name == $tag)) | first')
    test "$(jq -r '.draft' <<< "$RELEASE")" = "true"
    test "$(jq -r '.target_commitish' <<< "$RELEASE")" = "$RELEASE_SHA"
-   jq -e --arg codex "${CODEX_ASSET##*/}" --arg gemini "${GEMINI_ASSET##*/}" '
-     (.assets | length) == 2 and
-     ([.assets[].name] | sort) == ([$codex, $gemini] | sort)
+   jq -e --arg codex "${CODEX_ASSET##*/}" --arg gemini "${GEMINI_ASSET##*/}" --arg opencode "${OPENCODE_ASSET##*/}" '
+     (.assets | length) == 3 and
+     ([.assets[].name] | sort) == ([$codex, $gemini, $opencode] | sort)
    ' <<< "$RELEASE" >/dev/null
    RELEASE_ID=$(jq -r '.id' <<< "$RELEASE")
    ```
@@ -245,9 +249,9 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
    ```bash
    gh api --method PATCH "repos/{owner}/{repo}/releases/${RELEASE_ID}" -F draft=false >/dev/null
    PUBLISHED=$(gh api "repos/{owner}/{repo}/releases/${RELEASE_ID}")
-   jq -e --arg tag "vX.Y.Z" --arg codex "${CODEX_ASSET##*/}" --arg gemini "${GEMINI_ASSET##*/}" '
+   jq -e --arg tag "vX.Y.Z" --arg codex "${CODEX_ASSET##*/}" --arg gemini "${GEMINI_ASSET##*/}" --arg opencode "${OPENCODE_ASSET##*/}" '
      (.draft | not) and .tag_name == $tag and
-     ([.assets[].name] | sort) == ([$codex, $gemini] | sort)
+     ([.assets[].name] | sort) == ([$codex, $gemini, $opencode] | sort)
    ' <<< "$PUBLISHED" >/dev/null
    test "$(gh api "repos/{owner}/{repo}/git/ref/tags/vX.Y.Z" --jq '.object.sha')" = "$RELEASE_SHA"
    jq '{draft, tag_name, html_url, assets: [.assets[].name]}' <<< "$PUBLISHED"
@@ -256,7 +260,7 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
 10. **Report Success**
    - Display the release URL
    - Show which changelog strategy was used
-   - List uploaded assets (Codex plugins, Gemini extensions)
+   - List uploaded assets (Codex plugins, Gemini extensions, OpenCode bundle)
    - Remind user to run `./scripts/refresh-plugins.sh` to update local cache
 
 ### Safety Checks
@@ -266,7 +270,7 @@ Ask the user to confirm the bump type using AskUserQuestion before proceeding.
 - Verify main branch before releasing
 - Check that new version is greater than current version
 - Never create a tag or published release before the release commit's exact CI checks pass
-- Never publish a draft until both verified builder-produced assets are attached
+- Never publish a draft until all three verified builder-produced assets are attached
 
 ### Example Usage
 
