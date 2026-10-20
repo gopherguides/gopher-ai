@@ -50,7 +50,7 @@ python3 "$SCRIPT_DIR/test-run-with-timeout.py"
 
 echo -n "Gemini generation avoids heredoc and here-string I/O... "
 GEMINI_GENERATORS=$(sed -n '/^generate_gemini_extension_json()/,/^create_archive()/p' "$ROOT_DIR/scripts/build-universal.sh")
-if printf '%s\n' "$GEMINI_GENERATORS" | rg -q '<<<|<<[[:space:]]*[[:alnum:]'\''"]'; then
+if rg -q '<<<|<<[[:space:]]*[[:alnum:]'\''"]' <<< "$GEMINI_GENERATORS"; then
   echo "FAIL"
   ERRORS=$((ERRORS + 1))
 else
@@ -122,7 +122,7 @@ fi
 rm -rf "$CODEX_SKILL_SIZE_TEST_ROOT"
 
 if [ -x /opt/homebrew/bin/bash ] &&
-   /opt/homebrew/bin/bash --version | sed -n '1p' | rg -q 'version 5\.3\.' &&
+   [[ "$(/opt/homebrew/bin/bash --version)" == *"version 5.3."* ]] &&
    command -v gtimeout >/dev/null 2>&1; then
   echo -n "Universal build completes under Bash 5.3... "
   BASH_53_LOG=$(mktemp "${TMPDIR:-${TMP:-${TEMP:-/tmp}}}/gopher-ai-bash-53-build.XXXXXX")
@@ -315,7 +315,7 @@ if ! (
 else
   EXPECTED_ARCHIVE_TEMPLATE="$ARCHIVE_TEMP_DIR/gopher-ai-archive-members.XXXXXX"
   if ! awk -v expected="$EXPECTED_ARCHIVE_TEMPLATE" \
-    '$0 != expected { exit 1 } END { exit NR == 2 ? 0 : 1 }' \
+    '$0 != expected { exit 1 } END { exit NR == 3 ? 0 : 1 }' \
     "$ARCHIVE_MKTEMP_LOG"; then
     echo "FAIL (unexpected mktemp arguments)"
     sed -n '1,20p' "$ARCHIVE_MKTEMP_LOG"
@@ -329,6 +329,7 @@ rm -rf "$ARCHIVE_TEMP_TEST_ROOT"
 EXPECTED_VERSION=$(jq -r '.metadata.version' "$ROOT_DIR/.claude-plugin/marketplace.json")
 CODEX_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-codex-plugins-v${EXPECTED_VERSION}.tar.gz"
 GEMINI_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-gemini-extensions-v${EXPECTED_VERSION}.tar.gz"
+OPENCODE_RELEASE_ASSET="$ROOT_DIR/dist/gopher-ai-opencode-v${EXPECTED_VERSION}.tar.gz"
 ARCHIVE_MTIME=946684800
 
 echo -n "Codex and Gemini builds resolve shared skill resources... "
@@ -431,6 +432,7 @@ archive_sha256() {
 echo -n "Release archives are byte-for-byte reproducible... "
 FIRST_CODEX_SHA=$(archive_sha256 "$CODEX_RELEASE_ASSET")
 FIRST_GEMINI_SHA=$(archive_sha256 "$GEMINI_RELEASE_ASSET")
+FIRST_OPENCODE_SHA=$(archive_sha256 "$OPENCODE_RELEASE_ASSET")
 sleep 1
 if ! "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-rebuild.log 2>&1; then
   echo "FAIL (second build failed)"
@@ -439,10 +441,12 @@ if ! "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-rebuild.log 2>&1; th
 else
   SECOND_CODEX_SHA=$(archive_sha256 "$CODEX_RELEASE_ASSET")
   SECOND_GEMINI_SHA=$(archive_sha256 "$GEMINI_RELEASE_ASSET")
-  if [ "$FIRST_CODEX_SHA" != "$SECOND_CODEX_SHA" ] || [ "$FIRST_GEMINI_SHA" != "$SECOND_GEMINI_SHA" ]; then
+  SECOND_OPENCODE_SHA=$(archive_sha256 "$OPENCODE_RELEASE_ASSET")
+  if [ "$FIRST_CODEX_SHA" != "$SECOND_CODEX_SHA" ] || [ "$FIRST_GEMINI_SHA" != "$SECOND_GEMINI_SHA" ] || [ "$FIRST_OPENCODE_SHA" != "$SECOND_OPENCODE_SHA" ]; then
     echo "FAIL"
     echo "  Codex: $FIRST_CODEX_SHA != $SECOND_CODEX_SHA"
     echo "  Gemini: $FIRST_GEMINI_SHA != $SECOND_GEMINI_SHA"
+    echo "  OpenCode: $FIRST_OPENCODE_SHA != $SECOND_OPENCODE_SHA"
     ERRORS=$((ERRORS + 1))
   else
     echo "OK"
@@ -452,6 +456,7 @@ fi
 echo -n "Release archives are byte-for-byte reproducible across umasks... "
 DEFAULT_UMASK_CODEX_SHA=$(archive_sha256 "$CODEX_RELEASE_ASSET")
 DEFAULT_UMASK_GEMINI_SHA=$(archive_sha256 "$GEMINI_RELEASE_ASSET")
+DEFAULT_UMASK_OPENCODE_SHA=$(archive_sha256 "$OPENCODE_RELEASE_ASSET")
 if ! (umask 077; "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-restrictive-umask-build.log 2>&1); then
   echo "FAIL (restrictive-umask build failed)"
   sed -n '1,120p' /tmp/gopher-ai-restrictive-umask-build.log
@@ -459,10 +464,12 @@ if ! (umask 077; "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-restrict
 else
   RESTRICTIVE_UMASK_CODEX_SHA=$(archive_sha256 "$CODEX_RELEASE_ASSET")
   RESTRICTIVE_UMASK_GEMINI_SHA=$(archive_sha256 "$GEMINI_RELEASE_ASSET")
-  if [ "$DEFAULT_UMASK_CODEX_SHA" != "$RESTRICTIVE_UMASK_CODEX_SHA" ] || [ "$DEFAULT_UMASK_GEMINI_SHA" != "$RESTRICTIVE_UMASK_GEMINI_SHA" ]; then
+  RESTRICTIVE_UMASK_OPENCODE_SHA=$(archive_sha256 "$OPENCODE_RELEASE_ASSET")
+  if [ "$DEFAULT_UMASK_CODEX_SHA" != "$RESTRICTIVE_UMASK_CODEX_SHA" ] || [ "$DEFAULT_UMASK_GEMINI_SHA" != "$RESTRICTIVE_UMASK_GEMINI_SHA" ] || [ "$DEFAULT_UMASK_OPENCODE_SHA" != "$RESTRICTIVE_UMASK_OPENCODE_SHA" ]; then
     echo "FAIL"
     echo "  Codex: $DEFAULT_UMASK_CODEX_SHA != $RESTRICTIVE_UMASK_CODEX_SHA"
     echo "  Gemini: $DEFAULT_UMASK_GEMINI_SHA != $RESTRICTIVE_UMASK_GEMINI_SHA"
+    echo "  OpenCode: $DEFAULT_UMASK_OPENCODE_SHA != $RESTRICTIVE_UMASK_OPENCODE_SHA"
     ERRORS=$((ERRORS + 1))
   else
     echo "OK"
@@ -485,7 +492,7 @@ if ! "$ROOT_DIR/scripts/build-universal.sh" >/tmp/gopher-ai-metadata-build.log 2
   ARCHIVE_METADATA_ERRORS="$ARCHIVE_METADATA_ERRORS\n  metadata-fixture build failed: $(sed -n '1p' /tmp/gopher-ai-metadata-build.log)"
 fi
 rm -f "$APPLEDOUBLE_FIXTURE" "$DSSTORE_FIXTURE"
-for archive in "$CODEX_RELEASE_ASSET" "$GEMINI_RELEASE_ASSET"; do
+for archive in "$CODEX_RELEASE_ASSET" "$GEMINI_RELEASE_ASSET" "$OPENCODE_RELEASE_ASSET"; do
   METADATA_MEMBERS=$(archive_members "$archive" | awk -F/ '$NF ~ /^\._/ || $NF == ".DS_Store"' || true)
   if [ -n "$METADATA_MEMBERS" ]; then
     ARCHIVE_METADATA_ERRORS="$ARCHIVE_METADATA_ERRORS\n  ${archive#"$ROOT_DIR"/} contains $(printf '%s\n' "$METADATA_MEMBERS" | wc -l | tr -d ' ') metadata member(s)"
@@ -501,7 +508,7 @@ fi
 
 echo -n "Release archive headers are normalized... "
 ARCHIVE_HEADER_ERRORS=""
-for archive in "$CODEX_RELEASE_ASSET" "$GEMINI_RELEASE_ASSET"; do
+for archive in "$CODEX_RELEASE_ASSET" "$GEMINI_RELEASE_ASSET" "$OPENCODE_RELEASE_ASSET"; do
   if ! archive_headers_are_normalized "$archive" >/tmp/gopher-ai-archive-header.log 2>&1; then
     ARCHIVE_HEADER_ERRORS="$ARCHIVE_HEADER_ERRORS\n  ${archive#"$ROOT_DIR"/}: $(sed -n '1p' /tmp/gopher-ai-archive-header.log)"
   fi
@@ -517,6 +524,7 @@ fi
 echo -n "Release command uses builder-produced asset names... "
 if ! awk 'index($0, "dist/gopher-ai-codex-plugins-v${VERSION}.tar.gz") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md" ||
    ! awk 'index($0, "dist/gopher-ai-gemini-extensions-v${VERSION}.tar.gz") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md" ||
+   ! awk 'index($0, "dist/gopher-ai-opencode-v${VERSION}.tar.gz") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md" ||
    awk 'index($0, "gopher-ai-codex-skills-") { found=1 } END { exit found ? 0 : 1 }' "$ROOT_DIR/plugins/productivity/commands/release.md"; then
   echo "FAIL"
   ERRORS=$((ERRORS + 1))
@@ -808,6 +816,152 @@ else
 fi
 rm -rf "$TMP_GEMINI_DIST"
 
+markdown_frontmatter() {
+  awk 'NR == 1 && $0 == "---" { inside = 1; next } inside && $0 == "---" { exit } inside { print }' "$1"
+}
+
+echo -n "OpenCode bundle maps skills, commands, and agents... "
+OPENCODE_DIST="$ROOT_DIR/dist/opencode"
+OPENCODE_BUILD_ERRORS=""
+EXPECTED_OPENCODE_COMMANDS=$(cd "$ROOT_DIR/plugins" && find . -path './*/commands/*.md' -type f | sed 's#^\./\([^/]*\)/commands/#\1/#' | LC_ALL=C sort)
+ACTUAL_OPENCODE_COMMANDS=$(cd "$OPENCODE_DIST/commands" 2>/dev/null && find . -type f -name '*.md' | sed 's#^\./##' | LC_ALL=C sort)
+if [ "$EXPECTED_OPENCODE_COMMANDS" != "$ACTUAL_OPENCODE_COMMANDS" ]; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  command set does not match plugins/*/commands/*.md"
+fi
+for skill_file in "$ROOT_DIR"/plugins/*/skills/*/SKILL.md; do
+  skill_plugin=$(basename "$(dirname "$(dirname "$(dirname "$skill_file")")")")
+  skill_name=$(basename "$(dirname "$skill_file")")
+  built="$OPENCODE_DIST/skills/gopher-ai/$skill_plugin/$skill_name/SKILL.md"
+  if grep -Fq 'lib/codex-command-adapter.md' "$skill_file"; then
+    [ ! -e "$built" ] || OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  command adapter skill shipped: $skill_plugin/$skill_name"
+  else
+    [ -f "$built" ] || OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  missing skill: $skill_plugin/$skill_name"
+  fi
+done
+for agent_file in "$ROOT_DIR"/plugins/*/agents/*.md; do
+  agent_plugin=$(basename "$(dirname "$(dirname "$agent_file")")")
+  built="$OPENCODE_DIST/agents/$agent_plugin/$(basename "$agent_file")"
+  if [ ! -f "$built" ]; then
+    OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  missing agent: ${built#"$OPENCODE_DIST"/}"
+  elif ! grep -qx 'mode: subagent' <<< "$(markdown_frontmatter "$built")" ||
+       grep -Eq '^(name|model):' <<< "$(markdown_frontmatter "$built")"; then
+    OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  agent frontmatter not converted: ${built#"$OPENCODE_DIST"/}"
+  fi
+done
+for built in "$OPENCODE_DIST"/commands/*/*.md; do
+  if grep -Eq '^(allowed-tools|argument-hint|model|effort):' <<< "$(markdown_frontmatter "$built")"; then
+    OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  Claude-only frontmatter survived: ${built#"$OPENCODE_DIST"/}"
+  fi
+  if ! grep -q '^description:' <<< "$(markdown_frontmatter "$built")"; then
+    OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  missing description: ${built#"$OPENCODE_DIST"/}"
+  fi
+done
+if grep -lE '!`[^`]*\$(ARGUMENTS|[1-9])' "$OPENCODE_DIST"/commands/*/*.md >/dev/null 2>&1; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  a pre-executed shell block interpolates command arguments"
+fi
+if ! grep -Fq 'Run this command with your shell tool' "$OPENCODE_DIST/commands/go-workflow/cancel-loop.md" ||
+   ! grep -Fq 'cleanup-loop.sh" "$ARGUMENTS"' "$OPENCODE_DIST/commands/go-workflow/cancel-loop.md"; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  cancel-loop did not become an agent-run shell instruction"
+fi
+if ! grep -Fq 'description: "Auto-fix Go linting issues with golangci-lint"' "$OPENCODE_DIST/commands/go-dev/lint-fix.md"; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  command description was dropped"
+fi
+if grep -rlE '\$\{CLAUDE_PLUGIN_ROOT\}|\$\{CLAUDE_PLUGIN_ROOT:-\}|<PLUGIN_ROOT>' "$OPENCODE_DIST/skills" "$OPENCODE_DIST/commands" "$OPENCODE_DIST/agents" >/dev/null 2>&1; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  unresolved plugin-root notation in skills, commands, or agents"
+fi
+if ! grep -Fq '"__GOPHER_AI_OPENCODE_HOME__/plugins/go-workflow/scripts/cleanup-loop.sh"' "$OPENCODE_DIST/commands/go-workflow/cancel-loop.md"; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  cancel-loop does not reference the installed runtime root"
+fi
+if [ ! -x "$OPENCODE_DIST/gopher-ai/plugins/go-workflow/scripts/cleanup-loop.sh" ]; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  runtime script lost its executable bit"
+fi
+if [ "$(cat "$OPENCODE_DIST/gopher-ai/VERSION" 2>/dev/null)" != "$EXPECTED_VERSION" ]; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  VERSION does not match the marketplace version"
+fi
+if [ -n "$OPENCODE_BUILD_ERRORS" ]; then
+  echo "FAIL"
+  printf '%b\n' "$OPENCODE_BUILD_ERRORS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
+echo -n "OpenCode installer installs, reinstalls, and uninstalls safely... "
+OPENCODE_TEST_CONFIG=$(mktemp -d)/opencode
+OPENCODE_INSTALL_ERRORS=""
+mkdir -p "$OPENCODE_TEST_CONFIG/commands/go-dev" "$OPENCODE_TEST_CONFIG/skills/mine" "$OPENCODE_TEST_CONFIG/agents"
+printf '%s\n' 'user command' > "$OPENCODE_TEST_CONFIG/commands/go-dev/lint-fix.md"
+printf -- '---\nname: mine\ndescription: user skill\n---\n' > "$OPENCODE_TEST_CONFIG/skills/mine/SKILL.md"
+printf '%s\n' '{"$schema":"https://opencode.ai/config.json","model":"user/model"}' > "$OPENCODE_TEST_CONFIG/opencode.json"
+OPENCODE_USER_CONFIG_SHA=$(archive_sha256 "$OPENCODE_TEST_CONFIG/opencode.json")
+if ! "$ROOT_DIR/scripts/install-opencode.sh" --config-dir "$OPENCODE_TEST_CONFIG" --no-reload >/tmp/gopher-ai-opencode-install.log 2>&1; then
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  first install failed: $(sed -n '1p' /tmp/gopher-ai-opencode-install.log)"
+fi
+OPENCODE_ABS_CONFIG=$(cd "$OPENCODE_TEST_CONFIG" && pwd -P)
+[ "$(cat "$OPENCODE_TEST_CONFIG/commands/go-dev/lint-fix.md")" = "user command" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  overwrote a user command"
+grep -q 'Skipping commands/go-dev/lint-fix.md' /tmp/gopher-ai-opencode-install.log ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  did not report the skipped user command"
+[ -f "$OPENCODE_TEST_CONFIG/skills/mine/SKILL.md" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  removed a user skill"
+[ "$(archive_sha256 "$OPENCODE_TEST_CONFIG/opencode.json")" = "$OPENCODE_USER_CONFIG_SHA" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  modified opencode.json"
+[ -f "$OPENCODE_TEST_CONFIG/skills/gopher-ai/go-dev/go/SKILL.md" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  missing installed skill"
+[ -f "$OPENCODE_TEST_CONFIG/agents/go-workflow/explore-prompt.md" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  missing installed agent"
+grep -Fq "\"$OPENCODE_ABS_CONFIG/gopher-ai/plugins/go-workflow/scripts/cleanup-loop.sh\"" "$OPENCODE_TEST_CONFIG/commands/go-workflow/cancel-loop.md" ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  runtime root token not replaced with the install path"
+if grep -rlF '__GOPHER_AI_OPENCODE_HOME__' "$OPENCODE_TEST_CONFIG" >/dev/null 2>&1; then
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  unresolved runtime root token after install"
+fi
+[ -x "$OPENCODE_TEST_CONFIG/gopher-ai/plugins/go-workflow/scripts/cleanup-loop.sh" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  installed runtime script is not executable"
+if ! (cd "$(mktemp -d)" && "$OPENCODE_TEST_CONFIG/gopher-ai/plugins/go-workflow/scripts/cleanup-loop.sh" >/tmp/gopher-ai-opencode-cleanup.log 2>&1); then
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  installed cleanup-loop.sh failed: $(sed -n '1p' /tmp/gopher-ai-opencode-cleanup.log)"
+fi
+grep -Fxq 'commands/go-dev/lint-fix.md' "$OPENCODE_TEST_CONFIG/gopher-ai/manifest.txt" &&
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  manifest claims the skipped user command"
+OPENCODE_FIRST_MANIFEST=$(cat "$OPENCODE_TEST_CONFIG/gopher-ai/manifest.txt")
+mkdir -p "$OPENCODE_TEST_CONFIG/skills/gopher-ai/go-dev/retired-skill"
+printf '%s\n' 'stale' > "$OPENCODE_TEST_CONFIG/skills/gopher-ai/go-dev/retired-skill/SKILL.md"
+printf '%s\n' 'skills/gopher-ai/go-dev/retired-skill/SKILL.md' >> "$OPENCODE_TEST_CONFIG/gopher-ai/manifest.txt"
+if ! "$ROOT_DIR/scripts/install-opencode.sh" --config-dir "$OPENCODE_TEST_CONFIG" --no-reload >/tmp/gopher-ai-opencode-reinstall.log 2>&1; then
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  reinstall failed: $(sed -n '1p' /tmp/gopher-ai-opencode-reinstall.log)"
+fi
+[ ! -e "$OPENCODE_TEST_CONFIG/skills/gopher-ai/go-dev/retired-skill" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  stale gopher-ai skill from a previous version survived"
+[ "$(cat "$OPENCODE_TEST_CONFIG/gopher-ai/manifest.txt")" = "$OPENCODE_FIRST_MANIFEST" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  reinstall is not idempotent"
+if [ -n "$(find "$OPENCODE_TEST_CONFIG" -maxdepth 1 -name '.gopher-ai-*')" ]; then
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  staging directories left behind"
+fi
+if ! "$ROOT_DIR/scripts/install-opencode.sh" --config-dir "$OPENCODE_TEST_CONFIG" --uninstall --no-reload >/tmp/gopher-ai-opencode-uninstall.log 2>&1; then
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  uninstall failed: $(sed -n '1p' /tmp/gopher-ai-opencode-uninstall.log)"
+fi
+OPENCODE_REMAINING=$(cd "$OPENCODE_TEST_CONFIG" && find . -type f | LC_ALL=C sort | tr '\n' ' ')
+[ "$OPENCODE_REMAINING" = "./commands/go-dev/lint-fix.md ./opencode.json ./skills/mine/SKILL.md " ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  uninstall left or removed the wrong files: $OPENCODE_REMAINING"
+rm -rf "$(dirname "$OPENCODE_TEST_CONFIG")"
+OPENCODE_UNOWNED_CONFIG=$(mktemp -d)/opencode
+mkdir -p "$OPENCODE_UNOWNED_CONFIG/gopher-ai"
+printf '%s\n' 'user notes' > "$OPENCODE_UNOWNED_CONFIG/gopher-ai/notes.txt"
+if "$ROOT_DIR/scripts/install-opencode.sh" --config-dir "$OPENCODE_UNOWNED_CONFIG" --no-reload >/tmp/gopher-ai-opencode-unowned.log 2>&1; then
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  installed over an unowned gopher-ai directory"
+fi
+[ "$(cat "$OPENCODE_UNOWNED_CONFIG/gopher-ai/notes.txt" 2>/dev/null)" = "user notes" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  unowned gopher-ai directory was modified"
+[ ! -e "$OPENCODE_UNOWNED_CONFIG/commands" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  refused install still wrote commands"
+rm -rf "$(dirname "$OPENCODE_UNOWNED_CONFIG")"
+if [ -n "$OPENCODE_INSTALL_ERRORS" ]; then
+  echo "FAIL"
+  printf '%b\n' "$OPENCODE_INSTALL_ERRORS"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+
 echo -n "Installed Gemini helper-backed command runs... "
 TMP_GEMINI_HOME=$(mktemp -d)
 TMP_GEMINI_WORKSPACE=$(mktemp -d)
@@ -1039,9 +1193,10 @@ TMP_BIN=$(mktemp -d)
 mkdir -p "$TMP_HOME/.codex"
 printf '%s\n' '#!/missing/codex-interpreter' > "$TMP_BIN/codex"
 printf '%s\n' '#!/bin/sh' 'exit 0' > "$TMP_BIN/gemini"
-chmod +x "$TMP_BIN/codex" "$TMP_BIN/gemini"
+printf '%s\n' '#!/bin/sh' 'exit 1' > "$TMP_BIN/opencode"
+chmod +x "$TMP_BIN/codex" "$TMP_BIN/gemini" "$TMP_BIN/opencode"
 set +e
-HOME="$TMP_HOME" PATH="$TMP_BIN:$PATH" bash "$ROOT_DIR/scripts/install-all.sh" --force \
+HOME="$TMP_HOME" XDG_CONFIG_HOME="$TMP_HOME/.config" PATH="$TMP_BIN:$PATH" bash "$ROOT_DIR/scripts/install-all.sh" --force \
   </dev/null >/tmp/gopher-ai-installall-unlaunchable-codex.log 2>&1
 UNLAUNCHABLE_CODEX_EXIT=$?
 set -e
@@ -1058,8 +1213,44 @@ elif ! grep -Fq "error: installed Codex CLI does not support 'codex plugin add'.
   echo "FAIL (Codex installer failure was not actionable)"
   sed -n '1,80p' /tmp/gopher-ai-installall-unlaunchable-codex.log
   ERRORS=$((ERRORS + 1))
-elif grep -Fq 'Done! Installed for: Gemini CLI' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
-  echo "FAIL (false Gemini-only success summary was printed)"
+elif grep -Fq 'Done! Installed for:' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
+  echo "FAIL (false success summary was printed)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq 'Done with failures: Codex CLI' /tmp/gopher-ai-installall-unlaunchable-codex.log; then
+  echo "FAIL (Codex failure was not summarized)"
+  sed -n '1,80p' /tmp/gopher-ai-installall-unlaunchable-codex.log
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$TMP_HOME/.config/opencode/gopher-ai/manifest.txt" ] ||
+     [ ! -f "$TMP_HOME/.config/opencode/commands/go-dev/lint-fix.md" ]; then
+  echo "FAIL (OpenCode install did not run after the Codex failure)"
+  sed -n '1,80p' /tmp/gopher-ai-installall-unlaunchable-codex.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$TMP_BIN"
+
+echo -n "install-all.sh reports a Gemini extension failure... "
+TMP_HOME=$(mktemp -d)
+TMP_BIN=$(mktemp -d)
+for cmd in bash sh awk sed grep find mkdir rm cp mv cmp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum shasum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test tar gzip tree python3 rg ruby; do
+  cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
+  [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
+done
+printf '%s\n' '#!/bin/sh' 'if [ "$2" = install ]; then echo "simulated failure" >&2; exit 1; fi' 'exit 0' > "$TMP_BIN/gemini"
+chmod +x "$TMP_BIN/gemini"
+set +e
+HOME="$TMP_HOME" XDG_CONFIG_HOME="$TMP_HOME/.config" PATH="$TMP_BIN" bash "$ROOT_DIR/scripts/install-all.sh" --force \
+  </dev/null >/tmp/gopher-ai-installall-gemini-failure.log 2>&1
+GEMINI_FAILURE_EXIT=$?
+set -e
+if [ "$GEMINI_FAILURE_EXIT" -eq 0 ]; then
+  echo "FAIL (Gemini failure exited zero)"
+  sed -n '1,80p' /tmp/gopher-ai-installall-gemini-failure.log
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq 'Done with failures: Gemini CLI' /tmp/gopher-ai-installall-gemini-failure.log; then
+  echo "FAIL (Gemini failure was not summarized)"
+  sed -n '1,80p' /tmp/gopher-ai-installall-gemini-failure.log
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
@@ -1207,7 +1398,7 @@ echo -n "Gemini agent files have valid YAML frontmatter... "
 AGENT_ERRORS=""
 for f in "$ROOT_DIR"/plugins/*/agents/*.md; do
   [ -f "$f" ] || continue
-  if ! head -1 "$f" | grep -q '^---$'; then
+  if [ "$(head -n 1 "$f")" != "---" ]; then
     AGENT_ERRORS="$AGENT_ERRORS $f(no-opening)"
     continue
   fi
@@ -1267,7 +1458,8 @@ BOOTSTRAP_ARCHIVE_SENTINEL="gopher-ai-bootstrap-archive-sentinel.${BOOTSTRAP_TEM
 mkdir -p "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
 printf '%s\n' 'must not be archived' > "$ROOT_DIR/.detent/tmp/$BOOTSTRAP_ARCHIVE_SENTINEL"
 cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_SCRIPT_DIR/install-codex.sh"
-git -C "$ROOT_DIR" archive --format=tar --prefix=gopher-ai-main/ HEAD | tar -xf - -C "$TMP_ARCHIVE_DIR"
+git -C "$ROOT_DIR" archive --format=tar --prefix=gopher-ai-main/ --output="$BOOTSTRAP_TEMP_ROOT/source.tar" HEAD
+tar -xf "$BOOTSTRAP_TEMP_ROOT/source.tar" -C "$TMP_ARCHIVE_DIR"
 tar -czf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" -C "$TMP_ARCHIVE_DIR" gopher-ai-main
 BOOTSTRAP_ARCHIVE_MEMBERS=$(tar -tzf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz")
 BOOTSTRAP_ARCHIVE_ERRORS=""

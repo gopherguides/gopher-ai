@@ -49,6 +49,12 @@ plugins/
   copies the plugin-root `.mcp.json` into the generated
   `gemini-extension.json`; plugins without that file receive an empty
   `mcpServers` object.
+- OpenCode has no checked-in manifest either. `scripts/build-universal.sh`
+  builds `dist/opencode/` (skills, `/<plugin>/<command>` commands, subagents,
+  and a runtime copy of each plugin), and `scripts/install-opencode.sh`
+  installs it into the OpenCode config directory, tracking owned files in
+  `gopher-ai/manifest.txt`. Hooks and MCP servers are not ported; see
+  `docs/opencode.md`.
 
 ## Key Workflows
 

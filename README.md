@@ -4,13 +4,14 @@ Cross-platform AI coding assistant toolkit for Go developers - by [Gopher Guides
 
 ## Overview
 
-Gopher AI provides skills and commands for the three major AI coding assistants:
+Gopher AI provides skills and commands for these AI coding assistants:
 
 | Platform | Status | Install Method |
 |----------|--------|----------------|
 | **Claude Code** | Full support | Plugin marketplace |
 | **OpenAI Codex CLI** | 6 plugins; capabilities vary | Repository-backed, user-wide, or manual |
 | **Google Gemini CLI** | Extensions | Manual install |
+| **OpenCode** (v2) | Skills, commands, and subagents; no hooks | `install-all.sh` or `install-opencode.sh` |
 
 Shipped surface: 36 Claude Code commands across 7 plugins; 37 Codex skills across 6 plugins; 0 optional Codex MCP tools.
 
@@ -29,7 +30,7 @@ cd gopher-ai
 ./scripts/install-all.sh
 ```
 
-This auto-detects which platforms are available (Claude Code, Codex CLI, Gemini CLI) and installs for all of them. Run it again anytime to update.
+This auto-detects which platforms are available (Claude Code, Codex CLI, Gemini CLI, OpenCode) and installs for all of them. A failure on one platform does not stop the others; the script reports it and exits non-zero. Run it again anytime to update.
 
 **Or install from GitHub without cloning** (downloads to tmp, installs, cleans up):
 
@@ -105,6 +106,17 @@ gemini extensions install ./dist/gemini/gopher-ai-go-dev
 gemini extensions install ./dist/gemini/gopher-ai-go-workflow
 # ... or any other module
 ```
+
+#### OpenCode
+
+```bash
+git clone https://github.com/gopherguides/gopher-ai
+cd gopher-ai
+./scripts/build-universal.sh
+./scripts/install-opencode.sh
+```
+
+Installs into `${XDG_CONFIG_HOME:-~/.config}/opencode` and is safe to run while OpenCode is running. See [docs/opencode.md](docs/opencode.md) for the layout, naming, and what is not supported.
 
 ## Tool Categories
 
@@ -429,6 +441,7 @@ Works with Claude Code, Codex, Cursor, and any LLM-powered coding assistant.
 - Claude Code: Claude Code CLI
 - Codex: OpenAI Codex CLI (`npm install -g @openai/codex`)
 - Gemini: Google Gemini CLI (`npm install -g @google/gemini-cli`)
+- OpenCode: OpenCode v2 ([opencode.ai](https://opencode.ai))
 
 **Optional:**
 - `ollama` for local model support (`brew install ollama`)
@@ -474,6 +487,7 @@ Or build only (without installing):
 This generates:
 - `dist/codex/plugins/` - Codex plugin packages
 - `dist/gemini/` - Gemini extensions
+- `dist/opencode/` - OpenCode skills, commands, agents, and runtime files
 - `dist/*.tar.gz` - Release archives
 
 ## License
