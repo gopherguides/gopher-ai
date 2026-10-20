@@ -50,7 +50,7 @@ python3 "$SCRIPT_DIR/test-run-with-timeout.py"
 
 echo -n "Gemini generation avoids heredoc and here-string I/O... "
 GEMINI_GENERATORS=$(sed -n '/^generate_gemini_extension_json()/,/^create_archive()/p' "$ROOT_DIR/scripts/build-universal.sh")
-if printf '%s\n' "$GEMINI_GENERATORS" | rg -q '<<<|<<[[:space:]]*[[:alnum:]'\''"]'; then
+if rg -q '<<<|<<[[:space:]]*[[:alnum:]'\''"]' <<< "$GEMINI_GENERATORS"; then
   echo "FAIL"
   ERRORS=$((ERRORS + 1))
 else
@@ -122,7 +122,7 @@ fi
 rm -rf "$CODEX_SKILL_SIZE_TEST_ROOT"
 
 if [ -x /opt/homebrew/bin/bash ] &&
-   /opt/homebrew/bin/bash --version | sed -n '1p' | rg -q 'version 5\.3\.' &&
+   [[ "$(/opt/homebrew/bin/bash --version)" == *"version 5.3."* ]] &&
    command -v gtimeout >/dev/null 2>&1; then
   echo -n "Universal build completes under Bash 5.3... "
   BASH_53_LOG=$(mktemp "${TMPDIR:-${TMP:-${TEMP:-/tmp}}}/gopher-ai-bash-53-build.XXXXXX")
@@ -856,6 +856,13 @@ for built in "$OPENCODE_DIST"/commands/*/*.md; do
     OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  missing description: ${built#"$OPENCODE_DIST"/}"
   fi
 done
+if grep -lE '!`[^`]*\$(ARGUMENTS|[1-9])' "$OPENCODE_DIST"/commands/*/*.md >/dev/null 2>&1; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  a pre-executed shell block interpolates command arguments"
+fi
+if ! grep -Fq 'Run this command with your shell tool' "$OPENCODE_DIST/commands/go-workflow/cancel-loop.md" ||
+   ! grep -Fq 'cleanup-loop.sh" "$ARGUMENTS"' "$OPENCODE_DIST/commands/go-workflow/cancel-loop.md"; then
+  OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  cancel-loop did not become an agent-run shell instruction"
+fi
 if ! grep -Fq 'description: "Auto-fix Go linting issues with golangci-lint"' "$OPENCODE_DIST/commands/go-dev/lint-fix.md"; then
   OPENCODE_BUILD_ERRORS="$OPENCODE_BUILD_ERRORS\n  command description was dropped"
 fi
@@ -936,6 +943,17 @@ OPENCODE_REMAINING=$(cd "$OPENCODE_TEST_CONFIG" && find . -type f | LC_ALL=C sor
 [ "$OPENCODE_REMAINING" = "./commands/go-dev/lint-fix.md ./opencode.json ./skills/mine/SKILL.md " ] ||
   OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  uninstall left or removed the wrong files: $OPENCODE_REMAINING"
 rm -rf "$(dirname "$OPENCODE_TEST_CONFIG")"
+OPENCODE_UNOWNED_CONFIG=$(mktemp -d)/opencode
+mkdir -p "$OPENCODE_UNOWNED_CONFIG/gopher-ai"
+printf '%s\n' 'user notes' > "$OPENCODE_UNOWNED_CONFIG/gopher-ai/notes.txt"
+if "$ROOT_DIR/scripts/install-opencode.sh" --config-dir "$OPENCODE_UNOWNED_CONFIG" --no-reload >/tmp/gopher-ai-opencode-unowned.log 2>&1; then
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  installed over an unowned gopher-ai directory"
+fi
+[ "$(cat "$OPENCODE_UNOWNED_CONFIG/gopher-ai/notes.txt" 2>/dev/null)" = "user notes" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  unowned gopher-ai directory was modified"
+[ ! -e "$OPENCODE_UNOWNED_CONFIG/commands" ] ||
+  OPENCODE_INSTALL_ERRORS="$OPENCODE_INSTALL_ERRORS\n  refused install still wrote commands"
+rm -rf "$(dirname "$OPENCODE_UNOWNED_CONFIG")"
 if [ -n "$OPENCODE_INSTALL_ERRORS" ]; then
   echo "FAIL"
   printf '%b\n' "$OPENCODE_INSTALL_ERRORS"
@@ -1212,6 +1230,33 @@ else
 fi
 rm -rf "$TMP_HOME" "$TMP_BIN"
 
+echo -n "install-all.sh reports a Gemini extension failure... "
+TMP_HOME=$(mktemp -d)
+TMP_BIN=$(mktemp -d)
+for cmd in bash sh awk sed grep find mkdir rm cp mv cmp mktemp printf cat dirname basename tr head tail xargs sleep date wc sha256sum shasum git sort uniq stat ln readlink jq comm touch chmod cut id env true false echo test tar gzip tree python3 rg ruby; do
+  cmd_path="$(command -v "$cmd" 2>/dev/null || true)"
+  [ -n "$cmd_path" ] && ln -s "$cmd_path" "$TMP_BIN/$cmd"
+done
+printf '%s\n' '#!/bin/sh' 'if [ "$2" = install ]; then echo "simulated failure" >&2; exit 1; fi' 'exit 0' > "$TMP_BIN/gemini"
+chmod +x "$TMP_BIN/gemini"
+set +e
+HOME="$TMP_HOME" XDG_CONFIG_HOME="$TMP_HOME/.config" PATH="$TMP_BIN" bash "$ROOT_DIR/scripts/install-all.sh" --force \
+  </dev/null >/tmp/gopher-ai-installall-gemini-failure.log 2>&1
+GEMINI_FAILURE_EXIT=$?
+set -e
+if [ "$GEMINI_FAILURE_EXIT" -eq 0 ]; then
+  echo "FAIL (Gemini failure exited zero)"
+  sed -n '1,80p' /tmp/gopher-ai-installall-gemini-failure.log
+  ERRORS=$((ERRORS + 1))
+elif ! grep -Fq 'Done with failures: Gemini CLI' /tmp/gopher-ai-installall-gemini-failure.log; then
+  echo "FAIL (Gemini failure was not summarized)"
+  sed -n '1,80p' /tmp/gopher-ai-installall-gemini-failure.log
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$TMP_HOME" "$TMP_BIN"
+
 echo -n "install-all.sh reports stale Codex state before no-platform exit... "
 TMP_HOME=$(mktemp -d)
 TMP_BIN=$(mktemp -d)
@@ -1353,7 +1398,7 @@ echo -n "Gemini agent files have valid YAML frontmatter... "
 AGENT_ERRORS=""
 for f in "$ROOT_DIR"/plugins/*/agents/*.md; do
   [ -f "$f" ] || continue
-  if ! head -1 "$f" | grep -q '^---$'; then
+  if [ "$(head -n 1 "$f")" != "---" ]; then
     AGENT_ERRORS="$AGENT_ERRORS $f(no-opening)"
     continue
   fi
@@ -1413,7 +1458,8 @@ BOOTSTRAP_ARCHIVE_SENTINEL="gopher-ai-bootstrap-archive-sentinel.${BOOTSTRAP_TEM
 mkdir -p "$TMP_HOME" "$TMP_SCRIPT_DIR" "$TMP_ARCHIVE_DIR"
 printf '%s\n' 'must not be archived' > "$ROOT_DIR/.detent/tmp/$BOOTSTRAP_ARCHIVE_SENTINEL"
 cp "$ROOT_DIR/scripts/install-codex.sh" "$TMP_SCRIPT_DIR/install-codex.sh"
-git -C "$ROOT_DIR" archive --format=tar --prefix=gopher-ai-main/ HEAD | tar -xf - -C "$TMP_ARCHIVE_DIR"
+git -C "$ROOT_DIR" archive --format=tar --prefix=gopher-ai-main/ --output="$BOOTSTRAP_TEMP_ROOT/source.tar" HEAD
+tar -xf "$BOOTSTRAP_TEMP_ROOT/source.tar" -C "$TMP_ARCHIVE_DIR"
 tar -czf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz" -C "$TMP_ARCHIVE_DIR" gopher-ai-main
 BOOTSTRAP_ARCHIVE_MEMBERS=$(tar -tzf "$TMP_ARCHIVE_DIR/gopher-ai-main.tar.gz")
 BOOTSTRAP_ARCHIVE_ERRORS=""

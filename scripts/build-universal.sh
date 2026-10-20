@@ -360,6 +360,12 @@ convert_command_to_opencode() {
         NR == 1 && $0 == "---" { in_frontmatter = 1; print; next }
         in_frontmatter && $0 == "---" { in_frontmatter = 0; print; next }
         in_frontmatter && /^(allowed-tools|argument-hint|model|effort):/ { next }
+        !in_frontmatter && /!`[^`]*\$(ARGUMENTS|[1-9])/ {
+            gsub(/!`/, "`")
+            print "Run this command with your shell tool, quoting the command arguments safely:"
+            print
+            next
+        }
         { print }
     ' "$1"
 }

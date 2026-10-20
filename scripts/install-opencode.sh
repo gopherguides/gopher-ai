@@ -134,6 +134,11 @@ install() {
         exit 1
     fi
 
+    if [[ -e "$OWNED_DIR" && ! -f "$MANIFEST" ]]; then
+        echo "error: $OWNED_DIR exists but was not created by this installer (no manifest.txt); move it aside and rerun" >&2
+        exit 1
+    fi
+
     mkdir -p "$CONFIG_DIR"
     local config_abs
     config_abs="$(cd "$CONFIG_DIR" && pwd -P)"

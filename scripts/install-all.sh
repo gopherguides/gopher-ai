@@ -187,10 +187,18 @@ install_claude() {
 
     if [[ -d "$marketplace_dir" ]]; then
         echo "  Updating marketplace repo..."
-        git -C "$marketplace_dir" fetch origin 2>/dev/null
-        git -C "$marketplace_dir" reset --hard origin/main 2>/dev/null
+        if ! git -C "$marketplace_dir" fetch origin 2>/dev/null ||
+           ! git -C "$marketplace_dir" reset --hard origin/main 2>/dev/null; then
+            echo "  Warning: could not update the Claude Code marketplace repo."
+            echo ""
+            return 1
+        fi
         echo "  Running refresh..."
-        "$ROOT_DIR/scripts/refresh-plugins.sh"
+        if ! "$ROOT_DIR/scripts/refresh-plugins.sh"; then
+            echo "  Warning: Claude Code plugin refresh failed."
+            echo ""
+            return 1
+        fi
     else
         echo "  Marketplace not yet added."
         echo "  Run this inside Claude Code first:"
@@ -286,6 +294,7 @@ install_gemini() {
         echo "  No extensions found to install."
     fi
     echo ""
+    [[ $failed -eq 0 ]]
 }
 
 main() {
@@ -361,11 +370,15 @@ main() {
     fi
 
     local failed=()
-    $HAVE_CLAUDE && install_claude
+    if $HAVE_CLAUDE && ! install_claude; then
+        failed+=("Claude Code")
+    fi
     if $HAVE_CODEX && ! install_codex; then
         failed+=("Codex CLI")
     fi
-    $HAVE_GEMINI && install_gemini
+    if $HAVE_GEMINI && ! install_gemini; then
+        failed+=("Gemini CLI")
+    fi
     if $HAVE_OPENCODE && ! install_opencode; then
         failed+=("OpenCode")
     fi

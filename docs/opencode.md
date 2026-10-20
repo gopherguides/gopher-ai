@@ -32,7 +32,9 @@ the background service picks up file changes, and the installer also runs
 
 Only files listed in `gopher-ai/manifest.txt` are replaced or removed. If a
 file that gopher-ai did not install already exists at a target path, the
-installer leaves it alone and reports the skip. Files that a previous version
+installer leaves it alone and reports the skip. If a `gopher-ai/` directory
+exists without a `manifest.txt`, the installer refuses to run rather than
+replace it. Files that a previous version
 installed but the new version no longer ships are removed. `opencode.json` is
 never modified.
 
@@ -44,8 +46,11 @@ Skills installed here take precedence over skills with the same ID in
 - Commands keep `description` and their body. `allowed-tools`,
   `argument-hint`, `model`, and `effort` are dropped because OpenCode does not
   use Claude tool allowlists and expects `provider/model` model IDs.
-  `$ARGUMENTS` and inline `` !`command` `` blocks behave the same way in both
-  tools.
+  `$ARGUMENTS` and inline `` !`command` `` blocks work as in Claude Code, with
+  one exception: OpenCode expands arguments before running inline shell
+  blocks, outside the agent's permission flow, so a block that interpolates
+  `$ARGUMENTS` or `$1`… becomes an instruction for the agent to run the
+  command with its shell tool instead.
 - Agents become `mode: subagent`; Claude's `name` and `model` aliases are
   dropped so OpenCode uses its configured model.
 - Codex command-adapter skills are skipped because OpenCode loads the
