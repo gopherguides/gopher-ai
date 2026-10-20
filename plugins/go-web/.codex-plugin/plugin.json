@@ -1,6 +1,6 @@
 {
   "name": "go-web",
-  "version": "1.11.7",
+  "version": "1.12.0",
   "description": "Opinionated Go web app scaffolding with Templ + HTMX + Alpine.js + Tailwind",
   "author": {
     "name": "Gopher Guides",
