@@ -11,6 +11,8 @@
 #                  load in every Codex session) AND cleans up legacy
 #                  ~/.codex/skills/ entries from older flat-install attempts.
 #   - Gemini CLI:  installs extensions (requires gemini command)
+#   - OpenCode:    installs skills, commands, and agents into the OpenCode
+#                  config directory (requires opencode command)
 #
 # Remote install (no clone needed — downloads to tmp, installs, cleans up):
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/gopherguides/gopher-ai/main/scripts/install-all.sh)"
@@ -99,7 +101,7 @@ check_prerequisites() {
 
     # jq is needed by build-universal.sh (Claude/Gemini) and by install-codex.sh
     # for public marketplace discovery and plugin manifest parsing.
-    if $HAVE_CLAUDE || $HAVE_GEMINI || $HAVE_CODEX; then
+    if $HAVE_CLAUDE || $HAVE_GEMINI || $HAVE_CODEX || $HAVE_OPENCODE; then
         if ! command -v jq >/dev/null 2>&1; then
             missing+=("jq (brew install jq / apt install jq)")
         fi
@@ -142,6 +144,11 @@ detect_platforms() {
     if command -v gemini >/dev/null 2>&1; then
         HAVE_GEMINI=true
     fi
+
+    HAVE_OPENCODE=false
+    if command -v opencode >/dev/null 2>&1; then
+        HAVE_OPENCODE=true
+    fi
 }
 
 print_detection() {
@@ -164,6 +171,12 @@ print_detection() {
         echo "  Gemini CLI ..... found ($(command -v gemini))"
     else
         echo "  Gemini CLI ..... not found (install with: npm install -g @google/gemini-cli)"
+    fi
+
+    if $HAVE_OPENCODE; then
+        echo "  OpenCode ....... found ($(command -v opencode))"
+    else
+        echo "  OpenCode ....... not found (see https://opencode.ai)"
     fi
     echo ""
 }
@@ -193,7 +206,21 @@ install_codex() {
     echo "  Installing gopher-ai plugins globally to ~/.codex/plugins/."
     echo "  They will load in every Codex session, regardless of working directory."
     echo ""
-    "$ROOT_DIR/scripts/install-codex.sh" --user
+    if ! "$ROOT_DIR/scripts/install-codex.sh" --user; then
+        echo "  Warning: Codex install failed; continuing with the remaining platforms."
+        echo ""
+        return 1
+    fi
+    echo ""
+}
+
+install_opencode() {
+    echo "=== OpenCode ==="
+    if ! "$ROOT_DIR/scripts/install-opencode.sh" --source "$DIST_DIR/opencode"; then
+        echo "  Warning: OpenCode install failed."
+        echo ""
+        return 1
+    fi
     echo ""
 }
 
@@ -269,7 +296,7 @@ main() {
                 echo "Usage: ./scripts/install-all.sh [--force]"
                 echo ""
                 echo "Build and install gopher-ai for all detected platforms."
-                echo "Detects Claude Code, Codex CLI, and Gemini CLI automatically."
+                echo "Detects Claude Code, Codex CLI, Gemini CLI, and OpenCode automatically."
                 echo ""
                 echo "Options:"
                 echo "  --force, -f   Skip confirmation prompt"
@@ -289,13 +316,14 @@ main() {
     check_prerequisites
     print_detection
 
-    if ! $HAVE_CLAUDE && ! $HAVE_CODEX && ! $HAVE_GEMINI; then
+    if ! $HAVE_CLAUDE && ! $HAVE_CODEX && ! $HAVE_GEMINI && ! $HAVE_OPENCODE; then
         echo "No supported platforms detected."
         echo ""
         echo "Install at least one:"
         echo "  Claude Code: https://claude.ai/code"
         echo "  Codex CLI:   npm install -g @openai/codex"
         echo "  Gemini CLI:  npm install -g @google/gemini-cli"
+        echo "  OpenCode:    https://opencode.ai"
         exit 1
     fi
 
@@ -304,6 +332,7 @@ main() {
     $HAVE_CLAUDE && platforms+=("Claude Code")
     $HAVE_CODEX && platforms+=("Codex CLI")
     $HAVE_GEMINI && platforms+=("Gemini CLI")
+    $HAVE_OPENCODE && platforms+=("OpenCode")
 
     if ! $FORCE; then
         echo "Will install for: ${platforms[*]}"
@@ -315,9 +344,9 @@ main() {
         echo ""
     fi
 
-    # Build is needed for Claude and Gemini. Codex --user copies straight from
-    # plugins/ source — no build artifacts required.
-    if $HAVE_CLAUDE || $HAVE_GEMINI; then
+    # Build is needed for Claude, Gemini, and OpenCode. Codex --user copies
+    # straight from plugins/ source — no build artifacts required.
+    if $HAVE_CLAUDE || $HAVE_GEMINI || $HAVE_OPENCODE; then
         echo "Building distribution..."
         echo ""
         if ! "$ROOT_DIR/scripts/build-universal.sh"; then
@@ -331,12 +360,22 @@ main() {
         echo ""
     fi
 
+    local failed=()
     $HAVE_CLAUDE && install_claude
-    $HAVE_CODEX && install_codex
+    if $HAVE_CODEX && ! install_codex; then
+        failed+=("Codex CLI")
+    fi
     $HAVE_GEMINI && install_gemini
+    if $HAVE_OPENCODE && ! install_opencode; then
+        failed+=("OpenCode")
+    fi
 
     echo "================================"
-    echo "Done! Installed for: ${platforms[*]}"
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        echo "Done with failures: ${failed[*]}"
+    else
+        echo "Done! Installed for: ${platforms[*]}"
+    fi
     echo ""
     echo "Next steps:"
     if $HAVE_CLAUDE; then
@@ -347,6 +386,12 @@ main() {
     fi
     if $HAVE_GEMINI; then
         echo "  Gemini CLI:  Restart Gemini to load extensions"
+    fi
+    if $HAVE_OPENCODE; then
+        echo "  OpenCode:    Commands run as /<plugin>/<command> (for example /go-dev/lint-fix); skills load by name."
+    fi
+    if [[ ${#failed[@]} -gt 0 ]]; then
+        exit 1
     fi
 }
 

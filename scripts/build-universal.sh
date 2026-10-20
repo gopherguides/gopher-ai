@@ -299,6 +299,114 @@ build_gemini() {
     echo "  Done: $gemini_dir"
 }
 
+OPENCODE_HOME_TOKEN="__GOPHER_AI_OPENCODE_HOME__"
+
+build_opencode() {
+    echo ""
+    echo "Building OpenCode bundle..."
+    echo "---------------------------"
+
+    local opencode_dir="$DIST_DIR/opencode"
+    mkdir -p "$opencode_dir/skills/gopher-ai" "$opencode_dir/commands" "$opencode_dir/agents" "$opencode_dir/gopher-ai/plugins"
+
+    for plugin_dir in "$ROOT_DIR"/plugins/*/; do
+        plugin_name=$(basename "$plugin_dir")
+        local plugin_root="$opencode_dir/gopher-ai/plugins/$plugin_name"
+
+        echo "  Building OpenCode plugin: $plugin_name"
+
+        mkdir -p "$plugin_root"
+        cp -R "${plugin_dir}." "$plugin_root/"
+        rm -rf "$plugin_root/.claude-plugin" "$plugin_root/.codex-plugin" "$plugin_root/.mcp.json"
+
+        if [[ -d "${plugin_dir}skills/" ]]; then
+            for skill_dir in "${plugin_dir}skills/"*/; do
+                [[ -f "${skill_dir}SKILL.md" ]] || continue
+                if grep -Fq 'lib/codex-command-adapter.md' "${skill_dir}SKILL.md"; then
+                    continue
+                fi
+                skill_name=$(basename "$skill_dir")
+                mkdir -p "$opencode_dir/skills/gopher-ai/$plugin_name/$skill_name"
+                cp -R "${skill_dir}." "$opencode_dir/skills/gopher-ai/$plugin_name/$skill_name/"
+            done
+        fi
+
+        if [[ -d "${plugin_dir}commands/" ]]; then
+            for cmd_file in "${plugin_dir}commands/"*.md; do
+                [[ -f "$cmd_file" ]] || continue
+                mkdir -p "$opencode_dir/commands/$plugin_name"
+                convert_command_to_opencode "$cmd_file" > "$opencode_dir/commands/$plugin_name/$(basename "$cmd_file")"
+            done
+        fi
+
+        if [[ -d "${plugin_dir}agents/" ]]; then
+            for agent_file in "${plugin_dir}agents/"*.md; do
+                [[ -f "$agent_file" ]] || continue
+                mkdir -p "$opencode_dir/agents/$plugin_name"
+                convert_agent_to_opencode "$agent_file" > "$opencode_dir/agents/$plugin_name/$(basename "$agent_file")"
+            done
+        fi
+
+        rewrite_opencode_plugin_paths "$opencode_dir" "$plugin_name"
+    done
+
+    printf '%s\n' "$VERSION" > "$opencode_dir/gopher-ai/VERSION"
+
+    echo "  Done: $opencode_dir"
+}
+
+convert_command_to_opencode() {
+    awk '
+        NR == 1 && $0 == "---" { in_frontmatter = 1; print; next }
+        in_frontmatter && $0 == "---" { in_frontmatter = 0; print; next }
+        in_frontmatter && /^(allowed-tools|argument-hint|model|effort):/ { next }
+        { print }
+    ' "$1"
+}
+
+convert_agent_to_opencode() {
+    awk '
+        NR == 1 && $0 == "---" { in_frontmatter = 1; print; next }
+        in_frontmatter && $0 == "---" { in_frontmatter = 0; print "mode: subagent"; print; next }
+        in_frontmatter && /^(name|model|tools|mode):/ { next }
+        { print }
+    ' "$1"
+}
+
+rewrite_opencode_plugin_paths() {
+    local opencode_dir="$1"
+    local plugin_name="$2"
+    local plugin_root="$OPENCODE_HOME_TOKEN/plugins/$plugin_name"
+    local file
+
+    while IFS= read -r -d '' file; do
+        if ! grep -qE '\$\{?CLAUDE_PLUGIN_ROOT\}?|<PLUGIN_ROOT>' "$file" 2>/dev/null; then
+            continue
+        fi
+
+        GOPHER_AI_PLUGIN_ROOT="$plugin_root" awk '
+            BEGIN {
+                root = ENVIRON["GOPHER_AI_PLUGIN_ROOT"]
+                count = split("${CLAUDE_PLUGIN_ROOT:-}|${CLAUDE_PLUGIN_ROOT}|$CLAUDE_PLUGIN_ROOT|<PLUGIN_ROOT>", tokens, "|")
+            }
+            {
+                line = $0
+                for (t = 1; t <= count; t++) {
+                    out = ""
+                    while ((i = index(line, tokens[t])) > 0) {
+                        out = out substr(line, 1, i - 1) root
+                        line = substr(line, i + length(tokens[t]))
+                    }
+                    line = out line
+                }
+                print line
+            }
+        ' "$file" > "$file.opencode-tmp"
+        cat "$file.opencode-tmp" > "$file"
+        rm -f "$file.opencode-tmp"
+    done < <(find "$opencode_dir/gopher-ai/plugins/$plugin_name" "$opencode_dir/skills/gopher-ai/$plugin_name" "$opencode_dir/commands/$plugin_name" "$opencode_dir/agents/$plugin_name" -type f -print0 2>/dev/null)
+}
+
 copy_gemini_runtime_assets() {
     local plugin_dir="$1"
     local ext_dir="$2"
@@ -594,6 +702,11 @@ create_archives() {
         create_archive "$DIST_DIR/gemini" "$DIST_DIR/gopher-ai-gemini-extensions-v${VERSION}.tar.gz"
         echo "  - Created: gopher-ai-gemini-extensions-v${VERSION}.tar.gz"
     fi
+
+    if [[ -d "$DIST_DIR/opencode" ]]; then
+        create_archive "$DIST_DIR/opencode" "$DIST_DIR/gopher-ai-opencode-v${VERSION}.tar.gz"
+        echo "  - Created: gopher-ai-opencode-v${VERSION}.tar.gz"
+    fi
 }
 
 print_summary() {
@@ -622,11 +735,15 @@ print_summary() {
     echo "  Gemini CLI:"
     echo "    gemini extensions install ./dist/gemini/gopher-ai-<plugin>"
     echo ""
+    echo "  OpenCode:"
+    echo "    ./scripts/install-opencode.sh"
+    echo ""
 }
 
 main() {
     build_codex
     build_gemini
+    build_opencode
     create_archives
     print_summary
 }
