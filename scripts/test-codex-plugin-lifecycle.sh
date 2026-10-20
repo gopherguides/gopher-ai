@@ -511,18 +511,16 @@ git -C "$FIXTURE_WORK" commit -qm "$SECOND_VERSION"
 git -C "$FIXTURE_WORK" push -q origin main
 git --git-dir="$SERVER_ROOT/fixture.git" update-server-info
 
-set +e
-run_installer > "$LOG_DIR/installer-active.stdout" 2> "$LOG_DIR/installer-active.stderr"
-ACTIVE_INSTALL_STATUS=$?
-set -e
-[[ "$ACTIVE_INSTALL_STATUS" -ne 0 ]] \
-    || fail "updated plugin install proceeded while a Codex session was active"
-grep -q 'Codex processes are running' "$LOG_DIR/installer-active.stderr" \
-    || fail "active-session refusal did not explain how to recover"
+if ! run_installer > "$LOG_DIR/installer-active.stdout" 2> "$LOG_DIR/installer-active.stderr"; then
+    tail -n 20 "$LOG_DIR/installer-active.stdout" "$LOG_DIR/installer-active.stderr" >&2
+    fail "updated plugin install failed while a Codex session was active"
+fi
+[[ -d "$CODEX_HOME/plugins/cache/gopher-ai/go-workflow/$SECOND_VERSION" ]] \
+    || fail "update during an active session did not publish the new root"
 [[ -x "$FIRST_ROOT/hooks/codex-cleanup-on-start.sh" ]] \
-    || fail "active SessionStart hook path disappeared during refused update"
+    || fail "active SessionStart hook path disappeared during live update"
 [[ -x "$FIRST_ROOT/hooks/stop-hook.sh" ]] \
-    || fail "active Stop hook path disappeared during refused update"
+    || fail "active Stop hook path disappeared during live update"
 
 : > "$SERVER_STATE/1.release"
 finish_session "$FIRST_SESSION_PID" first

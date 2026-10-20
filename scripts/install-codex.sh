@@ -24,9 +24,9 @@ gopher-ai for Codex can be installed in two ways:
 
   --user        Install plugins globally through the public Codex plugin CLI so
                 they load in EVERY Codex session, regardless of the working
-                directory. Codex publishes versioned roots before activation.
-                Previously published roots are retained for active sessions.
-                Refuses to refresh while any Codex process is running.
+                directory. Safe to run while Codex sessions are open:
+                each release publishes a new versioned root, and roots that
+                live sessions reference are retained.
                 Also removes legacy ~/.codex/skills/ entries left over from
                 older installs (with --yes semantics — assumes the user wants
                 the migration).
@@ -534,9 +534,24 @@ backup_published_plugin_roots() {
         mkdir -p "$CACHE_BACKUP_DIR/$plugin_name"
         for cache_root in "$plugin_cache"/*; do
             [[ -d "$cache_root" ]] || continue
-            cp -R -p "$cache_root" "$CACHE_BACKUP_DIR/$plugin_name/"
+            backup_plugin_root "$cache_root" "$CACHE_BACKUP_DIR/$plugin_name" || return 1
         done
     done
+}
+
+backup_plugin_root() {
+    local cache_root="$1" destination="$2" attempt target
+    target="$destination/$(basename "$cache_root")"
+    for attempt in 1 2 3 4 5; do
+        rm -rf "${target:?}"
+        if cp -R -p "$cache_root" "$destination/" 2>/dev/null; then
+            return 0
+        fi
+        [[ -d "$cache_root" ]] || { rm -rf "${target:?}"; return 0; }
+        sleep "$attempt"
+    done
+    echo "error: could not snapshot $cache_root while Codex was changing it; nothing was modified. Retry the install." >&2
+    return 1
 }
 
 restore_removed_plugin_roots() {
@@ -613,6 +628,29 @@ commit_legacy_user_marketplace_migration() {
     LEGACY_MARKETPLACE_BACKUP_DIR=""
 }
 
+registered_marketplace_ref() {
+    local config="${CODEX_HOME:-$HOME/.codex}/config.toml"
+    [[ -f "$config" ]] || return 1
+    awk '
+        /^[[:space:]]*\[/ {
+            in_section = ($0 ~ /^[[:space:]]*\[marketplaces\.gopher-ai\][[:space:]]*$/)
+            if (in_section) found = 1
+            next
+        }
+        in_section && /^[[:space:]]*ref[[:space:]]*=/ {
+            value = $0
+            sub(/^[^=]*=[[:space:]]*/, "", value)
+            gsub(/"/, "", value)
+            sub(/[[:space:]]+$/, "", value)
+            ref = value
+        }
+        END {
+            if (!found) exit 1
+            print ref
+        }
+    ' "$config"
+}
+
 install_user_plugins() {
     require_cmd codex
     if ! codex plugin add --help >/dev/null 2>&1; then
@@ -621,7 +659,6 @@ install_user_plugins() {
         return 1
     fi
 
-    require_stopped_codex_sessions
     prepare_legacy_user_marketplace_migration
 
     local marketplaces
@@ -630,11 +667,26 @@ install_user_plugins() {
         return 1
     fi
 
-    backup_published_plugin_roots
+    if ! backup_published_plugin_roots; then
+        rm -rf "${CACHE_BACKUP_DIR:?}"
+        return 1
+    fi
     local cache_backup_dir="$CACHE_BACKUP_DIR"
     local marketplace_status=0
     set +e
+    local registered_ref=""
     if jq -e '.marketplaces[]? | select(.name == "gopher-ai" and .marketplaceSource != null)' \
+            >/dev/null <<<"$marketplaces" \
+        && registered_ref="$(registered_marketplace_ref)" \
+        && [[ "$registered_ref" != "$REPO_REF" ]]; then
+        echo "marketplace tracks ${registered_ref:-the default branch}; re-registering on $REPO_REF..."
+        codex plugin marketplace remove gopher-ai 2>&1 | sed 's/^/  /'
+        marketplace_status=${PIPESTATUS[0]}
+        if [[ "$marketplace_status" -eq 0 ]]; then
+            codex plugin marketplace add "$REPO_SLUG" --ref "$REPO_REF" 2>&1 | sed 's/^/  /'
+            marketplace_status=${PIPESTATUS[0]}
+        fi
+    elif jq -e '.marketplaces[]? | select(.name == "gopher-ai" and .marketplaceSource != null)' \
             >/dev/null <<<"$marketplaces"; then
         echo "marketplace already registered — upgrading..."
         codex plugin marketplace upgrade gopher-ai 2>&1 | sed 's/^/  /'
