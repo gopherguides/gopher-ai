@@ -1830,6 +1830,10 @@ if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "marketplace" ] && [ "${3:-}" = "add"
     printf 'forced marketplace add failure\n' >&2
     exit 1
   fi
+  if [ -n "${CODEX_STUB_FAIL_MARKETPLACE_ADD_REF:-}" ] && [ "${6:-}" = "${CODEX_STUB_FAIL_MARKETPLACE_ADD_REF}" ]; then
+    printf 'forced marketplace add failure for ref %s\n' "$6" >&2
+    exit 1
+  fi
   exit
 fi
 if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
@@ -1851,7 +1855,7 @@ if [ "${1:-}" = "plugin" ] && [ "${2:-}" = "add" ]; then
   fi
   source_root="${CODEX_STUB_SOURCE_ROOT:?}/plugins/$plugin"
   version="$(jq -r '.version' "$source_root/.codex-plugin/plugin.json")"
-  plugin_cache="$HOME/.codex/plugins/cache/gopher-ai/$plugin"
+  plugin_cache="${CODEX_HOME:-$HOME/.codex}/plugins/cache/gopher-ai/$plugin"
   destination="$plugin_cache/$version"
   rm -rf "$plugin_cache"
   mkdir -p "$destination"
@@ -1929,9 +1933,97 @@ else
   echo "OK"
 fi
 
-echo -n "Codex --user refuses to mutate plugin roots while Codex is running... "
+echo -n "Codex --user moves a default-branch marketplace onto the release ref... "
+: > "$STUB_LOG"
+mkdir -p "$TMP_HOME/.codex"
+printf '[marketplaces.gopher-ai]\nsource_type = "git"\nsource = "https://github.com/gopherguides/gopher-ai.git"\n' \
+  > "$TMP_HOME/.codex/config.toml"
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+if ! grep -qx 'plugin marketplace remove gopher-ai' "$STUB_LOG"; then
+  echo "FAIL (default-branch marketplace was not removed)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -qx 'plugin marketplace add gopherguides/gopher-ai --ref main' "$STUB_LOG"; then
+  echo "FAIL (marketplace was not re-registered on main)"
+  ERRORS=$((ERRORS + 1))
+elif grep -q '^plugin marketplace upgrade ' "$STUB_LOG"; then
+  echo "FAIL (stale-ref marketplace was upgraded instead of re-registered)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+: > "$STUB_LOG"
+printf '[marketplaces.gopher-ai]\nsource_type = "git"\nsource = "https://github.com/gopherguides/gopher-ai.git"\nref = "main"\n' \
+  > "$TMP_HOME/.codex/config.toml"
+echo -n "Codex --user upgrades a marketplace already on the release ref... "
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+if ! grep -qx 'plugin marketplace upgrade gopher-ai' "$STUB_LOG"; then
+  echo "FAIL (release-ref marketplace was not upgraded)"
+  ERRORS=$((ERRORS + 1))
+elif grep -Eq '^plugin marketplace (add|remove) ' "$STUB_LOG"; then
+  echo "FAIL (release-ref marketplace was re-registered)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+echo -n "Codex --user restores the previous marketplace when re-registration fails... "
+: > "$STUB_LOG"
+printf '[marketplaces.gopher-ai]\nsource_type = "git"\nsource = "https://github.com/gopherguides/gopher-ai.git"\n' \
+  > "$TMP_HOME/.codex/config.toml"
+set +e
+HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  CODEX_STUB_FAIL_MARKETPLACE_ADD_REF=main \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1
+REREGISTER_EXIT=$?
+set -e
+if [ "$REREGISTER_EXIT" -eq 0 ]; then
+  echo "FAIL (failed re-registration reported success)"
+  ERRORS=$((ERRORS + 1))
+elif ! grep -qx 'plugin marketplace add https://github.com/gopherguides/gopher-ai.git' "$STUB_LOG"; then
+  echo "FAIL (previous registration was not restored)"
+  sed -n '1,20p' "$STUB_LOG"
+  ERRORS=$((ERRORS + 1))
+elif grep -Eq '^plugin add [^ ]+@gopher-ai$' "$STUB_LOG"; then
+  echo "FAIL (plugins were installed after the marketplace failed)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -f "$TMP_HOME/.codex/config.toml"
+
+echo -n "Codex --user retains superseded roots in a dedicated CODEX_HOME... "
+: > "$STUB_LOG"
+DEDICATED_CODEX_HOME=$(mktemp -d)
+DEDICATED_CACHE="$DEDICATED_CODEX_HOME/plugins/cache/gopher-ai/go-dev"
+mkdir -p "$DEDICATED_CACHE/0.0.1-superseded"
+printf 'live\n' > "$DEDICATED_CACHE/0.0.1-superseded/ACTIVE_SESSION"
+if ! HOME="$TMP_HOME" CODEX_HOME="$DEDICATED_CODEX_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
+  CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
+  bash "$ROOT_DIR/scripts/install-codex.sh" --user >/dev/null 2>&1; then
+  echo "FAIL (--user failed with a dedicated CODEX_HOME)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$DEDICATED_CACHE/0.0.1-superseded/ACTIVE_SESSION" ]; then
+  echo "FAIL (superseded root under CODEX_HOME was not restored)"
+  ERRORS=$((ERRORS + 1))
+elif [ -n "$(find "$DEDICATED_CACHE" -maxdepth 1 -name '.*gopher-ai-*' -print -quit)" ]; then
+  echo "FAIL (restore left staging directories behind)"
+  ERRORS=$((ERRORS + 1))
+else
+  echo "OK"
+fi
+rm -rf "$DEDICATED_CODEX_HOME"
+
+echo -n "Codex --user refreshes while Codex is running and keeps superseded roots... "
 : > "$STUB_LOG"
 ACTIVE_CODEX_LOG=$(mktemp)
+ACTIVE_CACHE="$TMP_HOME/.codex/plugins/cache/gopher-ai/go-workflow"
+ACTIVE_VERSION=$(jq -r '.version' "$ROOT_DIR/plugins/go-workflow/.codex-plugin/plugin.json")
+mkdir -p "$ACTIVE_CACHE/0.0.1-superseded"
+printf 'live\n' > "$ACTIVE_CACHE/0.0.1-superseded/ACTIVE_SESSION"
 set +e
 HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
   CODEX_STUB_SOURCE_ROOT="$ROOT_DIR" CODEX_STUB_MARKETPLACE_REGISTERED=true \
@@ -1939,14 +2031,18 @@ HOME="$TMP_HOME" PATH="$STUB_PATH" CODEX_STUB_LOG="$STUB_LOG" \
   >"$ACTIVE_CODEX_LOG" 2>&1
 ACTIVE_CODEX_EXIT=$?
 set -e
-if [ "$ACTIVE_CODEX_EXIT" -eq 0 ]; then
-  echo "FAIL (--user unexpectedly refreshed with an active Codex process)"
+if [ "$ACTIVE_CODEX_EXIT" -ne 0 ]; then
+  echo "FAIL (--user refused or failed with an active Codex process)"
+  cat "$ACTIVE_CODEX_LOG"
   ERRORS=$((ERRORS + 1))
-elif grep -Eq '^plugin marketplace (add|upgrade) |^plugin add [^ ]+@gopher-ai$' "$STUB_LOG"; then
-  echo "FAIL (Codex plugin state changed before the active-session refusal)"
+elif ! grep -q '^plugin marketplace upgrade gopher-ai' "$STUB_LOG"; then
+  echo "FAIL (marketplace was not upgraded)"
   ERRORS=$((ERRORS + 1))
-elif ! grep -q 'Codex processes are running' "$ACTIVE_CODEX_LOG"; then
-  echo "FAIL (refusal did not explain how to recover)"
+elif [ ! -f "$ACTIVE_CACHE/0.0.1-superseded/ACTIVE_SESSION" ]; then
+  echo "FAIL (superseded root used by a live session was removed)"
+  ERRORS=$((ERRORS + 1))
+elif [ ! -f "$ACTIVE_CACHE/$ACTIVE_VERSION/.codex-plugin/plugin.json" ]; then
+  echo "FAIL (current version root was not published)"
   ERRORS=$((ERRORS + 1))
 else
   echo "OK"
