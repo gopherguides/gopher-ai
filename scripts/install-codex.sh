@@ -25,8 +25,10 @@ gopher-ai for Codex can be installed in two ways:
   --user        Install plugins globally through the public Codex plugin CLI so
                 they load in EVERY Codex session, regardless of the working
                 directory. Safe to run while Codex sessions are open:
-                each release publishes a new versioned root, and roots that
-                live sessions reference are retained.
+                each release publishes a new versioned root, and the roots
+                live sessions reference are put back right after each
+                plugin's install (the Codex CLI deletes them for about a
+                tenth of a second per plugin).
                 Also removes legacy ~/.codex/skills/ entries left over from
                 older installs (with --yes semantics — assumes the user wants
                 the migration).
@@ -518,8 +520,13 @@ cache_root_matches_plugin() {
     return 0
 }
 
+codex_plugin_cache_dir() {
+    printf '%s\n' "${CODEX_HOME:-$HOME/.codex}/plugins/cache/gopher-ai"
+}
+
 backup_published_plugin_roots() {
-    local marketplace_cache="$HOME/.codex/plugins/cache/gopher-ai"
+    local marketplace_cache
+    marketplace_cache="$(codex_plugin_cache_dir)"
     CACHE_BACKUP_DIR=""
     [[ -d "$marketplace_cache" ]] || return 0
 
@@ -554,23 +561,38 @@ backup_plugin_root() {
     return 1
 }
 
+restore_plugin_roots() {
+    local backup_dir="$1" plugin_name="$2"
+    local plugin_backup="$backup_dir/$plugin_name"
+    [[ -d "$plugin_backup" ]] || return 0
+
+    local plugin_cache backup_root version target_root staged retired
+    plugin_cache="$(codex_plugin_cache_dir)/$plugin_name"
+    for backup_root in "$plugin_backup"/*; do
+        [[ -d "$backup_root" ]] || continue
+        version="$(basename "$backup_root")"
+        mkdir -p "$plugin_cache"
+        target_root="$plugin_cache/$version"
+        staged="$plugin_cache/.$version.gopher-ai-restore.$$"
+        retired="$plugin_cache/.$version.gopher-ai-retired.$$"
+        rm -rf "${staged:?}" "${retired:?}"
+        cp -R -p "$backup_root" "$staged"
+        if [[ -e "$target_root" ]]; then
+            mv "$target_root" "$retired"
+        fi
+        mv "$staged" "$target_root"
+        rm -rf "${retired:?}"
+    done
+}
+
 restore_removed_plugin_roots() {
     local backup_dir="$1"
     [[ -n "$backup_dir" && -d "$backup_dir" ]] || return 0
 
-    local plugin_backup plugin_name plugin_cache backup_root version target_root
+    local plugin_backup
     for plugin_backup in "$backup_dir"/*; do
         [[ -d "$plugin_backup" ]] || continue
-        plugin_name="$(basename "$plugin_backup")"
-        plugin_cache="$HOME/.codex/plugins/cache/gopher-ai/$plugin_name"
-        for backup_root in "$plugin_backup"/*; do
-            [[ -d "$backup_root" ]] || continue
-            version="$(basename "$backup_root")"
-            mkdir -p "$plugin_cache"
-            target_root="$plugin_cache/$version"
-            rm -rf "${target_root:?}"
-            cp -R -p "$backup_root" "$target_root"
-        done
+        restore_plugin_roots "$backup_dir" "$(basename "$plugin_backup")"
     done
     rm -rf "$backup_dir"
 }
@@ -674,7 +696,8 @@ install_user_plugins() {
     local cache_backup_dir="$CACHE_BACKUP_DIR"
     local marketplace_status=0
     set +e
-    local registered_ref=""
+    local registered_ref="" registered_source=""
+    registered_source="$(jq -r 'first(.marketplaces[]? | select(.name == "gopher-ai") | .marketplaceSource.source // empty) // empty' <<<"$marketplaces")"
     if jq -e '.marketplaces[]? | select(.name == "gopher-ai" and .marketplaceSource != null)' \
             >/dev/null <<<"$marketplaces" \
         && registered_ref="$(registered_marketplace_ref)" \
@@ -685,6 +708,14 @@ install_user_plugins() {
         if [[ "$marketplace_status" -eq 0 ]]; then
             codex plugin marketplace add "$REPO_SLUG" --ref "$REPO_REF" 2>&1 | sed 's/^/  /'
             marketplace_status=${PIPESTATUS[0]}
+            if [[ "$marketplace_status" -ne 0 && -n "$registered_source" ]]; then
+                echo "re-registration failed; restoring the previous marketplace registration..."
+                if [[ -n "$registered_ref" ]]; then
+                    codex plugin marketplace add "$registered_source" --ref "$registered_ref" 2>&1 | sed 's/^/  /'
+                else
+                    codex plugin marketplace add "$registered_source" 2>&1 | sed 's/^/  /'
+                fi
+            fi
         fi
     elif jq -e '.marketplaces[]? | select(.name == "gopher-ai" and .marketplaceSource != null)' \
             >/dev/null <<<"$marketplaces"; then
@@ -719,6 +750,7 @@ install_user_plugins() {
             restore_removed_plugin_roots "$cache_backup_dir"
             return "$add_status"
         fi
+        restore_plugin_roots "$cache_backup_dir" "$plugin_name"
         installed=$((installed + 1))
     done
     restore_removed_plugin_roots "$cache_backup_dir"
@@ -762,7 +794,8 @@ install_user_plugins() {
 
 prune_user_plugin_cache() {
     local assume_yes="${1:-false}"
-    local cache_root="$HOME/.codex/plugins/cache/gopher-ai"
+    local cache_root
+    cache_root="$(codex_plugin_cache_dir)"
 
     require_stopped_codex_sessions
 
