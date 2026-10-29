@@ -25,6 +25,14 @@ inputs:
     description: Delay before the single bounded retry
     required: false
     default: "2"
+  pr-number:
+    description: Pull request to review (defaults to the triggering pull request)
+    required: false
+    default: ""
+  head-sha:
+    description: Pull request head being reviewed (defaults to the triggering pull request head)
+    required: false
+    default: ""
 
 outputs:
   summary:
@@ -41,7 +49,7 @@ outputs:
     value: ${{ steps.review.outputs.has_issues || steps.check-go.outputs.has_issues || 'false' }}
   reviewed-head:
     description: Pull request head evaluated by this action
-    value: ${{ github.event.pull_request.head.sha || github.sha }}
+    value: ${{ inputs.head-sha || github.event.pull_request.head.sha || github.sha }}
 
 runs:
   using: composite
@@ -51,9 +59,9 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
         REPOSITORY: ${{ github.repository }}
-        REVIEWED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        REVIEWED_HEAD: ${{ inputs.head-sha || github.event.pull_request.head.sha || github.sha }}
         STATUS_DIR: ${{ github.workspace }}/.gopher-ai-review
       run: |
         set -euo pipefail
@@ -87,7 +95,7 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
         REPOSITORY: ${{ github.repository }}
         STATUS_DIR: ${{ github.workspace }}/.gopher-ai-review
       run: |
@@ -125,9 +133,9 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
         REPOSITORY: ${{ github.repository }}
-        REVIEWED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        REVIEWED_HEAD: ${{ inputs.head-sha || github.event.pull_request.head.sha || github.sha }}
         STATUS_DIR: ${{ github.workspace }}/.gopher-ai-review
       run: |
         set -euo pipefail
