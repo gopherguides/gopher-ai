@@ -30,16 +30,9 @@ test_action_contract() {
   [ -f "$WORKFLOW_FILE" ] || fail "consumer workflow is missing"
 
   assert_contains "$ACTION_FILE" "\${{ github.action_path }}/review-api.sh" "action does not execute its packaged helper"
-  assert_contains "$ACTION_FILE" "\${{ github.event.pull_request.head.sha || github.sha }}" "action does not publish the reviewed head SHA"
-
-  while IFS='|' read -r action message; do
-    assert_contains "$WORKFLOW_FILE" "$action" "$message"
-  done <<'EOF'
-opened|workflow does not review newly opened pull requests
-synchronize|workflow does not re-review newly pushed heads
-reopened|workflow does not review reopened pull requests
-ready_for_review|workflow does not review pull requests leaving draft state
-EOF
+  assert_contains "$ACTION_FILE" "\${{ inputs.head-sha || github.event.pull_request.head.sha || github.sha }}" "action does not publish the reviewed head SHA"
+  assert_contains "$WORKFLOW_FILE" "pr_number:" "manual dispatch cannot select the pull request to review"
+  assert_contains "$WORKFLOW_FILE" "pr-number: \${{ inputs.pr_number || github.event.pull_request.number }}" "workflow does not pass the selected pull request to the action"
 }
 
 write_fake_curl() {

@@ -25,11 +25,15 @@ class WorkflowAdmissionTests(unittest.TestCase):
                     with self.subTest(job=name):
                         self.assertIn(GUARD, job.get('if', ''))
 
-    def test_review_only_calls_pr_api_for_pr_events(self):
+    def test_manual_review_targets_the_selected_pull_request(self):
         workflow = yaml.safe_load((ROOT / '.github/workflows/gopher-ai-review.yml').read_text())
+        events = workflow.get('on', workflow.get(True))
+        self.assertTrue(events['workflow_dispatch']['inputs']['pr_number']['required'])
         steps = workflow['jobs']['review']['steps']
         review = next(step for step in steps if step.get('id') == 'review')
-        self.assertEqual(review.get('if'), "github.event_name == 'pull_request'")
+        self.assertNotIn('if', review)
+        self.assertEqual(review['with']['pr-number'], '${{ inputs.pr_number || github.event.pull_request.number }}')
+        self.assertEqual(review['with']['head-sha'], '${{ steps.pr.outputs.head_sha }}')
 
 
 if __name__ == '__main__':
