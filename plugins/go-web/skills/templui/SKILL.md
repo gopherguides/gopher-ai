@@ -17,6 +17,9 @@ no module dependency; `components.json` alone is not enough without its schema a
   Read [shadcn-templ.md](shadcn-templ.md); the v1 examples below do not apply automatically.
 - **Mixed/unknown:** inspect the actual APIs and ask which generation is the target.
 
+Both generations require `github.com/a-h/templ` v0.3.1100 or later, which sanitizes spread
+attributes and URLs in attributes. Raise older pins, regenerate, and rebuild before edits.
+
 Whenever a new task encounters legacy usage, ask:
 
 > This uses legacy templUI v1. Would you like to upgrade to shadcn-templ, or keep v1 for this task?
