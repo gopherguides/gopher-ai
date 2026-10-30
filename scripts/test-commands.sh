@@ -861,7 +861,9 @@ if E2E_RUNTIME_OUTPUT=$(
     eval "$E2E_PERSIST_CODE"
     [ "$(jq -r ".[0]" <<< "$GENERATED_FILES_JSON")" = "$GENERATED_PATH" ] || exit 1
 
-    STATE_FILE=<(printf "{\"generation_target\":\"generate\",\"generation_snapshot\":[],\"generated_files\":[]}\n")
+    RECOVER_STATE_FILE=$(mktemp /tmp/e2e-generated-recover-XXXXXX)
+    printf "{\"generation_target\":\"generate\",\"generation_snapshot\":[],\"generated_files\":[]}\n" > "$RECOVER_STATE_FILE"
+    STATE_FILE="$RECOVER_STATE_FILE"
     eval "$E2E_RECOVER_CODE"
     STATE_FILE=/dev/null
     eval "$E2E_DRIFT_CODE" >/dev/null
@@ -869,8 +871,10 @@ if E2E_RUNTIME_OUTPUT=$(
     [ "${GEN_NEW_FILES[1]+set}" != "set" ] || exit 1
 
     unset GEN_TARGET
-    STATE_FILE=<(printf "{\"generation_target\":\"generate\",\"generation_snapshot\":[],\"generated_files\":%s}\n" "$GENERATED_FILES_JSON")
+    printf "{\"generation_target\":\"generate\",\"generation_snapshot\":[],\"generated_files\":%s}\n" "$GENERATED_FILES_JSON" > "$RECOVER_STATE_FILE"
+    STATE_FILE="$RECOVER_STATE_FILE"
     eval "$E2E_RECOVER_CODE"
+    rm -f "$RECOVER_STATE_FILE"
     [ "$GEN_TARGET" = "generate" ] || exit 1
     [ "${GEN_NEW_FILES[0]}" = "$GENERATED_PATH" ] || exit 1
 
