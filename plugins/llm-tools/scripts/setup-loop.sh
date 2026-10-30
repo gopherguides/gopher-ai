@@ -55,13 +55,13 @@ fi
 validate_terminal_promises_json "$TERMINAL_PROMISES_JSON" "$COMPLETION_PROMISE"
 TERMINAL_PROMISES_JSON=$(printf '%s\n' "$TERMINAL_PROMISES_JSON" | jq -c .)
 
-LOCK_DIR="$OWNER_STATE_DIR/.loop-setup.lock"
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+LOCK_FILE="$OWNER_STATE_DIR/.loop-setup.lock"
+if ! (set -o noclobber; : > "$LOCK_FILE") 2>/dev/null; then
   printf 'Error: another loop setup is active for %s.\n' "$STATE_DIR" >&2
   exit 1
 fi
 release_setup_lock() {
-  rmdir "$LOCK_DIR" 2>/dev/null || true
+  rm -f "$LOCK_FILE"
 }
 trap release_setup_lock EXIT
 
