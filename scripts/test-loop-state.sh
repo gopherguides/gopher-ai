@@ -303,7 +303,7 @@ mkdir -p "$GUARD_MUTATION_ROOT/scripts" "$GUARD_MUTATION_ROOT/lib"
 cp "$ROOT_DIR/shared/lib/loop-state.sh" "$GUARD_MUTATION_ROOT/lib/loop-state.sh"
 sed \
   -e 's/if \[ "$STATE_DIR" != "$OWNER_STATE_DIR" \]; then/if false; then/' \
-  -e 's/LOCK_DIR="$OWNER_STATE_DIR\/\.loop-setup\.lock"/LOCK_DIR="$STATE_DIR\/.loop-setup.lock"/' \
+  -e 's/LOCK_FILE="$OWNER_STATE_DIR\/\.loop-setup\.lock"/LOCK_FILE="$STATE_DIR\/.loop-setup.lock"/' \
   -e 's/find_active_loops "$OWNER_STATE_DIR"/find_active_loops "$STATE_DIR"/' \
   -e 's/count_active_loops "$OWNER_STATE_DIR"/count_active_loops "$STATE_DIR"/' \
   "$ROOT_DIR/shared/scripts/setup-loop.sh" > "$GUARD_MUTATION_ROOT/scripts/setup-loop.sh"
