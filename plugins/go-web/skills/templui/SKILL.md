@@ -1,6 +1,6 @@
 ---
 name: templui
-description: "Version-aware templUI v1 and shadcn-templ v2 component guidance for Go/templ apps. Use for component installation, UI blocks, Script() setup, HTML-to-templ conversion, or Go-to-JavaScript interpolation. Offers an upgrade when legacy templUI is encountered. Skips generic HTMX issues and full goilerplate application generation."
+description: "Version-aware templUI v1 and shadcn-templ v2 component guidance for Go/templ apps. Use for component installation, UI blocks, Script() setup, HTML-to-templ conversion, or Go-to-JavaScript interpolation. Offers an upgrade when legacy templUI is encountered. Skips generic HTMX issues and routes full application generation to the goilerplate skill."
 ---
 
 # templUI and shadcn-templ

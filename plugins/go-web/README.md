@@ -23,13 +23,14 @@ Or install via marketplace:
 ## Codex Skills
 
 Codex exposes these skills under the `go-web` plugin. Use the qualified names
-shown below to invoke project creation and conversion explicitly; all four
+shown below to invoke project creation and conversion explicitly; all five
 skills can also activate automatically when their guidance applies.
 
 | Skill | Invocation | Description |
 |-------|------------|-------------|
 | `go-web:create-go-project` | `$go-web:create-go-project <project-name>` | Create a greenfield project with the recommended Go web stack |
 | `go-web:convert-to-go-project` | `$go-web:convert-to-go-project [target-directory]` | Convert an existing project to the recommended Go web stack |
+| `go-web:goilerplate` | `$go-web:goilerplate` or auto-invoked | Generate, update, or diagnose a goilerplate app |
 | `go-web:templui` | Auto-invoked | templUI components, interpolation, and Script() requirements |
 | `go-web:htmx` | Auto-invoked | HTMX attributes, swap patterns, and Go handler integration |
 
