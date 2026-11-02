@@ -23,7 +23,7 @@ Inspect the installed version and help before generating; select options from th
 
 Read its `AGENTS.md`, README, generator metadata and `go.mod`; inspect local changes and run `goilerplate doctor`. For a v4-generated app, inspect `goilerplate update --help`, use `goilerplate update`, and review its update branch and test the result before merging. Apps generated before v4 cannot use `update`: explain this and plan a manual migration with the user; do not run `new` over the app.
 
-`github.com/templui/templui`, `.templui.json`, or goilerplate v1/v2 metadata indicates legacy usage. Ask before upgrading and agree on migration scope. If the private `templui-pro` skill is installed, defer legacy block work to it. A UI upgrade does not imply a full application migration.
+`github.com/templui/templui`, `.templui.json`, or goilerplate v1/v2 metadata indicates legacy usage. Ask before upgrading and agree on migration scope. A UI upgrade does not imply a full application migration.
 
 Ensure `github.com/a-h/templ` and the templ generator are v0.3.1100 or later; earlier versions do not sanitize spread attributes and URLs in attributes. Upgrade older pins, regenerate, and rebuild.
 

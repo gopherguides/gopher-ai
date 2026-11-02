@@ -35,9 +35,8 @@ currently identify it as beta). If the user chooses v1, use the legacy reference
 Do not silently introduce v1 through an older scaffold template.
 
 The original 222 premium blocks are frozen on v1 and distinct from the new public
-[shadcn-templ blocks](https://shadcn-templ.com/blocks). If an installed private `templui-pro`
-skill is available, use it for licensed legacy catalog navigation. Otherwise ask for the
-user's authorized local library; do not invent premium source or vendor it into this plugin.
+[shadcn-templ blocks](https://shadcn-templ.com/blocks). Ask for the user's authorized local library for legacy catalog navigation; do not invent premium source
+or vendor it into this plugin.
 
 ## Legacy v1 guidance
 
