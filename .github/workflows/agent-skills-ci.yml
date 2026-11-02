@@ -140,6 +140,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Test GET /me
+        id: me
+        continue-on-error: true
         env:
           GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
         run: |
@@ -157,6 +159,8 @@ jobs:
           echo "PASS: /me returns 200"
 
       - name: Test POST /practices
+        id: practices
+        continue-on-error: true
         env:
           GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
         run: |
@@ -182,6 +186,8 @@ jobs:
           fi
 
       - name: Test POST /audit
+        id: audit
+        continue-on-error: true
         env:
           GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
         run: |
@@ -208,6 +214,8 @@ jobs:
           echo "PASS: /audit returns 200"
 
       - name: Test POST /examples
+        id: examples
+        continue-on-error: true
         env:
           GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
         run: |
@@ -227,6 +235,8 @@ jobs:
           echo "PASS: /examples returns 200"
 
       - name: Test POST /review
+        id: review
+        continue-on-error: true
         env:
           GOPHER_GUIDES_API_KEY: ${{ secrets.GOPHER_GUIDES_API_KEY }}
         run: |
@@ -253,6 +263,16 @@ jobs:
             exit 1
           fi
           echo "PASS: /review returns 200"
+
+      - name: Report API endpoint failures
+        run: |
+          for outcome in ${{ steps.me.outcome }} ${{ steps.practices.outcome }} ${{ steps.audit.outcome }} ${{ steps.examples.outcome }} ${{ steps.review.outcome }}; do
+            if [ "$outcome" = failure ]; then
+              echo "::warning title=Gopher Guides API::One or more live API endpoint checks failed; see the step logs. This check does not block releases."
+              exit 0
+            fi
+          done
+          echo "PASS: all live API endpoint checks succeeded"
 
   test-scripts-with-key:
     name: Test scripts with API key
