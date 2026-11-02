@@ -1,6 +1,6 @@
 ---
 name: templui
-description: "Version-aware templUI v1 and shadcn-templ v2 component guidance for Go/templ apps. Use for component installation, UI blocks, Script() setup, HTML-to-templ conversion, or Go-to-JavaScript interpolation. Offers an upgrade when legacy templUI is encountered. Skips generic HTMX issues and full goilerplate application generation."
+description: "Version-aware templUI v1 and shadcn-templ v2 component guidance for Go/templ apps. Use for component installation, UI blocks, Script() setup, HTML-to-templ conversion, or Go-to-JavaScript interpolation. Offers an upgrade when legacy templUI is encountered. Skips generic HTMX issues and routes full application generation to the goilerplate skill."
 ---
 
 # templUI and shadcn-templ
@@ -35,9 +35,8 @@ currently identify it as beta). If the user chooses v1, use the legacy reference
 Do not silently introduce v1 through an older scaffold template.
 
 The original 222 premium blocks are frozen on v1 and distinct from the new public
-[shadcn-templ blocks](https://shadcn-templ.com/blocks). If an installed private `templui-pro`
-skill is available, use it for licensed legacy catalog navigation. Otherwise ask for the
-user's authorized local library; do not invent premium source or vendor it into this plugin.
+[shadcn-templ blocks](https://shadcn-templ.com/blocks). Ask for the user's authorized local library for legacy catalog navigation; do not invent premium source
+or vendor it into this plugin.
 
 ## Legacy v1 guidance
 
