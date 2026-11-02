@@ -1,6 +1,6 @@
 {
   "name": "go-workflow",
-  "version": "1.12.4",
+  "version": "1.12.6",
   "description": "Issue-to-PR workflow automation with git worktree management",
   "author": {
     "name": "Gopher Guides",
