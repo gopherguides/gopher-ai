@@ -54,6 +54,5 @@ interactions. Inspect the actual component docs for script and accessibility req
 - Blocks: https://shadcn-templ.com/blocks
 - Module imports: follow the current Package Imports / Import Workflow links from installation
 
-Full goilerplate v3 generation is a separate application workflow at https://goilerplate.com/docs.
-Use the private goilerplate skill if installed and requested; UI component selection alone
-never implies Paid access or a full-app migration.
+Full goilerplate generation is a separate application workflow; use the public
+`go-web:goilerplate` skill. UI component selection alone does not imply a full-app migration.

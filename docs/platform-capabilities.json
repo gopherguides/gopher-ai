@@ -1130,6 +1130,29 @@
       }
     },
     {
+      "id": "go-web.goilerplate",
+      "plugin": "go-web",
+      "summary": "Generate, update, and diagnose goilerplate applications.",
+      "sources": [
+        {
+          "kind": "skill",
+          "path": "plugins/go-web/skills/goilerplate/SKILL.md"
+        }
+      ],
+      "platforms": {
+        "claude_code": {
+          "disposition": "skill",
+          "names": [
+            "go-web:goilerplate"
+          ]
+        },
+        "codex": {
+          "disposition": "skill",
+          "name": "go-web:goilerplate"
+        }
+      }
+    },
+    {
       "id": "go-web.htmx",
       "plugin": "go-web",
       "summary": "Apply HTMX patterns in Go and Templ applications.",

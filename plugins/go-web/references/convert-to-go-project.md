@@ -23,7 +23,7 @@ For shadcn-templ v2, follow `<PLUGIN_ROOT>/skills/templui/shadcn-templ.md` withi
 application stack. Skip the bundled v1 CSS/head examples and legacy CLI steps below;
 initialize v2 with the actual CSS path and verify the generated assets and component APIs.
 For an approved v1 choice, use the v1 instructions below. A UI choice does not authorize
-switching the app to the separate goilerplate v3 generator.
+switching the app to the separate goilerplate generator; use the `go-web:goilerplate` skill for that workflow.
 
 ## Cross-Platform Interaction
 
