@@ -34,14 +34,14 @@ Do not run a second scaffold generator over the same project.
 
 ## Legacy migration
 
-After the user approves upgrading, inventory component usage, local customizations, utilities,
-CSS tokens, scripts, and assets. Agree on the affected scope, then work in the project's
-isolated checkout. Migrate a component and its call sites together; changing import strings
-alone is not a migration. Preserve unrelated backend and frontend runtime choices.
+After the user approves upgrading, follow `v1-to-v2-migration.md`: it covers scope, the
+toolchain swap, script and styling changes, component renames, and per-component prop changes.
+Migrate a component and its call sites together; changing import strings alone is not a
+migration. Preserve unrelated backend and frontend runtime choices.
 
-The new block collection is separate from the original 222 premium blocks. Use the current
-catalog for new sections. When adapting a licensed legacy design, reimplement against the
-selected v2 APIs and verify behavior; do not claim that a similarly named block is equivalent.
+The new block collection is separate from the original 222 legacy blocks (`legacy-blocks.md`).
+Use the current catalog for new sections. When porting a legacy block, reimplement it against
+the selected v2 APIs and verify behavior; do not claim that a similarly named block is equivalent.
 
 Run templ generation, Go tests/build, the CSS build, and a browser check of affected
 interactions. Inspect the actual component docs for script and accessibility requirements.
