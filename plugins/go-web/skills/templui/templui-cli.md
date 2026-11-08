@@ -5,10 +5,10 @@ For shadcn-templ v2 use `shadcn-templ.md` instead.
 
 ## Match the existing ownership model
 
-- **Module imports** (`github.com/templui/templui/components/...`), including legacy premium
-  blocks: preserve the project's compatible v1 pin in `go.mod`. For an imported block,
-  consult the block library's `go.mod`. Do not run `templui add` and expect module imports
-  to resolve to newly copied local files. Include module component sources in Tailwind's scan.
+- **Module imports** (`github.com/templui/templui/components/...`): preserve the project's
+  compatible v1 pin in `go.mod`. Do not run `templui add` and expect module imports to resolve
+  to newly copied local files. Include module component sources in Tailwind's scan. Legacy
+  blocks import a bundled copy; rewrite their imports as described in `legacy-blocks.md`.
 - **Local copies** (`<project-module>/components/...`): use the v1 CLI, inspect `.templui.json`,
   and keep imports pointed at the configured local directory. Check dependencies and scripts
   when adapting a module-import block to local copies.
