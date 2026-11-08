@@ -34,9 +34,9 @@ For new projects, offer shadcn-templ and verify its current release status (the 
 currently identify it as beta). If the user chooses v1, use the legacy references below.
 Do not silently introduce v1 through an older scaffold template.
 
-The original 222 premium blocks are frozen on v1 and distinct from the new public
-[shadcn-templ blocks](https://shadcn-templ.com/blocks). Ask for the user's authorized local library for legacy catalog navigation; do not invent premium source
-or vendor it into this plugin.
+The 222 legacy templUI Pro blocks (0BSD) are frozen on v1 and distinct from
+[shadcn-templ blocks](https://shadcn-templ.com/blocks). Use them via [legacy-blocks.md](legacy-blocks.md);
+upgrade with [v1-to-v2-migration.md](v1-to-v2-migration.md).
 
 ## Legacy v1 guidance
 
