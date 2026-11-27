@@ -16,14 +16,28 @@ set -euo pipefail
 # Read hook input from stdin
 HOOK_INPUT=$(cat)
 
+IS_AGY=false
+if printf '%s\n' "$HOOK_INPUT" | jq -e 'type == "object" and (has("conversationId") or has("transcriptPath") or has("terminationReason"))' >/dev/null 2>&1; then
+  IS_AGY=true
+fi
+STOP_HOOK_EMITTED=false
+
+on_stop_hook_exit() {
+  local rc=$?
+  if [ "$rc" -eq 0 ] && [ "$IS_AGY" = true ] && [ "$STOP_HOOK_EMITTED" = false ]; then
+    printf '{}\n'
+  fi
+}
+trap on_stop_hook_exit EXIT
+
 # Extract transcript path from hook input
-STOP_HOOK_ACTIVE=$(echo "$HOOK_INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null)
+STOP_HOOK_ACTIVE=$(printf '%s\n' "$HOOK_INPUT" | jq -r '.stop_hook_active // .continuationActive // false' 2>/dev/null)
 if [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   exit 0
 fi
-TRANSCRIPT_PATH=$(echo "$HOOK_INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
-CURRENT_SESSION_ID=$(echo "$HOOK_INPUT" | jq -r '.session_id // empty' 2>/dev/null)
-HOOK_CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+TRANSCRIPT_PATH=$(printf '%s\n' "$HOOK_INPUT" | jq -r '.transcript_path // .transcriptPath // empty' 2>/dev/null)
+CURRENT_SESSION_ID=$(printf '%s\n' "$HOOK_INPUT" | jq -r '.session_id // .conversationId // empty' 2>/dev/null)
+HOOK_CWD=$(printf '%s\n' "$HOOK_INPUT" | jq -r '.cwd // (.workspacePaths[0] // empty)' 2>/dev/null)
 if [ -z "$CURRENT_SESSION_ID" ] && [ -n "$TRANSCRIPT_PATH" ]; then
   CURRENT_SESSION_ID=$(basename "$TRANSCRIPT_PATH" .jsonl 2>/dev/null || true)
 fi
@@ -65,8 +79,15 @@ block_stop() {
     reason="Loop execution is blocked by invalid state."
   fi
   message="$message State file(s): $state_context. Cancel with /go-workflow:cancel-loop."
-  jq -n --arg reason "$reason" --arg msg "$message" \
-    '{"decision": "block", "reason": $reason, "systemMessage": $msg}'
+  if [ "$IS_AGY" = true ]; then
+    STOP_HOOK_EMITTED=true
+    jq -cn --arg reason "$reason"$'\n\n'"$message" \
+      '{"decision": "continue", "reason": $reason}'
+  else
+    STOP_HOOK_EMITTED=true
+    jq -n --arg reason "$reason" --arg msg "$message" \
+      '{"decision": "block", "reason": $reason, "systemMessage": $msg}'
+  fi
 }
 
 MAX_BROWSER_CLEANUP_BLOCKS=3

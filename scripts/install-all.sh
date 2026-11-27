@@ -99,9 +99,9 @@ bootstrap_if_needed() {
 check_prerequisites() {
     local missing=()
 
-    # jq is needed by build-universal.sh (Claude/Gemini) and by install-codex.sh
+    # jq is needed by build-universal.sh (Claude/Gemini/OpenCode/Antigravity) and by install-codex.sh
     # for public marketplace discovery and plugin manifest parsing.
-    if $HAVE_CLAUDE || $HAVE_GEMINI || $HAVE_CODEX || $HAVE_OPENCODE; then
+    if $HAVE_CLAUDE || $HAVE_GEMINI || $HAVE_CODEX || $HAVE_OPENCODE || $HAVE_AGY; then
         if ! command -v jq >/dev/null 2>&1; then
             missing+=("jq (brew install jq / apt install jq)")
         fi
@@ -149,6 +149,11 @@ detect_platforms() {
     if command -v opencode >/dev/null 2>&1; then
         HAVE_OPENCODE=true
     fi
+
+    HAVE_AGY=false
+    if command -v agy >/dev/null 2>&1; then
+        HAVE_AGY=true
+    fi
 }
 
 print_detection() {
@@ -177,6 +182,12 @@ print_detection() {
         echo "  OpenCode ....... found ($(command -v opencode))"
     else
         echo "  OpenCode ....... not found (see https://opencode.ai)"
+    fi
+
+    if $HAVE_AGY; then
+        echo "  Antigravity .... found ($(command -v agy))"
+    else
+        echo "  Antigravity .... not found (no agy executable on PATH)"
     fi
     echo ""
 }
@@ -226,6 +237,16 @@ install_opencode() {
     echo "=== OpenCode ==="
     if ! "$ROOT_DIR/scripts/install-opencode.sh" --source "$DIST_DIR/opencode"; then
         echo "  Warning: OpenCode install failed."
+        echo ""
+        return 1
+    fi
+    echo ""
+}
+
+install_agy() {
+    echo "=== Antigravity (agy) ==="
+    if ! "$ROOT_DIR/scripts/install-agy.sh" --source "$DIST_DIR/agy"; then
+        echo "  Warning: Antigravity install failed."
         echo ""
         return 1
     fi
@@ -325,7 +346,7 @@ main() {
     check_prerequisites
     print_detection
 
-    if ! $HAVE_CLAUDE && ! $HAVE_CODEX && ! $HAVE_GEMINI && ! $HAVE_OPENCODE; then
+    if ! $HAVE_CLAUDE && ! $HAVE_CODEX && ! $HAVE_GEMINI && ! $HAVE_OPENCODE && ! $HAVE_AGY; then
         echo "No supported platforms detected."
         echo ""
         echo "Install at least one:"
@@ -333,6 +354,7 @@ main() {
         echo "  Codex CLI:   npm install -g @openai/codex"
         echo "  Gemini CLI:  npm install -g @google/gemini-cli"
         echo "  OpenCode:    https://opencode.ai"
+        echo "  Antigravity: https://antigravity.google"
         exit 1
     fi
 
@@ -342,6 +364,7 @@ main() {
     $HAVE_CODEX && platforms+=("Codex CLI")
     $HAVE_GEMINI && platforms+=("Gemini CLI")
     $HAVE_OPENCODE && platforms+=("OpenCode")
+    $HAVE_AGY && platforms+=("Antigravity")
 
     if ! $FORCE; then
         echo "Will install for: ${platforms[*]}"
@@ -353,9 +376,9 @@ main() {
         echo ""
     fi
 
-    # Build is needed for Claude, Gemini, and OpenCode. Codex --user copies
+    # Build is needed for Claude, Gemini, OpenCode, and Antigravity. Codex --user copies
     # straight from plugins/ source — no build artifacts required.
-    if $HAVE_CLAUDE || $HAVE_GEMINI || $HAVE_OPENCODE; then
+    if $HAVE_CLAUDE || $HAVE_GEMINI || $HAVE_OPENCODE || $HAVE_AGY; then
         echo "Building distribution..."
         echo ""
         if ! "$ROOT_DIR/scripts/build-universal.sh"; then
@@ -382,6 +405,9 @@ main() {
     if $HAVE_OPENCODE && ! install_opencode; then
         failed+=("OpenCode")
     fi
+    if $HAVE_AGY && ! install_agy; then
+        failed+=("Antigravity")
+    fi
 
     echo "================================"
     if [[ ${#failed[@]} -gt 0 ]]; then
@@ -402,6 +428,9 @@ main() {
     fi
     if $HAVE_OPENCODE; then
         echo "  OpenCode:    Commands run as /<plugin>/<command> (for example /go-dev/lint-fix); skills load by name."
+    fi
+    if $HAVE_AGY; then
+        echo "  Antigravity: Restart agy to load plugins (verify with: agy plugin list)"
     fi
     if [[ ${#failed[@]} -gt 0 ]]; then
         exit 1
