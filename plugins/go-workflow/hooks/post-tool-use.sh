@@ -5,11 +5,17 @@ HOOK_INPUT=$(cat)
 
 if ! PLATFORM=$(printf '%s\n' "$HOOK_INPUT" | jq -r '
   if type != "object" then "unknown"
+  elif has("toolCall") or (has("hookEventName") and has("conversationId")) then "agy"
   elif has("turn_id") and has("tool_response") then "codex"
   elif has("tool_response") or has("tool_output") then "claude"
   else "unknown"
   end
 ' 2>/dev/null); then
+  exit 0
+fi
+
+if [ "$PLATFORM" = "agy" ]; then
+  printf '{}\n'
   exit 0
 fi
 

@@ -14,8 +14,29 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/local/go/bin:${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}"
 
 HOOK_INPUT=$(cat)
-TOOL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_name // empty' 2>/dev/null)
-TOOL_INPUT=$(echo "$HOOK_INPUT" | jq -r '.tool_input // empty' 2>/dev/null)
+IS_AGY=false
+if printf '%s\n' "$HOOK_INPUT" | jq -e 'type == "object" and (has("toolCall") or has("conversationId"))' >/dev/null 2>&1; then
+  IS_AGY=true
+fi
+TOOL_NAME=$(printf '%s\n' "$HOOK_INPUT" | jq -r '.toolCall.name // .tool_name // empty' 2>/dev/null)
+TOOL_INPUT=$(printf '%s\n' "$HOOK_INPUT" | jq -c '.toolCall.args // .tool_input // empty' 2>/dev/null)
+
+emit_block() {
+  local reason="$1"
+  if [ "$IS_AGY" = true ]; then
+    jq -cn --arg reason "$reason" '{"decision":"deny","reason":$reason}'
+  else
+    jq -cn --arg reason "$reason" '{"decision":"block","reason":$reason}'
+  fi
+  exit 0
+}
+
+emit_allow() {
+  if [ "$IS_AGY" = true ]; then
+    printf '{"decision":"allow"}\n'
+  fi
+  exit 0
+}
 
 check_env_vars() {
   local missing=()
@@ -59,50 +80,55 @@ go_tool_available() {
 
 check_tool_availability() {
   local cmd_text
-  cmd_text=$(echo "$TOOL_INPUT" | jq -r '.command // .cmd // empty' 2>/dev/null)
+  cmd_text=$(echo "$TOOL_INPUT" | jq -r '.CommandLine // .command // .cmd // empty' 2>/dev/null)
   [ -z "$cmd_text" ] && return 0
   case "$TOOL_NAME" in
-    Bash|bash)
+    Bash|bash|run_command)
       if echo "$cmd_text" | grep -q 'golangci-lint' && ! go_tool_available golangci-lint; then
         # Allow go install commands for the tool itself
         if ! echo "$cmd_text" | grep -qE 'go install.*golangci-lint'; then
-          printf '{"decision":"block","reason":"golangci-lint is not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"}\n'
-          exit 0
+          emit_block "golangci-lint is not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"
         fi
       fi
       if echo "$cmd_text" | grep -q 'templ ' && ! go_tool_available templ; then
         # Allow go install commands for the tool itself
         if ! echo "$cmd_text" | grep -qE 'go install.*templ'; then
-          printf '{"decision":"block","reason":"templ is not installed. Install with: go install github.com/a-h/templ/cmd/templ@latest"}\n'
-          exit 0
+          emit_block "templ is not installed. Install with: go install github.com/a-h/templ/cmd/templ@latest"
         fi
       fi
       if echo "$cmd_text" | grep -qE '^gh |[|&;] *gh ' && ! command -v gh &>/dev/null; then
-        printf '{"decision":"block","reason":"GitHub CLI (gh) is not installed. Install from https://cli.github.com/"}\n'
-        exit 0
+        emit_block "GitHub CLI (gh) is not installed. Install from https://cli.github.com/"
       fi
       if echo "$cmd_text" | grep -qE '^node |[|&;] *node |npx |npm ' && ! command -v node &>/dev/null; then
-        printf '{"decision":"block","reason":"Node.js is not installed. Install from https://nodejs.org/"}\n'
-        exit 0
+        emit_block "Node.js is not installed. Install from https://nodejs.org/"
       fi
       ;;
   esac
 }
 
+run_git() {
+  local hook_cwd
+  hook_cwd=$(printf '%s\n' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null)
+  if [ -n "$hook_cwd" ] && [ -d "$hook_cwd" ]; then
+    git -C "$hook_cwd" "$@"
+  else
+    git "$@"
+  fi
+}
+
 check_git_state() {
-  git rev-parse --is-inside-work-tree &>/dev/null || return 0
+  run_git rev-parse --is-inside-work-tree &>/dev/null || return 0
   local cmd_text
-  cmd_text=$(echo "$TOOL_INPUT" | jq -r '.command // .cmd // empty' 2>/dev/null)
+  cmd_text=$(echo "$TOOL_INPUT" | jq -r '.CommandLine // .command // .cmd // empty' 2>/dev/null)
   [ -z "$cmd_text" ] && return 0
   if echo "$cmd_text" | grep -qE 'go test|golangci-lint run'; then
-    if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    if [ -n "$(run_git status --porcelain 2>/dev/null)" ]; then
       echo "Warning: Uncommitted changes detected. Test results may not reflect saved code." >&2
     fi
   fi
   if echo "$cmd_text" | grep -qE 'git tag|goreleaser release|goreleaser build|gh release create|gh release upload'; then
-    if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
-      printf '{"decision":"block","reason":"Uncommitted changes detected. Please commit or stash changes before releasing."}\n'
-      exit 0
+    if [ -n "$(run_git status --porcelain 2>/dev/null)" ]; then
+      emit_block "Uncommitted changes detected. Please commit or stash changes before releasing."
     fi
   fi
 }
@@ -177,12 +203,12 @@ resolve_symlink_path() {
 
 repository_state_file() {
   local common_dir repository_root
-  common_dir=$(git rev-parse --git-common-dir 2>/dev/null) || return 1
+  common_dir=$(run_git rev-parse --git-common-dir 2>/dev/null) || return 1
   case "$common_dir" in
     /*)
       ;;
     *)
-      repository_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 1
+      repository_root=$(run_git rev-parse --show-toplevel 2>/dev/null) || return 1
       common_dir=$(cd "$repository_root" && cd "$common_dir" && pwd -P) || return 1
       ;;
   esac
@@ -190,6 +216,8 @@ repository_state_file() {
 }
 
 check_worktree_path() {
+  local hook_cwd
+  hook_cwd=$(printf '%s\n' "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null)
   local state_file="" legacy_state_file="${HOME}/.claude/worktree-state.json"
   repository_state_file >/dev/null 2>&1 && state_file=$(repository_state_file)
   if [ -z "$state_file" ] || [ ! -f "$state_file" ]; then
@@ -207,20 +235,19 @@ check_worktree_path() {
   # Only enforce if current repo matches the saved original_path or worktree_path
   # original_path is now always the repo root (from git rev-parse --show-toplevel)
   local current_repo
-  current_repo=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  current_repo=$(run_git rev-parse --show-toplevel 2>/dev/null) || return 0
   [ "$current_repo" != "$original_path" ] && [ "$current_repo" != "$worktree_path" ] && return 0
 
   case "$TOOL_NAME" in
-    Read|Edit|Write)
-      target_path=$(echo "$TOOL_INPUT" | jq -r '.file_path // empty' 2>/dev/null)
+    Read|Edit|Write|read_file|edit_file|write_file)
+      target_path=$(echo "$TOOL_INPUT" | jq -r '.Path // .file_path // empty' 2>/dev/null)
       ;;
     Glob|Grep)
       target_path=$(echo "$TOOL_INPUT" | jq -r '.path // empty' 2>/dev/null)
       ;;
     apply_patch)
-      local patch_command hook_cwd patch_line patch_target
+      local patch_command patch_line patch_target
       patch_command=$(echo "$TOOL_INPUT" | jq -r '.command // empty' 2>/dev/null)
-      hook_cwd=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty' 2>/dev/null)
       [ -z "$patch_command" ] || [ -z "$hook_cwd" ] && return 0
 
       while IFS= read -r patch_line || [ -n "$patch_line" ]; do
@@ -242,25 +269,22 @@ check_worktree_path() {
             ;;
         esac
         if ! patch_target=$(resolve_symlink_path "$patch_target"); then
-          printf '{"decision":"block","reason":"WRONG DIRECTORY: Unable to resolve patch target safely."}\n'
-          exit 0
+          emit_block "WRONG DIRECTORY: Unable to resolve patch target safely."
         fi
 
         case "$patch_target" in
           "${worktree_path}"|"${worktree_path}"/*)
             ;;
           "${original_path}"|"${original_path}"/*)
-            printf '{"decision":"block","reason":"WRONG DIRECTORY: You are targeting the original repo (%s) instead of the worktree (%s). Use path: %s%s"}\n' \
-              "$original_path" "$worktree_path" "$worktree_path" "${patch_target#"$original_path"}"
-            exit 0
+            emit_block "WRONG DIRECTORY: You are targeting the original repo (${original_path}) instead of the worktree (${worktree_path}). Use path: ${worktree_path}${patch_target#"$original_path"}"
             ;;
         esac
       done <<< "$patch_command"
       return 0
       ;;
-    Bash|bash)
+    Bash|bash|run_command)
       local cmd_text
-      cmd_text=$(echo "$TOOL_INPUT" | jq -r '.command // .cmd // empty' 2>/dev/null)
+      cmd_text=$(echo "$TOOL_INPUT" | jq -r '.CommandLine // .command // .cmd // empty' 2>/dev/null)
       [ -z "$cmd_text" ] && return 0
       # Always allow worktree-state.sh commands (even with || true for cleanup)
       if echo "$cmd_text" | grep -qF "worktree-state.sh" 2>/dev/null; then
@@ -270,8 +294,7 @@ check_worktree_path() {
       # This is the Bash safety net — file path checks handle Read/Edit/Write/Glob/Grep
       if echo "$cmd_text" | grep -qF "$original_path" 2>/dev/null; then
         if ! echo "$cmd_text" | grep -qF "$worktree_path" 2>/dev/null; then
-          printf '{"decision":"block","reason":"WRONG DIRECTORY: Your Bash command references the original repo (%s) instead of the worktree (%s). Replace the path to use the worktree."}\n' "$original_path" "$worktree_path"
-          exit 0
+          emit_block "WRONG DIRECTORY: Your Bash command references the original repo (${original_path}) instead of the worktree (${worktree_path}). Replace the path to use the worktree."
         fi
       fi
       return 0
@@ -293,17 +316,13 @@ check_worktree_path() {
           return 0
           ;;
         "${original_path}"|"${original_path}"/*)
-          printf '{"decision":"block","reason":"WRONG DIRECTORY: You are targeting the original repo (%s) instead of the worktree (%s). Use path: %s%s"}\n' \
-            "$original_path" "$worktree_path" "$worktree_path" "${target_path#"$original_path"}"
-          exit 0
+          emit_block "WRONG DIRECTORY: You are targeting the original repo (${original_path}) instead of the worktree (${worktree_path}). Use path: ${worktree_path}${target_path#"$original_path"}"
           ;;
       esac
       ;;
     *)
       # Relative path — block with guidance to use absolute worktree path
-      printf '{"decision":"block","reason":"WRONG DIRECTORY: Relative path (%s) resolves to the original repo CWD, not the worktree. Use absolute path: %s/%s"}\n' \
-        "$target_path" "$worktree_path" "$target_path"
-      exit 0
+      emit_block "WRONG DIRECTORY: Relative path (${target_path}) resolves to the original repo CWD, not the worktree. Use absolute path: ${worktree_path}/${target_path}"
       ;;
   esac
 }
@@ -312,4 +331,4 @@ check_env_vars
 check_tool_availability
 check_git_state
 check_worktree_path
-exit 0
+emit_allow

@@ -300,6 +300,270 @@ build_gemini() {
 }
 
 OPENCODE_HOME_TOKEN="__GOPHER_AI_OPENCODE_HOME__"
+AGY_PLUGIN_ROOT_TOKEN="__GOPHER_AI_AGY_PLUGIN_ROOT__"
+
+build_agy() {
+    echo ""
+    echo "Building Antigravity (agy) plugins..."
+    echo "-------------------------------------"
+
+    local agy_dir="$DIST_DIR/agy"
+    local plugins_out="$agy_dir/plugins"
+    mkdir -p "$plugins_out"
+
+    for plugin_dir in "$ROOT_DIR"/plugins/*/; do
+        plugin_name=$(basename "$plugin_dir")
+        local dest="$plugins_out/gopher-ai-$plugin_name"
+        mkdir -p "$dest/skills"
+
+        echo "  Building Antigravity plugin: gopher-ai-$plugin_name"
+
+        generate_agy_plugin_json "$plugin_name" > "$dest/plugin.json"
+
+        # Copy runtime assets (scripts, lib, templates, references, prompts, schemas, assets)
+        copy_gemini_runtime_assets "$plugin_dir" "$dest"
+
+        # Ensure every plugin has a logo icon for clean agy plugin validate output
+        if [[ ! -f "$dest/assets/icon.svg" && -f "$ROOT_DIR/plugins/go-workflow/assets/icon.svg" ]]; then
+            mkdir -p "$dest/assets"
+            cp "$ROOT_DIR/plugins/go-workflow/assets/icon.svg" "$dest/assets/icon.svg"
+        fi
+
+        # Copy native skills (skip Codex-only command adapters)
+        if [[ -d "${plugin_dir}skills/" ]]; then
+            for skill_dir in "${plugin_dir}skills/"*/; do
+                [[ -f "${skill_dir}SKILL.md" ]] || continue
+                if grep -Fq 'lib/codex-command-adapter.md' "${skill_dir}SKILL.md"; then
+                    continue
+                fi
+                skill_name=$(basename "$skill_dir")
+                mkdir -p "$dest/skills/$skill_name"
+                cp -R "${skill_dir}." "$dest/skills/$skill_name/"
+                strip_agy_skill_frontmatter "$dest/skills/$skill_name/SKILL.md"
+            done
+        fi
+
+        # Convert command-only markdown files into agy skills (plugins do not load commands/)
+        if [[ -d "${plugin_dir}commands/" ]]; then
+            for cmd_file in "${plugin_dir}commands/"*.md; do
+                [[ -f "$cmd_file" ]] || continue
+                cmd_name=$(basename "$cmd_file" .md)
+                # Avoid duplicate cancel-loop skill across plugins (go-workflow owns it)
+                if [[ "$cmd_name" == "cancel-loop" && "$plugin_name" != "go-workflow" ]]; then
+                    continue
+                fi
+                if [[ -f "$dest/skills/$cmd_name/SKILL.md" ]]; then
+                    continue
+                fi
+                mkdir -p "$dest/skills/$cmd_name"
+                convert_command_to_agy_skill "$cmd_file" "$cmd_name" > "$dest/skills/$cmd_name/SKILL.md"
+            done
+        fi
+
+        # Copy agents and map Claude model tiers to Antigravity tiers
+        if [[ -d "${plugin_dir}agents/" ]]; then
+            mkdir -p "$dest/agents"
+            for agent_file in "${plugin_dir}agents/"*.md; do
+                [[ -f "$agent_file" ]] || continue
+                convert_agent_to_agy "$agent_file" > "$dest/agents/$(basename "$agent_file")"
+            done
+        fi
+
+        # Copy hook scripts and generate native root hooks.json for agy
+        if [[ -f "${plugin_dir}hooks/hooks.json" ]]; then
+            mkdir -p "$dest/hooks"
+            for hook_file in "${plugin_dir}hooks/"*; do
+                [[ -f "$hook_file" ]] || continue
+                local hook_base
+                hook_base=$(basename "$hook_file")
+                case "$hook_base" in
+                    hooks.json|codex-cleanup-on-start.sh|legacy-skill-hashes.txt)
+                        continue
+                        ;;
+                esac
+                cp -p "$hook_file" "$dest/hooks/$hook_base"
+            done
+            generate_agy_hooks_json "$plugin_name" > "$dest/hooks.json"
+        fi
+
+        # Copy MCP config if present
+        if [[ -f "${plugin_dir}.mcp.json" ]]; then
+            cp "${plugin_dir}.mcp.json" "$dest/mcp_config.json"
+        fi
+
+        rewrite_agy_plugin_paths "$dest"
+    done
+
+    printf '%s\n' "$VERSION" > "$agy_dir/VERSION"
+
+    echo "  Done: $agy_dir"
+}
+
+generate_agy_plugin_json() {
+    local plugin_name="$1"
+    local plugin_json="$ROOT_DIR/plugins/$plugin_name/.claude-plugin/plugin.json"
+    local description=""
+    if [[ -f "$plugin_json" ]]; then
+        description=$(jq -r '.description // ""' "$plugin_json")
+    fi
+
+    jq -n \
+        --arg name "gopher-ai-$plugin_name" \
+        --arg version "$VERSION" \
+        --arg description "$description" \
+        '{
+            name: $name,
+            version: $version,
+            description: $description,
+            author: {
+                name: "Gopher Guides",
+                url: "https://gopherguides.com"
+            },
+            homepage: "https://gopherguides.com",
+            repository: "https://github.com/gopherguides/gopher-ai",
+            logo: "assets/icon.svg"
+        }'
+}
+
+generate_agy_hooks_json() {
+    local plugin_name="$1"
+    jq -n --arg hook_name "gopher-ai-$plugin_name" '
+        {
+            ($hook_name): {
+                PreToolUse: [
+                    {
+                        matcher: "run_command|read_file|edit_file|write_file",
+                        hooks: [
+                            {
+                                type: "command",
+                                command: "./hooks/pre-tool-use.sh",
+                                timeout: 15
+                            }
+                        ]
+                    }
+                ],
+                PostToolUse: [
+                    {
+                        matcher: "run_command|search_web",
+                        hooks: [
+                            {
+                                type: "command",
+                                command: "./hooks/post-tool-use.sh",
+                                timeout: 15
+                            }
+                        ]
+                    }
+                ],
+                Stop: [
+                    {
+                        type: "command",
+                        command: "./hooks/stop-hook.sh",
+                        timeout: 30
+                    }
+                ]
+            }
+        }
+    '
+}
+
+strip_agy_skill_frontmatter() {
+    local skill_file="$1"
+    awk '
+        NR == 1 && $0 == "---" { in_fm = 1; print; next }
+        in_fm && $0 == "---" { in_fm = 0; print; next }
+        in_fm && /^disable-model-invocation:/ { next }
+        { print }
+    ' "$skill_file" > "$skill_file.agy-tmp"
+    mv "$skill_file.agy-tmp" "$skill_file"
+}
+
+convert_agent_to_agy() {
+    awk '
+        NR == 1 && $0 == "---" { in_frontmatter = 1; print; next }
+        in_frontmatter && $0 == "---" { in_frontmatter = 0; print; next }
+        in_frontmatter && /^model:[[:space:]]*haiku[[:space:]]*$/ { print "model: flash"; next }
+        in_frontmatter && /^model:[[:space:]]*sonnet[[:space:]]*$/ { print "model: inherit"; next }
+        in_frontmatter && /^model:[[:space:]]*opus[[:space:]]*$/ { print "model: pro"; next }
+        { print }
+    ' "$1"
+}
+
+convert_command_to_agy_skill() {
+    local cmd_file="$1"
+    local cmd_name="$2"
+    awk -v name="$cmd_name" '
+        BEGIN {
+            in_fm = 0
+            saw_fm = 0
+            has_name = 0
+            has_desc = 0
+        }
+        NR == 1 && $0 == "---" {
+            in_fm = 1
+            saw_fm = 1
+            print
+            next
+        }
+        in_fm && $0 == "---" {
+            if (!has_name) {
+                print "name: " name
+            }
+            if (!has_desc) {
+                print "description: \"Run the " name " workflow.\""
+            }
+            in_fm = 0
+            print
+            next
+        }
+        in_fm {
+            if ($0 ~ /^name:[[:space:]]*/) { has_name = 1 }
+            if ($0 ~ /^description:[[:space:]]*/) { has_desc = 1 }
+            if ($0 ~ /^(allowed-tools|model|effort):/) { next }
+            print
+            next
+        }
+        !saw_fm && NR == 1 {
+            print "---"
+            print "name: " name
+            print "description: \"Run the " name " workflow.\""
+            print "---"
+            print ""
+        }
+        { print }
+    ' "$cmd_file"
+}
+
+rewrite_agy_plugin_paths() {
+    local dest="$1"
+    local file
+
+    while IFS= read -r -d '' file; do
+        if ! grep -qE '\$\{?CLAUDE_PLUGIN_ROOT\}?|<PLUGIN_ROOT>' "$file" 2>/dev/null; then
+            continue
+        fi
+
+        GOPHER_AI_PLUGIN_ROOT="$AGY_PLUGIN_ROOT_TOKEN" awk '
+            BEGIN {
+                root = ENVIRON["GOPHER_AI_PLUGIN_ROOT"]
+                count = split("${CLAUDE_PLUGIN_ROOT:-}|${CLAUDE_PLUGIN_ROOT}|$CLAUDE_PLUGIN_ROOT|<PLUGIN_ROOT>", tokens, "|")
+            }
+            {
+                line = $0
+                for (t = 1; t <= count; t++) {
+                    out = ""
+                    while ((i = index(line, tokens[t])) > 0) {
+                        out = out substr(line, 1, i - 1) root
+                        line = substr(line, i + length(tokens[t]))
+                    }
+                    line = out line
+                }
+                print line
+            }
+        ' "$file" > "$file.agy-tmp"
+        cat "$file.agy-tmp" > "$file"
+        rm -f "$file.agy-tmp"
+    done < <(find "$dest" -type f -print0 2>/dev/null)
+}
 
 build_opencode() {
     echo ""
@@ -713,6 +977,11 @@ create_archives() {
         create_archive "$DIST_DIR/opencode" "$DIST_DIR/gopher-ai-opencode-v${VERSION}.tar.gz"
         echo "  - Created: gopher-ai-opencode-v${VERSION}.tar.gz"
     fi
+
+    if [[ -d "$DIST_DIR/agy" ]]; then
+        create_archive "$DIST_DIR/agy" "$DIST_DIR/gopher-ai-agy-plugins-v${VERSION}.tar.gz"
+        echo "  - Created: gopher-ai-agy-plugins-v${VERSION}.tar.gz"
+    fi
 }
 
 print_summary() {
@@ -744,12 +1013,16 @@ print_summary() {
     echo "  OpenCode:"
     echo "    ./scripts/install-opencode.sh"
     echo ""
+    echo "  Antigravity (agy):"
+    echo "    ./scripts/install-agy.sh"
+    echo ""
 }
 
 main() {
     build_codex
     build_gemini
     build_opencode
+    build_agy
     create_archives
     print_summary
 }
